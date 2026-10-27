@@ -129,6 +129,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 | 006 | [006-popup-search-and-toolbar.md](006-popup-search-and-toolbar.md) | Popup: positioning, search, layouts, sorts, keyboard/mouse, add-snippet, open main | 003, 004, 005 (shared editor) | Placeholder |
 | 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | Placeholder |
 | 008 | [008-release-hardening-and-acceptance.md](008-release-hardening-and-acceptance.md) | AOT release artifact, perf acceptance, compatibility matrix, full runbook, wiring audit | 003–007 | Placeholder |
+| 009 | [009-design-alignment-004-005.md](009-design-alignment-004-005.md) | Align built 004/005 surfaces (main window, folders, settings, dialogs, tray menu, tokens) with `docs/design/001-smart-snippets-design.html` | 004, 005 | Draft — awaiting approval |
 
 Only one subplan is detailed and in progress at a time. Approving this master approves the
 decomposition, not the contents of undetailed subplans.
