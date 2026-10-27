@@ -1,0 +1,14 @@
+<Window
+    x:Class="SmartSnippets.App.Diagnostics.DiagnosticsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="SmartSnippets Diagnostics">
+    <StackPanel x:Name="ProbePanel" x:FieldModifier="internal" Padding="24" Spacing="12">
+        <TextBlock x:Name="DynamicCodeText" />
+        <TextBlock x:Name="RuntimeText" />
+        <Button x:Name="SqliteProbeButton" Content="Run SQLite probe" Click="OnRunSqliteProbe" />
+        <TextBlock x:Name="SqliteResultText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <ToggleSwitch x:Name="StartupToggle" Header="Start at login" />
+        <TextBlock x:Name="StartupResultText" TextWrapping="Wrap" />
+    </StackPanel>
+</Window>

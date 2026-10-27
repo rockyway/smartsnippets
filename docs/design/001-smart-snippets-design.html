@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Snippets: UI design</title>
+<style>
+:root{
+  --s0:#f3f3f3;--s1:#f9f9f9;--s2:#ffffff;
+  --tp:#1b1b1b;--ts:#5c5c5c;--tm:#7d7d7d;
+  --bd:rgba(0,0,0,.09);--bds:rgba(0,0,0,.2);
+  --ac:#005fb8;--acbg:#e3effb;--act:#00478a;--onac:#ffffff;
+  --dg:#b3261e;--dgbg:#fde7e9;--dgf:#c42b1c;--ondg:#ffffff;
+  --wn:#8a5300;--wnbg:#fff4ce;--ok:#0f7b0f;
+  --vbg:#ece8fb;--vt:#4b3a9e;--stage:#e4e8ef;--scrim:rgba(0,0,0,.45);
+  --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+  --r:8px;
+}
+:root[data-theme="dark"]{
+  --s0:#202020;--s1:#2b2b2b;--s2:#323232;
+  --tp:#ffffff;--ts:#c8c8c8;--tm:#9a9a9a;
+  --bd:rgba(255,255,255,.1);--bds:rgba(255,255,255,.24);
+  --ac:#60cdff;--acbg:#0c3a5a;--act:#9bdcff;--onac:#00253d;
+  --dg:#ff99a4;--dgbg:#442726;--dgf:#ff99a4;--ondg:#1b1b1b;
+  --wn:#ffd866;--wnbg:#433519;--ok:#6ccb5f;
+  --vbg:#2f2a4d;--vt:#cbc1f7;--stage:#171717;--scrim:rgba(0,0,0,.6);
+}
+.ic{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;vertical-align:-0.2em;flex-shrink:0}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--s0);color:var(--tp);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-weight:600;margin:0}
+a{color:var(--act)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button,input,select,textarea{font:inherit;color:var(--tp)}
+button{background:var(--s2);border:1px solid var(--bds);border-radius:var(--r);padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:1.3}
+button:hover{background:var(--s1)}
+button:active{transform:scale(.98)}
+button.pri{background:var(--ac);color:var(--onac);border-color:transparent}
+button.pri:hover{filter:brightness(1.08)}
+button.dng{background:var(--dgf);color:var(--ondg);border-color:transparent}
+button.ghost{border-color:transparent;background:transparent}
+button.ghost:hover{background:var(--s1)}
+input,select,textarea{background:var(--s2);border:1px solid var(--bds);border-radius:var(--r);padding:6px 10px;width:100%}
+input,select{height:34px}
+textarea{resize:none;font-family:var(--mono);font-size:12.5px;line-height:1.5}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 2px var(--acbg)}
+kbd{font:12px var(--font);background:var(--s1);border:1px solid var(--bds);border-bottom-width:2px;border-radius:4px;padding:1px 6px;margin-right:3px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* page chrome */
+header.top{position:sticky;top:0;z-index:20;background:var(--s2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:20px;padding:10px 24px;flex-wrap:wrap}
+header.top .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px}
+header.top nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+header.top nav a{text-decoration:none;color:var(--ts);padding:5px 10px;border-radius:6px;font-size:13px}
+header.top nav a:hover{background:var(--s1);color:var(--tp)}
+main{max-width:1040px;margin:0 auto;padding:32px 24px 80px}
+.intro{margin-bottom:40px;max-width:68ch}
+.intro h1{font-size:28px;line-height:1.2;margin-bottom:10px}
+.intro p{color:var(--ts);margin:0 0 8px}
+section.sec{margin-bottom:56px;scroll-margin-top:70px}
+section.sec>h2{font-size:20px;margin-bottom:4px}
+section.sec>p.note{color:var(--ts);margin:0 0 16px;max-width:72ch}
+.stage{background:var(--stage);border-radius:16px;padding:28px 20px}
+.cap{font-size:12px;color:var(--tm);margin:0 0 8px}
+
+/* popup */
+.desk{position:relative;min-height:640px;display:flex;flex-direction:column;align-items:center}
+.tgt{background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);padding:7px 12px;font-size:12px;color:var(--ts);display:flex;gap:8px;align-items:center;margin-bottom:12px;max-width:640px;width:100%}
+.pop{background:var(--s2);border:1px solid var(--bds);border-radius:12px;max-width:640px;width:100%;position:relative;overflow:hidden}
+.ptop{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--bd)}
+.sb{flex:1;display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:0 10px;height:38px}
+.sb:focus-within{border-color:var(--ac);box-shadow:0 0 0 2px var(--acbg)}
+.sb input{border:none;background:transparent;height:36px;padding:0;box-shadow:none!important}
+.ib{width:36px;height:36px;padding:0;justify-content:center;font-size:19px;color:var(--ts);border-color:transparent;background:transparent}
+.ib:hover{background:var(--s1)}
+.ib.on{background:var(--acbg);color:var(--act)}
+.sep{width:1px;height:22px;background:var(--bds);margin:0 2px}
+.list{max-height:340px;overflow-y:auto;padding:6px}
+.fh{font-size:12px;color:var(--tm);padding:10px 10px 4px;display:flex;align-items:center;gap:6px;font-weight:600}
+.row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r);cursor:pointer}
+.row:hover{background:var(--s1)}
+.row.sel{background:var(--acbg)}
+.bar{width:3px;align-self:stretch;border-radius:2px;background:transparent}
+.row.sel .bar{background:var(--ac)}
+.main1{flex:1;min-width:0}
+.lab{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prev{font-size:12.5px;color:var(--ts);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.chip{font-size:11.5px;padding:1px 8px;border-radius:var(--r);background:var(--s1);color:var(--ts);border:1px solid var(--bd);white-space:nowrap;display:inline-flex;gap:4px;align-items:center}
+.chip.f{background:var(--vbg);color:var(--vt);border-color:transparent}
+.pfoot{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-top:1px solid var(--bd);font-size:12px;color:var(--ts);gap:8px;flex-wrap:wrap;min-height:38px}
+.pfoot.err{background:var(--dgbg);color:var(--dg)}
+.menu{position:absolute;top:52px;right:48px;background:var(--s2);border:1px solid var(--bds);border-radius:var(--r);padding:4px;z-index:5;min-width:180px;display:none}
+.menu div{padding:7px 10px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:12px}
+.menu div:hover{background:var(--s1)}
+.empty{padding:40px 16px;text-align:center;color:var(--ts)}
+.empty b{display:block;color:var(--tp);margin-top:6px}
+.ok{color:var(--ok);font-weight:600}
+
+/* dialog overlay */
+.scrim{display:none;position:absolute;inset:0;background:var(--scrim);align-items:center;justify-content:center;padding:16px;z-index:10;border-radius:16px}
+.dlg{background:var(--s2);border:1px solid var(--bds);border-radius:12px;width:100%;max-width:460px;padding:18px 20px}
+.dlg h3{font-size:17px}
+.dlg .sub{font-size:12px;color:var(--ts);display:flex;gap:6px;align-items:center;margin:4px 0 14px}
+.fld{margin-bottom:12px}
+.fld>label{display:block;font-size:12.5px;color:var(--ts);margin-bottom:4px}
+.r2{display:flex;gap:6px;align-items:center}
+.hint{font-size:12px;color:var(--tm);margin-top:4px}
+.errtxt{font-size:12px;color:var(--dg);margin-top:4px;display:none}
+.inl{background:var(--s1);border-radius:var(--r);padding:8px;margin-top:6px;display:none;gap:6px}
+.inl input{height:30px}
+.acts{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--bd);gap:8px;flex-wrap:wrap}
+.acts small{font-size:12px;color:var(--tm)}
+
+/* main window */
+.win{background:var(--s2);border:1px solid var(--bds);border-radius:12px;overflow:hidden}
+.tb{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--s1);border-bottom:1px solid var(--bd);font-size:12px;color:var(--ts)}
+.tb span{display:flex;gap:14px;align-items:center}
+.wbody{display:grid;grid-template-columns:190px 290px minmax(0,1fr);min-height:520px}
+.nav{background:var(--s1);border-right:1px solid var(--bd);padding:12px 8px}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;color:var(--ts)}
+.ni.a{background:var(--acbg);color:var(--act);font-weight:600}
+.ni b{margin-left:auto;font-weight:400;font-size:12px;color:var(--tm)}
+.nh{font-size:12px;color:var(--tm);padding:14px 10px 4px;font-weight:600}
+.mid{border-right:1px solid var(--bd);display:flex;flex-direction:column}
+.mh{padding:10px;display:flex;gap:6px;border-bottom:1px solid var(--bd)}
+.mh button{width:34px;height:34px;padding:0;justify-content:center;font-size:17px}
+.li{padding:10px 14px;border-bottom:1px solid var(--bd)}
+.li.s{background:var(--acbg)}
+.li .t{font-weight:600}
+.li .p{font-size:12.5px;color:var(--ts);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .m{font-size:12px;color:var(--tm);margin-top:2px}
+.ed{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.ed .fld{margin:0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stats div{background:var(--s1);border-radius:var(--r);padding:7px 12px;font-size:12px;color:var(--ts)}
+.stats b{display:block;font-size:14px;font-weight:600;color:var(--tp)}
+.eacts{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:12px;border-top:1px solid var(--bd);gap:8px;flex-wrap:wrap}
+.dirty{font-size:12px;color:var(--wn);display:flex;gap:4px;align-items:center}
+
+/* cards */
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.card{background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:16px 18px}
+.card h3{font-size:16px;margin-bottom:10px}
+.fr{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd)}
+.fr:last-of-type{border-bottom:none}
+.fr .n{flex:1;line-height:1.3}
+.fr small{color:var(--tm);font-size:12px}
+.sm{width:30px;height:30px;padding:0;justify-content:center;font-size:16px;color:var(--ts);border-color:transparent;background:transparent}
+.sm:hover{background:var(--s1)}
+.ban{display:flex;gap:8px;padding:10px 12px;border-radius:var(--r);font-size:13px;line-height:1.45;align-items:flex-start}
+.ban i{font-size:17px;margin-top:1px}
+.ban.e{background:var(--dgbg);color:var(--dg)}
+.ban.w{background:var(--wnbg);color:var(--wn)}
+.ban a{color:inherit;margin-right:12px}
+.sr2{padding:12px 0;border-bottom:1px solid var(--bd)}
+.sr2:last-child{border-bottom:none}
+.sh{font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.seg{display:flex;border:1px solid var(--bds);border-radius:var(--r);overflow:hidden}
+.seg span{flex:1;text-align:center;padding:6px 4px;font-size:13px;color:var(--ts);border-right:1px solid var(--bd);cursor:pointer}
+.seg span:last-child{border-right:none}
+.seg span.a{background:var(--acbg);color:var(--act);font-weight:600}
+.sw{width:40px;height:22px;border-radius:11px;background:var(--ac);position:relative;display:inline-block;cursor:pointer}
+.sw::after{content:"";position:absolute;right:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--onac);transition:right .15s}
+.sw.off{background:var(--bds)}
+.sw.off::after{right:21px;background:var(--s2)}
+.sub2{font-size:12px;color:var(--tm);margin-top:6px}
+.d{background:var(--s2);border:1px solid var(--bds);border-radius:12px;padding:16px 18px}
+.d h3{font-size:16px;margin:0 0 4px}
+.d p{margin:0;color:var(--ts);line-height:1.5}
+.d .a{display:flex;justify-content:flex-end;gap:6px;margin-top:16px}
+.cell{background:var(--s0);border-radius:12px;padding:14px}
+.tray{display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap}
+.tmenu{background:var(--s2);border:1px solid var(--bds);border-radius:12px;padding:6px;width:240px}
+.mi{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px}
+.mi.h{background:var(--s1)}
+.mi span{margin-left:auto;font-size:12px;color:var(--tm)}
+.hr{height:1px;background:var(--bd);margin:4px 6px}
+.taskbar{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;display:flex;gap:12px;align-items:center;font-size:17px;color:var(--ts)}
+.taskbar .on{color:var(--act)}
+.taskbar small{font-size:12px}
+
+.appic{width:22px;height:22px;flex-shrink:0}
+.sizes{display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.sizes div{text-align:center;font-size:12px;color:var(--tm)}
+.sizes svg{display:block;margin:0 auto 6px}
+.tbar{display:flex;align-items:center;gap:16px;padding:10px 16px;border-radius:8px;background:var(--tb);color:var(--tf);border:1px solid var(--bd);margin-bottom:8px;flex-wrap:wrap}
+.tbar .st{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--tf);opacity:1}
+.tbar .st span{color:var(--tf);font-size:11px}
+.tbar .ic{font-size:17px}
+.tbar .tr{width:22px;height:22px}
+.tbar .clk{font-size:12px;margin-left:auto}
+/* tokens */
+.sw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tok{border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;background:var(--s2)}
+.tok i{display:block;height:44px;border-bottom:1px solid var(--bd)}
+.tok div{padding:6px 10px;font-size:12px;line-height:1.35}
+.tok small{color:var(--tm);display:block}
+
+@media (max-width:860px){
+  .wbody{grid-template-columns:1fr}
+  .nav,.mid{border-right:none;border-bottom:1px solid var(--bd)}
+  main{padding:24px 14px 60px}
+  .stage{padding:18px 10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol><symbol id="i-device-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol><symbol id="i-app-window" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 7h.01M10 7h.01"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></symbol><symbol id="i-search-off" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M3 3l18 18"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M5 6h.01M5 12h.01M5 18h.01"/></symbol><symbol id="i-folders" viewBox="0 0 24 24"><path d="M9 4h4l2 2h4a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M5 8v10a1 1 0 0 0 1 1h11"/></symbol><symbol id="i-arrows-sort" viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-layout-sidebar" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/></symbol><symbol id="i-target-arrow" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 12h.01"/></symbol><symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M12 19H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v4"/><path d="M16 19h6M19 16v6"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol><symbol id="i-notes" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol><symbol id="i-stack-2" viewBox="0 0 24 24"><path d="M12 4l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4M4 16l8 4 8-4"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M5 4h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></symbol><symbol id="i-folder-off" viewBox="0 0 24 24"><path d="M5 4h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M3 3l18 18"/></symbol><symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol><symbol id="i-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol><symbol id="i-alert-triangle" viewBox="0 0 24 24"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/></symbol><symbol id="i-alert-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></symbol><symbol id="i-database-off" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3M3 3l18 18"/></symbol><symbol id="i-point" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/></symbol><symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></symbol><symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/></symbol><symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></symbol><symbol id="i-app" viewBox="0 0 64 64"><rect x="4" y="4" width="56" height="56" rx="14" fill="#1668d4" stroke="none"/><path d="M21 18h-5v28h5M43 18h5v28h-5" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 21v22M28.5 21h7M28.5 43h7" fill="none" stroke="#ffd23f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="i-tray" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5H5v14h3M16 5h3v14h-3M12 7.5v9M10 7.5h4M10 16.5h4"/></g></symbol></defs></svg>
+
+<header class="top">
+  <div class="brand"><svg class="appic" aria-hidden="true"><use href="#i-app"/></svg>Smart Snippets</div>
+  <nav aria-label="Sections">
+    <a href="#popup">Popup</a>
+    <a href="#main">Main window</a>
+    <a href="#folders">Folders and settings</a>
+    <a href="#dialogs">Dialogs and errors</a>
+    <a href="#tray">Tray</a>
+    <a href="#tokens">Tokens</a>
+  </nav>
+  <button id="themeBtn" aria-label="Switch theme"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><span>Light</span></button>
+</header>
+
+<main>
+  <div class="intro">
+    <h1>Smart Snippets: UI design</h1>
+    <p>Design mockups for the Windows desktop snippet utility described in the requirements specification. The popup is fully interactive: type to filter, use the arrow keys and Enter, switch layout and sort, and add a snippet.</p>
+    <p>Assumptions carried over from the spec: single-level folders, plain-text snippets, text sizes 12 / 14 / 18, and a default hotkey of Ctrl+Shift+Space.</p>
+  </div>
+
+  <section class="sec" id="popup">
+    <h2>Global popup</h2>
+    <p class="note">Opens centered on the monitor of the target window, with the search box focused and the first result selected. The add button opens the editor over the popup and keeps the original insertion target.</p>
+    <div class="stage">
+      <div class="desk" id="desk">
+        <div class="tgt"><svg class="ic" aria-hidden="true"><use href="#i-app-window"/></svg>Target captured: Notepad, Untitled. Popup is centered on this monitor.</div>
+        <div class="pop">
+          <div class="ptop">
+            <div class="sb"><svg class="ic" style="color:var(--tm)" aria-hidden="true"><use href="#i-search"/></svg><input id="q" placeholder="Search label, text, folder, or tag" aria-label="Search snippets" autocomplete="off"></div>
+            <div class="sep"></div>
+            <button class="ib" id="bLayout" title="Layout: flat" aria-label="Toggle layout"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg></button>
+            <button class="ib" id="bSort" title="Sort: last used" aria-label="Sort"><svg class="ic" aria-hidden="true"><use href="#i-arrows-sort"/></svg></button>
+            <button class="ib" id="bAdd" title="Add snippet" aria-label="Add snippet"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+            <button class="ib" id="bMain" title="Open main window" aria-label="Open main window"><svg class="ic" aria-hidden="true"><use href="#i-layout-sidebar"/></svg></button>
+          </div>
+          <div class="menu" id="menu"></div>
+          <div class="list" id="list" role="listbox" aria-label="Snippets"></div>
+          <div class="pfoot" id="pfoot"><span id="hint"></span><span id="cnt"></span></div>
+        </div>
+
+        <div class="scrim" id="scrim">
+          <div class="dlg" role="dialog" aria-labelledby="dTitle">
+            <h3 id="dTitle">Add snippet</h3>
+            <div class="sub"><svg class="ic" aria-hidden="true"><use href="#i-target-arrow"/></svg>Insertion target kept: Notepad, Untitled</div>
+            <div class="fld"><label for="aText">Text</label><textarea id="aText" style="height:92px"></textarea><div class="errtxt" id="eText">Enter the snippet text.</div></div>
+            <div class="fld"><label for="aLabel">Label</label><div class="r2"><input id="aLabel"><span class="chip" id="aChip" style="height:26px">Auto from tag</span></div><div class="hint" id="aHint">Edit the label to stop it following your tags.</div><div class="errtxt" id="eLabel">Enter a label.</div></div>
+            <div class="fld"><label for="aFolder">Folder</label><div class="r2"><select id="aFolder"></select><button id="aNew" type="button"><svg class="ic" aria-hidden="true"><use href="#i-folder-plus"/></svg>New</button></div>
+              <div class="inl" id="inl"><input id="nfName" placeholder="Folder name" aria-label="New folder name" style="flex:1"><button id="nfOk" type="button" style="height:30px">Create</button><button id="nfNo" class="ghost" type="button" style="height:30px">Cancel</button></div>
+              <div class="errtxt" id="eFolder">That folder name is already taken. Try another.</div>
+            </div>
+            <div class="fld"><label for="aTags">Tags, comma separated</label><input id="aTags" placeholder="support, reply"></div>
+            <div class="acts"><small><kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves</small><span class="r2"><button id="aCancel" type="button">Cancel</button><button id="aSave" class="pri" type="button">Save</button></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="main">
+    <h2>Main window</h2>
+    <p class="note">Three panes for browsing, finding, and editing without changing screens. Usage statistics are read-only and visually separate from editable fields.</p>
+    <div class="win">
+      <div class="tb"><span><svg class="appic" aria-hidden="true"><use href="#i-app"/></svg>Smart Snippets</span><span><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><svg class="ic" aria-hidden="true"><use href="#i-square"/></svg><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></span></div>
+      <div class="wbody">
+        <div class="nav">
+          <div class="ni a"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg>Snippets</div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-folders"/></svg>Folders</div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>Settings</div>
+          <div class="nh">Browse</div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-stack-2"/></svg>All<b>8</b></div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>Code<b>2</b></div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>Email<b>2</b></div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>Support<b>2</b></div>
+          <div class="ni"><svg class="ic" aria-hidden="true"><use href="#i-folder-off"/></svg>Unfiled<b>2</b></div>
+        </div>
+        <div class="mid">
+          <div class="mh"><input placeholder="Search" aria-label="Search snippets"><button class="pri" aria-label="New snippet" title="New snippet"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+          <div class="li s"><div class="t">Refund policy</div><div class="p">You can request a refund within 30 days of purchase…</div><div class="m">Support, used 31 times</div></div>
+          <div class="li"><div class="t">Meeting follow-up</div><div class="p">Hi all, thanks for your time today…</div><div class="m">Email, used 42 times</div></div>
+          <div class="li"><div class="t">Reset password steps</div><div class="p">1. Open Settings. 2. Select Security…</div><div class="m">Support, used 27 times</div></div>
+          <div class="li"><div class="t">SQL: recent orders</div><div class="p">SELECT * FROM orders WHERE created_at…</div><div class="m">Code, used 12 times</div></div>
+          <div class="li"><div class="t">Home address</div><div class="p">221B Baker Street, London NW1 6XE</div><div class="m">Unfiled, never used</div></div>
+        </div>
+        <div class="ed">
+          <div class="fld"><label for="e1">Text</label><textarea id="e1" style="height:104px">You can request a refund within 30 days of purchase from the Billing page of your account.</textarea></div>
+          <div class="fld"><label for="e2">Label</label><div class="r2"><input id="e2" value="Refund policy"><span class="chip" style="height:26px">Custom label</span></div></div>
+          <div class="fld"><label for="e3">Folder</label><div class="r2"><select id="e3"><option>Support</option><option>Unfiled</option></select><button><svg class="ic" aria-hidden="true"><use href="#i-folder-plus"/></svg>New</button></div></div>
+          <div class="fld"><label for="e4">Tags, comma separated</label><input id="e4" value="refund, billing, support"><div style="margin-top:6px;display:flex;gap:4px"><span class="chip">refund</span><span class="chip">billing</span><span class="chip">support</span></div></div>
+          <div class="stats"><div>Created<b>3 Mar 2026</b></div><div>Last used<b>Today, 09:12</b></div><div>Used<b>31 times</b></div></div>
+          <div class="eacts"><button style="color:var(--dg)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button><span class="dirty"><svg class="ic" aria-hidden="true"><use href="#i-point"/></svg>Unsaved changes</span><span class="r2"><button>Discard</button><button class="pri">Save</button></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="folders">
+    <h2>Folders and settings</h2>
+    <p class="note">Folder rename happens inline. Unfiled is built in and can't be renamed or deleted. Settings changes apply immediately, and the hotkey keeps its previous value if a change fails.</p>
+    <div class="g2">
+      <div class="card">
+        <h3>Folders</h3>
+        <div class="r2" style="margin-bottom:6px"><input placeholder="New folder name" aria-label="New folder name"><button><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Create</button></div>
+        <div class="fr"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg><span class="n">Code<br><small>2 snippets</small></span><button class="sm" aria-label="Rename Code"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg></button><button class="sm" aria-label="Delete Code"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button></div>
+        <div class="fr"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg><span class="n">Email<br><small>2 snippets</small></span><button class="sm" aria-label="Rename Email"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg></button><button class="sm" aria-label="Delete Email"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button></div>
+        <div class="fr"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg><span class="n"><input value="Support" aria-label="Rename folder" style="height:30px;width:160px"><br><small>2 snippets</small></span><button class="sm" aria-label="Confirm rename" style="color:var(--ok)"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></button><button class="sm" aria-label="Cancel rename"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+        <div class="fr"><svg class="ic" style="color:var(--tm)" aria-hidden="true"><use href="#i-folder-off"/></svg><span class="n" style="color:var(--ts)">Unfiled<br><small>2 snippets, built in</small></span></div>
+        <div class="ban w" style="margin-top:10px"><svg class="ic" aria-hidden="true"><use href="#i-alert-triangle"/></svg><span>Deleting a folder moves its snippets to Unfiled. The snippets themselves are kept.</span></div>
+      </div>
+      <div class="card">
+        <h3>Settings</h3>
+        <div class="sr2"><div class="sh">Global hotkey <button style="height:28px;padding:2px 10px;font-size:13px">Restore default</button></div><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd><button style="height:28px;padding:2px 10px;margin-left:6px;font-size:13px">Change</button><div class="sub2">Press a new combination to capture it. Conflicts are explained here.</div></div>
+        <div class="sr2"><div class="sh">Text size</div><div class="seg" role="radiogroup" aria-label="Text size"><span>Small</span><span class="a">Medium</span><span>Large</span><span>Custom</span></div><div class="sub2">14 units. Custom accepts 10 to 32.</div></div>
+        <div class="sr2"><div class="sh">Theme</div><div class="seg" role="radiogroup" aria-label="Theme"><span>Light</span><span>Dark</span><span class="a">System</span></div></div>
+        <div class="sr2"><div class="sh">Start at login <span class="sw" id="sw" role="switch" tabindex="0" aria-checked="true" aria-label="Start at login"></span></div><div class="sub2">Starts in the background without opening the main window.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="dialogs">
+    <h2>Dialogs and errors</h2>
+    <p class="note">Confirm buttons name the action. Errors say what happened and what to do, and never lose the user's text.</p>
+    <div class="g2">
+      <div class="cell"><p class="cap">Delete snippet</p>
+        <div class="d" role="alertdialog"><h3>Delete "Refund policy"?</h3><p>This snippet and its usage history will be permanently removed.</p><div class="a"><button>Cancel</button><button class="dng">Delete snippet</button></div></div></div>
+      <div class="cell"><p class="cap">Discard unsaved changes</p>
+        <div class="d" role="alertdialog"><h3>Discard your changes?</h3><p>You've edited this snippet but haven't saved it.</p><div class="a"><button>Keep editing</button><button>Discard</button><button class="pri">Save</button></div></div></div>
+      <div class="cell"><p class="cap">Delete folder</p>
+        <div class="d" role="alertdialog"><h3>Delete folder "Support"?</h3><p>Its 2 snippets will move to Unfiled. The snippets aren't deleted.</p><div class="a"><button>Cancel</button><button class="dng">Delete folder</button></div></div></div>
+      <div class="cell"><p class="cap">Hotkey conflict, in settings</p>
+        <div class="d"><div style="font-weight:600;margin-bottom:8px">Global hotkey</div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>
+          <div class="ban e" style="margin-top:12px"><svg class="ic" aria-hidden="true"><use href="#i-alert-circle"/></svg><div>Another app is already using Ctrl+Alt+Space. Your hotkey is still Ctrl+Shift+Space. Try a different combination.</div></div></div></div>
+      <div class="cell"><p class="cap">Insertion failed, in popup footer</p>
+        <div class="pop" style="max-width:none">
+          <div class="list" style="max-height:none"><div class="row sel"><div class="bar"></div><div class="main1"><div class="lab">Refund policy</div></div><div class="meta"><span class="chip f">Support</span></div></div><div class="row"><div class="bar"></div><div class="main1"><div class="lab">Meeting follow-up</div></div><div class="meta"><span class="chip f">Email</span></div></div></div>
+          <div class="pfoot err"><span><svg class="ic" aria-hidden="true"><use href="#i-alert-circle"/></svg> Couldn't insert. Notepad was closed. Nothing was pasted.</span><a href="#dialogs" style="color:inherit">Copy text</a></div>
+        </div></div>
+      <div class="cell"><p class="cap">Database and elevation messages</p>
+        <div class="ban e"><svg class="ic" aria-hidden="true"><use href="#i-database-off"/></svg><div>Couldn't save your snippet. Your text is still in the editor, so nothing is lost.<div style="margin-top:6px"><a href="#dialogs">Try again</a><a href="#dialogs">Copy text</a></div></div></div>
+        <div class="ban w" style="margin-top:8px"><svg class="ic" aria-hidden="true"><use href="#i-alert-triangle"/></svg><div>The target app is running as administrator. Smart Snippets can't insert text into it.</div></div></div>
+    </div>
+  </section>
+
+  <section class="sec" id="tray">
+    <h2>App icon and notification area</h2>
+    <p class="note">The mark pairs a bracket pair, for a snippet of text, with a text caret, for the place it lands. It keeps a distinct silhouette at 16 px, where the earlier clipboard shape blurred into a battery. The tray version is a single-color glyph that adapts to light and dark taskbars.</p>
+    <div class="g2">
+      <div class="cell"><p class="cap">App icon, full color</p>
+        <div class="sizes">
+          <div><svg width="96" height="96" aria-hidden="true"><use href="#i-app"/></svg>96 px</div>
+          <div><svg width="48" height="48" aria-hidden="true"><use href="#i-app"/></svg>48 px</div>
+          <div><svg width="32" height="32" aria-hidden="true"><use href="#i-app"/></svg>32 px</div>
+          <div><svg width="16" height="16" aria-hidden="true"><use href="#i-app"/></svg>16 px</div>
+        </div>
+        <p class="cap" style="margin-top:16px">Tray glyph, single color, shown at 16 px</p>
+        <div class="sizes" style="color:var(--tp)">
+          <div><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/></svg>Actual</div>
+          <div><svg width="48" height="48" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/></svg>Enlarged</div>
+        </div>
+      </div>
+      <div class="cell"><p class="cap">Light taskbar</p><div class="tbar" style="--tb:#f3f3f3;--tf:#1b1b1b"><svg class="ic" aria-hidden="true"><use href="#i-wifi"/></svg><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><div class="st"><svg class="tr" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/></svg><span>Ready</span></div><div class="st"><svg class="tr" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/><circle cx="19" cy="19" r="4.2" fill="#2f8bff" stroke="#f3f3f3" stroke-width="1.6"/></svg><span>Popup open</span></div><div class="st"><svg class="tr" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/><circle cx="19" cy="19" r="4.2" fill="#e5484d" stroke="#f3f3f3" stroke-width="1.6"/></svg><span>Hotkey unavailable</span></div><span class="clk">14:32</span></div><p class="cap">Dark taskbar</p><div class="tbar" style="--tb:#202020;--tf:#ffffff"><svg class="ic" aria-hidden="true"><use href="#i-wifi"/></svg><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><div class="st"><svg class="tr" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/></svg><span>Ready</span></div><div class="st"><svg class="tr" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/><circle cx="19" cy="19" r="4.2" fill="#2f8bff" stroke="#202020" stroke-width="1.6"/></svg><span>Popup open</span></div><div class="st"><svg class="tr" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-tray" width="24" height="24"/><circle cx="19" cy="19" r="4.2" fill="#e5484d" stroke="#202020" stroke-width="1.6"/></svg><span>Hotkey unavailable</span></div><span class="clk">14:32</span></div>
+        <p class="cap" style="margin-top:8px">A small dot signals state: blue while the popup is open, red when the global hotkey couldn't be registered.</p>
+      </div>
+      <div class="cell"><p class="cap">Tray menu</p>
+        <div class="tmenu"><div class="mi h"><svg class="appic" style="width:18px;height:18px" aria-hidden="true"><use href="#i-app"/></svg>Open Smart Snippets</div><div class="mi"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Show popup<span>Ctrl+Shift+Space</span></div><div class="mi"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>Settings</div><div class="hr"></div><div class="mi"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg>Exit</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="tokens">
+    <h2>Design tokens</h2>
+    <p class="note">Native Windows 11 look: Segoe UI Variable, neutral surfaces, one blue accent, and a violet tint reserved for folder chips. Values switch with the theme button above.</p>
+    <div class="sw-grid">
+      <div class="tok"><i style="background:var(--s0)"></i><div>Surface 0<small>Page</small></div></div>
+      <div class="tok"><i style="background:var(--s1)"></i><div>Surface 1<small>Panes, inputs</small></div></div>
+      <div class="tok"><i style="background:var(--s2)"></i><div>Surface 2<small>Popup, dialogs</small></div></div>
+      <div class="tok"><i style="background:var(--ac)"></i><div>Accent<small>Selection, primary</small></div></div>
+      <div class="tok"><i style="background:var(--acbg)"></i><div>Accent tint<small>Selected row</small></div></div>
+      <div class="tok"><i style="background:var(--vbg)"></i><div>Folder tint<small>Folder chips</small></div></div>
+      <div class="tok"><i style="background:var(--dgf)"></i><div>Danger<small>Delete, errors</small></div></div>
+      <div class="tok"><i style="background:var(--wnbg)"></i><div>Warning tint<small>Notices</small></div></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+var root=document.documentElement,tb=document.getElementById('themeBtn');
+var mq=window.matchMedia('(prefers-color-scheme: dark)');
+var mode='system';
+function apply(){var t=mode==='system'?(mq.matches?'dark':'light'):mode;root.setAttribute('data-theme',t);
+ tb.innerHTML='<svg class="ic" aria-hidden="true"><use href="#i-'+(mode==='light'?'sun':mode==='dark'?'moon':'device-desktop')+'"/></svg><span>'+mode.charAt(0).toUpperCase()+mode.slice(1)+'</span>'}
+tb.onclick=function(){mode=mode==='system'?'light':mode==='light'?'dark':'system';apply()};
+mq.addEventListener('change',apply);apply();
+
+var sw=document.getElementById('sw');
+function tg(){var on=sw.getAttribute('aria-checked')==='true';sw.setAttribute('aria-checked',on?'false':'true');sw.classList.toggle('off',on)}
+sw.onclick=tg;sw.onkeydown=function(e){if(e.key===' '||e.key==='Enter'){e.preventDefault();tg()}};
+
+var F=['Code','Email','Support'];
+var S=[
+{l:'Meeting follow-up',f:'Email',t:['email','work'],x:'Hi all, thanks for your time today. Here are the action items we agreed on:',lu:9,c:42,cr:3,up:5},
+{l:'Out of office reply',f:'Email',t:['email','away'],x:'Thanks for your message. I am out of the office until Monday with limited access to email.',lu:7,c:18,cr:1,up:2},
+{l:'Refund policy',f:'Support',t:['support','billing'],x:'You can request a refund within 30 days of purchase from the Billing page of your account.',lu:8,c:31,cr:2,up:8},
+{l:'Reset password steps',f:'Support',t:['support','account'],x:'1. Open Settings. 2. Select Security. 3. Choose Reset password and follow the prompts.',lu:6,c:27,cr:4,up:4},
+{l:'SQL: recent orders',f:'Code',t:['sql'],x:'SELECT * FROM orders WHERE created_at > NOW() - INTERVAL 7 DAY ORDER BY created_at DESC;',lu:5,c:12,cr:5,up:6},
+{l:'Git undo last commit',f:'Code',t:['git'],x:'git reset --soft HEAD~1',lu:4,c:9,cr:6,up:3},
+{l:'Home address',f:null,t:['personal'],x:'221B Baker Street, London NW1 6XE',lu:0,c:0,cr:8,up:9},
+{l:'Thumbs-up reply',f:null,t:['chat','quick'],x:'Sounds good, thanks!',lu:3,c:55,cr:7,up:7}];
+var st={q:'',layout:'flat',sort:'lu',sel:0,vis:[]};
+var SN={lu:'Last used',c:'Usage count',cr:'Created date',up:'Updated date'};
+var q=document.getElementById('q'),list=document.getElementById('list'),menu=document.getElementById('menu'),hint=document.getElementById('hint');
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
+function cmp(a,b){var k=st.sort;if(k==='lu'){if(!a.lu&&b.lu)return 1;if(a.lu&&!b.lu)return -1}return(b[k]-a[k])||a.l.localeCompare(b.l)}
+function filt(){var T=st.q.toLowerCase().split(/\s+/).filter(Boolean);
+ return S.filter(function(s){var h=(s.l+' '+s.x+' '+(s.f||'Unfiled')+' '+s.t.join(' ')).toLowerCase();return T.every(function(t){return h.indexOf(t)>-1})}).sort(cmp)}
+function row(s,i){return '<div class="row'+(i===st.sel?' sel':'')+'" role="option" aria-selected="'+(i===st.sel)+'" data-i="'+i+'"><div class="bar"></div><div class="main1"><div class="lab">'+esc(s.l)+'</div><div class="prev">'+esc(s.x)+'</div></div><div class="meta">'+(st.layout==='flat'?'<span class="chip f">'+esc(s.f||'Unfiled')+'</span>':'')+s.t.slice(0,2).map(function(t){return '<span class="chip">'+esc(t)+'</span>'}).join('')+'</div></div>'}
+function render(msg){var r=filt(),h='';
+ if(!r.length){st.vis=[];h='<div class="empty"><svg class="ic" style="font-size:26px" aria-hidden="true"><use href="#i-search-off"/></svg><b>No snippets match</b>Try fewer words, or add a new snippet with the plus button.</div>'}
+ else if(st.layout==='flat'){st.vis=r;if(st.sel>=r.length)st.sel=0;h=r.map(row).join('')}
+ else{var names=F.slice().sort(function(a,b){return a.localeCompare(b)}).concat([null]),v=[];
+  names.forEach(function(n){var g=r.filter(function(s){return s.f===n});if(!g.length)return;
+   h+='<div class="fh"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>'+esc(n||'Unfiled')+' ('+g.length+')</div>';
+   g.forEach(function(s){h+=row(s,v.length);v.push(s)})});
+  st.vis=v;if(st.sel>=v.length)st.sel=0}
+ list.innerHTML=h;
+ document.getElementById('cnt').textContent=r.length+' of '+S.length+' snippets';
+ hint.innerHTML=msg?'<span class="ok"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> '+esc(msg)+'</span>':'<kbd>↑</kbd><kbd>↓</kbd>move <kbd>Enter</kbd>insert <kbd>Esc</kbd>close';
+ var e=list.querySelector('.sel');if(e)e.scrollIntoView({block:'nearest'})}
+function ins(){var s=st.vis[st.sel];if(!s)return;s.c++;s.lu=Math.max.apply(null,S.map(function(x){return x.lu}))+1;render('Inserted "'+s.l+'" into Notepad')}
+q.addEventListener('input',function(){st.q=q.value;st.sel=0;render()});
+q.addEventListener('keydown',function(e){
+ if(e.key==='ArrowDown'){e.preventDefault();st.sel=Math.min(st.sel+1,st.vis.length-1);render()}
+ else if(e.key==='ArrowUp'){e.preventDefault();st.sel=Math.max(st.sel-1,0);render()}
+ else if(e.key==='Enter'){e.preventDefault();ins()}
+ else if(e.key==='Escape'){if(menu.style.display==='block')menu.style.display='none';else{q.value='';st.q='';st.sel=0;render('Popup closed, nothing inserted')}}});
+list.addEventListener('click',function(e){var r=e.target.closest('.row');if(r){st.sel=+r.dataset.i;ins()}});
+var bL=document.getElementById('bLayout');
+bL.onclick=function(){st.layout=st.layout==='flat'?'folder':'flat';bL.querySelector('use').setAttribute('href','#i-'+(st.layout==='flat'?'list':'folders'));bL.title='Layout: '+st.layout;bL.classList.toggle('on',st.layout==='folder');st.sel=0;render();q.focus()};
+document.getElementById('bSort').onclick=function(){menu.style.display=menu.style.display==='block'?'none':'block'};
+function buildMenu(){menu.innerHTML=Object.keys(SN).map(function(k){return '<div data-k="'+k+'"><span>'+SN[k]+'</span><svg class="ic" style="visibility:'+(k===st.sort?'visible':'hidden')+'" aria-hidden="true"><use href="#i-check"/></svg></div>'}).join('')}
+buildMenu();
+menu.onclick=function(e){var d=e.target.closest('[data-k]');if(!d)return;st.sort=d.dataset.k;document.getElementById('bSort').title='Sort: '+SN[st.sort].toLowerCase();buildMenu();menu.style.display='none';st.sel=0;render();q.focus()};
+document.getElementById('bMain').onclick=function(){document.getElementById('main').scrollIntoView()};
+
+var scrim=document.getElementById('scrim'),aText=document.getElementById('aText'),aLabel=document.getElementById('aLabel'),aTags=document.getElementById('aTags'),aFolder=document.getElementById('aFolder'),aChip=document.getElementById('aChip'),aHint=document.getElementById('aHint'),inl=document.getElementById('inl'),nfName=document.getElementById('nfName');
+var labelEdited=false;
+function normTags(s){var seen={},out=[];s.split(',').forEach(function(t){t=t.trim();if(!t)return;var k=t.toLowerCase();if(seen[k])return;seen[k]=1;out.push(t)});return out}
+function autoLabel(){if(labelEdited)return;var t=normTags(aTags.value)[0];if(!t){var ls=aText.value.split(/\r?\n/).map(function(x){return x.trim()}).filter(Boolean);t=ls[0]||''}aLabel.value=t.slice(0,60)}
+function setChip(){aChip.textContent=labelEdited?'Custom label':'Auto from tag';aHint.style.visibility=labelEdited?'hidden':'visible'}
+function fillFolders(sel){aFolder.innerHTML='<option value="">Unfiled</option>'+F.map(function(n){return '<option>'+esc(n)+'</option>'}).join('');aFolder.value=sel||''}
+function hideErr(){['eText','eLabel','eFolder'].forEach(function(i){document.getElementById(i).style.display='none'})}
+function openDlg(){labelEdited=false;aText.value='';aLabel.value='';aTags.value='';fillFolders('');inl.style.display='none';hideErr();setChip();scrim.style.display='flex';aText.focus()}
+function closeDlg(){scrim.style.display='none';q.focus()}
+document.getElementById('bAdd').onclick=openDlg;
+aText.addEventListener('input',function(){autoLabel();document.getElementById('eText').style.display='none'});
+aTags.addEventListener('input',autoLabel);
+aLabel.addEventListener('input',function(){labelEdited=true;setChip();document.getElementById('eLabel').style.display='none'});
+document.getElementById('aNew').onclick=function(){inl.style.display='flex';nfName.value='';nfName.focus()};
+document.getElementById('nfNo').onclick=function(){inl.style.display='none';document.getElementById('eFolder').style.display='none'};
+document.getElementById('nfOk').onclick=function(){var n=nfName.value.trim(),e=document.getElementById('eFolder');
+ if(!n){e.textContent='Enter a folder name.';e.style.display='block';return}
+ if(F.some(function(x){return x.toLowerCase()===n.toLowerCase()})){e.textContent='That folder name is already taken. Try another.';e.style.display='block';return}
+ F.push(n);fillFolders(n);inl.style.display='none';e.style.display='none'};
+document.getElementById('aCancel').onclick=closeDlg;
+function save(){hideErr();var ok=true;
+ if(!aText.value.trim()){document.getElementById('eText').style.display='block';ok=false}
+ if(!aLabel.value.trim()){document.getElementById('eLabel').style.display='block';ok=false}
+ if(!ok)return;
+ var mx=function(k){return Math.max.apply(null,S.map(function(x){return x[k]}))+1};
+ var n={l:aLabel.value.trim(),f:aFolder.value||null,t:normTags(aTags.value),x:aText.value,lu:0,c:0,cr:mx('cr'),up:mx('up')};
+ S.push(n);st.q='';q.value='';scrim.style.display='none';
+ render();var i=st.vis.indexOf(n);if(i>-1){st.sel=i;render('Snippet added and ready to insert')}
+ q.focus()}
+document.getElementById('aSave').onclick=save;
+scrim.addEventListener('keydown',function(e){
+ if(e.key==='Escape'){e.stopPropagation();closeDlg()}
+ else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();save()}});
+render();
+})();
+</script>
+</body>
+</html>

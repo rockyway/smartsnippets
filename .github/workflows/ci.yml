@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  # Runs when work lands on main, skipping commits that only touch documentation.
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  # Manual run for a feature branch, e.g. to compile WinUI/XAML changes before merging.
+  workflow_dispatch:
+
+jobs:
+  core-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet test tests/SmartSnippets.Core.Tests
+      - run: dotnet test tests/SmartSnippets.Presentation.Tests
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Core tests
+        run: dotnet test tests/SmartSnippets.Core.Tests
+      - name: Presentation tests
+        run: dotnet test tests/SmartSnippets.Presentation.Tests
+      - name: AOT publish + warning gate
+        shell: pwsh
+        run: |
+          dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish *> publish.log
+          $code = $LASTEXITCODE
+          Get-Content publish.log
+          if ($code -ne 0) { exit $code }
+          if (Select-String -Path publish.log -Pattern 'warning IL[23][0-9]{3}' -Quiet) {
+            Write-Error 'Trim/AOT warnings found in publish log'
+            exit 1
+          }
+          if (Test-Path publish/SmartSnippets.App.dll) {
+            Write-Error 'publish/SmartSnippets.App.dll exists: build is not Native AOT'
+            exit 1
+          }
+          foreach ($f in 'SmartSnippets.App.exe', 'e_sqlite3.dll') {
+            if (-not (Test-Path "publish/$f")) {
+              Write-Error "publish/$f is missing"
+              exit 1
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SmartSnippets-win-x64-aot
+          path: publish/

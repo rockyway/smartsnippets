@@ -1,0 +1,156 @@
+<Page
+    x:Class="SmartSnippets.App.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:automation="using:Microsoft.UI.Xaml.Automation"
+    xmlns:controls="using:SmartSnippets.App.Controls">
+    <ScrollViewer>
+        <StackPanel
+            MaxWidth="720"
+            Padding="24"
+            HorizontalAlignment="Left"
+            Spacing="12">
+            <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Settings" />
+
+            <InfoBar
+                x:Name="StatusBar"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.IsStatusVisible, Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind ToInfoBarSeverity(ViewModel.StatusSeverity), Mode=OneWay}" />
+
+            <!-- Global hotkey -->
+            <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Global hotkey" />
+            <InfoBar
+                x:Name="HotkeyBanner"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.IsHotkeyBannerVisible, Mode=OneWay}"
+                Message="{x:Bind ViewModel.HotkeyStatusMessage, Mode=OneWay}"
+                Severity="Warning"
+                Title="The shortcut is not active" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <!-- Keycaps: one bordered key per part; swapped for the recorder while capturing. -->
+                <ItemsControl
+                    x:Name="KeycapsPanel"
+                    VerticalAlignment="Center"
+                    automation:AutomationProperties.Name="Current hotkey"
+                    ItemsSource="{x:Bind ViewModel.CurrentHotkeyParts, Mode=OneWay}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="4" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Border
+                                Padding="8,2"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1,1,1,2"
+                                CornerRadius="4">
+                                <TextBlock Text="{x:Bind}" />
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <controls:ShortcutRecorder
+                    x:Name="Recorder"
+                    Canceled="OnRecorderCanceled"
+                    Cleared="OnRecorderCleared"
+                    DisplayText="{x:Bind ViewModel.CandidateDisplay, Mode=OneWay}"
+                    GestureCaptured="OnGestureCaptured"
+                    LostFocus="OnRecorderLostFocus"
+                    Visibility="Collapsed" />
+                <Button
+                    automation:AutomationProperties.Name="Change shortcut"
+                    Click="OnChangeClick"
+                    Content="Change" />
+                <Button
+                    automation:AutomationProperties.Name="Restore default shortcut"
+                    Command="{x:Bind ViewModel.RestoreDefaultHotkeyCommand}"
+                    Content="Restore default" />
+            </StackPanel>
+            <TextBlock
+                Opacity="0.7"
+                Text="{x:Bind ViewModel.HotkeyFeedback, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind IsNotError(ViewModel.HotkeyFeedbackSeverity), Mode=OneWay}"
+                automation:AutomationProperties.LiveSetting="Polite" />
+            <TextBlock
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                Text="{x:Bind ViewModel.HotkeyFeedback, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind IsError(ViewModel.HotkeyFeedbackSeverity), Mode=OneWay}"
+                automation:AutomationProperties.LiveSetting="Assertive" />
+
+            <!-- Text size -->
+            <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Text size" />
+            <RadioButtons
+                x:Name="TextSizeRadios"
+                automation:AutomationProperties.Name="Text size"
+                SelectedIndex="{x:Bind TextSizeToIndex(ViewModel.SelectedTextSizePreset), Mode=OneWay}"
+                SelectionChanged="OnTextSizeSelectionChanged">
+                <x:String>Small</x:String>
+                <x:String>Medium</x:String>
+                <x:String>Large</x:String>
+                <x:String>Custom</x:String>
+            </RadioButtons>
+            <NumberBox
+                x:Name="CustomSizeBox"
+                Width="160"
+                HorizontalAlignment="Left"
+                automation:AutomationProperties.Name="Custom text size"
+                IsEnabled="{x:Bind ViewModel.IsCustomTextSize, Mode=OneWay}"
+                Maximum="32"
+                Minimum="10"
+                SpinButtonPlacementMode="Inline"
+                ValidationMode="InvalidInputOverwritten"
+                Value="{x:Bind ViewModel.CustomTextSize, Mode=TwoWay}" />
+            <TextBlock
+                Opacity="0.7"
+                Text="{x:Bind ViewModel.TextSizeHint, Mode=OneWay}"
+                TextWrapping="Wrap" />
+            <TextBlock
+                automation:AutomationProperties.Name="Text size preview"
+                FontSize="{x:Bind ViewModel.TextSize.FontSize, Mode=OneWay}"
+                Text="Preview: the quick brown fox jumps over the lazy dog"
+                TextWrapping="Wrap" />
+
+            <!-- Theme: radio order Light, Dark, System (see SettingsViewModel.ThemeToIndex) -->
+            <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Theme" />
+            <RadioButtons
+                x:Name="ThemeRadios"
+                automation:AutomationProperties.Name="Theme"
+                SelectedIndex="{x:Bind ThemeToIndex(ViewModel.SelectedTheme), Mode=OneWay}"
+                SelectionChanged="OnThemeSelectionChanged">
+                <x:String>Light</x:String>
+                <x:String>Dark</x:String>
+                <x:String>System</x:String>
+            </RadioButtons>
+
+            <!-- Start at login -->
+            <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Start at login" />
+            <ToggleSwitch
+                x:Name="StartupToggle"
+                automation:AutomationProperties.Name="Start at login"
+                IsOn="{x:Bind ViewModel.StartAtLogin, Mode=OneWay}"
+                Toggled="OnStartupToggled" />
+            <TextBlock
+                Opacity="0.7"
+                Text="{x:Bind ViewModel.StartAtLoginHint}"
+                TextWrapping="Wrap" />
+
+            <!-- Advanced -->
+            <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Advanced" />
+            <Button
+                automation:AutomationProperties.Name="Restart as administrator"
+                Command="{x:Bind ViewModel.RestartAsAdministratorCommand}"
+                Content="Restart as administrator"
+                IsEnabled="{x:Bind ViewModel.CanRestartAsAdmin, Mode=OneTime}" />
+            <TextBlock
+                Opacity="0.7"
+                Text="Needed to insert text into windows running as administrator."
+                TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>
