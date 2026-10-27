@@ -23,5 +23,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SmartSnippets.Core\SmartSnippets.Core.csproj" />
+    <ProjectReference Include="..\SmartSnippets.Presentation\SmartSnippets.Presentation.csproj" />
   </ItemGroup>
 </Project>

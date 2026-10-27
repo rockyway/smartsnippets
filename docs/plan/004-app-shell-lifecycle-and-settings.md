@@ -1,7 +1,7 @@
 # 004 — App shell, lifecycle, and settings
 
 **Date:** 2026-10-27
-**Status:** Approved (2026-10-27)
+**Status:** In progress (approved 2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.App/`, new `src/SmartSnippets.Presentation/`, new `tests/SmartSnippets.Presentation.Tests/`, `src/SmartSnippets.Core/Settings/`, `.github/workflows/ci.yml`, `SmartSnippets.slnx`
 **Depends on:** 002 (Complete), 003 (planned API: `ISnippetStore`, `AppSettings`, `SettingsRepository`)
@@ -10,6 +10,13 @@
 > Detailed in the same pass as 003 and 005 at the user's request (2026-10-27). It references
 > 003's **planned** API (003 §4.3–4.5). If 003's implementation changes that API, update this
 > plan before starting 004.
+
+> **API check (2026-10-27, after 003 merged at `3435c2a`):** 004 uses `ISnippetStore` (built
+> with `SnippetStore(SqliteConnectionFactory, TimeProvider)` and its `Load()`), `AppSettings`
+> (a sealed record with `init` properties, `static Load(ISettingsStore)` and instance
+> `Save(ISettingsStore)`, fields `HotkeyModifiers` and `HotkeyKey` as uint), and
+> `SettingsRepository : ISettingsStore`. All exist as planned. T2 adds `HotkeyGesture` and maps
+> it to `HotkeyModifiers`/`HotkeyKey` without changing the stored keys.
 
 ---
 

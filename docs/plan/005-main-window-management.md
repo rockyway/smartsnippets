@@ -12,6 +12,12 @@
 > `SnippetSearch`) and 004 §4.1 (shell services). Before starting 005, check those names against
 > the merged 003 and 004 code and update this plan if anything changed.
 
+> **API check (2026-10-27, after 003 merged at `3435c2a`):** the merged API matches this plan
+> except for two differences. Error codes are `ValidationError` (TextRequired, LabelRequired,
+> FolderNameRequired, FolderNameDuplicate, FolderNotFound, SnippetNotFound), with messages from
+> `ToMessage()`. `StoreChangedEventArgs` has `Kind`, `Id` and `SnippetIds`. `Folders` is sorted
+> by name. `Snippets` is ordered by ID with `FolderName` joined. See plan 003 §10.
+
 ---
 
 ## 1. Goal
@@ -58,7 +64,7 @@ It also delivers the **reusable snippet editor**, a view-model plus a control, w
 - **Planned inputs this plan consumes** (not yet built; confirm at the start):
   - **003 §4.5 `ISnippetStore`:** `Snippets` (`IReadOnlyList<SnippetView>`), `Folders`, the
     `Changed` event, and `Create/Update/DeleteSnippet`, `Create/Rename/DeleteFolder` returning
-    `StoreResult<T>` with a `StoreError` and a message. Database failures throw
+    `StoreResult<T>` with an `Error` (`ValidationError?`, from `SmartSnippets.Core.Domain`) and a `Message`. Database failures throw
     `StoreException`.
   - **003 §4.4 rules:**
     - `LabelSuggester.Suggest(text, tags)`, `TagList.Parse/Format`, `SnippetSearch.Filter`.
@@ -197,7 +203,7 @@ Same guard runs for: New, Delete-of-other, navigation to Folders/Settings, windo
 **Folder deleted on the Folders page while the editor has it selected:**
 ```
 FoldersPageViewModel.DeleteAsync(f) → dialog.ConfirmAsync("Delete 'Work'? 12 snippets will move to Unfiled.")
-  → store.DeleteFolder(f) → Changed(FolderDeleted, ids)
+  → store.DeleteFolder(f) → Changed(Kind=FolderDeleted, Id=f, SnippetIds=moved)
      → SnippetListViewModel rebuild (rows show Unfiled)
      → SnippetEditorViewModel.OnStoreChanged: folder choice list refreshed; if draft.FolderId == f
           → FolderId = null; if the editor was clean, reload from the store (so it stays clean)
