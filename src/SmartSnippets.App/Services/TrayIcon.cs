@@ -249,9 +249,11 @@ internal sealed unsafe class TrayIcon : IDisposable
                     break;
                 case CommandShowPopup:
                     // Hand foreground back so the popup captures the window the user was working in, not ours.
-                    if (!previousForeground.IsNull)
+                    // Clicking the tray makes the taskbar foreground, so look past shell windows.
+                    var target = PreviousAppWindow(previousForeground);
+                    if (!target.IsNull)
                     {
-                        PInvoke.SetForegroundWindow(previousForeground);
+                        PInvoke.SetForegroundWindow(target);
                     }
 
                     _onShowPopup();
@@ -274,5 +276,49 @@ internal sealed unsafe class TrayIcon : IDisposable
         {
             PInvoke.DestroyMenu(menu);
         }
+    }
+
+    /// <summary>
+    /// The window the user was working in before opening the tray menu: the foreground window if it is an
+    /// app window, otherwise the first app window in Z-order. Plan 006 replaces this with full target tracking.
+    /// </summary>
+    private static HWND PreviousAppWindow(HWND foreground)
+    {
+        if (IsAppWindow(foreground))
+        {
+            return foreground;
+        }
+
+        for (var hwnd = PInvoke.GetTopWindow(default); !hwnd.IsNull; hwnd = PInvoke.GetWindow(hwnd, GET_WINDOW_CMD.GW_HWNDNEXT))
+        {
+            if (IsAppWindow(hwnd))
+            {
+                return hwnd;
+            }
+        }
+
+        return default;
+    }
+
+    /// <summary>Visible, not minimized, unowned, not ours, and not part of the taskbar or desktop.</summary>
+    private static bool IsAppWindow(HWND hwnd)
+    {
+        if (hwnd.IsNull || !PInvoke.IsWindowVisible(hwnd) || PInvoke.IsIconic(hwnd)
+            || !PInvoke.GetWindow(hwnd, GET_WINDOW_CMD.GW_OWNER).IsNull)
+        {
+            return false;
+        }
+
+        PInvoke.GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == 0 || pid == PInvoke.GetCurrentProcessId())
+        {
+            return false;
+        }
+
+        var buffer = stackalloc char[64];
+        var length = PInvoke.GetClassName(hwnd, buffer, 64);
+        var className = length > 0 ? new string(buffer, 0, length) : string.Empty;
+        return className is not ("Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "NotifyIconOverflowWindow"
+            or "TopLevelWindowForOverflowXamlIsland" or "Progman" or "WorkerW");
     }
 }

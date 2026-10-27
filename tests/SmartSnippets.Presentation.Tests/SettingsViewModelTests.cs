@@ -281,4 +281,12 @@ public sealed class SettingsViewModelTests
 
         Assert.False(Create().CanRestartAsAdmin);
     }
+
+    [Fact]
+    public void ThemeToIndex_UnknownValue_MapsToSystem()
+    {
+        var index = SettingsViewModel.ThemeToIndex((ThemeMode)99);
+
+        Assert.Equal(ThemeMode.System, SettingsViewModel.IndexToTheme(index));
+    }
 }

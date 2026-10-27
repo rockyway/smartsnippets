@@ -11,6 +11,8 @@ public static class UiText
     public const string Unfiled = "Unfiled";
     public const string NoSnippets = "No snippets yet";
     public static string NoMatches(string query) => $"No matches for '{query}'";
+    public static string NoSnippetsIn(string scope) => $"No snippets in {scope}";
+    public static string NoMatchesIn(string query, string scope) => $"No matches for '{query}' in {scope}";
 
     /// <summary>"Support, used 31 times", "Email, used once", "Unfiled, never used".</summary>
     public static string RowMeta(string folder, int usageCount) => usageCount switch

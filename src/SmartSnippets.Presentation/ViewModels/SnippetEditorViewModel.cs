@@ -29,6 +29,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private bool _loading;
     private bool _updatingChoices;
     private bool _settingLabel;
+    private string? _labelBeforeAuto;
     private bool _disposed;
 
     [ObservableProperty]
@@ -284,6 +285,23 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [RelayCommand]
     private void Discard() => ResetToSaved();
 
+    /// <summary>Esc path: asks before throwing away unsaved edits; the Discard button skips the question.</summary>
+    public async Task<bool> ConfirmDiscardAsync()
+    {
+        if (!IsDirty)
+        {
+            return false;
+        }
+
+        if (!await _dialogs.ConfirmAsync(UiText.DiscardTitle, UiText.DiscardBody, UiText.Discard))
+        {
+            return false;
+        }
+
+        ResetToSaved();
+        return true;
+    }
+
     [RelayCommand(CanExecute = nameof(CanDelete))]
     private void Delete() => DeleteRequested?.Invoke(this, EventArgs.Empty);
 
@@ -358,6 +376,8 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         }
         else
         {
+            // Typing replaces any custom label remembered from switching to automatic.
+            _labelBeforeAuto = null;
             IsLabelCustom = true;
         }
 
@@ -373,8 +393,15 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
         if (!value)
         {
+            // Remember the custom label so switching back restores it rather than freezing the suggestion.
+            _labelBeforeAuto = Label;
             LabelError = string.Empty;
             SetLabel(Suggestion);
+        }
+        else if (_labelBeforeAuto is { } previous)
+        {
+            _labelBeforeAuto = null;
+            SetLabel(previous);
         }
 
         RecomputeDirty();
@@ -436,6 +463,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private void Load(Snippet? snippet)
     {
         _current = snippet;
+        _labelBeforeAuto = null;
         _loading = true;
         try
         {

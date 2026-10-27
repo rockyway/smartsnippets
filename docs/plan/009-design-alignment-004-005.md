@@ -218,6 +218,16 @@ is static.
   untested on Windows, 006 refines target capture.
 - `TrayState.PopupOpen` is declared but not set until 006; glyph dots are 008.
 
+**Code review (`/code-review` medium, 741b9a1..8232071) — fixed:** tray "Show popup" could target
+the taskbar (now looks past shell windows in Z-order); Esc discarded edits silently (now asks via
+`ConfirmDiscardAsync`; the Discard button still doesn't); "Copy text" could crash on a busy clipboard
+(COMException caught and logged; UI-thread check added); empty-list text ignored the Browse scope
+(`UiText.NoSnippetsIn`/`NoMatchesIn`); Browse counts were recomputed per keystroke (now one pass,
+only when the store snapshots change); toggling Custom label off/on lost the custom label (restored);
+`ThemeToIndex` fallback now matches `IndexToTheme` (System). **Not changed:** CI only on `main` (user
+decision); hotkey failure wording partly in `HotkeyManager` rather than `UiText` (style).
+Presentation tests: 136/136.
+
 **Known Windows-compile risks** (from the tracks): converter inside a page-level DataTemplate,
 `ToggleSwitch.OnContent` via x:Bind, StackPanel inside `InfoBar.Content`, keycap `ItemsControl`
 with `x:DataType="x:String"`, HighContrast `SystemColor*Color` keys, `DangerButtonStyle` BasedOn

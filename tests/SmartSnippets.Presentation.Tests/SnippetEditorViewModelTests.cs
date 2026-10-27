@@ -550,4 +550,72 @@ public sealed class SnippetEditorViewModelTests
 
         Assert.Equal(0, _store.ChangedSubscriberCount);
     }
+
+    [Fact]
+    public void CustomLabel_ToggleOffThenOn_RestoresCustomLabel()
+    {
+        var snippet = _store.SeedSnippet("Hello", label: "Refund reply", tags: "support");
+        var vm = Edit(snippet.Id);
+        Assert.True(vm.IsLabelCustom);
+
+        vm.IsLabelCustom = false;
+        Assert.Equal("support", vm.Label);
+
+        vm.IsLabelCustom = true;
+        Assert.Equal("Refund reply", vm.Label);
+        Assert.False(vm.IsDirty);
+    }
+
+    [Fact]
+    public void CustomLabel_TypingAfterAuto_KeepsTypedLabel()
+    {
+        var snippet = _store.SeedSnippet("Hello", label: "Refund reply", tags: "support");
+        var vm = Edit(snippet.Id);
+
+        vm.IsLabelCustom = false;
+        vm.Label = "Typed";
+
+        Assert.True(vm.IsLabelCustom);
+        Assert.Equal("Typed", vm.Label);
+    }
+
+    [Fact]
+    public async Task ConfirmDiscard_Declined_KeepsEdits()
+    {
+        var snippet = _store.SeedSnippet("Hello", label: "Greeting");
+        var vm = Edit(snippet.Id);
+        vm.Text = "Edited";
+        _dialogs.ConfirmAnswers.Enqueue(false);
+
+        Assert.False(await vm.ConfirmDiscardAsync());
+
+        Assert.Equal("Edited", vm.Text);
+        Assert.True(vm.IsDirty);
+        var prompt = Assert.Single(_dialogs.Confirms);
+        Assert.Equal((UiText.DiscardTitle, UiText.DiscardBody, UiText.Discard), prompt);
+    }
+
+    [Fact]
+    public async Task ConfirmDiscard_Accepted_Resets()
+    {
+        var snippet = _store.SeedSnippet("Hello", label: "Greeting");
+        var vm = Edit(snippet.Id);
+        vm.Text = "Edited";
+        _dialogs.ConfirmAnswers.Enqueue(true);
+
+        Assert.True(await vm.ConfirmDiscardAsync());
+
+        Assert.Equal("Hello", vm.Text);
+        Assert.False(vm.IsDirty);
+    }
+
+    [Fact]
+    public async Task ConfirmDiscard_NotDirty_NoDialog()
+    {
+        var snippet = _store.SeedSnippet("Hello", label: "Greeting");
+        var vm = Edit(snippet.Id);
+
+        Assert.False(await vm.ConfirmDiscardAsync());
+        Assert.Empty(_dialogs.Confirms);
+    }
 }

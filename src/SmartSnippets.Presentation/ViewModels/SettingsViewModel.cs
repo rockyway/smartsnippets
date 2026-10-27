@@ -114,7 +114,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public string TextSizeHint => UiText.TextSizeHint(TextSize.FontSize);
 
     /// <summary>Index of <paramref name="mode"/> in the Light, Dark, System radio order.</summary>
-    public static int ThemeToIndex(ThemeMode mode) => Math.Max(0, Array.IndexOf(ThemeOrder, mode));
+    /// <summary>Radio index for a theme; unknown values map to System, matching <see cref="IndexToTheme"/>.</summary>
+    public static int ThemeToIndex(ThemeMode mode)
+    {
+        var index = Array.IndexOf(ThemeOrder, mode);
+        return index >= 0 ? index : Array.IndexOf(ThemeOrder, ThemeMode.System);
+    }
 
     /// <summary>Inverse of <see cref="ThemeToIndex"/>; out-of-range indexes fall back to System.</summary>
     public static ThemeMode IndexToTheme(int index) =>

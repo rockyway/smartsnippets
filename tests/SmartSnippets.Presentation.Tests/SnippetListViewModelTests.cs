@@ -146,7 +146,8 @@ public sealed class SnippetListViewModelTests
 
         vm.Query = "email";
         Assert.Empty(vm.Items);
-        Assert.Equal(UiText.NoMatches("email"), vm.EmptyState);
+        // Empty text names the scope so a search miss in one folder is not read as a miss everywhere.
+        Assert.Equal(UiText.NoMatchesIn("email", "Support"), vm.EmptyState);
     }
 
     [Fact]
@@ -279,5 +280,34 @@ public sealed class SnippetListViewModelTests
         vm.Dispose();
 
         Assert.Equal(0, _store.ChangedSubscriberCount);
+    }
+
+    [Fact]
+    public void EmptyStates_NameTheBrowseScope()
+    {
+        _store.SeedSnippet("hello", label: "Hello");
+        var email = _store.SeedFolder("Email");
+        var vm = new SnippetListViewModel(_store);
+
+        vm.SelectedBrowse = vm.BrowseItems.Single(b => b.FolderId == email.Id);
+        Assert.Equal(UiText.NoSnippetsIn("Email"), vm.EmptyState);
+
+        vm.Query = "hello";
+        Assert.Equal(UiText.NoMatchesIn("hello", "Email"), vm.EmptyState);
+    }
+
+    [Fact]
+    public void BrowseCounts_UnchangedBySearch_UpdatedByStore()
+    {
+        _store.SeedSnippet("a", label: "A", folder: "Work");
+        var vm = new SnippetListViewModel(_store);
+        var before = vm.BrowseItems.ToList();
+
+        vm.Query = "zzz";
+        Assert.Equal(before, vm.BrowseItems);
+
+        _store.SeedSnippet("b", label: "B", folder: "Work");
+        Assert.Equal(2, vm.BrowseItems.Single(b => b.Kind == BrowseKind.Folder).Count);
+        Assert.Equal(2, vm.BrowseItems.Single(b => b.Kind == BrowseKind.All).Count);
     }
 }

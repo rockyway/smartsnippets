@@ -102,10 +102,8 @@ public sealed partial class SnippetEditor : UserControl
             return;
         }
 
-        if (_viewModel.DiscardCommand.CanExecute(null))
-        {
-            _viewModel.DiscardCommand.Execute(null);
-        }
+        // Esc is easy to hit by accident, so unlike the Discard button it asks first.
+        _ = _viewModel.ConfirmDiscardAsync();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -82,3 +82,9 @@ ShellExecuteEx
 SHELLEXECUTEINFOW
 SHOW_WINDOW_CMD
 GetDpiForWindow
+GetTopWindow
+GetWindow
+GET_WINDOW_CMD
+IsWindowVisible
+IsIconic
+GetClassName

@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
+using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Services;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -8,9 +11,23 @@ internal sealed class ClipboardService : IClipboardService
 {
     public void SetText(string text)
     {
-        var package = new DataPackage();
-        package.SetText(text);
-        Clipboard.SetContent(package);
-        Clipboard.Flush();
+        if (DispatcherQueue.GetForCurrentThread() is null)
+        {
+            throw new InvalidOperationException("ClipboardService.SetText must be called on the UI thread.");
+        }
+
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(text);
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }
+        catch (COMException ex)
+        {
+            // Another process (clipboard manager, RDP) can hold the clipboard open. "Copy text" exists to
+            // protect unsaved text, so it must never crash the app; the text stays in the editor.
+            AppLog.Error("clipboard_copy_failed", ex);
+        }
     }
 }

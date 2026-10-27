@@ -11,6 +11,8 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 {
     private readonly ISnippetStore _store;
     private IReadOnlyList<SnippetView>? _searchSource;
+    private IReadOnlyList<SnippetView>? _browseSource;
+    private object? _browseFolders;
     private SnippetSearch? _search;
     private bool _rebuilding;
     private bool _syncingBrowse;
@@ -104,7 +106,12 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
             _searchSource = source;
         }
 
-        SyncBrowse(source);
+        // Browse counts ignore the query, so they are rebuilt only when the store's snapshots change.
+        if (!ReferenceEquals(source, _browseSource) || !ReferenceEquals(_store.Folders, _browseFolders))
+        {
+            SyncBrowse(source);
+        }
+
         var scope = SelectedBrowse;
 
         var rows = _search.Filter(Query)
@@ -143,8 +150,20 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
         IsEmpty = rows.Count == 0;
         EmptyState = rows.Count > 0
             ? string.Empty
-            : string.IsNullOrWhiteSpace(Query) ? UiText.NoSnippets : UiText.NoMatches(Query);
+            : EmptyText(Query, scope);
         Rebuilt?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Names the Browse scope when it is narrower than All, so an empty folder never reads as an empty library.</summary>
+    private static string EmptyText(string query, BrowseItemViewModel? scope)
+    {
+        var scoped = scope is { Kind: not BrowseKind.All };
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return scoped ? UiText.NoSnippetsIn(scope!.Name) : UiText.NoSnippets;
+        }
+
+        return scoped ? UiText.NoMatchesIn(query, scope!.Name) : UiText.NoMatches(query);
     }
 
     private static bool InScope(SnippetView view, BrowseItemViewModel? scope) => scope?.Kind switch
@@ -157,17 +176,33 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     private void SyncBrowse(IReadOnlyList<SnippetView> source)
     {
         var folders = _store.Folders;
+        _browseSource = source;
+        _browseFolders = folders;
+
+        var counts = new Dictionary<long, int>();
+        var unfiled = 0;
+        foreach (var view in source)
+        {
+            if (view.Snippet.FolderId is { } folderId)
+            {
+                counts[folderId] = counts.GetValueOrDefault(folderId) + 1;
+            }
+            else
+            {
+                unfiled++;
+            }
+        }
+
         var items = new List<BrowseItemViewModel>(folders.Count + 2)
         {
             new(BrowseKind.All, null, UiText.BrowseAll, source.Count),
         };
         foreach (var folder in folders)
         {
-            items.Add(new BrowseItemViewModel(
-                BrowseKind.Folder, folder.Id, folder.Name, source.Count(v => v.Snippet.FolderId == folder.Id)));
+            items.Add(new BrowseItemViewModel(BrowseKind.Folder, folder.Id, folder.Name, counts.GetValueOrDefault(folder.Id)));
         }
 
-        items.Add(new BrowseItemViewModel(BrowseKind.Unfiled, null, UiText.Unfiled, source.Count(v => v.Snippet.FolderId is null)));
+        items.Add(new BrowseItemViewModel(BrowseKind.Unfiled, null, UiText.Unfiled, unfiled));
 
         var previous = SelectedBrowse;
         _syncingBrowse = true;
