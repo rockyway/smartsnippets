@@ -1,7 +1,7 @@
 # 003 — Core domain and persistence
 
 **Date:** 2026-10-27
-**Status:** Approved (2026-10-27)
+**Status:** In progress (approved 2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Core/`, `tests/SmartSnippets.Core.Tests/`
 **Depends on:** 002 (Complete; see [validation report](../research/001-tech-validation-report.md))
