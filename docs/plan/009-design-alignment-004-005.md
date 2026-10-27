@@ -1,7 +1,7 @@
 # 009 — Design alignment for the shell, settings and main window (004/005)
 
 **Date:** 2026-10-27
-**Status:** Implemented — Presentation/Core tests green; Windows compile pending (CI runs on `main` only); manual runbook (§7) pending
+**Status:** Complete — CI green on `main` (run #33, `452e5a3`, incl. AOT publish gate); manual runbook (§7) pending on user PC
 **Size:** M (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/`, `src/SmartSnippets.App/` (pages, controls, `TrayIcon`, `DialogService`, `HotkeyManager`), `tests/SmartSnippets.Presentation.Tests/`
 **Depends on:** 004 and 005 (both complete, CI green at `6e75872`)
@@ -228,6 +228,12 @@ only when the store snapshots change); toggling Custom label off/on lost the cus
 decision); hotkey failure wording partly in `HotkeyManager` rather than `UiText` (style).
 Presentation tests: 136/136.
 
+**First Windows compile (after merge to `main`).** Run #31 failed: `SnippetEditor.xaml.cs` lost
+`using Microsoft.UI.Xaml.Controls;` (rockyway/smartsnippets#2). Run #32 failed: bool-returning x:Bind
+function bindings on `Visibility` generated uncompilable code (CS0103 `obj`); the helpers now return
+`Visibility`, and the folder ComboBox uses a typed template instead of `DisplayMemberPath` (WMC1510,
+AOT) (rockyway/smartsnippets#3). Run #33 green.
+
 **Known Windows-compile risks** (from the tracks): converter inside a page-level DataTemplate,
 `ToggleSwitch.OnContent` via x:Bind, StackPanel inside `InfoBar.Content`, keycap `ItemsControl`
 with `x:DataType="x:String"`, HighContrast `SystemColor*Color` keys, `DangerButtonStyle` BasedOn
@@ -241,3 +247,4 @@ with `x:DataType="x:String"`, HighContrast `SystemColor*Color` keys, `DangerButt
 | 2026-10-27 | §8 decisions | User answered Q1–Q4 (system accent; keep Restart/Diagnostics on the tray; keep Updated; delete from editor and Delete key). Plan still awaiting G2 approval |
 | 2026-10-27 | Plan approved (G2) | User: "approve 009, implement with Sonnet subagents". T0 contracts committed by the coordinator |
 | 2026-10-27 | Implemented | Tracks A–D merged; Core 164, Presentation 128 green; Windows compile pending (CI on `main` only) |
+| 2026-10-27 | Complete — CI green | Merged to `main` via rockyway/smartsnippets#1–#3; run #33 green incl. AOT publish. Manual runbook §7 pending |
