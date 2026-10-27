@@ -66,9 +66,13 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private bool IsError(StatusSeverity severity) => severity == StatusSeverity.Error;
+    // Return Visibility, not bool: a bool-returning function binding on Visibility generated uncompilable
+    // code (CS0103 'obj' in SettingsPage.g.cs, CI run #32).
+    private Visibility IsError(StatusSeverity severity) =>
+        severity == StatusSeverity.Error ? Visibility.Visible : Visibility.Collapsed;
 
-    private bool IsNotError(StatusSeverity severity) => severity != StatusSeverity.Error;
+    private Visibility IsNotError(StatusSeverity severity) =>
+        severity != StatusSeverity.Error ? Visibility.Visible : Visibility.Collapsed;
 
     private void OnChangeClick(object sender, RoutedEventArgs e)
     {
