@@ -20,9 +20,14 @@ public sealed record AppSettings
     /// <summary>Virtual-key code; default VK_SPACE.</summary>
     public uint HotkeyKey { get; init; } = 0x20;
 
+    public HotkeyGesture Hotkey => new(HotkeyModifiers, HotkeyKey);
+
     public PopupLayout PopupLayout { get; init; } = PopupLayout.Flat;
 
     public SortField PopupSort { get; init; } = SortField.LastUsed;
+
+    public AppSettings WithHotkey(HotkeyGesture gesture) =>
+        this with { HotkeyModifiers = gesture.Modifiers, HotkeyKey = gesture.Key };
 
     public static AppSettings Load(ISettingsStore store)
     {
