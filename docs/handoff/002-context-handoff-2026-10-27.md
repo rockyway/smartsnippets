@@ -141,5 +141,6 @@ views agent was running. It differs from approved plans 004 and 005 in several p
 - **Errors:** they offer a "Copy text" action.
 - **Design tokens:** Segoe UI Variable, accent and folder tint.
 
-**Status:** asked the user whether to align (scope change to plans 004 and 005) or treat the
-design as guidance for 006–008. Pending their answer.
+**Decision (user, 2026-10-27):** "Finish, then align". The 005 views agent finishes the approved
+plan and CI goes green. Then write a short design-alignment plan for 004 and 005 (next free
+number in `docs/plan/`, after a G2 approval) and build 006–008 to the design from the start.
