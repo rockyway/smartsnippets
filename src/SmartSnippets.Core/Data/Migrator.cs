@@ -8,16 +8,11 @@ public sealed record Migration(int Version, string Sql);
 
 public sealed class Migrator
 {
-    private static readonly IReadOnlyList<Migration> DefaultMigrations =
-    [
-        new Migration(1, "CREATE TABLE IF NOT EXISTS probe (id INTEGER PRIMARY KEY, text TEXT NOT NULL);"),
-    ];
-
     private readonly SqliteConnectionFactory _factory;
     private readonly IReadOnlyList<Migration> _migrations;
 
     public Migrator(SqliteConnectionFactory factory)
-        : this(factory, DefaultMigrations)
+        : this(factory, Migrations.All)
     {
     }
 
@@ -40,7 +35,20 @@ public sealed class Migrator
         var start = ReadVersion(connection);
         var current = start;
 
-        foreach (var migration in _migrations.Where(m => m.Version > start))
+        var highest = _migrations.Count == 0 ? 0 : _migrations[^1].Version;
+        if (start > highest)
+        {
+            AppLog.Error("migration_failed", null, $"reason=newer stored={start} known={highest}");
+            throw new MigrationException("The database was created by a newer version of Smart Snippets.");
+        }
+
+        var pending = _migrations.Where(m => m.Version > start).ToList();
+        if (start > 0 && pending.Count > 0)
+        {
+            Backup(connection, start);
+        }
+
+        foreach (var migration in pending)
         {
             try
             {
@@ -57,6 +65,29 @@ public sealed class Migrator
 
         AppLog.Info("migrations_applied", $"from={start} to={current}");
         return current;
+    }
+
+    private void Backup(SqliteConnection connection, int from)
+    {
+        try
+        {
+            var target = $"{_factory.DatabasePath}.v{from}.bak";
+            if (File.Exists(target))
+            {
+                target += "." + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
+            }
+
+            using var command = connection.CreateCommand();
+            command.CommandText = "VACUUM INTO $path;";
+            command.Parameters.AddWithValue("$path", target);
+            command.ExecuteNonQuery();
+            AppLog.Info("migration_backup", $"path={Path.GetFileName(target)}");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("migration_failed", ex, "reason=backup");
+            throw new MigrationException("Could not back up the database before upgrading: " + ex.Message, ex);
+        }
     }
 
     private static int ReadVersion(SqliteConnection connection)
