@@ -1,12 +1,11 @@
 using System.Security;
 using Microsoft.Win32;
 using SmartSnippets.Core.Logging;
+using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.App.Services;
 
-public sealed record StartupResult(bool Success, string Message);
-
-public sealed class StartupRegistration
+public sealed class StartupRegistration : IStartupRegistration
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "SmartSnippets";
