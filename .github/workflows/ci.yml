@@ -1,8 +1,14 @@
 name: CI
 
 on:
+  # Runs when work lands on main, skipping commits that only touch documentation.
   push:
-  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  # Manual run for a feature branch, e.g. to compile WinUI/XAML changes before merging.
+  workflow_dispatch:
 
 jobs:
   core-linux:
