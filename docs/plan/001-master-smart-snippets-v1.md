@@ -125,7 +125,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 | 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | Complete |
 | 003 | [003-core-domain-and-persistence.md](003-core-domain-and-persistence.md) | Domain model, label/tag rules, validation, schema + migrations, repositories, search/sort engine, benchmark | 002 | Complete (2026-10-27) |
 | 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Complete — CI green; manual runbook §7 pending |
-| 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Approved (2026-10-27) |
+| 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Implementation complete — awaiting CI and manual runbook (§7) |
 | 006 | [006-popup-search-and-toolbar.md](006-popup-search-and-toolbar.md) | Popup: positioning, search, layouts, sorts, keyboard/mouse, add-snippet, open main | 003, 004, 005 (shared editor) | Placeholder |
 | 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | Placeholder |
 | 008 | [008-release-hardening-and-acceptance.md](008-release-hardening-and-acceptance.md) | AOT release artifact, perf acceptance, compatibility matrix, full runbook, wiring audit | 003–007 | Placeholder |
@@ -183,6 +183,7 @@ decomposition, not the contents of undetailed subplans.
 | 2026-10-27 | 003, 004, 005 | Draft — awaiting approval | Detailed together in one pass at the user's request (deviation from one-at-a-time); 004/005 reference 003's planned API and must be re-checked against merged code before each starts. 004 adds a `SmartSnippets.Presentation` project for testable view-models |
 | 2026-10-27 | 003 | Complete | Domain, repositories, migration 2, settings, `SnippetStore`, search/sort/grouping done; 138 tests pass locally; benchmark: 10k snippets filter median < 15 ms, build + sort < 40 ms (plan 003 §10). Store API differs slightly from the plan text (`ValidationError` as error code; see 003 §10). CI/AOT run pending on push |
 | 2026-10-27 | 004 | Implementation complete | AppHost composition root, tray/lifecycle wiring, startup notices and wiring audit done (T4, T10, T11); Core and Presentation tests pass locally; awaiting CI (AOT publish) and the manual runbook (004 §7) |
+| 2026-10-27 | 005 | Implementation complete | View-models (T1–T3, T6) and views (snippet editor control, Snippets and Folders pages, AppHost wiring, T4/T5/T7/T8) done; Core and Presentation tests pass locally; App not compiled on Linux, awaiting CI (AOT publish) and the manual runbook (005 §7) |
 
 ## 10. Open questions
 

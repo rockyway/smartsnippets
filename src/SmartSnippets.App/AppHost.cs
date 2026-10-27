@@ -39,6 +39,8 @@ internal sealed class AppHost
     private PopupWindow? _popup;
     private MainWindow? _mainWindow;
     private TrayIcon? _tray;
+    private SnippetsPageViewModel? _snippetsViewModel;
+    private FoldersPageViewModel? _foldersViewModel;
     private DiagnosticsWindow? _diagnostics;
     private bool _exiting;
 
@@ -150,9 +152,17 @@ internal sealed class AppHost
 
         UIElement CreatePage(PageKind kind) => kind switch
         {
-            // Plan 005 replaces these two placeholders with `new SnippetsPage { ViewModel = new ...(Store, TextSize, Dialogs, ...) }`.
-            PageKind.Snippets => new SnippetsPage(),
-            PageKind.Folders => new FoldersPage(),
+            // Pages are created once (MainWindow caches them); the view-models are kept so exit can dispose them.
+            PageKind.Snippets => new SnippetsPage
+            {
+                TextSize = textSize,
+                ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs),
+            },
+            PageKind.Folders => new FoldersPage
+            {
+                TextSize = textSize,
+                ViewModel = _foldersViewModel = new FoldersPageViewModel(Store, Dialogs),
+            },
             _ => new SettingsPage
             {
                 ViewModel = new SettingsViewModel(
@@ -308,6 +318,8 @@ internal sealed class AppHost
             _popup?.Close();
             _diagnostics?.Close();
             _mainWindow?.CloseForExit();
+            _snippetsViewModel?.Dispose();
+            _foldersViewModel?.Dispose();
             _hotkeyService?.Dispose();
             _messageWindow?.Dispose();
         }

@@ -1,7 +1,7 @@
 # 005 — Main window: snippet and folder management
 
 **Date:** 2026-10-27
-**Status:** Approved (2026-10-27)
+**Status:** Implementation complete — awaiting CI and manual runbook (§7)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/`, `src/SmartSnippets.App/Pages/`, `src/SmartSnippets.App/Controls/`, `tests/SmartSnippets.Presentation.Tests/`
 **Depends on:** 003 (planned store/rules/query API), 004 (planned shell: `MainWindow`, `IGuardedPage`, `IDialogService`, `ITextSizeService`, Presentation project)
@@ -411,9 +411,39 @@ None blocking. These are design calls for you to confirm at approval:
 5. **No auto-save or draft recovery.** Unsaved edits are lost on a crash, but every in-app action
    that would lose them asks first.
 
-## 10. Approval log
+## 10. Implementation notes and wiring audit
+
+**Views (T4, T5, T7).** All bindings are `x:Bind`; function bindings (`Show`, `Hide`, `HasText`) are instance
+methods. `SnippetEditor` exposes plain `ViewModel` and `TextSize` properties (each setter calls `Bindings.Update()`),
+so hosts set them in code; `SnippetsPage` pushes `ViewModel.Editor` into the control from its `PropertyChanged`
+handler. The editor binds Text, Label, Tags and the new-folder name two-way with
+`UpdateSourceTrigger=PropertyChanged`, and shows tag chips in an `ItemsRepeater` with `FlowLayout`. Ctrl+S and Esc
+are control-level `KeyboardAccelerator`s; the folder flyout closes when `CreateFolderAsync()` returns true. The
+Snippets page is a two-column grid (list 360 px, editor `*`) with an `AdaptiveTrigger` at 720 px; the narrow state is
+applied in code-behind (one pane at a time, Back button, `ItemClick` re-opens the editor). Ctrl+N, Ctrl+F and
+Delete (on the list) are accelerators/key handlers calling the view-model commands. Folder rows are a DataTemplate,
+so their buttons are `Click` handlers that read the row from `DataContext`; the template uses two small converters
+(`App/Converters/VisibilityConverters.cs`) because it cannot call page functions. No view-model changed.
+
+**Wiring audit (T8).**
+- `AppHost.CreatePage` constructs `SnippetsPageViewModel(Store, Dialogs)` and `FoldersPageViewModel(Store, Dialogs)`
+  and passes `TextSize` to both pages; the editor view-models are created by `SnippetsPageViewModel`. The two page
+  view-models are kept in fields and disposed in `ReleaseResources`.
+- `SnippetEditor` is used by `SnippetsPage` only; 006 is its second host (it needs just `ViewModel` and `TextSize`).
+- `store.Changed` subscribers: `SnippetListViewModel`, `SnippetEditorViewModel`, `FoldersPageViewModel`; each
+  unsubscribes in `Dispose`, and `SnippetsPageViewModel` disposes the list and the current editor.
+- `Repository` appears in `src/SmartSnippets.App` and `src/SmartSnippets.Presentation` only in `AppHost` and the
+  Diagnostics prototype (`ProbeRepository`).
+- `AppLog` calls in Presentation log only ids and failure kinds: `snippet_saved`, `snippet_deleted`,
+  `folder_created`, `folder_renamed`, `folder_deleted`, `save_failed`, `delete_failed`, `select_failed`.
+- Not compiled on Linux: the XAML and code-behind are verified only by CI (AOT publish) and the runbook. Open
+  points to check there: list-item text size inherited from `ListView.FontSize`, the Esc accelerator versus an open
+  ComboBox, and the converters under AOT.
+
+## 11. Approval log
 
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2 |
 | 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |
+| 2026-10-27 | Implementation complete (views) | T4, T5, T7, T8 done; awaiting CI (AOT publish) and manual runbook §7 |
