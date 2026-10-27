@@ -135,7 +135,8 @@
                         automation:AutomationProperties.Name="Tags" />
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.TagChips, Mode=OneWay}">
                         <ItemsRepeater.Layout>
-                            <FlowLayout MinColumnSpacing="6" MinRowSpacing="6" />
+                            <!-- WinUI 3 has no FlowLayout; UniformGridLayout wraps chips at the widest chip width. -->
+                            <UniformGridLayout MinColumnSpacing="6" MinRowSpacing="6" />
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="x:String">
