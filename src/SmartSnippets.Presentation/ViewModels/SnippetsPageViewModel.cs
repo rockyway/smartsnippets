@@ -18,6 +18,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
 
     private readonly ISnippetStore _store;
     private readonly IDialogService _dialogs;
+    private readonly IClipboardService? _clipboard;
     private int _suppressListSelection;
     private bool _disposed;
 
@@ -26,10 +27,11 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     [NotifyCanExecuteChangedFor(nameof(DeleteSelectedCommand))]
     private SnippetEditorViewModel? _editor;
 
-    public SnippetsPageViewModel(ISnippetStore store, IDialogService dialogs)
+    public SnippetsPageViewModel(ISnippetStore store, IDialogService dialogs, IClipboardService? clipboard = null)
     {
         _store = store;
         _dialogs = dialogs;
+        _clipboard = clipboard;
         List = new SnippetListViewModel(store);
         List.PropertyChanged += OnListPropertyChanged;
         List.Rebuilt += OnListRebuilt;
@@ -85,7 +87,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
             return false;
         }
 
-        SetEditor(new SnippetEditorViewModel(_store, _dialogs, id));
+        SetEditor(new SnippetEditorViewModel(_store, _dialogs, id, _clipboard));
         SyncListToEditor();
         return true;
     }
@@ -98,7 +100,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
             return false;
         }
 
-        SetEditor(new SnippetEditorViewModel(_store, _dialogs, null));
+        SetEditor(new SnippetEditorViewModel(_store, _dialogs, null, _clipboard));
         SetListSelection(null);
         return true;
     }
@@ -166,7 +168,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         }
 
         var next = items[Math.Min(index, items.Count - 1)];
-        SetEditor(new SnippetEditorViewModel(_store, _dialogs, next.Id));
+        SetEditor(new SnippetEditorViewModel(_store, _dialogs, next.Id, _clipboard));
         SetListSelection(next.Id);
         return true;
     }

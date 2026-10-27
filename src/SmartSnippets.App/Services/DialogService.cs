@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 
 namespace SmartSnippets.App.Services;
 
@@ -36,9 +37,9 @@ internal sealed class DialogService : IDialogService
         {
             Title = title,
             Content = Body(message),
-            PrimaryButtonText = "Save",
-            SecondaryButtonText = "Discard",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = UiText.Save,
+            SecondaryButtonText = UiText.Discard,
+            CloseButtonText = UiText.KeepEditing,
             DefaultButton = ContentDialogButton.Primary,
         });
         return result switch

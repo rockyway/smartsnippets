@@ -1,7 +1,7 @@
 # 009 — Design alignment for the shell, settings and main window (004/005)
 
 **Date:** 2026-10-27
-**Status:** Draft — awaiting approval (G2)
+**Status:** Approved (2026-10-27) — implementing with Sonnet subagents
 **Size:** M (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/`, `src/SmartSnippets.App/` (pages, controls, `TrayIcon`, `DialogService`, `HotkeyManager`), `tests/SmartSnippets.Presentation.Tests/`
 **Depends on:** 004 and 005 (both complete, CI green at `6e75872`)
@@ -186,3 +186,4 @@ because it depends only on T0's `UiText` and the editor view-model contract.
 |---|---|---|
 | 2026-10-27 | Draft | Written after 005 went green (CI #28), per "Finish, then align" |
 | 2026-10-27 | §8 decisions | User answered Q1–Q4 (system accent; keep Restart/Diagnostics on the tray; keep Updated; delete from editor and Delete key). Plan still awaiting G2 approval |
+| 2026-10-27 | Plan approved (G2) | User: "approve 009, implement with Sonnet subagents". T0 contracts committed by the coordinator |

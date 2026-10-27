@@ -19,6 +19,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     private readonly ISnippetStore _store;
     private readonly IDialogService _dialogs;
+    private readonly IClipboardService? _clipboard;
 
     private long? _snippetId;
     private Snippet? _current;
@@ -96,10 +97,11 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private string _usageCountDisplay = string.Empty;
 
-    public SnippetEditorViewModel(ISnippetStore store, IDialogService dialogs, long? snippetId)
+    public SnippetEditorViewModel(ISnippetStore store, IDialogService dialogs, long? snippetId, IClipboardService? clipboard = null)
     {
         _store = store;
         _dialogs = dialogs;
+        _clipboard = clipboard;
         _snippetId = snippetId;
 
         RefreshChoices(null);

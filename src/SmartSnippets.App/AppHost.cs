@@ -156,7 +156,7 @@ internal sealed class AppHost
             PageKind.Snippets => new SnippetsPage
             {
                 TextSize = textSize,
-                ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs),
+                ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService()),
             },
             PageKind.Folders => new FoldersPage
             {
