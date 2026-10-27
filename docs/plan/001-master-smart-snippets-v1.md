@@ -124,7 +124,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 |---|---|---|---|---|
 | 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | Complete |
 | 003 | [003-core-domain-and-persistence.md](003-core-domain-and-persistence.md) | Domain model, label/tag rules, validation, schema + migrations, repositories, search/sort engine, benchmark | 002 | Complete (2026-10-27) |
-| 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Implementation complete — awaiting CI and manual runbook (§7) |
+| 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Complete — CI green; manual runbook §7 pending |
 | 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Approved (2026-10-27) |
 | 006 | [006-popup-search-and-toolbar.md](006-popup-search-and-toolbar.md) | Popup: positioning, search, layouts, sorts, keyboard/mouse, add-snippet, open main | 003, 004, 005 (shared editor) | Placeholder |
 | 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | Placeholder |

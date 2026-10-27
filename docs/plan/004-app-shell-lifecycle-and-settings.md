@@ -1,7 +1,7 @@
 # 004 — App shell, lifecycle, and settings
 
 **Date:** 2026-10-27
-**Status:** Implementation complete — awaiting CI and manual runbook (§7)
+**Status:** Complete — CI green (run #21, `45157a8`); manual runbook (§7) pending on user PC
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.App/`, new `src/SmartSnippets.Presentation/`, new `tests/SmartSnippets.Presentation.Tests/`, `src/SmartSnippets.Core/Settings/`, `.github/workflows/ci.yml`, `SmartSnippets.slnx`
 **Depends on:** 002 (Complete), 003 (planned API: `ISnippetStore`, `AppSettings`, `SettingsRepository`)
