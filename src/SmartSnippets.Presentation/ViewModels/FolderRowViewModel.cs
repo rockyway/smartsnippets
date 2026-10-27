@@ -39,6 +39,9 @@ public sealed partial class FolderRowViewModel : ObservableObject
 
     public bool CanEdit => !IsBuiltIn;
 
+    // The list item's UI Automation name (what Narrator reads) comes from ToString().
+    public override string ToString() => $"{Name}, {SnippetCountDisplay}";
+
     public string SnippetCountDisplay => IsBuiltIn ? UiText.UnfiledCount(SnippetCount) : UiText.SnippetCount(SnippetCount);
 
     partial void OnEditNameChanged(string value) => RenameError = string.Empty;

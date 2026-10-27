@@ -106,7 +106,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public bool CanRestartAsAdmin => !_elevation.IsElevated;
 
     /// <summary>One entry per key of the current hotkey (for example Ctrl, Shift, Space), shown as keycaps.</summary>
-    public IReadOnlyList<string> CurrentHotkeyParts => SplitKeys(CurrentHotkeyDisplay);
+    public List<string> CurrentHotkeyParts => [.. SplitKeys(CurrentHotkeyDisplay)];
 
     public string StartAtLoginHint => UiText.StartAtLoginHint;
 
