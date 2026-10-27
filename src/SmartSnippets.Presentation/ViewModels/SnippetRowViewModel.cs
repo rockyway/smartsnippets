@@ -9,6 +9,9 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
 {
     public const int PreviewMaxLength = 80;
 
+    // The list item's UI Automation name (what Narrator reads) comes from ToString().
+    public override string ToString() => $"{Label}, {Meta}";
+
     public static SnippetRowViewModel From(SnippetView view) => new(
         view.Snippet.Id,
         view.Snippet.Label,

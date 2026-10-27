@@ -186,6 +186,7 @@ decomposition, not the contents of undetailed subplans.
 | 2026-10-27 | 004 | Implementation complete | AppHost composition root, tray/lifecycle wiring, startup notices and wiring audit done (T4, T10, T11); Core and Presentation tests pass locally; awaiting CI (AOT publish) and the manual runbook (004 §7) |
 | 2026-10-27 | 005 | Implementation complete | View-models (T1–T3, T6) and views (snippet editor control, Snippets and Folders pages, AppHost wiring, T4/T5/T7/T8) done; Core and Presentation tests pass locally; App not compiled on Linux, awaiting CI (AOT publish) and the manual runbook (005 §7) |
 | 2026-10-27 | 005 | Complete — CI green | First Windows compile failed on `FlowLayout` (not in WinUI 3); replaced with `UniformGridLayout` in `6e75872`; CI #28 green incl. AOT publish with 0 trim/AOT warnings. Manual runbook (005 §7) pending |
+| 2026-10-27 | 003, 004, 005, 009 | Automated verification on the AOT exe | `scripts/verify-plans-003-009.ps1`: 103 pass, 0 fail, 1 warn, 5 skip (manual) on branch `verify/plans-003-009`. Found and fixed two startup-blocking crashes on `main` (New snippet and Settings page: `IReadOnlyList<string>` as ItemsSource) and unreadable accessible names; open items for 007 (lone-CR line breaks). See `docs/research/002-verification-plans-003-009.md` |
 
 ## 10. Open questions
 

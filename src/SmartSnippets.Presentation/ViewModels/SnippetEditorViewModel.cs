@@ -51,7 +51,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private string _tagsInput = string.Empty;
 
     [ObservableProperty]
-    private IReadOnlyList<string> _tagChips = [];
+    private List<string> _tagChips = [];
 
     [ObservableProperty]
     private string _textError = string.Empty;
@@ -352,7 +352,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     partial void OnTagsInputChanged(string value)
     {
-        TagChips = TagList.Parse(value);
+        TagChips = TagList.Parse(value).ToList();
         if (_loading)
         {
             return;
