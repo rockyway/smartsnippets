@@ -27,6 +27,8 @@ public sealed partial class MainWindow : Window
         _pageFactory = pageFactory;
         InitializeComponent();
         Title = "Smart Snippets";
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
 
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var dpi = PInvoke.GetDpiForWindow(hwnd);

@@ -3,30 +3,54 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Smart Snippets">
-    <NavigationView
-        x:Name="Navigation"
-        PaneDisplayMode="Left"
-        IsSettingsVisible="False"
-        IsBackButtonVisible="Collapsed"
-        SelectionChanged="OnSelectionChanged">
-        <NavigationView.MenuItems>
-            <NavigationViewItem x:Name="SnippetsItem" Content="Snippets" Tag="Snippets">
-                <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE8A5;" />
-                </NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem x:Name="FoldersItem" Content="Folders" Tag="Folders">
-                <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE8B7;" />
-                </NavigationViewItem.Icon>
-            </NavigationViewItem>
-        </NavigationView.MenuItems>
-        <NavigationView.FooterMenuItems>
-            <NavigationViewItem x:Name="SettingsItem" Content="Settings" Tag="Settings">
-                <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE713;" />
-                </NavigationViewItem.Icon>
-            </NavigationViewItem>
-        </NavigationView.FooterMenuItems>
-    </NavigationView>
+    <!--
+        Content extends into the title bar so the caption buttons sit on the themed background
+        (a transparent button background on the system title bar drew a white block in dark theme).
+    -->
+    <Grid x:Name="RootGrid" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
+            <TextBlock
+                Margin="16,0,0,0"
+                VerticalAlignment="Center"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Smart Snippets" />
+        </Grid>
+
+        <!-- Starts collapsed to icons; the hamburger opens a narrow pane. -->
+        <NavigationView
+            x:Name="Navigation"
+            Grid.Row="1"
+            IsBackButtonVisible="Collapsed"
+            IsPaneOpen="False"
+            IsSettingsVisible="False"
+            IsTitleBarAutoPaddingEnabled="False"
+            OpenPaneLength="180"
+            PaneDisplayMode="Left"
+            SelectionChanged="OnSelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="SnippetsItem" Content="Snippets" Tag="Snippets">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8A5;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="FoldersItem" Content="Folders" Tag="Folders">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Name="SettingsItem" Content="Settings" Tag="Settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+        </NavigationView>
+    </Grid>
 </Window>
