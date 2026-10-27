@@ -9,7 +9,7 @@ using Windows.System;
 
 namespace SmartSnippets.App.Pages;
 
-/// <summary>Master-detail snippet management: searchable list on the left, <see cref="Controls.SnippetEditor"/> on the right.</summary>
+/// <summary>Master-detail snippet management: Browse pane, searchable list and <see cref="Controls.SnippetEditor"/> side by side.</summary>
 public sealed partial class SnippetsPage : Page, IGuardedPage
 {
     private const string WideStateName = "Wide";
@@ -95,23 +95,32 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         ApplyLayout();
     }
 
-    /// <summary>Wide: list and editor side by side. Narrow: one pane at a time, with a Back button on the editor.</summary>
+    /// <summary>
+    /// Wide: browse, list and editor side by side. Narrow: the browse pane becomes a ComboBox above the list and
+    /// one pane (list or editor) shows at a time, with a Back button on the editor.
+    /// </summary>
     private void ApplyLayout()
     {
         if (_isWide)
         {
-            ListColumn.Width = new GridLength(360);
+            BrowseColumn.Width = new GridLength(200);
+            ListColumn.Width = new GridLength(320);
             EditorColumn.Width = new GridLength(1, GridUnitType.Star);
-            Grid.SetColumn(EditorPane, 1);
+            Grid.SetColumn(EditorPane, 2);
+            BrowsePane.Visibility = Visibility.Visible;
+            BrowseCombo.Visibility = Visibility.Collapsed;
             ListPane.Visibility = Visibility.Visible;
             EditorPane.Visibility = Visibility.Visible;
             BackButton.Visibility = Visibility.Collapsed;
             return;
         }
 
+        BrowseColumn.Width = new GridLength(0);
         ListColumn.Width = new GridLength(1, GridUnitType.Star);
         EditorColumn.Width = new GridLength(0);
-        Grid.SetColumn(EditorPane, 0);
+        Grid.SetColumn(EditorPane, 1);
+        BrowsePane.Visibility = Visibility.Collapsed;
+        BrowseCombo.Visibility = Visibility.Visible;
         var showEditor = _narrowShowsEditor && _viewModel?.HasEditor == true;
         ListPane.Visibility = showEditor ? Visibility.Collapsed : Visibility.Visible;
         EditorPane.Visibility = showEditor ? Visibility.Visible : Visibility.Collapsed;

@@ -1,7 +1,8 @@
+using System.ComponentModel;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 using Windows.System;
 
@@ -27,7 +28,17 @@ public sealed partial class SnippetEditor : UserControl
         get => _viewModel;
         set
         {
+            if (_viewModel is not null)
+            {
+                _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            }
+
             _viewModel = value;
+            if (_viewModel is not null)
+            {
+                _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            }
+
             Bindings.Update();
         }
     }
@@ -49,6 +60,21 @@ public sealed partial class SnippetEditor : UserControl
     // Instance (not static): x:Bind function bindings call these through the control instance.
     private Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
+    private Visibility Hide(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
+
+    // Wording comes from UiText (design reference); instance properties so x:Bind can reach them.
+    private string CustomLabelText => UiText.CustomLabel;
+
+    private string UnsavedChangesText => UiText.UnsavedChanges;
+
+    private string DiscardText => UiText.Discard;
+
+    private string SaveText => UiText.Save;
+
+    private string TryAgainText => UiText.TryAgain;
+
+    private string CopyTextLabel => UiText.CopyText;
+
     private Visibility HasText(string? value) => string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
 
     private void OnSaveAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -60,7 +86,7 @@ public sealed partial class SnippetEditor : UserControl
         }
     }
 
-    private void OnRevertAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void OnDiscardAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (_viewModel is null)
         {
@@ -68,38 +94,56 @@ public sealed partial class SnippetEditor : UserControl
         }
 
         args.Handled = true;
-        _viewModel.RevertCommand.Execute(null);
-    }
 
-    private void OnFolderFlyoutOpened(object? sender, object e)
-    {
-        if (sender is Flyout { Content: Panel { Children.Count: > 0 } panel } && panel.Children[0] is Control first)
+        // Esc while the inline new-folder row is open cancels that row, not the whole edit.
+        if (_viewModel.IsCreatingFolder)
         {
-            first.Focus(FocusState.Programmatic);
+            CancelNewFolder();
+            return;
+        }
+
+        if (_viewModel.DiscardCommand.CanExecute(null))
+        {
+            _viewModel.DiscardCommand.Execute(null);
         }
     }
 
-    private async void OnCreateFolderClick(object sender, RoutedEventArgs e) => await CreateFolderAsync();
-
-    private async void OnNewFolderKeyDown(object sender, KeyRoutedEventArgs e)
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.Key == VirtualKey.Enter)
+        if (e.PropertyName == nameof(SnippetEditorViewModel.IsCreatingFolder) && _viewModel?.IsCreatingFolder == true)
         {
-            e.Handled = true;
-            await CreateFolderAsync();
+            // Defer until the row is visible; an invisible TextBox cannot take focus.
+            DispatcherQueue.TryEnqueue(() => NewFolderBox.Focus(FocusState.Programmatic));
         }
     }
 
-    private async Task CreateFolderAsync()
+    private void OnNewFolderKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_viewModel is null)
         {
             return;
         }
 
-        if (await _viewModel.CreateFolderAsync())
+        if (e.Key == VirtualKey.Enter)
         {
-            FolderButton.Flyout?.Hide();
+            e.Handled = true;
+            if (_viewModel.CreateFolderCommand.CanExecute(null))
+            {
+                _viewModel.CreateFolderCommand.Execute(null);
+            }
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CancelNewFolder();
+        }
+    }
+
+    private void CancelNewFolder()
+    {
+        if (_viewModel?.CancelNewFolderCommand.CanExecute(null) == true)
+        {
+            _viewModel.CancelNewFolderCommand.Execute(null);
         }
     }
 }
