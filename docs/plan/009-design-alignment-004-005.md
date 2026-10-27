@@ -1,7 +1,7 @@
 # 009 — Design alignment for the shell, settings and main window (004/005)
 
 **Date:** 2026-10-27
-**Status:** Approved (2026-10-27) — implementing with Sonnet subagents
+**Status:** Implemented — Presentation/Core tests green; Windows compile pending (CI runs on `main` only); manual runbook (§7) pending
 **Size:** M (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/`, `src/SmartSnippets.App/` (pages, controls, `TrayIcon`, `DialogService`, `HotkeyManager`), `tests/SmartSnippets.Presentation.Tests/`
 **Depends on:** 004 and 005 (both complete, CI green at `6e75872`)
@@ -180,10 +180,54 @@ One branch (`claude/epic-allen-07hez6`), Sonnet subagents per track as for 003�
 merges, runs both test projects, pushes, and keeps CI green. 006 planning can start in parallel
 because it depends only on T0's `UiText` and the editor view-model contract.
 
-## 10. Approval log
+## 10. Implementation notes and wiring audit
+
+Implemented 2026-10-27 by four Sonnet tracks on top of the coordinator's T0 contracts (`9fe0dbf`):
+A = T1/T2 (`6deffb6`), B = T3 (`31cf060`), C = T4/T5 (`0caec59`), D = T6/T7 (`c72d357`).
+
+**Verification.** Core 164/164, Presentation 128/128 (was 95), Presentation build 0 warnings.
+The App project (XAML, tray, tokens) is **not compiled yet**: CI now runs only on pushes to `main`
+(commit `59f79f7`), and Linux cannot build WinUI. Expect possible XAML fixes on the first Windows run.
+
+**Wiring audit (§3 rows).**
+
+| Row | Where | Status |
+|---|---|---|
+| G1 | `SnippetListViewModel.BrowseItems/SelectedBrowse`; SnippetsPage browse ListView (wide) / ComboBox (narrow) | Done |
+| G2 | `SnippetRowViewModel(Id, Label, Preview, Meta)`; row template | Done |
+| G3 | `IsLabelCustom` ToggleSwitch + `AutoLabelHint`; turning custom off now resets the label to the suggestion | Done |
+| G4 | `IsCreatingFolder`, Start/CancelNewFolder commands; inline row replaces the flyout | Done |
+| G5 | Stats card: Created, Updated (Q3), Last used ("Today, HH:mm"), Used | Done |
+| G6 | Editor Delete (`DeleteRequested` → page's single confirm path), Unsaved bar with Discard (no dialog) / Save | Done |
+| G7 | `FolderRowViewModel.IsBuiltIn/CanEdit`; Unfiled row last; footnote | Done |
+| G8 | Settings order, keycaps, Change / Restore default, hints | Done |
+| G9 | Apply on capture; `HotkeyManager` returns `UiText.HotkeyConflict`; feedback in `HotkeyFeedback` | Done |
+| G10–G13 | `UiText` wording in page/folder view-models, `DialogService` "Keep editing", `FolderMessages` | Done |
+| G14 | Inline InfoBar `HasSaveFailure` with Try again / Copy text (`IClipboardService` → `ClipboardService`) | Done |
+| G15 | Tray: Open / Show popup\t<hotkey> / Settings / Restart as administrator / Diagnostics / Exit; `TrayState` + tooltip | Done |
+| G16 | Tokens inlined in `App.xaml` (no `ms-appx` dictionary): FolderTint(Background)Brush, AccentTintBrush (system accent), Danger(Background/Foreground)Brush, DangerButtonStyle | Done |
+
+**Contract cross-check.** Every `x:Bind` path in SnippetsPage, SnippetEditor, FoldersPage and
+SettingsPage resolves to a view-model member or an instance helper in code-behind; no bound helper
+is static.
+
+**Deviations / notes.**
+- `SnippetEditorViewModel.SaveAsync` now completes synchronously (no modal error dialog).
+- Hotkey outcome text moved from `StatusMessage` to `HotkeyFeedback`/`HotkeyFeedbackSeverity`.
+- "Show popup" from the tray restores the previous foreground window before capturing the target;
+  untested on Windows, 006 refines target capture.
+- `TrayState.PopupOpen` is declared but not set until 006; glyph dots are 008.
+
+**Known Windows-compile risks** (from the tracks): converter inside a page-level DataTemplate,
+`ToggleSwitch.OnContent` via x:Bind, StackPanel inside `InfoBar.Content`, keycap `ItemsControl`
+with `x:DataType="x:String"`, HighContrast `SystemColor*Color` keys, `DangerButtonStyle` BasedOn
+`DefaultButtonStyle` in App.xaml.
+
+## 11. Approval log
 
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Draft | Written after 005 went green (CI #28), per "Finish, then align" |
 | 2026-10-27 | §8 decisions | User answered Q1–Q4 (system accent; keep Restart/Diagnostics on the tray; keep Updated; delete from editor and Delete key). Plan still awaiting G2 approval |
 | 2026-10-27 | Plan approved (G2) | User: "approve 009, implement with Sonnet subagents". T0 contracts committed by the coordinator |
+| 2026-10-27 | Implemented | Tracks A–D merged; Core 164, Presentation 128 green; Windows compile pending (CI on `main` only) |

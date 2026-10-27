@@ -24,7 +24,7 @@ public sealed class FoldersPageViewModelTests
 
         await vm.CreateAsync();
 
-        Assert.True(vm.NewFolderError is UiText.FolderNameTaken or "A folder named 'clients' already exists.");
+        Assert.Equal(UiText.FolderNameTaken, vm.NewFolderError);
         Assert.Single(UserRows(vm));
         Assert.Equal("clients", vm.NewFolderName);
     }
@@ -100,7 +100,7 @@ public sealed class FoldersPageViewModelTests
         Assert.False(await vm.CommitRenameAsync(row));
 
         Assert.True(row.IsRenaming);
-        Assert.True(row.RenameError is UiText.FolderNameTaken or "A folder named 'clients' already exists.");
+        Assert.Equal(UiText.FolderNameTaken, row.RenameError);
         Assert.Equal("Work", row.Name);
     }
 
