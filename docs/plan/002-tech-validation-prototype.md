@@ -1,7 +1,7 @@
 # 002 — Technical validation prototype (PRD §4 gate) and repository skeleton
 
 **Date:** 2026-10-27
-**Status:** Approved (2026-10-27)
+**Status:** In progress — code complete, CI green (AOT gate G-1); manual runbook pending (G-2…G-5)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** repository root, `src/`, `tests/`, `.github/workflows/`, `docs/research/`
 **Requirement brief confirmed:** 2026-10-27 (G1, see master §2)
@@ -404,3 +404,4 @@ implemented and recorded in the T9 report.
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | 2 rounds of questions |
 | 2026-10-27 | Plan approved (G2) | implementation ordered same day (Sonnet subagents) |
+| 2026-10-27 | T1–T8, T10 implemented; T9 report drafted | CI run #4 green on `09b42ee`; wiring audit: every new service has a caller, all 5 required log events emitted, no snippet text logged; see `docs/research/001-tech-validation-report.md` |

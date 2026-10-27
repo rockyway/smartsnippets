@@ -178,6 +178,7 @@ decomposition, not the contents of undetailed subplans.
 | Date | Subplan | Status change | Notes |
 |---|---|---|---|
 | 2026-10-27 | 001–008 | Created | Master + placeholders reserved; 002 detailed |
+| 2026-10-27 | 002 | In progress | Code complete; CI AOT publish green with 0 IL warnings; awaiting user runbook (G-2…G-5) before Complete and before detailing 003 |
 
 ## 10. Open questions
 
