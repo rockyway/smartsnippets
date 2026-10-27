@@ -47,11 +47,13 @@
             Visibility="{x:Bind ViewModel.NewFolderError, Mode=OneWay, Converter={StaticResource HasTextVisible}}"
             automation:AutomationProperties.LiveSetting="Assertive" />
 
-        <Grid Grid.Row="3">
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="720" HorizontalAlignment="Left" Spacing="8">
             <ListView
                 x:Name="FolderList"
-                MaxWidth="720"
-                HorizontalAlignment="Left"
+                HorizontalAlignment="Stretch"
+                ScrollViewer.VerticalScrollMode="Disabled"
+                ScrollViewer.VerticalScrollBarVisibility="Hidden"
                 FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                 ItemsSource="{x:Bind ViewModel.Rows, Mode=OneWay}"
                 SelectionMode="None"
@@ -89,12 +91,15 @@
                                     Grid.Column="2"
                                     Click="OnRenameClick"
                                     Content="Rename"
+                                    Visibility="{x:Bind CanEdit}"
                                     ToolTipService.ToolTip="Rename folder"
                                     automation:AutomationProperties.Name="Rename folder" />
                                 <Button
                                     Grid.Column="3"
                                     Click="OnDeleteClick"
                                     Content="Delete"
+                                    Style="{StaticResource DangerButtonStyle}"
+                                    Visibility="{x:Bind CanEdit}"
                                     ToolTipService.ToolTip="Delete folder"
                                     automation:AutomationProperties.Name="Delete folder" />
                             </Grid>
@@ -137,13 +142,18 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-            <TextBlock
-                Margin="8,12"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                Opacity="0.7"
-                Text="{x:Bind ViewModel.EmptyState}"
-                Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}" />
-        </Grid>
+                <!-- Shown when there are no user folders; the built-in Unfiled row is always listed above. -->
+                <TextBlock
+                    Margin="8,4"
+                    Opacity="0.7"
+                    Text="{x:Bind ViewModel.EmptyState}"
+                    Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}" />
+                <TextBlock
+                    Margin="8,4"
+                    Opacity="0.7"
+                    Text="{x:Bind ViewModel.DeleteNote}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Page>

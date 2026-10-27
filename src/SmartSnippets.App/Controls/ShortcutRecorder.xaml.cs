@@ -25,6 +25,9 @@ public sealed partial class ShortcutRecorder : UserControl
 
     public event EventHandler? Cleared;
 
+    /// <summary>Raised when Esc abandons a capture.</summary>
+    public event EventHandler? Canceled;
+
     /// <summary>Text shown when not recording; set by the page from the view-model.</summary>
     public string DisplayText
     {
@@ -70,6 +73,7 @@ public sealed partial class ShortcutRecorder : UserControl
         if (modifiers == 0 && e.Key == VirtualKey.Escape)
         {
             ShowDisplay();
+            Canceled?.Invoke(this, EventArgs.Empty);
             return;
         }
 

@@ -6,16 +6,22 @@ using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Navigation;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
 /// <summary>Folders page: create, rename in place and delete folders. Follows the store through <c>Changed</c>.</summary>
 public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPage, IDisposable
 {
+    /// <summary>Shown when there are no user folders (the built-in Unfiled row is always listed).</summary>
     public const string NoFoldersMessage = "No folders yet";
+
+    /// <summary>Id of the built-in Unfiled row; real folder ids start at 1.</summary>
+    public const long UnfiledId = 0;
 
     private readonly ISnippetStore _store;
     private readonly IDialogService _dialogs;
+    private readonly FolderRowViewModel _unfiled = new(UnfiledId, UiText.Unfiled, 0, isBuiltIn: true);
     private bool _disposed;
 
     [ObservableProperty]
@@ -35,9 +41,13 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
         _store.Changed += OnStoreChanged;
     }
 
+    /// <summary>User folders by name, then the built-in Unfiled row last.</summary>
     public ObservableCollection<FolderRowViewModel> Rows { get; } = [];
 
     public string EmptyState => NoFoldersMessage;
+
+    /// <summary>Footnote under the list explaining what deleting a folder does.</summary>
+    public string DeleteNote => UiText.FolderDeleteNote;
 
     public bool IsRenameInProgress => Rows.Any(r => r.IsRenaming);
 
@@ -82,6 +92,11 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
     [RelayCommand]
     public void BeginRename(FolderRowViewModel row)
     {
+        if (row.IsBuiltIn)
+        {
+            return;
+        }
+
         foreach (var other in Rows.Where(r => r.IsRenaming && !ReferenceEquals(r, row)).ToList())
         {
             CancelRename(other);
@@ -96,7 +111,7 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
     /// <summary>Enter: stores the new name. False (and the row stays in rename mode with an error) on failure.</summary>
     public async Task<bool> CommitRenameAsync(FolderRowViewModel row)
     {
-        if (!row.IsRenaming)
+        if (row.IsBuiltIn || !row.IsRenaming)
         {
             return true;
         }
@@ -145,10 +160,15 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
     [RelayCommand]
     public async Task DeleteAsync(FolderRowViewModel row)
     {
-        var count = row.SnippetCount;
-        var noun = count == 1 ? "snippet" : "snippets";
+        if (row.IsBuiltIn)
+        {
+            return;
+        }
+
         if (!await _dialogs.ConfirmAsync(
-                "Delete folder", $"Delete '{row.Name}'? {count} {noun} will move to Unfiled.", "Delete"))
+                UiText.DeleteFolderTitle(row.Name),
+                UiText.DeleteFolderBody(row.SnippetCount),
+                UiText.DeleteFolderConfirm))
         {
             return;
         }
@@ -222,15 +242,20 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
     private void Refresh()
     {
         var counts = new Dictionary<long, int>();
+        var unfiledCount = 0;
         foreach (var view in _store.Snippets)
         {
             if (view.Snippet.FolderId is { } folderId)
             {
                 counts[folderId] = counts.GetValueOrDefault(folderId) + 1;
             }
+            else
+            {
+                unfiledCount++;
+            }
         }
 
-        var existing = Rows.ToDictionary(r => r.Id);
+        var existing = Rows.Where(r => !r.IsBuiltIn).ToDictionary(r => r.Id);
         var ordered = new List<FolderRowViewModel>(_store.Folders.Count);
         foreach (var folder in _store.Folders
                      .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
@@ -250,6 +275,9 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
             ordered.Add(row);
         }
 
+        _unfiled.SnippetCount = unfiledCount;
+        ordered.Add(_unfiled);
+
         if (!ordered.SequenceEqual(Rows))
         {
             Rows.Clear();
@@ -259,7 +287,7 @@ public sealed partial class FoldersPageViewModel : ObservableObject, IGuardedPag
             }
         }
 
-        IsEmpty = Rows.Count == 0;
+        IsEmpty = Rows.Count == 1;
         OnPropertyChanged(nameof(IsRenameInProgress));
     }
 }

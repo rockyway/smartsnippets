@@ -1,6 +1,7 @@
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Tests.Fakes;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 
 namespace SmartSnippets.Presentation.Tests;
@@ -115,50 +116,62 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public void ApplyConflict_KeepsCurrent_ShowsReason()
+    public void Capture_Conflict_KeepsCurrent_ShowsConflictText()
     {
-        _hotkey.NextResult = new HotkeyChangeResult(false, "Already used by another application");
+        var conflict = UiText.HotkeyConflict("Ctrl+Alt+K", "Ctrl+Shift+Space");
+        _hotkey.NextResult = new HotkeyChangeResult(false, conflict);
         var vm = Create();
+
         vm.SetCandidate(CtrlAltK);
 
-        vm.ApplyHotkeyCommand.Execute(null);
-
+        Assert.Equal([CtrlAltK], _hotkey.TryChangeCalls);
         Assert.Equal("Ctrl+Shift+Space", vm.CurrentHotkeyDisplay);
-        Assert.Equal("Already used by another application", vm.StatusMessage);
-        Assert.Equal(StatusSeverity.Error, vm.StatusSeverity);
+        Assert.Equal(conflict, vm.HotkeyFeedback);
+        Assert.Equal(StatusSeverity.Error, vm.HotkeyFeedbackSeverity);
+        Assert.Equal(
+            "Another app is already using Ctrl+Alt+K. Your hotkey is still Ctrl+Shift+Space. Try a different combination.",
+            vm.HotkeyFeedback);
         Assert.Equal(HotkeyGesture.Default, AppSettings.Load(_store).Hotkey);
         Assert.Empty(_store.Values);
     }
 
     [Fact]
-    public void ApplySuccess_PersistsAndUpdatesDisplay()
+    public void Capture_ValidGesture_AppliesImmediatelyOnce()
     {
         var vm = Create();
-        vm.SetCandidate(CtrlAltK);
-        Assert.True(vm.ApplyHotkeyCommand.CanExecute(null));
+        Assert.Equal(UiText.HotkeyHint, vm.HotkeyFeedback);
 
-        vm.ApplyHotkeyCommand.Execute(null);
+        vm.SetCandidate(CtrlAltK);
 
         Assert.Equal([CtrlAltK], _hotkey.TryChangeCalls);
         Assert.Equal("Ctrl+Alt+K", vm.CurrentHotkeyDisplay);
+        Assert.Equal(["Ctrl", "Alt", "K"], vm.CurrentHotkeyParts);
         Assert.Equal(CtrlAltK, AppSettings.Load(_store).Hotkey);
         Assert.Null(vm.CandidateGesture);
-        Assert.Equal(StatusSeverity.Success, vm.StatusSeverity);
+        Assert.Equal(StatusSeverity.Success, vm.HotkeyFeedbackSeverity);
+        Assert.Equal("Shortcut set to Ctrl+Alt+K", vm.HotkeyFeedback);
     }
 
     [Fact]
-    public void ApplyInvalidGesture_NoRegistrationAttempt()
+    public void Capture_InvalidGesture_NoRegistrationAttempt()
     {
         var vm = Create();
 
         vm.SetCandidate(new HotkeyGesture(HotkeyGesture.ModShift, 0x4B));
-        vm.ApplyHotkeyCommand.Execute(null);
 
         Assert.Empty(_hotkey.TryChangeCalls);
         Assert.Null(vm.CandidateGesture);
-        Assert.False(vm.ApplyHotkeyCommand.CanExecute(null));
-        Assert.Equal("Include Ctrl, Alt or Win and a non-modifier key", vm.StatusMessage);
-        Assert.Equal(StatusSeverity.Warning, vm.StatusSeverity);
+        Assert.Equal("Ctrl+Shift+Space", vm.CurrentHotkeyDisplay);
+        Assert.Equal(SettingsViewModel.InvalidGestureMessage, vm.HotkeyFeedback);
+        Assert.Equal(StatusSeverity.Warning, vm.HotkeyFeedbackSeverity);
+    }
+
+    [Fact]
+    public void HotkeyParts_SplitModifiersAndKey()
+    {
+        Assert.Equal(["Ctrl", "Shift", "Space"], Create().CurrentHotkeyParts);
+        var numPlus = new HotkeyGesture(HotkeyGesture.ModControl, 0x6B);
+        Assert.Equal(["Ctrl", "Num +"], Create(new AppSettings().WithHotkey(numPlus)).CurrentHotkeyParts);
     }
 
     [Fact]
@@ -176,14 +189,37 @@ public sealed class SettingsViewModelTests
     [Fact]
     public void RestoreDefault_Failure_KeepsCurrent()
     {
-        _hotkey.NextResult = new HotkeyChangeResult(false, "Already used by another application");
+        var conflict = UiText.HotkeyConflict("Ctrl+Shift+Space", "Ctrl+Alt+K");
+        _hotkey.NextResult = new HotkeyChangeResult(false, conflict);
         var vm = Create(new AppSettings().WithHotkey(CtrlAltK));
 
         vm.RestoreDefaultHotkeyCommand.Execute(null);
 
         Assert.Equal("Ctrl+Alt+K", vm.CurrentHotkeyDisplay);
-        Assert.Equal("Already used by another application", vm.StatusMessage);
+        Assert.Equal(conflict, vm.HotkeyFeedback);
         Assert.Empty(_store.Values);
+    }
+
+    [Theory]
+    [InlineData(ThemeMode.Light, 0)]
+    [InlineData(ThemeMode.Dark, 1)]
+    [InlineData(ThemeMode.System, 2)]
+    public void ThemeIndex_FollowsRadioOrder_AndRoundTrips(ThemeMode mode, int index)
+    {
+        Assert.Equal(index, SettingsViewModel.ThemeToIndex(mode));
+        Assert.Equal(mode, SettingsViewModel.IndexToTheme(index));
+        Assert.Equal(ThemeMode.System, SettingsViewModel.IndexToTheme(-1));
+    }
+
+    [Fact]
+    public void TextSizeHint_FollowsFontSize()
+    {
+        var vm = Create();
+        Assert.Equal("14 units. Custom accepts 10 to 32.", vm.TextSizeHint);
+
+        vm.SelectedTextSizePreset = TextSizePreset.Large;
+
+        Assert.Equal(UiText.TextSizeHint(18), vm.TextSizeHint);
     }
 
     [Fact]

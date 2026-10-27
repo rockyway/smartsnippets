@@ -1,6 +1,7 @@
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace SmartSnippets.App.Services;
@@ -52,7 +53,7 @@ internal sealed class HotkeyManager : IHotkeyManager
         if (!result.Success)
         {
             AppLog.Info("hotkey_change_conflict", $"win32={result.Win32Error}");
-            return new HotkeyChangeResult(false, Reason(result.Win32Error));
+            return new HotkeyChangeResult(false, ChangeFailure(result.Win32Error, gesture));
         }
 
         _service.Unregister(_activeId);
@@ -76,6 +77,23 @@ internal sealed class HotkeyManager : IHotkeyManager
     private static string Reason(int win32Error) => win32Error == HotkeyRegistration.ErrorHotkeyAlreadyRegistered
         ? "Already used by another application."
         : $"Windows refused this shortcut (error {win32Error}).";
+
+    /// <summary>Message for a failed change; the old hotkey is still in place, so the text names it.</summary>
+    private string ChangeFailure(int win32Error, HotkeyGesture attempted)
+    {
+        var attemptedText = attempted.ToDisplayString();
+        if (!_status.IsRegistered)
+        {
+            return win32Error == HotkeyRegistration.ErrorHotkeyAlreadyRegistered
+                ? $"Another app is already using {attemptedText}. Try a different combination."
+                : $"Windows refused {attemptedText} (error {win32Error}). Try a different combination.";
+        }
+
+        var keptText = _status.Gesture.ToDisplayString();
+        return win32Error == HotkeyRegistration.ErrorHotkeyAlreadyRegistered
+            ? UiText.HotkeyConflict(attemptedText, keptText)
+            : $"Windows refused {attemptedText} (error {win32Error}). Your hotkey is still {keptText}. Try a different combination.";
+    }
 
     private void SetStatus(HotkeyStatus status)
     {
