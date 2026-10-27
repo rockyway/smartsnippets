@@ -124,3 +124,22 @@ after it had been checked.
   Suggested home: plan 008.
 - **CI:** the `actions/*@v4` Node 20 deprecation warning is harmless for now. Bump the actions in
   008.
+
+## 7. Added after writing: user design reference
+
+The user pushed `docs/design/001-smart-snippets-design.html` (commit `3f11852`) while the 005
+views agent was running. It differs from approved plans 004 and 005 in several places:
+
+- **Main window:** three panes, adding a folder browse pane (All / folders / Unfiled) in front
+  of the list.
+- **List rows:** they show a text preview and "Folder, used N times".
+- **Editor:** it has a Delete button and an "Unsaved changes" bar.
+- **Dialog wording:** it differs. Examples: "Keep editing / Discard / Save", and "This snippet
+  and its usage history will be permanently removed."
+- **Folders:** Unfiled appears as a built-in row.
+- **Tray:** the menu adds "Show popup", and the icon is a glyph with state dots.
+- **Errors:** they offer a "Copy text" action.
+- **Design tokens:** Segoe UI Variable, accent and folder tint.
+
+**Status:** asked the user whether to align (scope change to plans 004 and 005) or treat the
+design as guidance for 006–008. Pending their answer.
