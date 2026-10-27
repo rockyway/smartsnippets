@@ -26,11 +26,12 @@ public sealed partial class SettingsPage : Page
     }
 
     // Enum order matches the radio item order: System/Light/Dark and Small/Medium/Large/Custom.
-    private static int ThemeToIndex(ThemeMode mode) => (int)mode;
+    // Instance (not static): x:Bind function bindings call these through the page instance.
+    private int ThemeToIndex(ThemeMode mode) => (int)mode;
 
-    private static int TextSizeToIndex(TextSizePreset preset) => (int)preset;
+    private int TextSizeToIndex(TextSizePreset preset) => (int)preset;
 
-    private static InfoBarSeverity ToInfoBarSeverity(StatusSeverity severity) => severity switch
+    private InfoBarSeverity ToInfoBarSeverity(StatusSeverity severity) => severity switch
     {
         StatusSeverity.Success => InfoBarSeverity.Success,
         StatusSeverity.Warning => InfoBarSeverity.Warning,
