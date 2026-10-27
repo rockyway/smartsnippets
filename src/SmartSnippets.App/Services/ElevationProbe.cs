@@ -55,7 +55,7 @@ internal static unsafe class ElevationProbe
         }
     }
 
-    private static bool IsOwnProcessElevated()
+    internal static bool IsOwnProcessElevated()
     {
         HANDLE token;
         if (!PInvoke.OpenProcessToken(PInvoke.GetCurrentProcess(), TOKEN_ACCESS_MASK.TOKEN_QUERY, &token))
