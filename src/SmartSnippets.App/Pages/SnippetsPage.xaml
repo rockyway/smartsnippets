@@ -49,17 +49,8 @@
         <KeyboardAccelerator Key="F" Modifiers="Control" Invoked="OnFindAccelerator" />
     </Page.KeyboardAccelerators>
 
-    <Grid x:Name="Root">
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup x:Name="LayoutStates" CurrentStateChanged="OnLayoutStateChanged">
-                <VisualState x:Name="Narrow" />
-                <VisualState x:Name="Wide">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="720" />
-                    </VisualState.StateTriggers>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
+    <!-- Wide/narrow follows the page's own width (code-behind), not the window's: the nav pane takes part of the window. -->
+    <Grid x:Name="Root" SizeChanged="OnRootSizeChanged">
 
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="BrowseColumn" Width="200" />
@@ -78,18 +69,63 @@
             RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock
-                Grid.Row="0"
-                Margin="10,2,10,4"
-                FontWeight="SemiBold"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Browse" />
+            <Grid Grid.Row="0" Margin="10,0,2,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Browse" />
+                <Button
+                    Grid.Column="1"
+                    Padding="6,4"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnBrowseNewFolderClick"
+                    ToolTipService.ToolTip="Add folder"
+                    automation:AutomationProperties.Name="Add folder">
+                    <FontIcon FontSize="12" Glyph="&#xE710;" />
+                </Button>
+            </Grid>
+
+            <!-- Quick-add folder: Enter creates, Esc cancels. -->
+            <StackPanel
+                Grid.Row="1"
+                Margin="2,0,2,4"
+                Spacing="4"
+                Visibility="{x:Bind Show(ViewModel.List.IsCreatingFolder), Mode=OneWay}">
+                <TextBox
+                    x:Name="BrowseNewFolderBox"
+                    KeyDown="OnBrowseNewFolderKeyDown"
+                    PlaceholderText="Folder name"
+                    Text="{x:Bind ViewModel.List.NewFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    automation:AutomationProperties.Name="Add folder name" />
+                <TextBlock
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.List.NewFolderError, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind HasText(ViewModel.List.NewFolderError), Mode=OneWay}"
+                    automation:AutomationProperties.LiveSetting="Assertive" />
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="4">
+                    <Button Command="{x:Bind ViewModel.List.CancelNewFolderCommand, Mode=OneWay}" Content="Cancel" />
+                    <Button
+                        Command="{x:Bind ViewModel.List.CreateFolderCommand, Mode=OneWay}"
+                        Content="Create"
+                        Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </StackPanel>
+
             <ListView
                 x:Name="BrowseList"
-                Grid.Row="1"
+                Grid.Row="2"
                 ItemContainerStyle="{StaticResource StretchItemStyle}"
                 ItemTemplate="{StaticResource BrowseItemTemplate}"
                 ItemsSource="{x:Bind ViewModel.List.BrowseItems, Mode=OneWay}"

@@ -50,6 +50,8 @@ public static class UiText
 
     // Folders.
     public const string FolderNameTaken = "That folder name is already taken. Try another.";
+    public const string FolderCreateFailed = "Couldn't create the folder. Try again.";
+    public const string NewFolderPlaceholder = "Folder name";
     public static string SnippetCount(int count) => count == 1 ? "1 snippet" : $"{count} snippets";
     public static string UnfiledCount(int count) => $"{SnippetCount(count)}, built in";
     public const string FolderDeleteNote = "Deleting a folder moves its snippets to Unfiled. The snippets themselves are kept.";

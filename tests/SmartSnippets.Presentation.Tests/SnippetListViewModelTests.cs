@@ -1,4 +1,5 @@
 using SmartSnippets.Core.Domain;
+using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Tests.Fakes;
 using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
@@ -309,5 +310,69 @@ public sealed class SnippetListViewModelTests
         _store.SeedSnippet("b", label: "B", folder: "Work");
         Assert.Equal(2, vm.BrowseItems.Single(b => b.Kind == BrowseKind.Folder).Count);
         Assert.Equal(2, vm.BrowseItems.Single(b => b.Kind == BrowseKind.All).Count);
+    }
+
+    [Fact]
+    public void QuickAddFolder_CreatesAndSelectsIt()
+    {
+        var vm = new SnippetListViewModel(_store);
+
+        vm.StartNewFolderCommand.Execute(null);
+        Assert.True(vm.IsCreatingFolder);
+        vm.NewFolderName = "Support";
+        vm.CreateFolderCommand.Execute(null);
+
+        Assert.False(vm.IsCreatingFolder);
+        Assert.Equal(string.Empty, vm.NewFolderName);
+        var folder = Assert.Single(_store.Folders);
+        Assert.Equal(BrowseKind.Folder, vm.SelectedBrowse!.Kind);
+        Assert.Equal(folder.Id, vm.SelectedBrowse.FolderId);
+        Assert.Contains(vm.BrowseItems, b => b.FolderId == folder.Id && b.Name == "Support");
+    }
+
+    [Fact]
+    public void QuickAddFolder_Duplicate_ShowsInlineError_KeepsRowOpen()
+    {
+        _store.SeedFolder("Support");
+        var vm = new SnippetListViewModel(_store);
+
+        vm.StartNewFolderCommand.Execute(null);
+        vm.NewFolderName = "support";
+        vm.CreateFolderCommand.Execute(null);
+
+        Assert.True(vm.IsCreatingFolder);
+        Assert.Equal(UiText.FolderNameTaken, vm.NewFolderError);
+        Assert.Single(_store.Folders);
+
+        vm.NewFolderName = "Support 2";
+        Assert.Equal(string.Empty, vm.NewFolderError);
+    }
+
+    [Fact]
+    public void QuickAddFolder_StoreFailure_ShowsInlineError()
+    {
+        var vm = new SnippetListViewModel(_store);
+        _store.Failure = new StoreException(StoreFailure.DatabaseBusy, "busy");
+
+        vm.StartNewFolderCommand.Execute(null);
+        vm.NewFolderName = "Support";
+        vm.CreateFolderCommand.Execute(null);
+
+        Assert.True(vm.IsCreatingFolder);
+        Assert.Equal(UiText.FolderCreateFailed, vm.NewFolderError);
+    }
+
+    [Fact]
+    public void QuickAddFolder_Cancel_ClosesAndClears()
+    {
+        var vm = new SnippetListViewModel(_store);
+        vm.StartNewFolderCommand.Execute(null);
+        vm.NewFolderName = "Draft";
+
+        vm.CancelNewFolderCommand.Execute(null);
+
+        Assert.False(vm.IsCreatingFolder);
+        Assert.Equal(string.Empty, vm.NewFolderName);
+        Assert.Empty(_store.Folders);
     }
 }

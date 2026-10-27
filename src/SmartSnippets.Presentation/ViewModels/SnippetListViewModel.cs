@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using SmartSnippets.Core.Domain;
+using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Query;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Text;
@@ -33,6 +36,16 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     /// <summary>The Browse scope. Two-way bindable; null means All. Re-pointed at the new record instance on every rebuild.</summary>
     [ObservableProperty]
     private BrowseItemViewModel? _selectedBrowse;
+
+    /// <summary>Quick-add row in the Browse pane is open.</summary>
+    [ObservableProperty]
+    private bool _isCreatingFolder;
+
+    [ObservableProperty]
+    private string _newFolderName = string.Empty;
+
+    [ObservableProperty]
+    private string _newFolderError = string.Empty;
 
     public SnippetListViewModel(ISnippetStore store)
     {
@@ -76,6 +89,54 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     }
 
     partial void OnQueryChanged(string value) => Rebuild();
+
+    partial void OnNewFolderNameChanged(string value) => NewFolderError = string.Empty;
+
+    [RelayCommand]
+    private void StartNewFolder()
+    {
+        NewFolderName = string.Empty;
+        NewFolderError = string.Empty;
+        IsCreatingFolder = true;
+    }
+
+    [RelayCommand]
+    private void CancelNewFolder()
+    {
+        IsCreatingFolder = false;
+        NewFolderName = string.Empty;
+        NewFolderError = string.Empty;
+    }
+
+    /// <summary>Creates the folder from the Browse pane and selects it as the scope. Errors stay inline.</summary>
+    [RelayCommand]
+    public void CreateFolder()
+    {
+        StoreResult<Folder> result;
+        try
+        {
+            result = _store.CreateFolder(NewFolderName);
+        }
+        catch (StoreException ex)
+        {
+            AppLog.Info("save_failed", $"kind={ex.Failure}");
+            NewFolderError = UiText.FolderCreateFailed;
+            return;
+        }
+
+        if (!result.Success)
+        {
+            NewFolderError = FolderMessages.For(result.Error!.Value, NewFolderName);
+            return;
+        }
+
+        var folder = result.Value!;
+        AppLog.Info("folder_created", $"id={folder.Id}");
+        IsCreatingFolder = false;
+        NewFolderName = string.Empty;
+        NewFolderError = string.Empty;
+        SelectedBrowse = BrowseItems.FirstOrDefault(b => b.Kind == BrowseKind.Folder && b.FolderId == folder.Id) ?? SelectedBrowse;
+    }
 
     partial void OnSelectedBrowseChanged(BrowseItemViewModel? value)
     {

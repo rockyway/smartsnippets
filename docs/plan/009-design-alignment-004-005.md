@@ -239,6 +239,16 @@ AOT) (rockyway/smartsnippets#3). Run #33 green.
 with `x:DataType="x:String"`, HighContrast `SystemColor*Color` keys, `DangerButtonStyle` BasedOn
 `DefaultButtonStyle` in App.xaml.
 
+**Follow-up from user review (2026-10-27, screenshot + docs/research/002):**
+- Navigation pane starts collapsed (icons only) and opens to 180 px instead of 320.
+- Content extends into the title bar (`ExtendsContentIntoTitleBar`, 32 px drag row); caption buttons now sit on
+  the themed background. They had drawn a white block in dark theme on the system title bar.
+- The Snippets page switches to three panes by the page's own width (>= 880 px), not the window's (720), so the
+  editor is no longer squeezed when the nav pane takes space.
+- Browse pane quick-add folder ("+" next to Browse; Enter creates and selects it, Esc cancels; inline errors).
+  Accessible names are "Add folder" / "Add folder name" so they don't collide with the editor's "New folder" in
+  `scripts/verify-plans-003-009.ps1`.
+
 ## 11. Approval log
 
 | Date | Event | Notes |
