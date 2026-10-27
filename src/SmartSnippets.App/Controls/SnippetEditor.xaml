@@ -5,7 +5,7 @@
     xmlns:automation="using:Microsoft.UI.Xaml.Automation">
     <UserControl.KeyboardAccelerators>
         <KeyboardAccelerator Key="S" Modifiers="Control" Invoked="OnSaveAccelerator" />
-        <KeyboardAccelerator Key="Escape" Invoked="OnRevertAccelerator" />
+        <KeyboardAccelerator Key="Escape" Invoked="OnDiscardAccelerator" />
     </UserControl.KeyboardAccelerators>
 
     <Grid RowSpacing="8">
@@ -39,7 +39,7 @@
 
                 <!-- Label -->
                 <StackPanel Spacing="4">
-                    <Grid ColumnSpacing="8">
+                    <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -51,19 +51,21 @@
                             PlaceholderText="{x:Bind ViewModel.LabelPlaceholder, Mode=OneWay}"
                             Text="{x:Bind ViewModel.Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                             automation:AutomationProperties.Name="Snippet label" />
-                        <Border
+                        <ToggleSwitch
                             Grid.Column="1"
-                            Padding="8,2"
                             VerticalAlignment="Bottom"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            CornerRadius="10"
-                            Visibility="{x:Bind Show(ViewModel.IsLabelAuto), Mode=OneWay}">
-                            <TextBlock
-                                FontSize="12"
-                                Text="Auto"
-                                ToolTipService.ToolTip="The label follows the first tag or the first line of the text" />
-                        </Border>
+                            IsOn="{x:Bind ViewModel.IsLabelCustom, Mode=TwoWay}"
+                            OffContent="{x:Bind CustomLabelText}"
+                            OnContent="{x:Bind CustomLabelText}"
+                            ToolTipService.ToolTip="Off: the label follows the first tag or the first line of the text"
+                            automation:AutomationProperties.Name="Custom label" />
                     </Grid>
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.AutoLabelHint, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind HasText(ViewModel.AutoLabelHint), Mode=OneWay}" />
                     <TextBlock
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                         Text="{x:Bind ViewModel.LabelError, Mode=OneWay}"
@@ -88,36 +90,53 @@
                             SelectedItem="{x:Bind ViewModel.SelectedFolder, Mode=TwoWay}"
                             automation:AutomationProperties.Name="Folder" />
                         <Button
-                            x:Name="FolderButton"
                             Grid.Column="1"
                             VerticalAlignment="Bottom"
-                            Content="New folder&#x2026;"
+                            Command="{x:Bind ViewModel.StartNewFolderCommand, Mode=OneWay}"
                             ToolTipService.ToolTip="Create a folder and use it for this snippet"
                             automation:AutomationProperties.Name="New folder">
-                            <Button.Flyout>
-                                <Flyout Opened="OnFolderFlyoutOpened" Placement="Bottom">
-                                    <StackPanel Width="260" Spacing="8">
-                                        <TextBox
-                                            Header="Folder name"
-                                            KeyDown="OnNewFolderKeyDown"
-                                            Text="{x:Bind ViewModel.NewFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                            automation:AutomationProperties.Name="New folder name" />
-                                        <TextBlock
-                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                            Text="{x:Bind ViewModel.NewFolderError, Mode=OneWay}"
-                                            TextWrapping="Wrap"
-                                            Visibility="{x:Bind HasText(ViewModel.NewFolderError), Mode=OneWay}"
-                                            automation:AutomationProperties.LiveSetting="Assertive" />
-                                        <Button
-                                            Click="OnCreateFolderClick"
-                                            Content="Create"
-                                            Style="{StaticResource AccentButtonStyle}"
-                                            automation:AutomationProperties.Name="Create folder" />
-                                    </StackPanel>
-                                </Flyout>
-                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontSize="14" Glyph="&#xE710;" />
+                                <TextBlock Text="New" />
+                            </StackPanel>
                         </Button>
                     </Grid>
+
+                    <!-- Inline new-folder row (replaces the old flyout) -->
+                    <StackPanel Spacing="4" Visibility="{x:Bind Show(ViewModel.IsCreatingFolder), Mode=OneWay}">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="NewFolderBox"
+                                Grid.Column="0"
+                                KeyDown="OnNewFolderKeyDown"
+                                PlaceholderText="Folder name"
+                                Text="{x:Bind ViewModel.NewFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                automation:AutomationProperties.Name="New folder name" />
+                            <Button
+                                Grid.Column="1"
+                                Command="{x:Bind ViewModel.CreateFolderCommand, Mode=OneWay}"
+                                Content="Create"
+                                Style="{StaticResource AccentButtonStyle}"
+                                automation:AutomationProperties.Name="Create folder" />
+                            <Button
+                                Grid.Column="2"
+                                Command="{x:Bind ViewModel.CancelNewFolderCommand, Mode=OneWay}"
+                                Content="Cancel"
+                                automation:AutomationProperties.Name="Cancel new folder" />
+                        </Grid>
+                        <TextBlock
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Text="{x:Bind ViewModel.NewFolderError, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind HasText(ViewModel.NewFolderError), Mode=OneWay}"
+                            automation:AutomationProperties.LiveSetting="Assertive" />
+                    </StackPanel>
+
                     <TextBlock
                         Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                         Text="{x:Bind ViewModel.FolderError, Mode=OneWay}"
@@ -130,7 +149,7 @@
                 <StackPanel Spacing="4">
                     <TextBox
                         FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                        Header="Tags (comma-separated)"
+                        Header="Tags, comma separated"
                         Text="{x:Bind ViewModel.TagsInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         automation:AutomationProperties.Name="Tags" />
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.TagChips, Mode=OneWay}">
@@ -158,45 +177,113 @@
                     Visibility="{x:Bind HasText(ViewModel.GeneralError), Mode=OneWay}"
                     automation:AutomationProperties.LiveSetting="Assertive" />
 
-                <!-- Metadata footer -->
-                <StackPanel Opacity="0.7" Spacing="2" Visibility="{x:Bind Show(ViewModel.HasMetadata), Mode=OneWay}">
-                    <TextBlock FontSize="12">
-                        <Run Text="Created:" />
-                        <Run Text="{x:Bind ViewModel.CreatedDisplay, Mode=OneWay}" />
-                    </TextBlock>
-                    <TextBlock FontSize="12">
-                        <Run Text="Updated:" />
-                        <Run Text="{x:Bind ViewModel.UpdatedDisplay, Mode=OneWay}" />
-                    </TextBlock>
-                    <TextBlock FontSize="12">
-                        <Run Text="Last used:" />
-                        <Run Text="{x:Bind ViewModel.LastUsedDisplay, Mode=OneWay}" />
-                    </TextBlock>
-                    <TextBlock FontSize="12">
-                        <Run Text="Times used:" />
-                        <Run Text="{x:Bind ViewModel.UsageCountDisplay, Mode=OneWay}" />
-                    </TextBlock>
-                </StackPanel>
+                <!-- Read-only stats card, visually separate from the editable fields -->
+                <Border
+                    Padding="12,10"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    CornerRadius="8"
+                    Visibility="{x:Bind Show(ViewModel.HasMetadata), Mode=OneWay}">
+                    <Grid ColumnSpacing="16" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Grid.Column="0">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Created" />
+                            <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.CreatedDisplay, Mode=OneWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="1">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Updated" />
+                            <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.UpdatedDisplay, Mode=OneWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="0">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Last used" />
+                            <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.LastUsedDisplay, Mode=OneWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="1">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Used" />
+                            <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.UsageCountDisplay, Mode=OneWay}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-            <Button
-                Command="{x:Bind ViewModel.SaveCommand, Mode=OneWay}"
-                Content="Save"
-                Style="{StaticResource AccentButtonStyle}"
-                ToolTipService.ToolTip="Save (Ctrl+S)"
-                automation:AutomationProperties.Name="Save snippet" />
-            <Button
-                Command="{x:Bind ViewModel.RevertCommand, Mode=OneWay}"
-                Content="Revert"
-                ToolTipService.ToolTip="Discard unsaved changes (Esc)"
-                automation:AutomationProperties.Name="Revert changes" />
-            <TextBlock
-                VerticalAlignment="Center"
-                Opacity="0.7"
-                Text="Unsaved changes"
-                Visibility="{x:Bind Show(ViewModel.IsDirty), Mode=OneWay}" />
+        <!-- Footer: save failure, then Delete (left) and the unsaved-changes bar (right) -->
+        <StackPanel Grid.Row="1" Spacing="8">
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasSaveFailure, Mode=OneWay}"
+                Message="{x:Bind ViewModel.SaveFailureMessage, Mode=OneWay}"
+                Severity="Error">
+                <StackPanel Margin="0,0,0,8" Orientation="Horizontal" Spacing="8">
+                    <Button
+                        Command="{x:Bind ViewModel.RetrySaveCommand, Mode=OneWay}"
+                        Content="{x:Bind TryAgainText}"
+                        automation:AutomationProperties.Name="Try saving again" />
+                    <Button
+                        Command="{x:Bind ViewModel.CopyTextCommand, Mode=OneWay}"
+                        Content="{x:Bind CopyTextLabel}"
+                        automation:AutomationProperties.Name="Copy snippet text" />
+                </StackPanel>
+            </InfoBar>
+
+            <Grid
+                Padding="0,12,0,0"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button
+                    Grid.Column="0"
+                    Command="{x:Bind ViewModel.DeleteCommand, Mode=OneWay}"
+                    Content="Delete"
+                    Style="{StaticResource DangerButtonStyle}"
+                    ToolTipService.ToolTip="Delete this snippet"
+                    Visibility="{x:Bind Hide(ViewModel.IsNew), Mode=OneWay}"
+                    automation:AutomationProperties.Name="Delete snippet" />
+                <StackPanel
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Visibility="{x:Bind Show(ViewModel.IsDirty), Mode=OneWay}">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                        Text="{x:Bind UnsavedChangesText}" />
+                    <Button
+                        Command="{x:Bind ViewModel.DiscardCommand, Mode=OneWay}"
+                        Content="{x:Bind DiscardText}"
+                        ToolTipService.ToolTip="Discard unsaved changes (Esc)"
+                        automation:AutomationProperties.Name="Discard changes" />
+                    <Button
+                        Command="{x:Bind ViewModel.SaveCommand, Mode=OneWay}"
+                        Content="{x:Bind SaveText}"
+                        Style="{StaticResource AccentButtonStyle}"
+                        ToolTipService.ToolTip="Save (Ctrl+S)"
+                        automation:AutomationProperties.Name="Save snippet" />
+                </StackPanel>
+            </Grid>
         </StackPanel>
     </Grid>
 </UserControl>

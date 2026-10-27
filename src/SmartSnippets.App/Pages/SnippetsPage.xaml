@@ -4,14 +4,52 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:automation="using:Microsoft.UI.Xaml.Automation"
     xmlns:controls="using:SmartSnippets.App.Controls"
+    xmlns:conv="using:SmartSnippets.App.Converters"
     xmlns:vm="using:SmartSnippets.Presentation.ViewModels"
     Loaded="OnLoaded">
+    <Page.Resources>
+        <conv:BrowseKindToVisibilityConverter x:Key="FolderDotVisible" />
+
+        <!-- Shared by the Browse ListView (wide) and the Browse ComboBox (narrow). -->
+        <DataTemplate x:Key="BrowseItemTemplate" x:DataType="vm:BrowseItemViewModel">
+            <Grid MinHeight="32" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Ellipse
+                    Grid.Column="0"
+                    Width="8"
+                    Height="8"
+                    VerticalAlignment="Center"
+                    Fill="{ThemeResource FolderTintBrush}"
+                    Visibility="{x:Bind Kind, Converter={StaticResource FolderDotVisible}}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Text="{x:Bind Name}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Count}" />
+            </Grid>
+        </DataTemplate>
+
+        <Style x:Key="StretchItemStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Page.Resources>
+
     <Page.KeyboardAccelerators>
         <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="OnNewAccelerator" />
         <KeyboardAccelerator Key="F" Modifiers="Control" Invoked="OnFindAccelerator" />
     </Page.KeyboardAccelerators>
 
-    <Grid x:Name="Root" Padding="24" ColumnSpacing="16">
+    <Grid x:Name="Root">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="LayoutStates" CurrentStateChanged="OnLayoutStateChanged">
                 <VisualState x:Name="Narrow" />
@@ -24,31 +62,91 @@
         </VisualStateManager.VisualStateGroups>
 
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="ListColumn" Width="360" />
+            <ColumnDefinition x:Name="BrowseColumn" Width="200" />
+            <ColumnDefinition x:Name="ListColumn" Width="320" />
             <ColumnDefinition x:Name="EditorColumn" Width="*" />
         </Grid.ColumnDefinitions>
 
+        <!-- Browse pane (wide only) -->
+        <Grid
+            x:Name="BrowsePane"
+            Grid.Column="0"
+            Padding="8,12"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,0,1,0"
+            RowSpacing="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock
+                Grid.Row="0"
+                Margin="10,2,10,4"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Browse" />
+            <ListView
+                x:Name="BrowseList"
+                Grid.Row="1"
+                ItemContainerStyle="{StaticResource StretchItemStyle}"
+                ItemTemplate="{StaticResource BrowseItemTemplate}"
+                ItemsSource="{x:Bind ViewModel.List.BrowseItems, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.List.SelectedBrowse, Mode=TwoWay}"
+                SelectionMode="Single"
+                automation:AutomationProperties.Name="Browse" />
+        </Grid>
+
         <!-- List pane -->
-        <Grid x:Name="ListPane" Grid.Column="0" RowSpacing="8">
+        <Grid
+            x:Name="ListPane"
+            Grid.Column="1"
+            Padding="10,12,10,0"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,0,1,0"
+            RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBox
-                x:Name="SearchBox"
+            <!-- Narrow: the Browse pane collapses into this drop-down. -->
+            <ComboBox
+                x:Name="BrowseCombo"
                 Grid.Row="0"
-                PlaceholderText="Search snippets (Ctrl+F)"
-                Text="{x:Bind ViewModel.List.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                ToolTipService.ToolTip="Search label, text, tags and folder (Ctrl+F)"
-                automation:AutomationProperties.Name="Search snippets" />
-            <Button
-                Grid.Row="1"
-                Command="{x:Bind ViewModel.NewCommand, Mode=OneWay}"
-                Content="New snippet"
-                ToolTipService.ToolTip="New snippet (Ctrl+N)"
-                automation:AutomationProperties.Name="New snippet" />
+                HorizontalAlignment="Stretch"
+                ItemTemplate="{StaticResource BrowseItemTemplate}"
+                ItemsSource="{x:Bind ViewModel.List.BrowseItems, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.List.SelectedBrowse, Mode=TwoWay}"
+                Visibility="Collapsed"
+                automation:AutomationProperties.Name="Browse" />
+
+            <Grid Grid.Row="1" ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    x:Name="SearchBox"
+                    Grid.Column="0"
+                    PlaceholderText="Search"
+                    Text="{x:Bind ViewModel.List.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    ToolTipService.ToolTip="Search label, text, tags and folder (Ctrl+F)"
+                    automation:AutomationProperties.Name="Search snippets" />
+                <Button
+                    Grid.Column="1"
+                    Command="{x:Bind ViewModel.NewCommand, Mode=OneWay}"
+                    Style="{StaticResource AccentButtonStyle}"
+                    ToolTipService.ToolTip="New snippet (Ctrl+N)"
+                    automation:AutomationProperties.Name="New snippet">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                        <TextBlock Text="New snippet" />
+                    </StackPanel>
+                </Button>
+            </Grid>
 
             <Grid Grid.Row="2">
                 <ListView
@@ -56,6 +154,7 @@
                     FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                     IsItemClickEnabled="True"
                     ItemClick="OnItemClick"
+                    ItemContainerStyle="{StaticResource StretchItemStyle}"
                     ItemsSource="{x:Bind ViewModel.List.Items, Mode=OneWay}"
                     KeyDown="OnListKeyDown"
                     SelectedItem="{x:Bind ViewModel.List.SelectedItem, Mode=TwoWay}"
@@ -69,12 +168,15 @@
                                     Text="{x:Bind Label}"
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
-                                    Opacity="0.7"
-                                    Text="{x:Bind FolderDisplay}"
-                                    TextTrimming="CharacterEllipsis" />
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    MaxLines="1"
+                                    Text="{x:Bind Preview}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap" />
                                 <TextBlock
-                                    Opacity="0.7"
-                                    Text="{x:Bind TagsDisplay}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind Meta}"
                                     TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </DataTemplate>
@@ -84,7 +186,7 @@
                     Margin="8,12"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
-                    Opacity="0.7"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{x:Bind ViewModel.List.EmptyState, Mode=OneWay}"
                     TextWrapping="Wrap"
                     Visibility="{x:Bind Show(ViewModel.List.IsEmpty), Mode=OneWay}" />
@@ -92,7 +194,11 @@
         </Grid>
 
         <!-- Editor pane -->
-        <Grid x:Name="EditorPane" Grid.Column="1" RowSpacing="8">
+        <Grid
+            x:Name="EditorPane"
+            Grid.Column="2"
+            Padding="20,16"
+            RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -116,7 +222,7 @@
                 Margin="8,12"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Top"
-                Opacity="0.7"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="{x:Bind ViewModel.EditorEmptyMessage, Mode=OneWay}"
                 TextWrapping="Wrap"
                 Visibility="{x:Bind Hide(ViewModel.HasEditor), Mode=OneWay}" />
