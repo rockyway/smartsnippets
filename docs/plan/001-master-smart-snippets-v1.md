@@ -124,8 +124,8 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 |---|---|---|---|---|
 | 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | Complete |
 | 003 | [003-core-domain-and-persistence.md](003-core-domain-and-persistence.md) | Domain model, label/tag rules, validation, schema + migrations, repositories, search/sort engine, benchmark | 002 | Draft — awaiting approval |
-| 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Placeholder |
-| 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Placeholder |
+| 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Draft — awaiting approval |
+| 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Draft — awaiting approval |
 | 006 | [006-popup-search-and-toolbar.md](006-popup-search-and-toolbar.md) | Popup: positioning, search, layouts, sorts, keyboard/mouse, add-snippet, open main | 003, 004, 005 (shared editor) | Placeholder |
 | 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | Placeholder |
 | 008 | [008-release-hardening-and-acceptance.md](008-release-hardening-and-acceptance.md) | AOT release artifact, perf acceptance, compatibility matrix, full runbook, wiring audit | 003–007 | Placeholder |
@@ -180,6 +180,7 @@ decomposition, not the contents of undetailed subplans.
 | 2026-10-27 | 001–008 | Created | Master + placeholders reserved; 002 detailed |
 | 2026-10-27 | 002 | In progress | Code complete; CI AOT publish green with 0 IL warnings; awaiting user runbook (G-2…G-5) before Complete and before detailing 003 |
 | 2026-10-27 | 002 | Complete | Verified via automated harness `scripts/verify-plan002.ps1`; PRD §4 gate passed (G-1…G-5 verified) |
+| 2026-10-27 | 003, 004, 005 | Draft — awaiting approval | Detailed together in one pass at the user's request (deviation from one-at-a-time); 004/005 reference 003's planned API and must be re-checked against merged code before each starts. 004 adds a `SmartSnippets.Presentation` project for testable view-models |
 
 ## 10. Open questions
 
