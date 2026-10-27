@@ -22,6 +22,14 @@ internal sealed class TempDatabase : IDisposable
         return command.ExecuteScalar();
     }
 
+    public void Exec(string sql)
+    {
+        using var connection = Factory.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
