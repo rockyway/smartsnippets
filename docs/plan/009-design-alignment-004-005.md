@@ -36,7 +36,7 @@ cover the new behaviour, and CI (including the AOT publish gate) is green.
 | G2 | List rows | Label; one-line text preview; "Support, used 31 times" / "Unfiled, never used" | Label; folder; tags | T1, T3 |
 | G3 | Editor label | "Custom label" toggle; auto label hint "Edit the label to stop it following your tags." | "Auto" button, placeholder "Auto: …" | T2, T3 |
 | G4 | Editor folder | Folder combo + **New** → inline name box with Create / Cancel | "New folder…" flyout | T3 |
-| G5 | Editor stats | Read-only block, visually separate: Created, Last used ("Today, 09:12"), Used ("31 times") | Footer: Created, Updated, Last used, Times used | T2, T3 |
+| G5 | Editor stats | Read-only block, visually separate: Created, Last used ("Today, 09:12"), Used ("31 times") | Footer: Created, Updated, Last used, Times used | T2, T3 (keeps Updated, Q3) |
 | G6 | Editor footer | **Delete** (danger) on the left; "Unsaved changes" bar with **Discard** and **Save** | Save, Revert, "Unsaved changes" text; Delete only on the list | T2, T3 |
 | G7 | Folders page | "N snippets"; **Unfiled** as a built-in row ("2 snippets, built in"), no rename/delete; note "Deleting a folder moves its snippets to Unfiled. The snippets themselves are kept." | Folders only; "N snippet(s)" | T4 |
 | G8 | Settings order and controls | Global hotkey first (keycaps, **Change**, **Restore default**; hint "Press a new combination to capture it. Conflicts are explained here."), then Text size ("14 units. Custom accepts 10 to 32."), Theme (Light / Dark / System), Start at login ("Starts in the background without opening the main window.") | Appearance, Startup, Shortcut sections; recorder + **Apply** | T5 |
@@ -46,7 +46,7 @@ cover the new behaviour, and CI (including the AOT publish gate) is green.
 | G12 | Delete folder dialog | 'Delete folder "Support"?' / "Its 2 snippets will move to Unfiled. The snippets aren't deleted." / Cancel · **Delete folder** | "Delete '…'? N snippets will move to Unfiled." / Delete | T4 |
 | G13 | Duplicate folder | "That folder name is already taken. Try another." | "A folder named '…' already exists." | T2 |
 | G14 | Save failure | "Couldn't save your snippet. Your text is still in the editor, so nothing is lost." with **Try again** / **Copy text** | "Save failed" dialog with the exception message | T2, T3 |
-| G15 | Tray menu | Open Smart Snippets · Show popup (Ctrl+Shift+Space) · Settings · Exit | Open · Settings · Restart as administrator · Diagnostics · Exit | T6 |
+| G15 | Tray menu | Open Smart Snippets · Show popup (Ctrl+Shift+Space) · Settings · Exit | Open · Settings · Restart as administrator · Diagnostics · Exit | T6 (keeps Restart/Diagnostics, Q2) |
 | G16 | Tokens | Segoe UI Variable, neutral surfaces, one blue accent, violet folder tint, danger red | WinUI defaults | T7 |
 
 ## 4. Design
@@ -69,8 +69,8 @@ cover the new behaviour, and CI (including the AOT publish gate) is green.
   behaviour), `SaveFailed` state with `RetryCommand`, and `CopyText` through a new
   `IClipboardService` (App implementation via `Windows.ApplicationModel.DataTransfer.Clipboard`).
   Save failures show inline in the editor (InfoBar, error severity) instead of a modal, so the
-  text stays visible. The "Updated" timestamp is dropped from the view to match the design
-  (still stored).
+  text stays visible. The stats block shows Created, **Updated**, Last used and Used: the user
+  chose to keep Updated (Q3), a deliberate deviation from the design.
 - **Dialogs (G10–G12).** `IDialogService.ConfirmAsync(title, message, confirmText)` already
   takes the button text; only the wording changes. `AskSaveDiscardCancelAsync` gets the button
   labels Save / Discard / **Keep editing** and the design's title and body. The confirm button
@@ -83,13 +83,13 @@ cover the new behaviour, and CI (including the AOT publish gate) is green.
   captured, `SettingsViewModel` calls `IHotkeyManager.TryChange` immediately. The **Apply**
   button is removed. `HotkeyManager`'s conflict reason becomes the design sentence, built from
   the attempted and the kept gesture. Section order and helper text follow the design.
-  "Restart as administrator" stays at the bottom under **Advanced**, because the design does
-  not show it but the PRD needs it (see §8 Q2).
+  "Restart as administrator" stays at the bottom under **Advanced** (the design does not show
+  it, the PRD needs it); it also stays on the tray menu (Q2).
 - **Tray (G15).** Menu: Open Smart Snippets · Show popup `\t<current hotkey>` · Settings ·
-  separator · Exit. "Show popup" invokes the existing popup show path (the 002 prototype until
-  006 replaces it). "Restart as administrator" and "Diagnostics" move off the tray menu
-  (Settings → Advanced already has restart; Diagnostics stays reachable from Settings →
-  Advanced until 008 removes it). The accelerator text refreshes on `IHotkeyManager.StatusChanged`.
+  separator · Restart as administrator (only when not elevated) · Diagnostics · separator ·
+  Exit. The design's four items come first in its order; the user chose to keep Restart and
+  Diagnostics on the tray (Q2). "Show popup" invokes the existing popup show path (the 002
+  prototype until 006 replaces it). The accelerator text refreshes on `IHotkeyManager.StatusChanged`.
   `TrayIcon` exposes a `State` (Ready / PopupOpen / HotkeyUnavailable) for 008's glyph.
 - **Tokens (G16).** `App.xaml` gets a small `Theme/Tokens.xaml` resource dictionary with
   light/dark `ThemeDictionaries`: `FolderTintBrush`, `DangerBrush`, `DangerButtonStyle`,
@@ -156,20 +156,23 @@ Parallel tracks after T0. Each track owns its files; T0 is written first by the 
   6. Edit, then switch snippet: "Discard your changes?" with Keep editing / Discard / Save.
   7. Lock the database file externally and save: inline error, text kept, Try again works after
      unlocking, Copy text puts the text on the clipboard.
-  8. Folders page: Unfiled row has no rename/delete; delete-folder dialog wording.
+  8. Editor stats show Created, Updated, Last used and Used; Delete key on the list and the
+     editor's Delete button both ask the same confirmation.
+  8a. Folders page: Unfiled row has no rename/delete; delete-folder dialog wording.
   9. Settings: capture a hotkey used by another app → design sentence; old hotkey still works.
-  10. Tray menu shows the four items with the current hotkey; changing the hotkey updates it.
+  10. Tray menu shows Open / Show popup (current hotkey) / Settings, then Restart as
+      administrator and Diagnostics, then Exit; changing the hotkey updates the accelerator text.
   11. Light and dark theme: danger buttons and folder tint readable in both.
   12. Narrow window (< 720 px): browse becomes a dropdown; one pane at a time.
 
-## 8. Open questions (defaults proposed; approve or change)
+## 8. Decisions (user, 2026-10-27)
 
-| # | Question | Proposed default |
+| # | Question | Decision |
 |---|---|---|
-| Q1 | Accent colour: the design's fixed blue, or the Windows system accent? | System accent (native look; the design's blue is the Windows default accent) |
-| Q2 | "Restart as administrator" and "Diagnostics" are not in the design. Where do they go? | Settings → Advanced (bottom). Off the tray menu. Diagnostics is removed in 008 |
-| Q3 | Drop the "Updated" timestamp from the editor (design shows Created / Last used / Used only)? | Yes, drop from the view; still stored |
-| Q4 | Delete in the editor and on the list (Delete key) both? | Both; same confirmation |
+| Q1 | Accent colour | **System accent.** The design's blue is the Windows default accent; no fixed brush |
+| Q2 | "Restart as administrator" and "Diagnostics" (not in the design) | **Keep them on the tray too**, after the design's items; Restart also stays in Settings → Advanced. Diagnostics is still removed in 008 |
+| Q3 | "Updated" timestamp in the editor | **Keep it** (deviation from the design) |
+| Q4 | Where delete is available | **Editor Delete button and the Delete key on the list**, same confirmation |
 
 ## 9. Rollout
 
@@ -182,3 +185,4 @@ because it depends only on T0's `UiText` and the editor view-model contract.
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Draft | Written after 005 went green (CI #28), per "Finish, then align" |
+| 2026-10-27 | §8 decisions | User answered Q1–Q4 (system accent; keep Restart/Diagnostics on the tray; keep Updated; delete from editor and Delete key). Plan still awaiting G2 approval |
