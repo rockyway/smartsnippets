@@ -2,18 +2,18 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SmartSnippets.Core.Query;
 using SmartSnippets.Core.Store;
+using SmartSnippets.Presentation.Text;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
 /// <summary>Searchable snippet list: Label A to Z (case-insensitive), then Id. Rebuilds on every store change.</summary>
 public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 {
-    public const string NoSnippetsMessage = "No snippets yet";
-
     private readonly ISnippetStore _store;
     private IReadOnlyList<SnippetView>? _searchSource;
     private SnippetSearch? _search;
     private bool _rebuilding;
+    private bool _syncingBrowse;
     private bool _disposed;
 
     [ObservableProperty]
@@ -28,12 +28,19 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isEmpty;
 
+    /// <summary>The Browse scope. Two-way bindable; null means All. Re-pointed at the new record instance on every rebuild.</summary>
+    [ObservableProperty]
+    private BrowseItemViewModel? _selectedBrowse;
+
     public SnippetListViewModel(ISnippetStore store)
     {
         _store = store;
         _store.Changed += OnStoreChanged;
         Rebuild();
     }
+
+    /// <summary>All first, then each folder by name, then Unfiled last. Counts ignore the search query.</summary>
+    public ObservableCollection<BrowseItemViewModel> BrowseItems { get; } = [];
 
     public ObservableCollection<SnippetRowViewModel> Items { get; } = [];
 
@@ -68,6 +75,22 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 
     partial void OnQueryChanged(string value) => Rebuild();
 
+    partial void OnSelectedBrowseChanged(BrowseItemViewModel? value)
+    {
+        if (_syncingBrowse)
+        {
+            return;
+        }
+
+        if (value is null)
+        {
+            SelectedBrowse = BrowseItems.FirstOrDefault();
+            return;
+        }
+
+        Rebuild();
+    }
+
     partial void OnSelectedIdChanged(long? value) => OnPropertyChanged(nameof(SelectedItem));
 
     private void OnStoreChanged(object? sender, StoreChangedEventArgs e) => Rebuild();
@@ -81,7 +104,11 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
             _searchSource = source;
         }
 
+        SyncBrowse(source);
+        var scope = SelectedBrowse;
+
         var rows = _search.Filter(Query)
+            .Where(v => InScope(v, scope))
             .OrderBy(v => v.Snippet.Label, StringComparer.OrdinalIgnoreCase)
             .ThenBy(v => v.Snippet.Id)
             .Select(SnippetRowViewModel.From)
@@ -116,7 +143,52 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
         IsEmpty = rows.Count == 0;
         EmptyState = rows.Count > 0
             ? string.Empty
-            : string.IsNullOrWhiteSpace(Query) ? NoSnippetsMessage : $"No matches for '{Query}'";
+            : string.IsNullOrWhiteSpace(Query) ? UiText.NoSnippets : UiText.NoMatches(Query);
         Rebuilt?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static bool InScope(SnippetView view, BrowseItemViewModel? scope) => scope?.Kind switch
+    {
+        BrowseKind.Folder => view.Snippet.FolderId == scope.FolderId,
+        BrowseKind.Unfiled => view.Snippet.FolderId is null,
+        _ => true,
+    };
+
+    private void SyncBrowse(IReadOnlyList<SnippetView> source)
+    {
+        var folders = _store.Folders;
+        var items = new List<BrowseItemViewModel>(folders.Count + 2)
+        {
+            new(BrowseKind.All, null, UiText.BrowseAll, source.Count),
+        };
+        foreach (var folder in folders)
+        {
+            items.Add(new BrowseItemViewModel(
+                BrowseKind.Folder, folder.Id, folder.Name, source.Count(v => v.Snippet.FolderId == folder.Id)));
+        }
+
+        items.Add(new BrowseItemViewModel(BrowseKind.Unfiled, null, UiText.Unfiled, source.Count(v => v.Snippet.FolderId is null)));
+
+        var previous = SelectedBrowse;
+        _syncingBrowse = true;
+        try
+        {
+            if (!items.SequenceEqual(BrowseItems))
+            {
+                BrowseItems.Clear();
+                foreach (var item in items)
+                {
+                    BrowseItems.Add(item);
+                }
+            }
+
+            SelectedBrowse = previous is null
+                ? BrowseItems[0]
+                : BrowseItems.FirstOrDefault(b => b.Kind == previous.Kind && b.FolderId == previous.FolderId) ?? BrowseItems[0];
+        }
+        finally
+        {
+            _syncingBrowse = false;
+        }
     }
 }

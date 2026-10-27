@@ -1,6 +1,7 @@
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Tests.Fakes;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 
 namespace SmartSnippets.Presentation.Tests;
@@ -88,7 +89,85 @@ public sealed class SnippetsPageViewModelTests
         Assert.True(await page.CanLeaveAsync());
         Assert.True(await page.CanLeaveAsync());
 
-        Assert.Single(_dialogs.SaveDiscardPrompts);
+        Assert.Equal((UiText.DiscardTitle, UiText.DiscardBody), Assert.Single(_dialogs.SaveDiscardPrompts));
+    }
+
+    [Fact]
+    public async Task EditorDeleteCommand_UsesSameConfirmation_AndDeletes()
+    {
+        var a = _store.SeedSnippet("a", label: "Alpha").Id;
+        var b = _store.SeedSnippet("b", label: "Bravo").Id;
+        var page = new SnippetsPageViewModel(_store, _dialogs);
+        await page.RequestSelectAsync(a);
+        _dialogs.ConfirmAnswers.Enqueue(true);
+
+        page.Editor!.DeleteCommand.Execute(null);
+        await page.PendingDelete;
+
+        Assert.Equal(
+            (UiText.DeleteSnippetTitle("Alpha"), UiText.DeleteSnippetBody, UiText.DeleteSnippetConfirm),
+            _dialogs.Confirms.Single());
+        Assert.DoesNotContain(_store.Snippets, v => v.Snippet.Id == a);
+        Assert.Equal(b, page.Editor!.SnippetId);
+    }
+
+    [Fact]
+    public async Task EditorDeleteCommand_Cancelled_KeepsSnippet()
+    {
+        var a = _store.SeedSnippet("a", label: "Alpha").Id;
+        var page = new SnippetsPageViewModel(_store, _dialogs);
+        await page.RequestSelectAsync(a);
+        _dialogs.ConfirmAnswers.Enqueue(false);
+
+        page.Editor!.DeleteCommand.Execute(null);
+        await page.PendingDelete;
+
+        Assert.Single(_store.Snippets);
+        Assert.Equal(a, page.Editor!.SnippetId);
+    }
+
+    [Fact]
+    public async Task ReplacedEditor_NoLongerRequestsDelete()
+    {
+        var a = _store.SeedSnippet("a", label: "Alpha").Id;
+        var b = _store.SeedSnippet("b", label: "Bravo").Id;
+        var page = new SnippetsPageViewModel(_store, _dialogs);
+        await page.RequestSelectAsync(a);
+        var old = page.Editor!;
+        await page.RequestSelectAsync(b);
+
+        old.DeleteCommand.Execute(null);
+        await page.PendingDelete;
+
+        Assert.Empty(_dialogs.Confirms);
+    }
+
+    [Fact]
+    public async Task Editor_ReceivesClipboardAndTime()
+    {
+        var clipboard = new FakeClipboardService();
+        var a = _store.SeedSnippet("copy me", label: "Alpha").Id;
+        var time = new FixedTimeProvider(new DateTimeOffset(2026, 1, 1, 0, 30, 0, TimeSpan.Zero));
+        var page = new SnippetsPageViewModel(_store, _dialogs, clipboard, time);
+        await page.RequestSelectAsync(a);
+
+        page.Editor!.CopyTextCommand.Execute(null);
+
+        Assert.Equal(["copy me"], clipboard.Texts);
+    }
+
+    [Fact]
+    public async Task BrowseScope_ChangeKeepsEditorOpen()
+    {
+        var a = _store.SeedSnippet("a", label: "Alpha", folder: "Work").Id;
+        _store.SeedSnippet("b", label: "Bravo");
+        var page = new SnippetsPageViewModel(_store, _dialogs);
+        await page.RequestSelectAsync(a);
+
+        page.List.SelectedBrowse = page.List.BrowseItems.Single(x => x.Kind == BrowseKind.Unfiled);
+
+        Assert.Equal(a, page.Editor!.SnippetId);
+        Assert.Null(page.List.SelectedId);
     }
 
     [Fact]
@@ -126,7 +205,9 @@ public sealed class SnippetsPageViewModelTests
 
         Assert.True(await page.DeleteSelectedAsync());
 
-        Assert.Equal("Delete 'Bravo'? This cannot be undone.", _dialogs.Confirms.Single().Message);
+        Assert.Equal(
+            (UiText.DeleteSnippetTitle("Bravo"), UiText.DeleteSnippetBody, UiText.DeleteSnippetConfirm),
+            _dialogs.Confirms.Single());
         Assert.DoesNotContain(_store.Snippets, v => v.Snippet.Id == b);
         Assert.Equal(c, page.Editor!.SnippetId);
         Assert.Equal(c, page.List.SelectedId);

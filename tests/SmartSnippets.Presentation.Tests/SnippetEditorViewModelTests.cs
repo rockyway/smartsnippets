@@ -1,6 +1,7 @@
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Tests.Fakes;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 
 namespace SmartSnippets.Presentation.Tests;
@@ -138,15 +139,180 @@ public sealed class SnippetEditorViewModelTests
         var saved = await vm.SaveAsync();
 
         Assert.False(saved);
-        var error = Assert.Single(_dialogs.Errors);
-        Assert.Contains("busy", error.Message);
+        Assert.Empty(_dialogs.Errors);
+        Assert.True(vm.HasSaveFailure);
+        Assert.Equal(UiText.SaveFailed, vm.SaveFailureMessage);
         Assert.Equal("keep me", vm.Text);
         Assert.Equal("a, b", vm.TagsInput);
         Assert.True(vm.IsDirty);
         Assert.False(vm.IsSaving);
 
         _store.Failure = null;
-        Assert.True(await vm.SaveAsync());
+        Assert.True(vm.RetrySaveCommand.CanExecute(null));
+        await vm.RetrySaveCommand.ExecuteAsync(null);
+        Assert.False(vm.HasSaveFailure);
+        Assert.Equal(string.Empty, vm.SaveFailureMessage);
+        Assert.False(vm.IsDirty);
+        Assert.Single(_store.Snippets);
+    }
+
+    [Fact]
+    public async Task SaveFailure_StaysUntilSuccess_AndDiscardClearsIt()
+    {
+        var vm = NewEditor();
+        vm.Text = "keep me";
+        _store.Failure = new StoreException(StoreFailure.DatabaseBusy, "busy");
+        await vm.SaveAsync();
+        await vm.SaveAsync();
+        Assert.True(vm.HasSaveFailure);
+
+        vm.DiscardCommand.Execute(null);
+
+        Assert.False(vm.HasSaveFailure);
+        Assert.Equal(string.Empty, vm.Text);
+    }
+
+    [Fact]
+    public void CopyText_UsesClipboard_AndIsDisabledWithoutOne()
+    {
+        var clipboard = new FakeClipboardService();
+        var vm = new SnippetEditorViewModel(_store, _dialogs, null, clipboard);
+        vm.Text = "  copy me\r\n";
+        Assert.True(vm.CopyTextCommand.CanExecute(null));
+
+        vm.CopyTextCommand.Execute(null);
+
+        Assert.Equal(["  copy me\r\n"], clipboard.Texts);
+        Assert.False(NewEditor().CopyTextCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void AutoLabelHint_OnlyWhileAutomatic()
+    {
+        var vm = NewEditor();
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.Equal(UiText.AutoLabelHint, vm.AutoLabelHint);
+
+        vm.Label = "Mine";
+
+        Assert.Equal(string.Empty, vm.AutoLabelHint);
+        Assert.Contains(nameof(SnippetEditorViewModel.AutoLabelHint), changed);
+
+        vm.IsLabelCustom = false;
+        Assert.Equal(UiText.AutoLabelHint, vm.AutoLabelHint);
+    }
+
+    [Fact]
+    public void TurningCustomLabelOff_LabelFollowsSuggestionAgain()
+    {
+        var vm = NewEditor();
+        vm.Text = "Hello";
+        vm.Label = "Mine";
+        Assert.True(vm.IsLabelCustom);
+
+        vm.IsLabelCustom = false;
+
+        Assert.Equal("Hello", vm.Label);
+        vm.TagsInput = "work";
+        Assert.Equal("work", vm.Label);
+    }
+
+    [Fact]
+    public async Task InlineFolder_StartCancelCreate()
+    {
+        var vm = NewEditor();
+        Assert.False(vm.IsCreatingFolder);
+
+        vm.StartNewFolderCommand.Execute(null);
+        Assert.True(vm.IsCreatingFolder);
+        vm.NewFolderName = "Half";
+        vm.CancelNewFolderCommand.Execute(null);
+        Assert.False(vm.IsCreatingFolder);
+        Assert.Equal(string.Empty, vm.NewFolderName);
+        Assert.Empty(_store.Folders);
+
+        vm.StartNewFolderCommand.Execute(null);
+        vm.NewFolderName = "Clients";
+        await vm.CreateFolderCommand.ExecuteAsync(null);
+        Assert.False(vm.IsCreatingFolder);
+        Assert.Equal("Clients", vm.SelectedFolder.Name);
+    }
+
+    [Fact]
+    public async Task InlineFolder_Duplicate_KeepsBoxOpenWithDesignText_StartClearsError()
+    {
+        _store.SeedFolder("Clients");
+        var vm = NewEditor();
+        vm.StartNewFolderCommand.Execute(null);
+        vm.NewFolderName = "CLIENTS";
+
+        Assert.False(await vm.CreateFolderAsync());
+
+        Assert.True(vm.IsCreatingFolder);
+        Assert.Equal(UiText.FolderNameTaken, vm.NewFolderError);
+
+        vm.CancelNewFolderCommand.Execute(null);
+        vm.StartNewFolderCommand.Execute(null);
+        Assert.Equal(string.Empty, vm.NewFolderError);
+    }
+
+    [Fact]
+    public void Delete_OnlyForSavedSnippet_RaisesRequest()
+    {
+        Assert.False(NewEditor().DeleteCommand.CanExecute(null));
+        var seeded = _store.SeedSnippet("text");
+        var vm = Edit(seeded.Id);
+        var requests = 0;
+        vm.DeleteRequested += (_, _) => requests++;
+        Assert.True(vm.DeleteCommand.CanExecute(null));
+
+        vm.DeleteCommand.Execute(null);
+        Assert.Equal(1, requests);
+
+        _store.DeleteSnippet(seeded.Id);
+        Assert.False(vm.DeleteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Delete_BecomesAvailableAfterFirstSave()
+    {
+        var vm = NewEditor();
+        vm.Text = "x";
+        await vm.SaveAsync();
+
+        Assert.True(vm.DeleteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Stats_FormatDatesAndUsage()
+    {
+        var seeded = _store.SeedSnippet("text");
+        var now = new DateTimeOffset(2026, 3, 3, 12, 0, 0, TimeSpan.Zero);
+        var vm = new SnippetEditorViewModel(_store, _dialogs, seeded.Id, null, new FixedTimeProvider(now));
+
+        Assert.Equal("1 Jan 2026", vm.CreatedDisplay);
+        Assert.Equal("1 Jan 2026", vm.UpdatedDisplay);
+        Assert.Equal("Never", vm.LastUsedDisplay);
+        Assert.Equal(UiText.UsedTimes(0), vm.UsageCountDisplay);
+    }
+
+    [Fact]
+    public void Stats_LastUsed_TodayShowsTime_OtherDayShowsDate()
+    {
+        var seeded = _store.SeedSnippet("text");
+        _store.RecordUsage(seeded.Id);
+        var usedAt = _store.Snippets[0].Snippet.LastUsedAt!.Value;
+        var time = new FixedTimeProvider(usedAt.AddMinutes(5));
+        var vm = new SnippetEditorViewModel(_store, _dialogs, seeded.Id, null, time);
+
+        Assert.Equal($"Today, {usedAt:HH:mm}", vm.LastUsedDisplay);
+        Assert.Equal("Once", vm.UsageCountDisplay);
+
+        _store.RecordUsage(seeded.Id);
+        var later = new SnippetEditorViewModel(_store, _dialogs, seeded.Id, null, new FixedTimeProvider(usedAt.AddDays(40)));
+        Assert.Equal(usedAt.AddMinutes(1).ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture), later.LastUsedDisplay);
+        Assert.Equal("2 times", later.UsageCountDisplay);
     }
 
     [Fact]
@@ -208,7 +374,7 @@ public sealed class SnippetEditorViewModelTests
         var created = await vm.CreateFolderAsync();
 
         Assert.False(created);
-        Assert.Contains("already exists", vm.NewFolderError);
+        Assert.Equal(UiText.FolderNameTaken, vm.NewFolderError);
         Assert.Single(_store.Folders);
         Assert.Null(vm.SelectedFolder.Id);
 
@@ -281,18 +447,21 @@ public sealed class SnippetEditorViewModelTests
     {
         var vm = NewEditor();
         vm.Text = "Hello";
-        var gate = new TaskCompletionSource();
-        _dialogs.ErrorGate = gate;
         _store.Failure = new StoreException(StoreFailure.DatabaseBusy, "busy");
+        Task<bool>? inner = null;
+        var savingDuringFirst = false;
+        _store.OnSaveCalled = () =>
+        {
+            savingDuringFirst = vm.IsSaving;
+            inner ??= vm.SaveAsync();
+        };
 
-        var first = vm.SaveAsync();
-        Assert.True(vm.IsSaving);
-        var second = await vm.SaveAsync();
+        var first = await vm.SaveAsync();
 
-        Assert.False(second);
+        Assert.True(savingDuringFirst);
+        Assert.False(first);
+        Assert.False(await inner!);
         Assert.Single(_store.CreatedDrafts);
-        gate.SetResult();
-        Assert.False(await first);
         Assert.False(vm.IsSaving);
     }
 
@@ -325,32 +494,34 @@ public sealed class SnippetEditorViewModelTests
     }
 
     [Fact]
-    public async Task Revert_Dirty_ConfirmsThenRestores()
+    public void Discard_Dirty_RestoresWithoutDialog()
     {
         var seeded = _store.SeedSnippet("original", label: "Mine", tags: "a");
         var vm = Edit(seeded.Id);
         vm.Text = "changed";
         vm.TagsInput = "z";
 
-        _dialogs.ConfirmAnswers.Enqueue(false);
-        Assert.False(await vm.RevertAsync());
-        Assert.Equal("changed", vm.Text);
+        vm.DiscardCommand.Execute(null);
 
-        _dialogs.ConfirmAnswers.Enqueue(true);
-        Assert.True(await vm.RevertAsync());
         Assert.Equal("original", vm.Text);
         Assert.Equal("a", vm.TagsInput);
         Assert.Equal("Mine", vm.Label);
         Assert.True(vm.IsLabelCustom);
         Assert.False(vm.IsDirty);
+        Assert.Empty(_dialogs.Confirms);
+        Assert.Empty(_dialogs.SaveDiscardPrompts);
     }
 
     [Fact]
-    public async Task Revert_Clean_DoesNotAsk()
+    public void Discard_NewSnippet_Blanks()
     {
-        var vm = Edit(_store.SeedSnippet("original").Id);
+        var vm = NewEditor();
+        vm.Text = "typed";
 
-        Assert.True(await vm.RevertAsync());
+        vm.DiscardCommand.Execute(null);
+
+        Assert.Equal(string.Empty, vm.Text);
+        Assert.False(vm.IsDirty);
         Assert.Empty(_dialogs.Confirms);
     }
 
@@ -361,11 +532,11 @@ public sealed class SnippetEditorViewModelTests
         var vm = Edit(seeded.Id);
         Assert.NotEqual(string.Empty, vm.CreatedDisplay);
         Assert.Equal(SnippetEditorViewModel.NeverDisplay, vm.LastUsedDisplay);
-        Assert.Equal("0", vm.UsageCountDisplay);
+        Assert.Equal(UiText.UsedTimes(0), vm.UsageCountDisplay);
 
         _store.RecordUsage(seeded.Id);
 
-        Assert.Equal("1", vm.UsageCountDisplay);
+        Assert.Equal(UiText.UsedTimes(1), vm.UsageCountDisplay);
         Assert.NotEqual(SnippetEditorViewModel.NeverDisplay, vm.LastUsedDisplay);
     }
 

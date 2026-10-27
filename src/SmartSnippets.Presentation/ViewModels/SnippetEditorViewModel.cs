@@ -6,6 +6,7 @@ using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
@@ -20,6 +21,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private readonly ISnippetStore _store;
     private readonly IDialogService _dialogs;
     private readonly IClipboardService? _clipboard;
+    private readonly TimeProvider _time;
 
     private long? _snippetId;
     private Snippet? _current;
@@ -38,6 +40,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLabelAuto))]
     [NotifyPropertyChangedFor(nameof(LabelPlaceholder))]
+    [NotifyPropertyChangedFor(nameof(AutoLabelHint))]
     private bool _isLabelCustom;
 
     [ObservableProperty]
@@ -67,17 +70,31 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private string _newFolderName = string.Empty;
 
+    /// <summary>True while the inline new-folder box (name, Create, Cancel) is open.</summary>
+    [ObservableProperty]
+    private bool _isCreatingFolder;
+
     [ObservableProperty]
     private bool _isDirty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RetrySaveCommand))]
     private bool _isSaving;
 
     /// <summary>True once the snippet was deleted elsewhere; the host should close the editor.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RetrySaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     private bool _isDeleted;
+
+    /// <summary>True after the store failed to save; shown inline with Try again and Copy text. Text and dirty state are kept.</summary>
+    [ObservableProperty]
+    private bool _hasSaveFailure;
+
+    [ObservableProperty]
+    private string _saveFailureMessage = string.Empty;
 
     [ObservableProperty]
     private long? _savedSnippetId;
@@ -97,11 +114,17 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private string _usageCountDisplay = string.Empty;
 
-    public SnippetEditorViewModel(ISnippetStore store, IDialogService dialogs, long? snippetId, IClipboardService? clipboard = null)
+    public SnippetEditorViewModel(
+        ISnippetStore store,
+        IDialogService dialogs,
+        long? snippetId,
+        IClipboardService? clipboard = null,
+        TimeProvider? time = null)
     {
         _store = store;
         _dialogs = dialogs;
         _clipboard = clipboard;
+        _time = time ?? TimeProvider.System;
         _snippetId = snippetId;
 
         RefreshChoices(null);
@@ -129,6 +152,9 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     /// <summary>"Auto: &lt;suggestion&gt;" while the label is automatic, otherwise "Label".</summary>
     public string LabelPlaceholder => IsLabelCustom ? "Label" : $"Auto: {Suggestion}";
 
+    /// <summary>"Edit the label to stop it following your tags." while the label is automatic, otherwise empty.</summary>
+    public string AutoLabelHint => IsLabelCustom ? string.Empty : UiText.AutoLabelHint;
+
     /// <summary>The label the store would assign automatically for the current text and tags.</summary>
     public string Suggestion => LabelSuggester.Suggest(Text, TagList.Parse(TagsInput));
 
@@ -137,6 +163,9 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     /// <summary>Raised once when the snippet being edited is deleted elsewhere.</summary>
     public event EventHandler? Removed;
+
+    /// <summary>Raised by <see cref="DeleteCommand"/>; the page runs its single confirm-and-delete flow.</summary>
+    public event EventHandler? DeleteRequested;
 
     public void Dispose()
     {
@@ -150,7 +179,9 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>Saves the draft. Returns true when stored; false on validation failure, store failure, or when already saving.</summary>
-    public async Task<bool> SaveAsync()
+    public Task<bool> SaveAsync() => Task.FromResult(SaveCore());
+
+    private bool SaveCore()
     {
         if (IsSaving || IsDeleted)
         {
@@ -170,10 +201,12 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
             catch (StoreException ex)
             {
                 AppLog.Info("save_failed", $"kind={ex.Failure}");
-                await _dialogs.ShowErrorAsync("Save failed", $"Could not save: {ex.Message}");
+                SaveFailureMessage = UiText.SaveFailed;
+                HasSaveFailure = true;
                 return false;
             }
 
+            ClearSaveFailure();
             if (!result.Success)
             {
                 ApplyError(result);
@@ -184,6 +217,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
             _snippetId = saved.Id;
             OnPropertyChanged(nameof(SnippetId));
             OnPropertyChanged(nameof(IsNew));
+            DeleteCommand.NotifyCanExecuteChanged();
             ApplySaved(FindInStore(saved.Id) ?? saved);
             AppLog.Info("snippet_saved", $"id={saved.Id}");
             SavedSnippetId = saved.Id;
@@ -196,20 +230,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         }
     }
 
-    /// <summary>Esc: back to the last saved values, asking first when there are unsaved edits. False when the user declines.</summary>
-    public async Task<bool> RevertAsync()
-    {
-        if (IsDirty && !await _dialogs.ConfirmAsync(
-                "Discard changes?", "Revert to the last saved values? Your edits will be lost.", "Revert"))
-        {
-            return false;
-        }
-
-        ResetToSaved();
-        return true;
-    }
-
-    /// <summary>Drops unsaved edits without asking (the caller has already asked).</summary>
+    /// <summary>Drops unsaved edits without asking (the Discard button, or the caller has already asked).</summary>
     public void ResetToSaved()
     {
         if (IsDeleted)
@@ -217,6 +238,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
             return;
         }
 
+        ClearSaveFailure();
         var snippet = _snippetId is { } id ? FindInStore(id) ?? _current : null;
         RefreshChoices(null);
         Load(snippet);
@@ -248,19 +270,56 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         AppLog.Info("folder_created", $"id={folder.Id}");
         RefreshChoices(folder.Id);
         NewFolderName = string.Empty;
+        IsCreatingFolder = false;
         return true;
     }
 
     [RelayCommand(CanExecute = nameof(CanSave))]
     private Task Save() => SaveAsync();
 
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private Task RetrySave() => SaveAsync();
+
+    /// <summary>The "Unsaved changes" bar's Discard button: back to the last saved values, no dialog.</summary>
     [RelayCommand]
-    private Task Revert() => RevertAsync();
+    private void Discard() => ResetToSaved();
+
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private void Delete() => DeleteRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand(CanExecute = nameof(CanCopyText))]
+    private void CopyText() => _clipboard!.SetText(Text);
 
     [RelayCommand]
     private Task CreateFolder() => CreateFolderAsync();
 
+    [RelayCommand]
+    private void StartNewFolder()
+    {
+        NewFolderName = string.Empty;
+        NewFolderError = string.Empty;
+        IsCreatingFolder = true;
+    }
+
+    [RelayCommand]
+    private void CancelNewFolder()
+    {
+        IsCreatingFolder = false;
+        NewFolderName = string.Empty;
+        NewFolderError = string.Empty;
+    }
+
     private bool CanSave() => !IsSaving && !IsDeleted;
+
+    private bool CanDelete() => !IsNew && !IsDeleted;
+
+    private bool CanCopyText() => _clipboard is not null;
+
+    private void ClearSaveFailure()
+    {
+        HasSaveFailure = false;
+        SaveFailureMessage = string.Empty;
+    }
 
     partial void OnTextChanged(string value)
     {
@@ -307,10 +366,18 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     partial void OnIsLabelCustomChanged(bool value)
     {
-        if (!_loading)
+        if (_loading)
         {
-            RecomputeDirty();
+            return;
         }
+
+        if (!value)
+        {
+            LabelError = string.Empty;
+            SetLabel(Suggestion);
+        }
+
+        RecomputeDirty();
     }
 
     partial void OnSelectedFolderChanged(FolderChoice value)
@@ -419,14 +486,24 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     {
         var snippet = _current;
         HasMetadata = snippet is not null;
-        CreatedDisplay = snippet is null ? string.Empty : FormatTime(snippet.CreatedAt);
-        UpdatedDisplay = snippet is null ? string.Empty : FormatTime(snippet.UpdatedAt);
-        LastUsedDisplay = snippet?.LastUsedAt is { } used ? FormatTime(used) : NeverDisplay;
-        UsageCountDisplay = (snippet?.UsageCount ?? 0).ToString(CultureInfo.CurrentCulture);
+        CreatedDisplay = snippet is null ? string.Empty : FormatDate(snippet.CreatedAt);
+        UpdatedDisplay = snippet is null ? string.Empty : FormatDate(snippet.UpdatedAt);
+        LastUsedDisplay = snippet?.LastUsedAt is { } used ? FormatLastUsed(used) : NeverDisplay;
+        UsageCountDisplay = UiText.UsedTimes(snippet?.UsageCount ?? 0);
     }
 
-    private static string FormatTime(DateTimeOffset value) =>
-        value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+    private DateTimeOffset ToLocal(DateTimeOffset value) => TimeZoneInfo.ConvertTime(value, _time.LocalTimeZone);
+
+    private string FormatDate(DateTimeOffset value) =>
+        ToLocal(value).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+
+    private string FormatLastUsed(DateTimeOffset value)
+    {
+        var local = ToLocal(value);
+        return local.Date == _time.GetLocalNow().Date
+            ? "Today, " + local.ToString("HH:mm", CultureInfo.InvariantCulture)
+            : FormatDate(value);
+    }
 
     private void ClearErrors()
     {
