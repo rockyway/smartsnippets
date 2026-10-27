@@ -1,0 +1,8 @@
+<Page
+    x:Class="SmartSnippets.App.Pages.SnippetsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="24">
+        <TextBlock Text="Coming in plan 005" VerticalAlignment="Top" />
+    </Grid>
+</Page>

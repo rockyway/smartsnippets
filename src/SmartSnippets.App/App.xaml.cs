@@ -8,7 +8,6 @@ using SmartSnippets.App.Services;
 using SmartSnippets.Core;
 using SmartSnippets.Core.Data;
 using SmartSnippets.Core.Logging;
-using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace SmartSnippets.App;
 
@@ -52,23 +51,21 @@ public partial class App : Application
             _hotkey = new HotkeyService(_messageWindow);
             _hotkey.HotkeyPressed += OnHotkeyPressed;
 
-            var registration = _hotkey.Register(
-                HOT_KEY_MODIFIERS.MOD_CONTROL | HOT_KEY_MODIFIERS.MOD_SHIFT | HOT_KEY_MODIFIERS.MOD_NOREPEAT,
-                (uint)VIRTUAL_KEY.VK_SPACE);
-            _hotkeyStatus = registration.Describe();
-            if (registration.Success)
-            {
-                AppLog.Info("hotkey_registered");
-            }
-            else
-            {
-                AppLog.Info("hotkey_register_failed", $"win32={registration.Win32Error}");
-            }
+            // TODO(T4): AppHost loads the saved gesture from AppSettings.
+            var status = new HotkeyManager(_hotkey).Initialize(SmartSnippets.Core.Settings.HotkeyGesture.Default);
+            _hotkeyStatus = status.Message;
 
             _popup = new PopupWindow(new ClipboardPasteInserter(_messageWindow.Handle));
             _popup.Prewarm();
 
-            _tray = new TrayIcon(_messageWindow, () => Enqueue(ShowDiagnostics), () => Enqueue(ExitApp));
+            _tray = new TrayIcon(
+                _messageWindow,
+                () => Enqueue(ShowDiagnostics),
+                () => Enqueue(ShowDiagnostics), // TODO(T4): Settings page
+                () => { }, // TODO(T4): restart as administrator (menu item hidden below)
+                () => Enqueue(ShowDiagnostics),
+                () => Enqueue(ExitApp),
+                showRestartAdmin: false);
             _tray.Add();
         }
         catch (Exception ex)
@@ -120,7 +117,7 @@ public partial class App : Application
 
     private void ExitApp()
     {
-        _hotkey?.Unregister();
+        _hotkey?.UnregisterAll();
         AppLog.Info("exit_unregistered");
         _tray?.Dispose();
         _popup?.Close();

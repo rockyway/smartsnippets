@@ -47,7 +47,7 @@ internal sealed unsafe class MessageWindow : IDisposable
                 0,
                 0,
                 0,
-                HWND.HWND_MESSAGE,
+                HWND.Null, // hidden top-level (never shown): message-only windows do not receive the TaskbarCreated broadcast
                 default,
                 instance,
                 null);
