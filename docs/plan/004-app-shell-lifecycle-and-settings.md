@@ -1,7 +1,7 @@
 # 004 — App shell, lifecycle, and settings
 
 **Date:** 2026-10-27
-**Status:** In progress (approved 2026-10-27)
+**Status:** Implementation complete — awaiting CI and manual runbook (§7)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.App/`, new `src/SmartSnippets.Presentation/`, new `tests/SmartSnippets.Presentation.Tests/`, `src/SmartSnippets.Core/Settings/`, `.github/workflows/ci.yml`, `SmartSnippets.slnx`
 **Depends on:** 002 (Complete), 003 (planned API: `ISnippetStore`, `AppSettings`, `SettingsRepository`)
@@ -453,9 +453,59 @@ None blocking. These are design calls for you to confirm at approval:
 5. **The main window remembers its size and position for the session only**, not across
    restarts.
 
-## 10. Approval log
+## 10. Implementation notes and wiring audit
+
+**T4 / T10 (AppHost).** `App/AppHost.cs` is the only composition root; `App.OnLaunched` is one line
+(`_host.Start(Program.StartInBackground)`). Order: `Migrator` → `SnippetStore.Load` →
+`AppSettings.Load(SettingsRepository)` (`settings_loaded` logged in AppHost) → `TextSizeService.Apply`,
+`ThemeService(initial)` → `MessageWindow`, `HotkeyService`, `HotkeyManager.Initialize(saved)` → `PopupWindow`
+(prewarm) → `MainWindow` (hidden) → `ThemeService.Register` for popup, main window and (on demand)
+Diagnostics → `TrayIcon` + `Notifier` → startup hotkey balloon "Shortcut not registered" → `AppInstance.Activated`
+→ `ShowPage(Snippets)` unless `--background`. A `MigrationException`, `StoreException` or any other data-load
+failure shows a message box and exits cleanly (nothing to show without a store); any later composition failure
+does the same. Tray callbacks and `AppInstance.Activated` are posted through `UiDispatcher`. Exit asks
+`MainWindow.CanExitAsync()` first; restart-as-administrator (tray or Settings) skips that guard because the
+elevated copy is already waiting on this PID. The first-close hint uses the new `MainWindow.HiddenByClose` event
+and `SettingsKeys.ShellCloseHintShown` (`shell.close_hint_shown`).
+
+**Hook for plan 005.** In `AppHost.Compose`, the local function `CreatePage(PageKind)` is the page factory.
+Replace the `PageKind.Snippets` / `PageKind.Folders` arms with e.g.
+`new SnippetsPage { ViewModel = new SnippetsViewModel(Store, TextSize, Dialogs, Notices, ...) }`. `Store`,
+`Settings`, `TextSize`, `Dialogs`, `Notices` and `Dispatcher` are `AppHost` properties for exactly this. The
+pages already implement `IGuardedPage`; 005 replaces the always-true `CanLeaveAsync`.
+
+**T11 wiring audit.**
+
+| Interface | Implementation | Constructed in `AppHost` |
+|---|---|---|
+| `IHotkeyManager` | `HotkeyManager` over `HotkeyService` | `Compose` (also `UnregisterAll` on exit) |
+| `IStartupRegistration` | `StartupRegistration` | `Compose`, passed to `SettingsViewModel` |
+| `IElevation` | `ElevationService` | `Compose`; also used by the tray command |
+| `IThemeService` | `ThemeService` | `Compose`; `Register` for popup, main, Diagnostics |
+| `ITextSizeService` | `TextSizeService` | `Compose`; `Apply` with the loaded settings |
+| `IDialogService` | `DialogService` | `Compose`; exposed as `Dialogs` (first consumer is 005) |
+| `IUiDispatcher` | `UiDispatcher` | `Start` |
+| `INotifier` | `Notifier` over `TrayIcon` | `Compose`; startup balloon, close hint, elevation failures |
+| `ISettingsStore` | `SettingsRepository` | `TryLoadData` |
+| `ISnippetStore` | `SnippetStore` | `TryLoadData`; exposed as `Store` (first consumer is 005) |
+
+- **Tray commands:** Open → `ShowPage(Snippets)`; Settings → `ShowPage(Settings)`; Restart as administrator →
+  `RestartAsAdministrator` (Started → shut down, otherwise balloon); Diagnostics → `ShowDiagnostics`;
+  Exit → `ExitAsync`; left click → Open. All five callbacks are non-empty and marshalled.
+- **`TextSizeService.FontSize` consumers:** `SettingsPage.xaml` preview (`x:Bind ViewModel.TextSize.FontSize`).
+  The Snippets/Folders placeholders carry static text only; 005 adds its bindings.
+- **Repository use outside Core/AppHost:** none in the app shell. `DiagnosticsWindow` still calls
+  `Migrator`/`ProbeRepository` for the SQLite probe; it is the prototype that 008 removes.
+- **Logging:** the new AppHost logs carry no user content (counts and event names only). Events present in code
+  for the runbook: `store_loaded`, `settings_loaded`, `hotkey_registered`, `hotkey_changed`, `theme_applied`,
+  `tray_readded`, `restart_elevated_started`, `exit_unregistered`.
+- **Verified here (Linux):** Core and Presentation tests pass and both projects build with 0 warnings. The App
+  project cannot compile on Linux, so its compile and AOT check rely on CI; the runbook in §7 is still pending.
+
+## 11. Approval log
 
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2 |
 | 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |
+| 2026-10-27 | Implementation complete | T4, T10, T11 done; awaiting CI and manual runbook (§7) |

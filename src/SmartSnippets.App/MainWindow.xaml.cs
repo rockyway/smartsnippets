@@ -40,6 +40,9 @@ public sealed partial class MainWindow : Window
     /// <summary>The XamlRoot for ContentDialogs; null until the window content has been created.</summary>
     public XamlRoot? ContentXamlRoot => Content?.XamlRoot;
 
+    /// <summary>Raised after the user's close button hid the window (not for exit and not when the page's guard refused).</summary>
+    public event EventHandler? HiddenByClose;
+
     public bool IsHidden => !AppWindow.IsVisible;
 
     public PageKind? CurrentPage => _current;
@@ -199,6 +202,7 @@ public sealed partial class MainWindow : Window
             }
 
             AppWindow.Hide();
+            HiddenByClose?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {

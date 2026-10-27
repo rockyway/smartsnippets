@@ -9,4 +9,5 @@ public static class SettingsKeys
     public const string HotkeyKey = "hotkey.key";
     public const string PopupLayout = "popup.layout";
     public const string PopupSort = "popup.sort";
+    public const string ShellCloseHintShown = "shell.close_hint_shown";
 }
