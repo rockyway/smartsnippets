@@ -1,0 +1,16 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+TestResults/
+publish/
+publish.log
+*.log
+.idea/
+appsettings.Local.json
+.env
+.env.*
+!.env.example

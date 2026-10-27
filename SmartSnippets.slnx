@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmartSnippets.Core/SmartSnippets.Core.csproj" />
+    <Project Path="src/SmartSnippets.App/SmartSnippets.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmartSnippets.Core.Tests/SmartSnippets.Core.Tests.csproj" />
+  </Folder>
+</Solution>
