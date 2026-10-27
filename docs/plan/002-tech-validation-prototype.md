@@ -1,7 +1,7 @@
 # 002 — Technical validation prototype (PRD §4 gate) and repository skeleton
 
 **Date:** 2026-10-27
-**Status:** Draft — awaiting approval
+**Status:** Approved (2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** repository root, `src/`, `tests/`, `.github/workflows/`, `docs/research/`
 **Requirement brief confirmed:** 2026-10-27 (G1, see master §2)
@@ -403,4 +403,4 @@ implemented and recorded in the T9 report.
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | 2 rounds of questions |
-| | Plan approved (G2) | |
+| 2026-10-27 | Plan approved (G2) | implementation ordered same day (Sonnet subagents) |

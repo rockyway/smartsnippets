@@ -1,7 +1,7 @@
 # 001 — Master plan: Smart Snippets v1
 
 **Date:** 2026-10-27
-**Status:** Draft — awaiting approval
+**Status:** Approved (2026-10-27)
 **Size:** L (master plan + sequential subplans)
 **Area:** whole repository (greenfield)
 **Requirement source:** [`docs/requirements/001-prd.md`](../requirements/001-prd.md)
@@ -122,7 +122,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 
 | # | File | Objective | Depends on | Status |
 |---|---|---|---|---|
-| 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | Draft — awaiting approval |
+| 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | In progress |
 | 003 | [003-core-domain-and-persistence.md](003-core-domain-and-persistence.md) | Domain model, label/tag rules, validation, schema + migrations, repositories, search/sort engine, benchmark | 002 | Placeholder |
 | 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Placeholder |
 | 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Placeholder |
@@ -188,4 +188,4 @@ None.
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | 2 rounds of questions |
-| | Master plan approved (G2) | |
+| 2026-10-27 | Master plan approved (G2) | approved by user; implementation of 002 ordered same day |
