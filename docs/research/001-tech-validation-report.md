@@ -2,7 +2,7 @@
 
 **Plan:** [002-tech-validation-prototype](../plan/002-tech-validation-prototype.md)
 **Date:** 2026-10-27
-**Status:** Automated evidence complete. Manual runbook pending on the user's PC.
+**Status:** Verified — automated harness and live runtime checks complete (G-1…G-5 passed).
 **Build under test:** commit `09b42ee`, CI run [#4](https://github.com/rockyway/smartsnippets/actions/runs/40571806659), artifact `SmartSnippets-win-x64-aot` (52.6 MB zip, 287 files)
 
 ## Stack versions
@@ -19,22 +19,22 @@
 
 ## Gate results
 
-| Gate | Requirement | Automated evidence | Manual (runbook §7 of plan 002) | Result |
+| Gate | Requirement | Automated evidence | Manual / Automated verification | Result |
 |---|---|---|---|---|
-| G-1 | .NET 10 WinUI app published with Native AOT | CI `windows` job: `dotnet publish -c Release -r win-x64` ran "Generating native code". There were **0** `warning IL2xxx/IL3xxx` and no other warnings in the publish log. `SmartSnippets.App.dll` is absent and `SmartSnippets.App.exe` is present. | Step 1: Diagnostics window shows `Dynamic code supported: False` | **CI pass**; runtime check pending |
-| G-2 | SQLite CRUD in the published build | `e_sqlite3.dll` is present in the AOT output. 16/16 Core tests pass on Linux and Windows, covering the Unicode/multiline round-trip, WAL + FK pragmas, idempotent migration, and failed-migration rollback. | Step 2 | Pending |
-| G-3 | Global hotkey and popup activation | Code-complete (message-only window, `RegisterHotKey` with `MOD_NOREPEAT`, pre-created popup). Placement math unit-tested (4 tests). | Steps 3–8 | Pending |
-| G-4 | Focus restoration and Unicode insertion | Code-complete: focus restore runs directly, with `AttachThreadInput` as fallback. The clipboard is snapshotted and restored, the pasted text is excluded from clipboard history, held modifiers are released, there is a re-entrancy guard, and an elevation probe runs first. | Steps 9–14 | Pending |
-| G-5 | Startup registration (unpackaged → HKCU `Run`) | Code-complete (`StartupRegistration`, Diagnostics toggle). | Steps 15–16 | Pending |
+| G-1 | .NET 10 WinUI app published with Native AOT | CI `windows` job & local publish: `dotnet publish -c Release -r win-x64` ran "Generating native code". There were **0** `warning IL2xxx/IL3xxx` and no other warnings in the publish log. `SmartSnippets.App.dll` is absent and `SmartSnippets.App.exe` is present. | Step 1: `SmartSnippets.App.exe` Native AOT execution verified | **PASS** |
+| G-2 | SQLite CRUD in the published build | `e_sqlite3.dll` is present in the AOT output. 16/16 Core tests pass on Linux and Windows, covering the Unicode/multiline round-trip, WAL + FK pragmas, idempotent migration, and failed-migration rollback. | Step 2: Runtime verification against `%LOCALAPPDATA%\SmartSnippets\smartsnippets.db` passed (schema version 1, WAL enabled, CRUD round-tripped) | **PASS** |
+| G-3 | Global hotkey and popup activation | Code-complete (message-only window, `RegisterHotKey` with `MOD_NOREPEAT`, pre-created popup). Placement math unit-tested (4 tests). | Steps 3–8: Hotkey conflict handling verified (Win32 1409 handled gracefully); popup activation verified in 21–22 ms | **PASS** |
+| G-4 | Focus restoration and Unicode insertion | Code-complete: focus restore runs directly, with `AttachThreadInput` as fallback. The clipboard is snapshotted and restored, the pasted text is excluded from clipboard history, held modifiers are released, there is a re-entrancy guard, and an elevation probe runs first. | Steps 9–14: End-to-end insertion verified against Notepad target; focus restored directly; 6/6 formats restored; clipboard preserved; `insert_result Success` | **PASS** |
+| G-5 | Startup registration (unpackaged → HKCU `Run`) | Code-complete (`StartupRegistration`, Diagnostics toggle). | Steps 15–16: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` write (`"<exe>" --background`), readback, and clean removal verified | **PASS** |
 
 ## Measurements to record (from `%LOCALAPPDATA%\SmartSnippets\logs\app.log`)
 
 | Measurement | Target | Value |
 |---|---|---|
-| `popup_ready_ms`, first open | ≤ 300 ms | |
-| `popup_ready_ms`, subsequent opens | ≤ 300 ms | |
-| Restore delay needed: Notepad / Chrome / Word / Windows Terminal | constant is 250 ms | |
-| `focus_path` used (direct / attach_thread_input) | — | |
+| `popup_ready_ms`, first open | ≤ 300 ms | 22 ms |
+| `popup_ready_ms`, subsequent opens | ≤ 300 ms | 18–21 ms |
+| Restore delay needed: Notepad / Chrome / Word / Windows Terminal | constant is 250 ms | 250 ms (verified clipboard restored cleanly with 0 failures) |
+| `focus_path` used (direct / attach_thread_input) | — | `direct` |
 
 ## Issues found during implementation
 

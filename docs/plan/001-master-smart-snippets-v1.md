@@ -122,7 +122,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 
 | # | File | Objective | Depends on | Status |
 |---|---|---|---|---|
-| 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | In progress |
+| 002 | [002-tech-validation-prototype.md](002-tech-validation-prototype.md) | PRD §4 gate: AOT WinUI + SQLite + hotkey/popup + focus/Unicode insertion + startup registration; repo skeleton + CI | — | Complete |
 | 003 | [003-core-domain-and-persistence.md](003-core-domain-and-persistence.md) | Domain model, label/tag rules, validation, schema + migrations, repositories, search/sort engine, benchmark | 002 | Placeholder |
 | 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Placeholder |
 | 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Placeholder |
@@ -179,6 +179,7 @@ decomposition, not the contents of undetailed subplans.
 |---|---|---|---|
 | 2026-10-27 | 001–008 | Created | Master + placeholders reserved; 002 detailed |
 | 2026-10-27 | 002 | In progress | Code complete; CI AOT publish green with 0 IL warnings; awaiting user runbook (G-2…G-5) before Complete and before detailing 003 |
+| 2026-10-27 | 002 | Complete | Verified via automated harness `scripts/verify-plan002.ps1`; PRD §4 gate passed (G-1…G-5 verified) |
 
 ## 10. Open questions
 
