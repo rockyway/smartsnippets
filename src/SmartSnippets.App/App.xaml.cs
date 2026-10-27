@@ -39,7 +39,6 @@ public partial class App : Application
             Directory.CreateDirectory(paths.Root);
             var applied = new Migrator(new SqliteConnectionFactory(paths.DatabasePath)).MigrateToLatest();
             _migrationStatus = $"Migrations applied: {applied}.";
-            AppLog.Info("migrations_applied", applied.ToString());
         }
         catch (Exception ex)
         {
