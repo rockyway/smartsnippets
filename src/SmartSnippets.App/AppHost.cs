@@ -186,12 +186,17 @@ internal sealed class AppHost
         var tray = new TrayIcon(
             messageWindow,
             onOpen: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Snippets)),
+            onShowPopup: () => _ui!.Post(ShowPopupFromTray),
             onSettings: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Settings)),
             onRestartAdmin: () => _ui!.Post(() => RestartAsAdministrator(elevation)),
             onDiagnostics: () => _ui!.Post(ShowDiagnostics),
             onExit: () => _ui!.Post(() => _ = ExitAsync()),
-            showRestartAdmin: !elevation.IsElevated);
+            showRestartAdmin: !elevation.IsElevated,
+            hotkeyDisplay: () => hotkeyManager.Status.IsRegistered ? hotkeyManager.Status.Gesture.ToDisplayString() : null);
         _tray = tray;
+        tray.State = hotkeyStatus.IsRegistered ? TrayState.Ready : TrayState.HotkeyUnavailable;
+        hotkeyManager.StatusChanged += (_, _) => _ui!.Post(
+            () => tray.State = hotkeyManager.Status.IsRegistered ? TrayState.Ready : TrayState.HotkeyUnavailable);
         tray.Add();
         Notices = new Notifier(tray);
 
@@ -220,6 +225,10 @@ internal sealed class AppHost
 
         _popup?.ShowFor(target.Value, timestamp);
     }
+
+    // Tray "Show popup": same path as the hotkey. The tray menu has already closed, so the previously active
+    // window is foreground again by the time the posted callback runs. Plan 006 refines target capture.
+    private void ShowPopupFromTray() => OnHotkeyPressed(System.Diagnostics.Stopwatch.GetTimestamp());
 
     private void ShowCloseHintOnce()
     {

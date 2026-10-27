@@ -1,11 +1,20 @@
 using System.Drawing;
 using SmartSnippets.Core.Logging;
+using SmartSnippets.Presentation.Text;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace SmartSnippets.App.Services;
+
+/// <summary>Tray status; plan 008 swaps the glyph per state.</summary>
+internal enum TrayState
+{
+    Ready,
+    PopupOpen,
+    HotkeyUnavailable,
+}
 
 internal sealed unsafe class TrayIcon : IDisposable
 {
@@ -16,34 +25,43 @@ internal sealed unsafe class TrayIcon : IDisposable
     private const nuint CommandRestartAdmin = 3;
     private const nuint CommandDiagnostics = 4;
     private const nuint CommandExit = 5;
+    private const nuint CommandShowPopup = 6;
     private const string Tooltip = "Smart Snippets — running in background";
+    private const string TooltipHotkeyUnavailable = "Smart Snippets — hotkey unavailable";
 
     private readonly MessageWindow _window;
     private readonly Action _onOpen;
+    private readonly Action _onShowPopup;
     private readonly Action _onSettings;
     private readonly Action _onRestartAdmin;
     private readonly Action _onDiagnostics;
     private readonly Action _onExit;
     private readonly bool _showRestartAdmin;
+    private readonly Func<string?> _hotkeyDisplay;
     private readonly uint _taskbarCreatedMessage;
     private bool _added;
+    private TrayState _state = TrayState.Ready;
 
     public TrayIcon(
         MessageWindow window,
         Action onOpen,
+        Action onShowPopup,
         Action onSettings,
         Action onRestartAdmin,
         Action onDiagnostics,
         Action onExit,
-        bool showRestartAdmin)
+        bool showRestartAdmin,
+        Func<string?> hotkeyDisplay)
     {
         _window = window;
         _onOpen = onOpen;
+        _onShowPopup = onShowPopup;
         _onSettings = onSettings;
         _onRestartAdmin = onRestartAdmin;
         _onDiagnostics = onDiagnostics;
         _onExit = onExit;
         _showRestartAdmin = showRestartAdmin;
+        _hotkeyDisplay = hotkeyDisplay;
 
         fixed (char* name = "TaskbarCreated")
         {
@@ -59,16 +77,50 @@ internal sealed unsafe class TrayIcon : IDisposable
         _window.MessageReceived += OnMessage;
     }
 
+    public TrayState State
+    {
+        get => _state;
+        set
+        {
+            if (_state == value)
+            {
+                return;
+            }
+
+            _state = value;
+            UpdateTooltip();
+        }
+    }
+
     public bool Add()
     {
         var data = CreateData();
         data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_MESSAGE | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
         data.uCallbackMessage = CallbackMessage;
         data.hIcon = PInvoke.LoadIcon(HINSTANCE.Null, PInvoke.IDI_APPLICATION);
-        data.szTip = Tooltip;
+        data.szTip = TooltipFor(_state);
         _added = PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_ADD, in data);
         AppLog.Info(_added ? "tray_added" : "tray_add_failed");
         return _added;
+    }
+
+    private static string TooltipFor(TrayState state) =>
+        state == TrayState.HotkeyUnavailable ? TooltipHotkeyUnavailable : Tooltip;
+
+    private void UpdateTooltip()
+    {
+        if (!_added)
+        {
+            return;
+        }
+
+        var data = CreateData();
+        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
+        data.szTip = TooltipFor(_state);
+        if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, in data))
+        {
+            AppLog.Info("tray_tooltip_failed");
+        }
     }
 
     /// <summary>Shows a tray balloon notification (title up to 63 and text up to 255 characters).</summary>
@@ -156,13 +208,20 @@ internal sealed unsafe class TrayIcon : IDisposable
 
         try
         {
-            fixed (char* open = "Open Smart Snippets")
-            fixed (char* settings = "Settings")
+            var hotkey = _hotkeyDisplay();
+            var showPopupText = string.IsNullOrEmpty(hotkey)
+                ? UiText.TrayShowPopup
+                : UiText.TrayShowPopup + "\t" + hotkey;
+
+            fixed (char* open = UiText.TrayOpen)
+            fixed (char* showPopup = showPopupText)
+            fixed (char* settings = UiText.TraySettings)
             fixed (char* restart = "Restart as administrator")
             fixed (char* diagnostics = "Diagnostics")
-            fixed (char* exit = "Exit")
+            fixed (char* exit = UiText.TrayExit)
             {
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandOpen, open);
+                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandShowPopup, showPopup);
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandSettings, settings);
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
                 if (_showRestartAdmin)
@@ -175,6 +234,7 @@ internal sealed unsafe class TrayIcon : IDisposable
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandExit, exit);
             }
 
+            var previousForeground = PInvoke.GetForegroundWindow();
             // Documented quirk: the menu only dismisses on outside click if our window is foreground.
             PInvoke.SetForegroundWindow(_window.Handle);
             var flags = (uint)(TRACK_POPUP_MENU_FLAGS.TPM_RIGHTBUTTON | TRACK_POPUP_MENU_FLAGS.TPM_RETURNCMD
@@ -186,6 +246,15 @@ internal sealed unsafe class TrayIcon : IDisposable
             {
                 case CommandOpen:
                     _onOpen();
+                    break;
+                case CommandShowPopup:
+                    // Hand foreground back so the popup captures the window the user was working in, not ours.
+                    if (!previousForeground.IsNull)
+                    {
+                        PInvoke.SetForegroundWindow(previousForeground);
+                    }
+
+                    _onShowPopup();
                     break;
                 case CommandSettings:
                     _onSettings();
