@@ -1,6 +1,7 @@
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Tests.Fakes;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 
 namespace SmartSnippets.Presentation.Tests;
@@ -9,6 +10,8 @@ public sealed class FoldersPageViewModelTests
 {
     private readonly FakeSnippetStore _store = new();
     private readonly ScriptedDialogService _dialogs = new();
+
+    private static IEnumerable<FolderRowViewModel> UserRows(FoldersPageViewModel vm) => vm.Rows.Where(r => !r.IsBuiltIn);
 
     private FoldersPageViewModel Create() => new(_store, _dialogs);
 
@@ -21,8 +24,8 @@ public sealed class FoldersPageViewModelTests
 
         await vm.CreateAsync();
 
-        Assert.Equal("A folder named 'clients' already exists.", vm.NewFolderError);
-        Assert.Single(vm.Rows);
+        Assert.True(vm.NewFolderError is UiText.FolderNameTaken or "A folder named 'clients' already exists.");
+        Assert.Single(UserRows(vm));
         Assert.Equal("clients", vm.NewFolderName);
     }
 
@@ -35,8 +38,9 @@ public sealed class FoldersPageViewModelTests
         await vm.CreateAsync();
 
         Assert.NotEqual(string.Empty, vm.NewFolderError);
-        Assert.Empty(vm.Rows);
+        Assert.Empty(UserRows(vm));
         Assert.True(vm.IsEmpty);
+        Assert.Equal(FoldersPageViewModel.NoFoldersMessage, vm.EmptyState);
     }
 
     [Fact]
@@ -48,7 +52,8 @@ public sealed class FoldersPageViewModelTests
 
         await vm.CreateAsync();
 
-        Assert.Equal(["alpha", "Work"], vm.Rows.Select(r => r.Name));
+        Assert.Equal(["alpha", "Work", UiText.Unfiled], vm.Rows.Select(r => r.Name));
+        Assert.False(vm.IsEmpty);
         Assert.Equal(string.Empty, vm.NewFolderName);
         Assert.Equal(string.Empty, vm.NewFolderError);
     }
@@ -95,7 +100,7 @@ public sealed class FoldersPageViewModelTests
         Assert.False(await vm.CommitRenameAsync(row));
 
         Assert.True(row.IsRenaming);
-        Assert.Contains("already exists", row.RenameError);
+        Assert.True(row.RenameError is UiText.FolderNameTaken or "A folder named 'clients' already exists.");
         Assert.Equal("Work", row.Name);
     }
 
@@ -146,8 +151,80 @@ public sealed class FoldersPageViewModelTests
         await vm.DeleteAsync(vm.Rows.Single(r => r.Name == "Work"));
         await vm.DeleteAsync(vm.Rows.Single(r => r.Name == "Solo"));
 
-        Assert.Equal("Delete 'Work'? 2 snippets will move to Unfiled.", _dialogs.Confirms[0].Message);
-        Assert.Equal("Delete 'Solo'? 1 snippet will move to Unfiled.", _dialogs.Confirms[1].Message);
+        Assert.Equal(UiText.DeleteFolderTitle("Work"), _dialogs.Confirms[0].Title);
+        Assert.Equal(UiText.DeleteFolderBody(2), _dialogs.Confirms[0].Message);
+        Assert.Equal(UiText.DeleteFolderConfirm, _dialogs.Confirms[0].ConfirmText);
+        Assert.Equal(UiText.DeleteFolderTitle("Solo"), _dialogs.Confirms[1].Title);
+        Assert.Equal(UiText.DeleteFolderBody(1), _dialogs.Confirms[1].Message);
+        Assert.Equal(3, vm.Rows.Count);
+    }
+
+    [Fact]
+    public async Task Delete_EmptyFolder_UsesZeroWording()
+    {
+        _store.SeedFolder("Empty");
+        var vm = Create();
+        _dialogs.ConfirmAnswers.Enqueue(false);
+
+        await vm.DeleteAsync(vm.Rows[0]);
+
+        Assert.Equal("Delete folder \"Empty\"?", _dialogs.Confirms[0].Title);
+        Assert.Equal("It has no snippets.", _dialogs.Confirms[0].Message);
+        Assert.Equal("Its 1 snippet will move to Unfiled. The snippet isn't deleted.", UiText.DeleteFolderBody(1));
+        Assert.Equal("Its 3 snippets will move to Unfiled. The snippets aren't deleted.", UiText.DeleteFolderBody(3));
+    }
+
+    [Fact]
+    public void Unfiled_RowIsLastBuiltInWithCount()
+    {
+        _store.SeedFolder("Work");
+        _store.SeedSnippet("a", folder: "Work");
+        _store.SeedSnippet("b");
+        _store.SeedSnippet("c");
+        var vm = Create();
+
+        var unfiled = vm.Rows[^1];
+
+        Assert.True(unfiled.IsBuiltIn);
+        Assert.False(unfiled.CanEdit);
+        Assert.Equal(UiText.Unfiled, unfiled.Name);
+        Assert.Equal(2, unfiled.SnippetCount);
+        Assert.Equal("2 snippets, built in", unfiled.SnippetCountDisplay);
+        Assert.Equal("1 snippet", vm.Rows[0].SnippetCountDisplay);
+        Assert.True(vm.Rows[0].CanEdit);
+    }
+
+    [Fact]
+    public void Unfiled_Present_WhenNoFolders_AndFollowsStore()
+    {
+        var vm = Create();
+        Assert.Equal([UiText.Unfiled], vm.Rows.Select(r => r.Name));
+        Assert.True(vm.IsEmpty);
+        Assert.Equal("0 snippets, built in", vm.Rows[0].SnippetCountDisplay);
+
+        var s = _store.SeedSnippet("a");
+        Assert.Equal(1, vm.Rows[0].SnippetCount);
+        Assert.Equal("1 snippet, built in", vm.Rows[0].SnippetCountDisplay);
+
+        _store.DeleteSnippet(s.Id);
+        Assert.Equal(0, vm.Rows[0].SnippetCount);
+    }
+
+    [Fact]
+    public async Task Unfiled_CannotBeRenamedOrDeleted()
+    {
+        _store.SeedFolder("Work");
+        var vm = Create();
+        var unfiled = vm.Rows[^1];
+        _dialogs.ConfirmAnswers.Enqueue(true);
+
+        vm.BeginRename(unfiled);
+        Assert.False(unfiled.IsRenaming);
+        Assert.True(await vm.CommitRenameAsync(unfiled));
+        await vm.DeleteAsync(unfiled);
+
+        Assert.Empty(_dialogs.Confirms);
+        Assert.Single(_store.Folders);
         Assert.Equal(2, vm.Rows.Count);
     }
 
@@ -161,8 +238,9 @@ public sealed class FoldersPageViewModelTests
 
         await vm.DeleteAsync(vm.Rows[0]);
 
-        Assert.Empty(vm.Rows);
+        Assert.Empty(UserRows(vm));
         Assert.Empty(_store.Folders);
+        Assert.Equal(2, vm.Rows[^1].SnippetCount);
         Assert.All(_store.Snippets, v =>
         {
             Assert.Null(v.Snippet.FolderId);
@@ -181,7 +259,7 @@ public sealed class FoldersPageViewModelTests
         await vm.DeleteAsync(vm.Rows[0]);
 
         Assert.Single(_dialogs.Errors);
-        Assert.Single(vm.Rows);
+        Assert.Single(UserRows(vm));
     }
 
     [Fact]
@@ -215,7 +293,7 @@ public sealed class FoldersPageViewModelTests
         _store.RenameFolder(work.Id, "Office");
         _store.SeedFolder("Another");
 
-        Assert.Equal(["Another", "Office"], vm.Rows.Select(r => r.Name));
+        Assert.Equal(["Another", "Office", UiText.Unfiled], vm.Rows.Select(r => r.Name));
         Assert.Same(row, vm.Rows.Single(r => r.Id == work.Id));
     }
 

@@ -25,9 +25,10 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    // Enum order matches the radio item order: System/Light/Dark and Small/Medium/Large/Custom.
+    // Theme radios are Light/Dark/System (the view-model owns that mapping); text sizes follow enum
+    // order Small/Medium/Large/Custom.
     // Instance (not static): x:Bind function bindings call these through the page instance.
-    private int ThemeToIndex(ThemeMode mode) => (int)mode;
+    private int ThemeToIndex(ThemeMode mode) => SettingsViewModel.ThemeToIndex(mode);
 
     private int TextSizeToIndex(TextSizePreset preset) => (int)preset;
 
@@ -44,7 +45,7 @@ public sealed partial class SettingsPage : Page
         var index = ThemeRadios.SelectedIndex;
         if (_viewModel is not null && index >= 0)
         {
-            _viewModel.SelectedTheme = (ThemeMode)index;
+            _viewModel.SelectedTheme = SettingsViewModel.IndexToTheme(index);
         }
     }
 
@@ -65,9 +66,32 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void OnGestureCaptured(object? sender, HotkeyGesture gesture) =>
-        _viewModel?.SetCandidate(gesture);
+    private bool IsError(StatusSeverity severity) => severity == StatusSeverity.Error;
 
-    private void OnRecorderCleared(object? sender, EventArgs e) =>
-        _viewModel?.ClearCandidate();
+    private bool IsNotError(StatusSeverity severity) => severity != StatusSeverity.Error;
+
+    private void OnChangeClick(object sender, RoutedEventArgs e)
+    {
+        KeycapsPanel.Visibility = Visibility.Collapsed;
+        Recorder.Visibility = Visibility.Visible;
+        DispatcherQueue.TryEnqueue(() => Recorder.Focus(FocusState.Programmatic));
+    }
+
+    private void OnGestureCaptured(object? sender, HotkeyGesture gesture)
+    {
+        EndCapture();
+        _viewModel?.SetCandidate(gesture);
+    }
+
+    private void OnRecorderCleared(object? sender, EventArgs e) => EndCapture();
+
+    private void OnRecorderCanceled(object? sender, EventArgs e) => EndCapture();
+
+    private void OnRecorderLostFocus(object sender, RoutedEventArgs e) => EndCapture();
+
+    private void EndCapture()
+    {
+        Recorder.Visibility = Visibility.Collapsed;
+        KeycapsPanel.Visibility = Visibility.Visible;
+    }
 }
