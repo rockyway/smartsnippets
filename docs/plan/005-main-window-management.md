@@ -1,7 +1,7 @@
 # 005 — Main window: snippet and folder management
 
 **Date:** 2026-10-27
-**Status:** Implementation complete — awaiting CI and manual runbook (§7)
+**Status:** Complete — CI green (run #28, `6e75872`); manual runbook (§7) pending on user PC
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/`, `src/SmartSnippets.App/Pages/`, `src/SmartSnippets.App/Controls/`, `tests/SmartSnippets.Presentation.Tests/`
 **Depends on:** 003 (planned store/rules/query API), 004 (planned shell: `MainWindow`, `IGuardedPage`, `IDialogService`, `ITextSizeService`, Presentation project)
