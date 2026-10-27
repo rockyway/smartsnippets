@@ -1,7 +1,7 @@
 # 003 — Core domain and persistence
 
 **Date:** 2026-10-27
-**Status:** Draft — awaiting approval
+**Status:** Approved (2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Core/`, `tests/SmartSnippets.Core.Tests/`
 **Depends on:** 002 (Complete; see [validation report](../research/001-tech-validation-report.md))
@@ -518,4 +518,4 @@ None blocking. These are design calls made in this plan for you to confirm at ap
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2; no new requirement questions |
-| | Plan approved (G2) | |
+| 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |

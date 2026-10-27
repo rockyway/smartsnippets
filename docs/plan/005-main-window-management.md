@@ -1,7 +1,7 @@
 # 005 — Main window: snippet and folder management
 
 **Date:** 2026-10-27
-**Status:** Draft — awaiting approval
+**Status:** Approved (2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/`, `src/SmartSnippets.App/Pages/`, `src/SmartSnippets.App/Controls/`, `tests/SmartSnippets.Presentation.Tests/`
 **Depends on:** 003 (planned store/rules/query API), 004 (planned shell: `MainWindow`, `IGuardedPage`, `IDialogService`, `ITextSizeService`, Presentation project)
@@ -410,4 +410,4 @@ None blocking. These are design calls for you to confirm at approval:
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2 |
-| | Plan approved (G2) | |
+| 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |

@@ -1,7 +1,7 @@
 # 004 — App shell, lifecycle, and settings
 
 **Date:** 2026-10-27
-**Status:** Draft — awaiting approval
+**Status:** Approved (2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.App/`, new `src/SmartSnippets.Presentation/`, new `tests/SmartSnippets.Presentation.Tests/`, `src/SmartSnippets.Core/Settings/`, `.github/workflows/ci.yml`, `SmartSnippets.slnx`
 **Depends on:** 002 (Complete), 003 (planned API: `ISnippetStore`, `AppSettings`, `SettingsRepository`)
@@ -451,4 +451,4 @@ None blocking. These are design calls for you to confirm at approval:
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2 |
-| | Plan approved (G2) | |
+| 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |
