@@ -4,9 +4,16 @@ namespace SmartSnippets.Core.Data;
 
 public sealed class SqliteConnectionFactory
 {
-    public SqliteConnectionFactory(string databasePath)
+    private readonly int? _busyTimeoutSeconds;
+
+    /// <param name="busyTimeout">
+    /// Test hook: how long a locked database is retried before SQLITE_BUSY surfaces, rounded up to whole seconds
+    /// (the driver's command timeout, minimum 1 s). Null keeps the driver default.
+    /// </param>
+    public SqliteConnectionFactory(string databasePath, TimeSpan? busyTimeout = null)
     {
         DatabasePath = databasePath;
+        _busyTimeoutSeconds = busyTimeout is { } timeout ? Math.Max(1, (int)Math.Ceiling(timeout.TotalSeconds)) : null;
     }
 
     public string DatabasePath { get; }
@@ -19,11 +26,17 @@ public sealed class SqliteConnectionFactory
             Directory.CreateDirectory(directory);
         }
 
-        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        var builder = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-        }.ToString());
+        };
+        if (_busyTimeoutSeconds is { } seconds)
+        {
+            builder.DefaultTimeout = seconds;
+        }
+
+        var connection = new SqliteConnection(builder.ToString());
 
         try
         {

@@ -1,7 +1,7 @@
 # 003 — Core domain and persistence
 
 **Date:** 2026-10-27
-**Status:** In progress (approved 2026-10-27)
+**Status:** Complete (2026-10-27)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Core/`, `tests/SmartSnippets.Core.Tests/`
 **Depends on:** 002 (Complete; see [validation report](../research/001-tech-validation-report.md))
@@ -509,9 +509,42 @@ None blocking. These are design calls made in this plan for you to confirm at ap
 5. **The probe table stays until 008.** The 002 plan text said 003 would drop it, but migration 1
    is already in live databases.
 
-## 10. Benchmark results
+## 10. Benchmark results and implementation notes
 
-*(filled in by T7)*
+**Benchmark** (`SearchBenchmarkTests.TenThousandSnippets_WithinBudget`, trait `Category=Benchmark`).
+Machine: Linux container, .NET SDK 10.0.403. Data: 10,000 snippets, seed 20261027, 200–2,000
+character mixed-script texts (Latin, Cyrillic, CJK, Arabic, emoji), 0–5 tags, 50 folders.
+Filter figures are the median and p95 of 50 runs. The 0-hit queries use a term that never
+matches, so every field of every item is scanned (worst case).
+
+| Measurement | Debug | Release |
+|---|---|---|
+| Index build | 15.2 ms | 24.4 ms |
+| `SnippetSort.Apply` (LastUsed, 10k) | 8.6 ms | 13.8 ms |
+| Filter, 1 term, 9,597 hits | median 2.9 / p95 5.0 ms | median 3.5 / p95 7.9 ms |
+| Filter, 3 terms, 9,017 hits | median 14.0 / p95 21.0 ms | median 13.4 / p95 23.0 ms |
+| Filter, 1 term, 0 hits | median 2.9 / p95 3.5 ms | median 2.5 / p95 3.3 ms |
+| Filter, 3 terms, 0 hits | median 4.3 / p95 5.6 ms | median 3.6 / p95 3.8 ms |
+
+Budgets are median Filter ≤ 150 ms and build + sort ≤ 150 ms; both hold with a wide margin
+(build + sort is under 40 ms). Index rebuild per change (R2) is therefore well under the 50 ms
+threshold and incremental patching is not needed. Windows CI numbers are not yet recorded.
+
+**Implementation notes (deviations from the plan text above):**
+- The store's expected-failure code is the existing `ValidationError` enum, not a separate
+  `StoreError`. `StoreResult.Message` is `Error.ToMessage()`.
+- `SnippetRepository.LoadAll` has no folder join. `SnippetStore` joins folder names when it
+  builds the `SnippetView` snapshot. The repository's private tag join/split helpers were
+  replaced by `TagList.ToStorage` / `FromStorage` (same format).
+- `SnippetGrouping.ByFolder(sorted)` takes only the sorted list (folder names come from the
+  views), not a separate folders parameter.
+- `ISettingsStore` was introduced so `AppSettings` can load and save without depending on the
+  repository directly.
+- `StoreChangedEventArgs` carries `Kind`, `Id` and `SnippetIds`. `FolderDeleted` lists the moved
+  snippets in `SnippetIds`.
+- `SqliteConnectionFactory` has an optional `busyTimeout` test hook. The driver retries locked
+  commands for its command timeout, so the hook sets `Default Timeout` (whole seconds, minimum
+  1 s), and the `DbBusy` test takes about 4 s.
 
 ## 11. Approval log
 
@@ -519,3 +552,4 @@ None blocking. These are design calls made in this plan for you to confirm at ap
 |---|---|---|
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2; no new requirement questions |
 | 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |
+| 2026-10-27 | Implementation complete | T1–T8 done; 138 tests pass locally (Linux, Debug), benchmark in §10; CI on both jobs and AOT publish pending on push |

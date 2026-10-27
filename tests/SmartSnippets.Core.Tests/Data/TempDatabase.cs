@@ -7,9 +7,9 @@ internal sealed class TempDatabase : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ss-test-" + Guid.NewGuid().ToString("N"));
 
-    public TempDatabase()
+    public TempDatabase(TimeSpan? busyTimeout = null)
     {
-        Factory = new SqliteConnectionFactory(Path.Combine(_directory, "nested", "test.db"));
+        Factory = new SqliteConnectionFactory(Path.Combine(_directory, "nested", "test.db"), busyTimeout);
     }
 
     public SqliteConnectionFactory Factory { get; }

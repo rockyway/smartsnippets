@@ -69,11 +69,11 @@ public sealed class SnippetRepository
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
         command.Parameters.AddWithValue("$folder", folderId is null ? DBNull.Value : folderId.Value);
-        command.Parameters.AddWithValue("$tags", JoinTags(tags));
+        command.Parameters.AddWithValue("$tags", TagList.ToStorage(tags));
         command.Parameters.AddWithValue("$now", DbTime.ToDb(now));
         var id = (long)command.ExecuteScalar()!;
         var stored = DbTime.FromDb(DbTime.ToDb(now));
-        return new Snippet(id, text, label, isLabelCustom, folderId, SplitTags(JoinTags(tags)), stored, stored, null, 0);
+        return new Snippet(id, text, label, isLabelCustom, folderId, TagList.FromStorage(TagList.ToStorage(tags)), stored, stored, null, 0);
     }
 
     /// <summary>Sets updated_at; never touches created_at, usage_count or last_used_at. False when not found.</summary>
@@ -97,7 +97,7 @@ public sealed class SnippetRepository
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
         command.Parameters.AddWithValue("$folder", folderId is null ? DBNull.Value : folderId.Value);
-        command.Parameters.AddWithValue("$tags", JoinTags(tags));
+        command.Parameters.AddWithValue("$tags", TagList.ToStorage(tags));
         command.Parameters.AddWithValue("$now", DbTime.ToDb(now));
         command.Parameters.AddWithValue("$id", id);
         return command.ExecuteNonQuery() > 0;
@@ -129,14 +129,9 @@ public sealed class SnippetRepository
         reader.GetString(2),
         reader.GetInt64(3) != 0,
         reader.IsDBNull(4) ? null : reader.GetInt64(4),
-        SplitTags(reader.GetString(5)),
+        TagList.FromStorage(reader.GetString(5)),
         DbTime.FromDb(reader.GetInt64(6)),
         DbTime.FromDb(reader.GetInt64(7)),
         reader.IsDBNull(8) ? null : DbTime.FromDb(reader.GetInt64(8)),
         (int)reader.GetInt64(9));
-
-    private static string JoinTags(IEnumerable<string> tags) => string.Join(",", tags);
-
-    private static string[] SplitTags(string stored) =>
-        stored.Split(',', StringSplitOptions.RemoveEmptyEntries);
 }
