@@ -5,6 +5,7 @@ using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Navigation;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
@@ -19,6 +20,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     private readonly ISnippetStore _store;
     private readonly IDialogService _dialogs;
     private readonly IClipboardService? _clipboard;
+    private readonly TimeProvider? _time;
     private int _suppressListSelection;
     private bool _disposed;
 
@@ -27,11 +29,16 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     [NotifyCanExecuteChangedFor(nameof(DeleteSelectedCommand))]
     private SnippetEditorViewModel? _editor;
 
-    public SnippetsPageViewModel(ISnippetStore store, IDialogService dialogs, IClipboardService? clipboard = null)
+    public SnippetsPageViewModel(
+        ISnippetStore store,
+        IDialogService dialogs,
+        IClipboardService? clipboard = null,
+        TimeProvider? time = null)
     {
         _store = store;
         _dialogs = dialogs;
         _clipboard = clipboard;
+        _time = time;
         List = new SnippetListViewModel(store);
         List.PropertyChanged += OnListPropertyChanged;
         List.Rebuilt += OnListRebuilt;
@@ -45,6 +52,9 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
 
     /// <summary>The in-flight handling of the latest list click (for tests and for views that want to await it).</summary>
     public Task PendingSelection { get; private set; } = Task.CompletedTask;
+
+    /// <summary>The in-flight delete started by the editor's Delete button (for tests and views that want to await it).</summary>
+    public Task PendingDelete { get; private set; } = Task.CompletedTask;
 
     /// <summary>
     /// Raised when the list selection was put back after a cancelled or failed switch (argument: the id now selected,
@@ -87,7 +97,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
             return false;
         }
 
-        SetEditor(new SnippetEditorViewModel(_store, _dialogs, id, _clipboard));
+        SetEditor(NewEditorFor(id));
         SyncListToEditor();
         return true;
     }
@@ -100,15 +110,16 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
             return false;
         }
 
-        SetEditor(new SnippetEditorViewModel(_store, _dialogs, null, _clipboard));
+        SetEditor(NewEditorFor(null));
         SetListSelection(null);
         return true;
     }
 
     /// <summary>Deletes the selected snippet after confirming, then selects the next row. False when nothing was deleted.</summary>
-    public async Task<bool> DeleteSelectedAsync()
+    public Task<bool> DeleteSelectedAsync() => DeleteAsync(List.SelectedId ?? Editor?.SnippetId);
+
+    private async Task<bool> DeleteAsync(long? targetId)
     {
-        var targetId = List.SelectedId ?? Editor?.SnippetId;
         if (targetId is not { } id)
         {
             return false;
@@ -128,7 +139,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         }
 
         if (!await _dialogs.ConfirmAsync(
-                "Delete snippet", $"Delete '{view.Snippet.Label}'? This cannot be undone.", "Delete"))
+                UiText.DeleteSnippetTitle(view.Snippet.Label), UiText.DeleteSnippetBody, UiText.DeleteSnippetConfirm))
         {
             return false;
         }
@@ -168,7 +179,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         }
 
         var next = items[Math.Min(index, items.Count - 1)];
-        SetEditor(new SnippetEditorViewModel(_store, _dialogs, next.Id, _clipboard));
+        SetEditor(NewEditorFor(next.Id));
         SetListSelection(next.Id);
         return true;
     }
@@ -189,8 +200,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
             return true;
         }
 
-        var choice = await _dialogs.AskSaveDiscardCancelAsync(
-            "Unsaved changes", "This snippet has unsaved changes. Save them before continuing?");
+        var choice = await _dialogs.AskSaveDiscardCancelAsync(UiText.DiscardTitle, UiText.DiscardBody);
         switch (choice)
         {
             case SaveChoice.Save:
@@ -203,6 +213,8 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         }
     }
 
+    private SnippetEditorViewModel NewEditorFor(long? id) => new(_store, _dialogs, id, _clipboard, _time);
+
     private void SetEditor(SnippetEditorViewModel? editor)
     {
         var old = Editor;
@@ -210,16 +222,38 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         {
             old.Saved -= OnEditorSaved;
             old.Removed -= OnEditorRemoved;
+            old.DeleteRequested -= OnEditorDeleteRequested;
         }
 
         if (editor is not null)
         {
             editor.Saved += OnEditorSaved;
             editor.Removed += OnEditorRemoved;
+            editor.DeleteRequested += OnEditorDeleteRequested;
         }
 
         Editor = editor;
         old?.Dispose();
+    }
+
+    private void OnEditorDeleteRequested(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, Editor) && Editor?.SnippetId is { } id)
+        {
+            PendingDelete = RunDeleteAsync(id);
+        }
+    }
+
+    private async Task RunDeleteAsync(long id)
+    {
+        try
+        {
+            await DeleteAsync(id);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Error("delete_failed", ex);
+        }
     }
 
     private void OnEditorSaved(object? sender, long id)
