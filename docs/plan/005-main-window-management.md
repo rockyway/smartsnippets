@@ -440,6 +440,10 @@ so their buttons are `Click` handlers that read the row from `DataContext`; the 
   points to check there: list-item text size inherited from `ListView.FontSize`, the Esc accelerator versus an open
   ComboBox, and the converters under AOT.
 
+## 10.1 User amendment — compact rows and context actions
+
+The user approved single-line ellipsized labels, muted right-aligned folder/tags and no duplicated snippet-text preview for the main Snippets list. A row context menu is to offer Copy, Insert, Edit and Delete. Text sizing and accessible names must still work. This supersedes older row-description statements; implementation and acceptance are pending.
+
 ## 11. Approval log
 
 | Date | Event | Notes |
@@ -447,3 +451,4 @@ so their buttons are `Click` handlers that read the row from `DataContext`; the 
 | 2026-10-27 | Requirement brief confirmed (G1) | master §2 |
 | 2026-10-27 | Plan approved (G2) | approved together with 003–005 incl. §9 design calls |
 | 2026-10-27 | Implementation complete (views) | T4, T5, T7, T8 done; awaiting CI (AOT publish) and manual runbook §7 |
+| 2026-10-28 | User approved compact-row/context-menu amendment | One label row with folder/tags and Copy / Insert / Edit / Delete; pending implementation and acceptance. |
