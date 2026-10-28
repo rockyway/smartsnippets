@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using SmartSnippets.Core;
 using SmartSnippets.Core.Logging;
+using SmartSnippets.Presentation.Navigation;
 
 namespace SmartSnippets.App;
 
@@ -13,13 +14,16 @@ public static class Program
 
     internal static bool StartInBackground { get; private set; }
 
+    internal static LaunchOptions InitialOptions { get; private set; } = new(null, false, null);
+
     [STAThread]
     private static void Main(string[] args)
     {
         WinRT.ComWrappersSupport.InitializeComWrappers();
         AppLog.Initialize(new AppPaths().LogDirectory);
 
-        StartInBackground = Environment.GetCommandLineArgs().Contains("--background", StringComparer.OrdinalIgnoreCase);
+        StartInBackground = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
+        InitialOptions = LaunchOptions.Parse(args);
 
         WaitForPreviousInstance();
 
@@ -27,7 +31,7 @@ public static class Program
         if (!mainInstance.IsCurrent)
         {
             AppLog.Info("second_instance_redirect");
-            if (!StartInBackground)
+            if (!StartInBackground || InitialOptions.HasRequest)
             {
                 Redirect(mainInstance);
             }

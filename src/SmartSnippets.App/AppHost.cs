@@ -233,11 +233,36 @@ internal sealed class AppHost
         }
 
         // Step 9: second launches reach the existing instance here.
-        AppInstance.GetCurrent().Activated += (_, _) => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Snippets));
-
-        if (!startInBackground)
+        AppInstance.GetCurrent().Activated += (_, activation) =>
         {
+            var launch = activation.Data as Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs;
+            var options = launch is null ? new LaunchOptions(null, false, null) : LaunchOptions.Parse(LaunchOptions.SplitCommandLine(launch.Arguments));
+            _ui!.Post(() =>
+            {
+                if (options.HasRequest) _ = ApplyLaunchOptionsAsync(options, showMain: true);
+                else _mainWindow?.ShowPage(PageKind.Snippets);
+            });
+        };
+
+        if (Program.InitialOptions.HasRequest)
+            _ = ApplyLaunchOptionsAsync(Program.InitialOptions, showMain: !startInBackground);
+        else if (!startInBackground)
             mainWindow.ShowPage(PageKind.Snippets);
+    }
+
+    private async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain)
+    {
+        if (_exiting || _mainWindow is not { } window) return;
+        try
+        {
+            if (options.Page is { } page) await window.ShowPageWithoutActivationAsync(page, showMain);
+            if (options.PreviewPopup && !_exiting)
+                _popup?.ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)), options.PreviewQuery, activate: false);
+        }
+        catch (Exception)
+        {
+            // Do not log the supplied query or exception payload.
+            AppLog.Info("launch_navigation_failed");
         }
     }
 

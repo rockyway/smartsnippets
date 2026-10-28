@@ -59,6 +59,13 @@ public sealed partial class MainWindow : Window
         _ = NavigateGuardedAsync(kind);
     }
 
+    /// <summary>Navigate through the normal unsaved-changes guard without taking foreground.</summary>
+    internal async Task ShowPageWithoutActivationAsync(PageKind kind, bool show)
+    {
+        await NavigateGuardedAsync(kind);
+        if (show) AppWindow.Show(false);
+    }
+
     /// <summary>Shows and activates the window on the page it already displays.</summary>
     public void BringToFront()
     {
