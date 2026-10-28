@@ -1,5 +1,6 @@
 # Clipboard acceptance helpers. These intentionally replace the desktop clipboard; run only in an
 # interactive acceptance session. The caller must restore the user's text in a finally block.
+. (Join-Path $PSScriptRoot 'Safety.ps1')
 if (-not ('VerifyClipboard' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -9,11 +10,21 @@ using System.Security.Cryptography;
 using System.Text;
 
 public static class VerifyClipboard {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateWindowEx(uint ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("user32.dll", SetLastError=true)] static extern bool DestroyWindow(IntPtr window);
     [DllImport("user32.dll", SetLastError=true)] static extern bool OpenClipboard(IntPtr owner);
+    // A message-only STATIC window is owned by this thread. All payloads are eager HGLOBALs,
+    // so the owner can be destroyed after CloseClipboard (no delayed-rendering lifetime).
+    static IntPtr NewOwner() {
+        var owner = CreateWindowEx(0, "STATIC", "SmartSnippets acceptance clipboard", 0, 0, 0, 0, 0, new IntPtr(-3), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        Require(owner != IntPtr.Zero, "Create clipboard owner");
+        return owner;
+    }
     [DllImport("user32.dll", SetLastError=true)] static extern bool CloseClipboard();
     [DllImport("user32.dll", SetLastError=true)] static extern bool EmptyClipboard();
     [DllImport("user32.dll", SetLastError=true)] static extern uint EnumClipboardFormats(uint format);
     [DllImport("user32.dll", SetLastError=true)] static extern IntPtr GetClipboardData(uint format);
+    [DllImport("user32.dll")] static extern bool IsClipboardFormatAvailable(uint format);
     [DllImport("user32.dll", SetLastError=true)] static extern IntPtr SetClipboardData(uint format, IntPtr memory);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern uint RegisterClipboardFormat(string name);
     [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
@@ -35,14 +46,42 @@ public static class VerifyClipboard {
     public static void Install(string sentinel) {
         uint format = RegisterClipboardFormat("SmartSnippets.Acceptance.Unsaveable");
         Require(format != 0, "RegisterClipboardFormat");
+        var owner = NewOwner();
+        try {
+            Require(OpenClipboard(owner), "OpenClipboard");
+            try {
+                Require(EmptyClipboard(), "EmptyClipboard");
+                Put(13, Encoding.Unicode.GetBytes(sentinel + "\0"), Encoding.Unicode.GetByteCount(sentinel + "\0"));
+                Put(format, Encoding.ASCII.GetBytes("SmartSnippets oversized test payload"), 64 * 1024 * 1024 + 4096);
+            } finally { CloseClipboard(); }
+        } finally { DestroyWindow(owner); }
+    }
+    public static string ReadText() {
         Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
         try {
-            Require(EmptyClipboard(), "EmptyClipboard");
-            Put(13, Encoding.Unicode.GetBytes(sentinel + "\0"), Encoding.Unicode.GetByteCount(sentinel + "\0"));
-            Put(format, Encoding.ASCII.GetBytes("SmartSnippets oversized test payload"), 64 * 1024 * 1024 + 4096);
+            if (!IsClipboardFormatAvailable(13)) return null; // successful read, genuinely no Unicode text
+            var h = GetClipboardData(13); Require(h != IntPtr.Zero, "GetClipboardData");
+            ulong size = GlobalSize(h).ToUInt64(); Require(size >= 2 && size <= Int32.MaxValue && size % 2 == 0, "Text size");
+            var p = GlobalLock(h); Require(p != IntPtr.Zero, "GlobalLock");
+            try {
+                byte[] bytes = new byte[(int)size]; Marshal.Copy(p, bytes, 0, bytes.Length);
+                var text = Encoding.Unicode.GetString(bytes);
+                int end = text.IndexOf('\0'); Require(end >= 0, "Text terminator");
+                return text.Substring(0, end);
+            } finally { GlobalUnlock(h); }
         } finally { CloseClipboard(); }
     }
-    public static string Fingerprint() {
+    public static void WriteText(string text) {
+        var owner = NewOwner();
+        try {
+            Require(OpenClipboard(owner), "OpenClipboard");
+            try {
+                Require(EmptyClipboard(), "EmptyClipboard");
+                Put(13, Encoding.Unicode.GetBytes(text + "\0"), Encoding.Unicode.GetByteCount(text + "\0"));
+            } finally { CloseClipboard(); }
+        } finally { DestroyWindow(owner); }
+    }
+    static List<string> ReadEntries() {
         var entries = new List<string>();
         Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
         try {
@@ -58,32 +97,90 @@ public static class VerifyClipboard {
                 } finally { GlobalUnlock(h); }
             }
         } finally { CloseClipboard(); }
-        entries.Sort(StringComparer.Ordinal);
+        return entries;
+    }
+    public static string Fingerprint() {
+        var entries = ReadEntries(); entries.Sort(StringComparer.Ordinal);
         return String.Join("|", entries.ToArray());
     }
+    public static string OrderedFingerprint() { return String.Join("|", ReadEntries().ToArray()); }
     public static void Clear() {
-        Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
-        try { Require(EmptyClipboard(), "EmptyClipboard"); } finally { CloseClipboard(); }
+        var owner = NewOwner();
+        try {
+            Require(OpenClipboard(owner), "OpenClipboard");
+            try { Require(EmptyClipboard(), "EmptyClipboard"); } finally { CloseClipboard(); }
+        } finally { DestroyWindow(owner); }
     }
 }
 '@
 }
-function Save-ClipboardText {
-    $value = Get-Clipboard -Raw -ErrorAction SilentlyContinue
-    return [pscustomobject]@{ HasText = $null -ne $value; Text = $value }
+function Export-ClipboardTextBackup($Saved, [string]$Path) {
+    if (-not (Test-ValidClipboardBackup $Saved)) { throw 'Invalid clipboard backup cannot be serialized' }
+    $cipher=$null
+    try {
+        if ($Saved.HasText -and $Saved.Text.Length -gt 0) {
+            $cipher=[Security.SecureString]::new()
+            foreach ($character in $Saved.Text.ToCharArray()) { $cipher.AppendChar($character) }
+            $cipher.MakeReadOnly()
+        }
+        [pscustomobject]@{ Valid=$true; HasText=$Saved.HasText; NonEmpty=($Saved.HasText -and $Saved.Text.Length -gt 0); Cipher=$cipher } | Export-Clixml -LiteralPath $Path
+    } finally { if ($cipher) { $cipher.Dispose() } }
 }
-function Restore-ClipboardText($Saved) {
-    if ($Saved.HasText) { Set-Clipboard -Value $Saved.Text } else { [VerifyClipboard]::Clear() }
+function Import-ClipboardTextBackup([string]$Path) {
+    $protected=Import-Clixml -LiteralPath $Path
+    if ($protected.Valid -cne $true -or $protected.HasText -isnot [bool] -or $protected.NonEmpty -isnot [bool]) { throw 'Invalid protected clipboard backup' }
+    $text=$null
+    if ($protected.HasText) {
+        $text=''
+        if ($protected.NonEmpty) {
+            if ($protected.Cipher -isnot [Security.SecureString]) { throw 'Invalid protected clipboard text' }
+            $text=([Net.NetworkCredential]::new('', $protected.Cipher)).Password
+        }
+    }
+    [pscustomobject]@{ Valid=$true; HasText=$protected.HasText; Text=$text }
+}
+function Read-ClipboardText([int]$Attempts=50, [int]$DelayMs=100) { Invoke-ClipboardRetry { [VerifyClipboard]::ReadText() } -Attempts $Attempts -DelayMs $DelayMs }
+function Set-ClipboardText([AllowEmptyString()][string]$Text, [int]$Attempts=50, [int]$DelayMs=100) { Invoke-ClipboardRetry { [VerifyClipboard]::WriteText($Text) } -Attempts $Attempts -DelayMs $DelayMs }
+function Save-ClipboardText([int]$Attempts=50, [int]$DelayMs=100) {
+    # Exceptions are not an empty snapshot. Abort before callers mutate anything on read failure.
+    $value = Read-ClipboardText -Attempts $Attempts -DelayMs $DelayMs
+    return [pscustomobject]@{ Valid = $true; HasText = $null -ne $value; Text = $value }
+}
+function Restore-ClipboardText($Saved, [int]$Attempts=50, [int]$DelayMs=100) {
+    if (-not (Test-ValidClipboardBackup $Saved)) { throw 'Invalid clipboard backup; refusing to clear or overwrite the clipboard' }
+    if ($Saved.HasText) { Set-ClipboardText $Saved.Text -Attempts $Attempts -DelayMs $DelayMs } else { Invoke-ClipboardRetry { [VerifyClipboard]::Clear() } -Attempts $Attempts -DelayMs $DelayMs }
 }
 function Set-UnsaveableClipboard([string]$Sentinel = 'SMART-SNIPPETS-CLIPBOARD-SENTINEL') {
-    [VerifyClipboard]::Install($Sentinel)
-    $script:UnsaveableClipboardFingerprint = [VerifyClipboard]::Fingerprint()
+    Invoke-ClipboardRetry { [VerifyClipboard]::Install($Sentinel) }
+    $script:UnsaveableClipboardFingerprint = Invoke-ClipboardRetry { [VerifyClipboard]::Fingerprint() }
+    $entries = $script:UnsaveableClipboardFingerprint -split '\|'
+    $script:SavedUnicodeFingerprint = @($entries | Where-Object { $_ -match '^13:' })[0]
+    $script:OversizedFormatId = @($entries | Where-Object { [long](($_ -split ':')[1]) -gt 64MB } | ForEach-Object { ($_ -split ':')[0] })[0]
+    if (-not $script:SavedUnicodeFingerprint -or -not $script:OversizedFormatId) { throw 'Unsaveable clipboard fixture did not contain expected formats' }
+    # Follow TakeSnapshot's enumeration order and cap. This payload contains HGLOBAL text and
+    # private formats only (no skipped GDI formats). Save every entry before the cap is reached,
+    # not just Unicode, in case Windows enumerates synthesized text ahead of the private format.
+    $script:ExpectedPreservedFormats = @()
+    $bytes = 0L
+    foreach ($entry in ((Invoke-ClipboardRetry { [VerifyClipboard]::OrderedFingerprint() }) -split '\|')) {
+        $size = [long](($entry -split ':')[1])
+        if ($bytes + $size -gt 64MB) { break }
+        $script:ExpectedPreservedFormats += $entry
+        $bytes += $size
+    }
+}
+function Test-UnsaveableClipboardRestored {
+    # Restoration may legitimately add clipboard-history privacy markers and synthesize text.
+    $entries = (Invoke-ClipboardRetry { [VerifyClipboard]::Fingerprint() }) -split '\|'
+    if (@($entries | Where-Object { ($_ -split ':')[0] -eq $script:OversizedFormatId }).Count) { return $false }
+    foreach ($entry in $script:ExpectedPreservedFormats) { if ($entry -cnotin $entries) { return $false } }
+    return $script:ExpectedPreservedFormats.Count -gt 0
 }
 function Test-ClipboardIntact {
     if (-not $script:UnsaveableClipboardFingerprint) { throw 'Call Set-UnsaveableClipboard first' }
-    return [VerifyClipboard]::Fingerprint() -ceq $script:UnsaveableClipboardFingerprint
+    return (Invoke-ClipboardRetry { [VerifyClipboard]::Fingerprint() }) -ceq $script:UnsaveableClipboardFingerprint
 }
 function Clear-UnsaveableClipboard {
-    [VerifyClipboard]::Clear()
+    Invoke-ClipboardRetry { [VerifyClipboard]::Clear() }
     $script:UnsaveableClipboardFingerprint = $null
 }

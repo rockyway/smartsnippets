@@ -16,6 +16,15 @@ public static class Win32Verify {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+    [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr h, ref MonitorInfo info);
+    public static Rect WorkArea(IntPtr window) {
+        var info = new MonitorInfo(); info.Size = Marshal.SizeOf(typeof(MonitorInfo));
+        if (!GetMonitorInfo(MonitorFromWindow(window, 2), ref info)) throw new InvalidOperationException("GetMonitorInfo failed");
+        return info.Work;
+    }
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
@@ -23,20 +32,56 @@ public static class Win32Verify {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
-    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] static extern IntPtr SendMessageTimeoutRaw(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
+    public static IntPtr SendBounded(IntPtr h, uint msg, IntPtr w, IntPtr l) {
+        IntPtr result;
+        if (SendMessageTimeoutRaw(h, msg, w, l, 0x22, 2000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("Native window operation timed out or failed");
+        return result;
+    }
     [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, string l, uint flags, uint timeout, out IntPtr result);
     [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr hMenu);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetMenuString(IntPtr hMenu, uint id, StringBuilder sb, int max, uint flags);
     [DllImport("user32.dll")] public static extern uint GetMenuItemID(IntPtr hMenu, int pos);
     public static string[] MenuItems(IntPtr menuWnd) {
-        IntPtr hm = SendMessage(menuWnd, 0x1E1, IntPtr.Zero, IntPtr.Zero);
+        IntPtr hm = SendBounded(menuWnd, 0x1E1, IntPtr.Zero, IntPtr.Zero);
         if (hm == IntPtr.Zero) return new string[0];
         int n = GetMenuItemCount(hm);
         var r = new System.Collections.Generic.List<string>();
         for (int i = 0; i < n; i++) { var sb = new StringBuilder(256); GetMenuString(hm, (uint)i, sb, 256, 0x400); r.Add(sb.ToString()); }
         return r.ToArray();
+    }
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct GuiThreadInfo { public int Size; public uint Flags; public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret; public Rect CaretRect; }
+    [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    [DllImport("user32.dll")] static extern bool IsChild(IntPtr parent, IntPtr child);
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr window, ref Point point);
+    public static IntPtr PopupKeyboardWindow(IntPtr popup, uint expectedPid) {
+        uint pid; uint thread=GetWindowThreadProcessId(popup, out pid);
+        if (pid != expectedPid || GetForegroundWindow() != popup) throw new InvalidOperationException("Popup is not the verified foreground process");
+        var info=new GuiThreadInfo(); info.Size=Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(thread, ref info) || (info.Focus != popup && !IsChild(popup, info.Focus))) throw new InvalidOperationException("Popup native keyboard focus unavailable");
+        return info.Focus;
+    }
+    public static IntPtr PopupMouseWindow(IntPtr popup, uint expectedPid, ref Point point) {
+        var child=WindowFromPoint(point); uint pid; GetWindowThreadProcessId(child, out pid);
+        if (pid != expectedPid || (child != popup && !IsChild(popup,child)) || !ScreenToClient(child,ref point)) throw new InvalidOperationException("Popup row does not belong to verified input window");
+        return child;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct KeyboardInput { public ushort Vk, Scan; public uint Flags, Time; public UIntPtr Extra; }
+    [StructLayout(LayoutKind.Sequential)] struct MouseInput { public int X, Y; public uint Data, Flags, Time; public UIntPtr Extra; }
+    [StructLayout(LayoutKind.Explicit)] struct InputUnion { [FieldOffset(0)] public KeyboardInput Keyboard; [FieldOffset(0)] public MouseInput Mouse; }
+    [StructLayout(LayoutKind.Sequential)] struct Input { public uint Type; public InputUnion Data; }
+    [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint count, Input[] inputs, int size);
+    public static int KeyboardInputLayoutSize { get { return Marshal.SizeOf(typeof(Input)); } }
+    public static void TypeCharacter(char value) {
+        var down=new Input { Type=1, Data=new InputUnion { Keyboard=new KeyboardInput { Scan=value, Flags=4 } } };
+        var up=new Input { Type=1, Data=new InputUnion { Keyboard=new KeyboardInput { Scan=value, Flags=6 } } };
+        if (SendInput(2, new [] { down,up }, Marshal.SizeOf(typeof(Input))) != 2) throw new InvalidOperationException("Keyboard text input failed");
     }
     public const uint KEYUP = 2;
     public static bool ForceForeground(IntPtr h) {
@@ -67,6 +112,7 @@ $script:AE = [Windows.Automation.AutomationElement]
 $script:TS = [Windows.Automation.TreeScope]
 
 function Get-AppWindows([int]$ProcId) {
+    Update-HarnessProgress
     $c = New-Object Windows.Automation.PropertyCondition($script:AE::ProcessIdProperty, $ProcId)
     @($script:AE::RootElement.FindAll($script:TS::Children, $c))
 }
@@ -74,11 +120,13 @@ function Get-AppWindow([int]$ProcId, [string]$Name) {
     Get-AppWindows $ProcId | Where-Object { $_.Current.Name -eq $Name } | Select-Object -First 1
 }
 function Find-ById($Root, [string]$Id) {
+    Update-HarnessProgress
     if (-not $Root) { return $null }
     $c = New-Object Windows.Automation.PropertyCondition($script:AE::AutomationIdProperty, $Id)
     $Root.FindFirst($script:TS::Descendants, $c)
 }
 function Find-ByName($Root, [string]$Name, $Type = $null) {
+    Update-HarnessProgress
     if (-not $Root) { return $null }
     $c = New-Object Windows.Automation.PropertyCondition($script:AE::NameProperty, $Name)
     if ($Type) {
@@ -88,12 +136,14 @@ function Find-ByName($Root, [string]$Name, $Type = $null) {
     $Root.FindFirst($script:TS::Descendants, $c)
 }
 function Find-All($Root, $Type) {
+    Update-HarnessProgress
     $t = New-Object Windows.Automation.PropertyCondition($script:AE::ControlTypeProperty, $Type)
     @($Root.FindAll($script:TS::Descendants, $t))
 }
 function Wait-Until([scriptblock]$Cond, [int]$TimeoutMs = 5000, [int]$PollMs = 100) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     while ($sw.ElapsedMilliseconds -lt $TimeoutMs) {
+        Update-HarnessProgress
         $r = & $Cond
         if ($r) { return $r }
         Start-Sleep -Milliseconds $PollMs
@@ -101,27 +151,33 @@ function Wait-Until([scriptblock]$Cond, [int]$TimeoutMs = 5000, [int]$PollMs = 1
     return $null
 }
 function Invoke-El($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
     $p.Invoke()
 }
 function Select-El($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
     $p.Select()
 }
 function Set-Text($El, [string]$Text) {
+    Update-HarnessProgress
     # ValuePattern replaces the whole value and keeps CR/LF/spaces exactly.
     $p = $El.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
     $p.SetValue($Text)
 }
 function Get-Text($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
     $p.Current.Value
 }
 function Toggle-El($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $p.Toggle()
 }
 function Get-ToggleState($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $p.Current.ToggleState.ToString()
 }
@@ -139,13 +195,14 @@ $VK = @{ Ctrl=0x11; Shift=0x10; Alt=0x12; Space=0x20; Enter=0x0D; Esc=0x1B; Tab=
 
 function Get-PopupWindow([int]$ProcId) {
     foreach ($window in (Get-AppWindows $ProcId)) {
-        if (Find-ById $window 'PopupSearch') { return $window }
+        if ([Win32Verify]::IsWindowVisible([IntPtr]$window.Current.NativeWindowHandle) -and (Find-ById $window 'PopupSearch')) { return $window }
     }
     return $null
 }
 
 function Get-NotepadText($Window) {
-    foreach ($edit in (Find-All $Window ([Windows.Automation.ControlType]::Edit))) {
+    Assert-OwnedTarget $Window
+    foreach ($edit in @(@(Find-All $Window ([Windows.Automation.ControlType]::Edit)) + @(Find-All $Window ([Windows.Automation.ControlType]::Document)))) {
         $pattern = $null
         if ($edit.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.Value }
         if ($edit.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { return $pattern.DocumentRange.GetText(-1) }

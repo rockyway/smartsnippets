@@ -1,6 +1,6 @@
 # 003 — Release acceptance v1
 
-**Status: PENDING-USER / implementation incomplete. This is not an acceptance sign-off.**
+**Status: harness implementation complete; rc acceptance PENDING-USER. This is not an acceptance sign-off.**
 
 ## Build under test
 
@@ -8,15 +8,15 @@ PENDING-USER: record accepted rc tag, commit, GitHub run, archive filename, SHA-
 
 ## Verify script and master integration
 
-PENDING-USER: after implementation, download the rc zip and `.sha256`; run `powershell -ExecutionPolicy Bypass -File scripts/verify-plans-003-009.ps1 -ArtifactZip <path> -ReportPath docs\research\003-run.md`. The harness validates and extracts `-ArtifactZip` and has preliminary E/F/G and D-lock checks, but E/F/P are incomplete and report explicit failures; do not use an incomplete run for acceptance. Attach the final report. Master §7 #1: E11 plus `PopupViewModelListTests.WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept` and `WhileShown_SnippetAdded_AppearsInSortOrder_SelectionKept`; #2: E12 plus `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept` and D12; #3: F4; #4: C9 and C9.restart; #5: C12.free; #6: B. All integration results are PENDING-USER.
+PENDING-USER: after implementation, download the rc zip and `.sha256`; run `powershell -ExecutionPolicy Bypass -File scripts/verify-plans-003-009.ps1 -ArtifactZip <path> -ReportPath docs\research\003-run.md`. The harness validates/extracts `-ArtifactZip` and implements the complete E/F/G/P and D-lock assertions; see [implementation checklist](008-harness-checklist.md) and [static T0/T15 audit](008-harness-audit.md). These are implementation records, not desktop passes. Attach the final report. Master §7 #1: E11 plus `PopupViewModelListTests.WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept` and `WhileShown_SnippetAdded_AppearsInSortOrder_SelectionKept`; #2: E12 plus `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept` and D12; #3: F4; #4: C9 and C9.restart; #5: C12.free; #6: B. All integration results are PENDING-USER.
 
 ## Performance
 
-PENDING-USER: implement section P first, then run it against the downloaded rc and deterministic 10,000-snippet seed-42 dataset as specified in plan 008 T11. Record CPU, RAM, power plan, scale and build; P1 first open and 20 samples (each ≤300 ms); P2 four queries × two layouts × 20 samples, expected result counts and median ≤150 ms per cell, p95 and max; P3 Core benchmark is diagnostic only. Re-run a failed cell once after closing other apps, preserving both runs. No measurements have been made.
+PENDING-USER: run implemented section P against the downloaded rc and deterministic 10,000-snippet seed-42 dataset as specified in plan 008 T11. Record CPU, RAM, power plan, scale and build; P1 first open and 20 samples (each ≤300 ms); P2 four queries × two layouts × 20 samples, expected result counts and median ≤150 ms per cell, p95 and max; P3 Core benchmark is diagnostic only. Re-run a failed cell once after closing other apps, preserving both runs. No measurements have been made.
 
 ## Compatibility matrix
 
-PENDING-USER: create P-Unicode `Héllo – naïve 👋 世界 Ωμέγα`, P-Multi (three lines, leading tab and trailing spaces), P-Plain `smart-snippets-probe`. For each target copy a sentinel, insert Unicode and multiline, replace a selected word with plain, check `Get-Clipboard` and usage counts, then perform the unsaveable clipboard Cancel/Paste anyway procedure from plan 008 T12 once its helper is implemented. Record actual outcomes; terminal selection replacement is N/A and multiline warnings are noted. Elevated Notepad requires the app unelevated first, then retry after Restart as administrator.
+PENDING-USER: create P-Unicode `Héllo – naïve 👋 世界 Ωμέγα`, P-Multi (three lines, leading tab and trailing spaces), P-Plain `smart-snippets-probe`. For each target copy a sentinel, insert Unicode and multiline, replace a selected word with plain, check `Get-Clipboard` and usage counts, then perform the unsaveable clipboard Cancel/Paste anyway procedure from plan 008 T12 using the implemented `scripts/lib/Clipboard.ps1` helpers (also sourced by Uia.ps1). Record actual outcomes; terminal selection replacement is N/A and multiline warnings are noted. Elevated Notepad requires the app unelevated first, then retry after Restart as administrator.
 
 | Target | Unicode | Multiline | Replacement | Clipboard restored | Usage once | Unsaveable Cancel / Paste | Notes |
 |---|---|---|---|---|---|---|---|
@@ -39,15 +39,26 @@ PENDING-USER: perform R1–R14 exactly as specified in plan 008 §7.1, recording
 
 PENDING-USER: T14 is reserved for the user. Plan 008 §7.2 lists planned evidence, not a completed independent audit.
 
-## Wiring audit (T15, static inspection; incomplete)
+## Wiring audit (T15, static pass; runtime evidence pending)
 
-- Shared `publish-aot.ps1` is called by CI, release and A3. Version flows from tag through workflow outputs to publish properties and release version check; G1 is not implemented.
-- `assets/icons/*.svg` → `scripts/icons/generate_icons.py` → seven checked-in `Assets/*.ico` → csproj content/publish. `ApplicationIcon` embeds the mark; MainWindow uses `AppWindow.SetIcon`. TrayIcon loads and caches theme/state variants at system DPI and falls back to the shared stock icon on load failure. `TaskbarTheme.IsLight` reads the registry at construction, theme broadcast and Explorer restart. Visual, high-contrast, elevated broadcast, published-exe icon and DPI checks remain PENDING-USER.
-- `AppHost.UpdateTrayState` is the only tray state assignment and calls Presentation `TrayStatePolicy`; hotkey status and popup visibility events call it. Named handlers are unsubscribed during resource cleanup.
-- Popup calls the one `IInsertionService` contract; `InsertionService` records usage only for `Inserted`; `SnippetStore` raises `Changed`. `UiText.InsertionMessage` covers the enum including clipboard-loss and uncertain-dispatch outcomes. Relevant tests include `InsertionServiceTests.IncompleteSnapshot_DoesNotEmpty`, `OverCap_NotPreserved_NoEmptyClipboard`, `SendThrows_IsUncertain`, and `PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution`.
-- `popup_ready_ms` and `popup_search_ms` are emitted by PopupWindow; E/P measurement consumers are not implemented. A4 includes 008 and selected insertion/popup events. G4/G5/G6/G6b now consume tray state/theme logs; synthetic G6 relies on `TrayIcon` reevaluating on every `ImmersiveColorSet` broadcast. G10 currently observes only the surviving pre-G profile log plus G's last profile, not every profile from the entire run; privacy coverage is incomplete. Runtime evidence is PENDING-USER.
-- Diagnostics callback, menu item, window and ProbeRepository were removed; prototype-only repository tests were removed while migration tests remain.
-- Clipboard helpers are dot-sourced by `Uia.ps1`, but F9–F11 do not yet consume them. `Save-ClipboardText` preserves text only, as the plan's F section specifies; non-text clipboard data cannot be restored by this helper. P0–P2 and the E/F full checks remain absent; an explicit incomplete failure prevents acceptance of a partial run.
+The [complete T0/T15 trace](008-harness-audit.md) covers every T9–T11 and §7 reference, every changed wiring entity, and every consumed log event. `scripts/lib/LogAudit.ps1` locates source AppLog emitters for all 51 required/consumed events; A4 invokes it and the pure test rejects missing emitters. Fixed the nonexistent `hotkey_register_failed` consumer to `hotkey_startup_failed`. Busy is returned without an insert_result log; F5 consumes the actual popup insertion gate instead.
+
+E/F/P use the actual PopupSearch/PopupList/editor/footer names and UiText wording. E10/P1/P2 consume the real ready/render timing events. G10 aggregates logs before every profile deletion and after P, registering saved snippet text/labels, including earlier E/F profiles. F9–F11 consume the clipboard helpers with finally cleanup; F10 checks every saved pre-cap format hash plus absence of the oversized payload. User clipboard preservation is text-only, as specified.
+
+Published-artifact checks G1–G9 are implemented, not locally claimed to have passed. Runtime appearance of events, theme/icon visuals, UAC and downloaded-rc measurements remain PENDING-USER. No release has been created.
+
+## T13 integration record
+
+| Master §7 | Implemented end-to-end evidence | Live/unit evidence | Runtime result |
+|---|---|---|---|
+| #1 | E11 | WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept; WhileShown_SnippetAdded_AppearsInSortOrder_SelectionKept | PENDING-USER |
+| #2 | E12 and D12.rename/propagate/moved | WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept; WhileShown_FolderDeleted_RowsShowUnfiled | PENDING-USER |
+| #3 | F4.database, F4.main, F4.sort | RecordUsage and popup/main store subscriptions, full Presentation suite | PENDING-USER |
+| #4 | C9.changed/newkey/restart/restore | Hotkey/settings tests | PENDING-USER |
+| #5 | C12.exit/log/free | Hotkey lifetime code | PENDING-USER |
+| #6 | B1–B3 | Core MigratorTests | PENDING-USER |
+
+Local suite counts and pure-logic validation are recorded in the audit document; these do not substitute for the T13 rc run.
 
 ## Observations and insertion notes
 

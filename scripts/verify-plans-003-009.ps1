@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Automated verification for plans 003 (core), 004 (shell/settings), 005 (main window) and 009 (design alignment).
+  Automated acceptance for plans 003-009, including popup, insertion and release performance.
 
 .DESCRIPTION
   Runs, in order:
@@ -8,16 +8,28 @@
     B. database migration scenarios against the published AOT exe (003 runbook)
     C. shell lifecycle, hotkey, tray, settings (004 / 009 runbook)
     D. main-window snippet and folder workflows driven through UI Automation (005 / 009 runbook)
+    E/F. popup and insertion, including clipboard-loss confirmation
+    G/P. release/tray/privacy and seeded 10k end-to-end performance
   Everything that needs a human (UAC prompt, Narrator, light/dark visual review, Explorer restart,
   sign-out) is reported as SKIP with the reason.
 
   The real %LOCALAPPDATA%\SmartSnippets profile is moved aside for the run and restored in `finally`.
-  Requires: Windows PowerShell 5.1, .NET 10 SDK, sqlite3.exe on PATH, an interactive desktop session.
+  Requires: 64-bit Windows PowerShell 5.1 or PowerShell 7, .NET 10 SDK, sqlite3.exe on PATH,
+  an interactive desktop session, and verified classic single-document Notepad.
+  Safety/abort recovery: docs/guides/002-acceptance-harness-safety.md.
+  A supervisor holds an exclusive profile lease and bounds stalled automation; do not invoke
+  the internal worker parameter or assume a hard-aborted run restored the profile automatically.
   Do not touch the keyboard/mouse while it runs (it sends real key presses).
+  E/F back up and restore clipboard TEXT only; non-text clipboard data is replaced by test payloads.
 
 .PARAMETER SkipBuild   Reuse existing .\publish output instead of rebuilding.
-.PARAMETER SkipTests   Skip unit tests and benchmark (sections A1-A3).
+.PARAMETER SkipTests   Skip unit tests and benchmark (A1/A2); does not skip the AOT gate.
+.PARAMETER ArtifactZip Downloaded release zip; validates SHA-256, extracts, implies SkipBuild.
+.PARAMETER PerfLibrary Number of generated performance snippets (default 10000); use -Only P.
+.PARAMETER FlipTaskbarTheme Opt in to changing/restoring the real taskbar theme for G6b.
 .PARAMETER Only        Run only the given sections, e.g. -Only B,D
+.PARAMETER TargetExe   Trusted classic Notepad executable; packaged/tabbed/redirected targets are refused.
+.PARAMETER WatchdogTimeoutSeconds Maximum worker silence (default 600); also bounds blocking UIA/provider calls.
 #>
 param(
     [switch]$SkipBuild,
@@ -25,14 +37,71 @@ param(
     [string[]]$Only = @(),
     [string]$ReportPath = '',
     [string]$ArtifactZip = '',
-    [ValidateRange(1, 1000000)][int]$PerfLibrary = 10000,
-    [switch]$FlipTaskbarTheme
+    [ValidateRange(10, 1000000)][int]$PerfLibrary = 10000,
+    [switch]$FlipTaskbarTheme,
+    [string]$TargetExe = "$env:WINDIR\System32\notepad.exe",
+    [ValidateRange(30, 3600)][int]$WatchdogTimeoutSeconds = 600,
+    [Parameter(DontShow=$true)][string]$HarnessWorkerConfig = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if ([IntPtr]::Size -ne 8) { throw 'Acceptance requires 64-bit PowerShell' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
+. (Join-Path $PSScriptRoot 'lib\Watchdog.ps1')
+$script:HarnessProgressPath = $null
+if (-not $HarnessWorkerConfig) {
+    try { $code = Invoke-HarnessWorker -ScriptPath $PSCommandPath -Arguments $PSBoundParameters -TimeoutSeconds $WatchdogTimeoutSeconds }
+    catch {
+        Write-Warning 'Acceptance supervisor failed; no acceptance success is claimed. Follow the safety/recovery guide before retrying.'
+        if ($ReportPath) { @([pscustomobject]@{ Status='FAIL'; Id='HARNESS.supervisor'; Name='supervisor failed'; Detail='No acceptance verdict; inspect safety/recovery warnings (exception payload withheld)' }) | ConvertTo-Json | Set-Content -LiteralPath $ReportPath -Encoding UTF8 }
+        $code=1
+    }
+    exit $code
+}
+$config = Import-Clixml -LiteralPath $HarnessWorkerConfig
+$supervisor = Get-Process -Id $config.ParentId -ErrorAction Stop
+if ($supervisor.StartTime.ToUniversalTime().Ticks -ne $config.ParentStartTicks) { throw 'Invalid acceptance supervisor identity' }
+# Keep this handle until process exit. An orphaned worker still excludes every new supervisor.
+$script:WorkerLease=[IO.File]::Open($config.WorkerLock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+$script:HarnessProgressPath = $config.Progress
+Update-HarnessProgress
+. (Join-Path $PSScriptRoot 'lib\Safety.ps1')
+. (Join-Path $PSScriptRoot 'lib\OwnedProcesses.ps1')
 . (Join-Path $PSScriptRoot 'lib\Uia.ps1')
+. (Join-Path $PSScriptRoot 'lib\Targets.ps1')
+. (Join-Path $PSScriptRoot 'lib\Perf.ps1')
+. (Join-Path $PSScriptRoot 'lib\PopupHarness.ps1')
+. (Join-Path $PSScriptRoot 'lib\LogAudit.ps1')
+$script:ArchivedLogs = New-Object System.Collections.Generic.List[string]
+$script:PrivacySecrets = New-Object System.Collections.Generic.List[string]
+foreach ($secret in @('smart-snippets-probe','locked-save-probe','ZZ-PRIVACY-MARKER-7431')) { $script:PrivacySecrets.Add($secret) }
+function Register-PrivacyText([string]$Text) {
+    if (-not [string]::IsNullOrWhiteSpace($Text)) {
+        $script:PrivacySecrets.Add($Text)
+        foreach ($line in ($Text -split '\r\n|\r|\n')) { if (-not [string]::IsNullOrWhiteSpace($line)) { $script:PrivacySecrets.Add($line) } }
+    }
+}
+function Archive-Logs {
+    # Capture the surviving library too (including direct editor writes and the perf fixture).
+    # Save-Snippet/Create-Snippet separately register text before it can subsequently be deleted.
+    if (Test-Path $dbPath) {
+        $hasSnippets = & sqlite3 -batch $dbPath "select count(*) from sqlite_master where type='table' and name='snippets';" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot collect privacy fixture (SQLite failed; output withheld)'  }
+        if ($hasSnippets -eq '1') {
+            foreach ($hex in (Sql 'select hex(text) from snippets union select hex(label) from snippets;')) {
+                $bytes = New-Object byte[] ($hex.Length / 2)
+                for ($i=0; $i -lt $bytes.Length; $i++) { $bytes[$i] = [Convert]::ToByte($hex.Substring($i*2,2),16) }
+                Register-PrivacyText ([Text.Encoding]::UTF8.GetString($bytes))
+            }
+        }
+    }
+    if (Test-Path $appRoot) {
+        foreach ($file in (Get-ChildItem (Join-Path $appRoot 'logs') -File -ErrorAction SilentlyContinue)) {
+            foreach ($line in (Get-Content -LiteralPath $file.FullName)) { $script:ArchivedLogs.Add($line) }
+        }
+    }
+}
 
 $exe = Join-Path $root 'publish\SmartSnippets.App.exe'
 $appRoot = Join-Path $env:LOCALAPPDATA 'SmartSnippets'
@@ -49,7 +118,7 @@ if ($ArtifactZip) {
     if ($hashLine -notmatch '^([0-9a-fA-F]{64})\s+\*?([^\r\n]+)$') { throw 'Invalid SHA-256 file' }
     $expectedHash = $Matches[1]; $expectedName = $Matches[2]
     if ($expectedName -cne [IO.Path]::GetFileName($zipPath)) { throw 'Checksum filename does not match archive' }
-    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    $actualHash = Get-HarnessFileHash $zipPath
     if ($actualHash -ine $expectedHash) { throw 'Archive SHA-256 mismatch' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
@@ -69,76 +138,81 @@ if ($ArtifactZip) {
 }
 
 $script:Results = New-Object System.Collections.ArrayList
-$script:Procs = @()
+$script:Procs = New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]'
 $script:HotkeyIds = @()
 
 # ----------------------------------------------------------------- reporting
 function Add-Result($Status, $Id, $Name, $Detail) {
-    [void]$script:Results.Add([pscustomobject]@{ Status = $Status; Id = $Id; Name = $Name; Detail = $Detail })
+    Update-HarnessProgress
+    [void]$script:Results.Add([pscustomobject]@{ RunId=$config.RunId; Status = $Status; Id = $Id; Name = $Name; Detail = $Detail })
     $color = switch ($Status) { 'PASS' { 'Green' } 'FAIL' { 'Red' } 'SKIP' { 'DarkYellow' } 'WARN' { 'Yellow' } default { 'Gray' } }
     $line = ('  [{0}] {1} {2}' -f $Status, $Id, $Name)
     if ($Detail) { $line += "  -- $Detail" }
     Write-Host $line -ForegroundColor $color
 }
-function Check($Id, $Name, $Ok, $Detail = '') { Add-Result $(if ($Ok) { 'PASS' } else { 'FAIL' }) $Id $Name $Detail }
+function Check($Id, $Name, $Ok, $Detail = '') {
+    $classification=Get-PerfEvidenceClassification $Id $PerfLibrary ([bool]$Ok)
+    Add-Result $classification.Status $classification.Id ($classification.Prefix+$Name) $Detail
+}
 function Skip($Id, $Name, $Reason) { Add-Result 'SKIP' $Id $Name $Reason }
 function Warn($Id, $Name, $Detail) { Add-Result 'WARN' $Id $Name $Detail }
-function Section($Title) { Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
+function Section($Title) { Update-HarnessProgress; Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
 function Want($Section) { ($Only.Count -eq 0) -or ($Only -contains $Section) }
 if ($artifactInfo) { Add-Result 'INFO' 'Artifact' 'Downloaded release artifact' $artifactInfo }
 
 # ----------------------------------------------------------------- app + profile helpers
+function Assert-NoForeignApp {
+    $ownedIds = @($script:Procs | Where-Object { -not $_.HasExited } | ForEach-Object { $_.Id })
+    if (@(Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $ownedIds }).Count) {
+        throw 'An unowned Smart Snippets process is running. Exit it yourself; no profile mutation or blanket process termination is permitted.'
+    }
+}
 function Stop-App {
-    Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    $null = Wait-Until { -not (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue) } 5000
-    Start-Sleep -Milliseconds 300
+    foreach ($proc in $script:Procs) { Stop-OwnedProcess $proc }
+    Assert-NoForeignApp
 }
 function Reset-Profile([scriptblock]$Seed = $null) {
     Stop-App
+    Archive-Logs
     if (Test-Path $appRoot) { Remove-Item $appRoot -Recurse -Force }
     New-Item -ItemType Directory -Path $appRoot | Out-Null
     if ($Seed) { & $Seed }
 }
 function Get-LogLines { if (Test-Path $logPath) { @(Get-Content $logPath) } else { @() } }
 function Log-Has([string]$Pattern, [int]$From = 0) {
-    $lines = Get-LogLines
-    if ($lines.Count -le $From) { return $false }
-    [bool]($lines[$From..($lines.Count - 1)] | Where-Object { $_ -match $Pattern })
+    Test-HarnessLogPattern @(Get-LogLines) $Pattern $From
 }
-function Tail([int]$From = 0) { $l = Get-LogLines; if ($l.Count -le $From) { return "(no new log lines)" }; ($l[$From..($l.Count - 1)] | Select-Object -Last 4 | ForEach-Object { ($_ -split " ", 2)[1] }) -join " ; " }
+function Tail([int]$From = 0) { Get-SafeLogSummary @(Get-LogLines) $From }
 function Wait-Log([string]$Pattern, [int]$From = 0, [int]$TimeoutMs = 8000) {
     [bool](Wait-Until { Log-Has $Pattern $From } $TimeoutMs 150)
 }
 function Start-App([string[]]$AppArgs = @(), [switch]$NoWait) {
     $from = (Get-LogLines).Count
-    $p = if ($AppArgs.Count) { Start-Process $exe -ArgumentList $AppArgs -PassThru } else { Start-Process $exe -PassThru }
-    $script:Procs += $p
-    if (-not $NoWait) { $null = Wait-Log 'tray_added|second_instance_redirect|hotkey_register_failed' $from 15000 }
-    Start-Sleep -Milliseconds 600
+    $p = Start-OwnedProcess -Path $exe -ProcessArgs $AppArgs -Owned $script:Procs
+    if (-not $NoWait) { $null = Wait-Log 'tray_added|second_instance_redirect|hotkey_startup_failed' $from 15000 }
+    if (-not $NoWait) { Start-Sleep -Milliseconds 600 }
     return $p
 }
 function Get-Main($Proc) { Get-AppWindow $Proc.Id 'Smart Snippets' }
 function Wait-Main($Proc, [int]$TimeoutMs = 8000) { Wait-Until { Get-Main $Proc } $TimeoutMs 200 }
 function Sql([string]$Query) {
     $out = & sqlite3 -batch $dbPath $Query 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "sqlite3 failed: $out" }
+    if ($LASTEXITCODE -ne 0) { throw 'SQLite operation failed (output withheld)' }
     @($out)
 }
 function HexOf([string]$Text) { -join ([Text.Encoding]::UTF8.GetBytes($Text) | ForEach-Object { $_.ToString('X2') }) }
 function Setting([string]$Key) { (Sql "select value from settings where key='$Key';") -join '' }
 function Restore-Profile {
     Stop-App
-    if (Test-Path $backupRoot) {
-        if (Test-Path $appRoot) { Remove-Item $appRoot -Recurse -Force }
-        Move-Item $backupRoot $appRoot -Force
-    }
+    if (Test-Path $appRoot) { Remove-Item $appRoot -Recurse -Force }
+    if (Test-Path $backupRoot) { Move-Item $backupRoot $appRoot -Force }
 }
 
 # ----------------------------------------------------------------- UI helpers
 function CrashInfo($Proc) {
     $Proc.Refresh()
     $ev = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -eq 'Application Error' -and $_.Message -match 'SmartSnippets' } | Select-Object -First 1
-    $mod = if ($ev) { ($ev.Message -split "`n" | Where-Object { $_ -match 'Faulting module name|Exception code' } | ForEach-Object { $_.Trim() }) -join ' ' } else { 'no WER event' }
+    $mod = if ($ev) { "WER event id=$($ev.Id) (message withheld)" } else { 'no WER event' }
     "exited=$($Proc.HasExited); $mod; log: $(Tail ([Math]::Max(0, (Get-LogLines).Count - 3)))"
 }
 function Nav($Proc, [string]$ItemId) {
@@ -172,6 +246,8 @@ function New-SnippetEditor($Proc) {
 }
 function Save-Snippet($Proc) {
     $w = Get-Main $Proc
+    $textBox = Find-ById $w 'SnippetTextBox'
+    if ($textBox) { Register-PrivacyText (Get-Text $textBox) }
     $b = Wait-Until { Btn (Get-Main $Proc) 'Save snippet' } 3000 150
     if (-not $b) { return $false }
     Invoke-El $b
@@ -179,6 +255,8 @@ function Save-Snippet($Proc) {
     return $true
 }
 function Create-Snippet($Proc, [string]$Text, [string]$Tags = '', [string]$Label = $null) {
+    Register-PrivacyText $Text
+    Register-PrivacyText $Label
     $tb = New-SnippetEditor $Proc
     if (-not $tb) { throw 'editor did not open' }
     $w = Get-Main $Proc
@@ -191,18 +269,6 @@ function Create-Snippet($Proc, [string]$Text, [string]$Tags = '', [string]$Label
 function Press-Hotkey([byte[]]$Keys) {
     [Win32Verify]::Chord($Keys)
 }
-function Start-Target {
-    $np = Start-Process notepad.exe -PassThru
-    Start-Sleep -Milliseconds 1800
-    $el = Wait-Until {
-        $c = New-Object Windows.Automation.PropertyCondition($script:AE::ClassNameProperty, 'Notepad')
-        $script:AE::RootElement.FindFirst($script:TS::Children, $c)
-    } 6000 200
-    if ($el) { $null = Set-Foreground $el }
-    Start-Sleep -Milliseconds 500
-    return $el
-}
-function Stop-Target { Get-Process -Name notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
 function Confirm-Dialog($Proc, [string]$ButtonName) {
     $b = Wait-Until { Btn (Get-Main $Proc) $ButtonName } 3000 150
     if (-not $b) { return $false }
@@ -218,12 +284,14 @@ Write-Host ' Verification: plans 003 / 004 / 005 / 009' -ForegroundColor Cyan
 Write-Host '====================================================' -ForegroundColor Cyan
 
 if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) { throw 'sqlite3.exe is required on PATH' }
-if (Test-Path $backupRoot) { throw "Leftover profile backup at $backupRoot from an earlier aborted run. Restore it manually (move it back to $appRoot) and re-run." }
+if (Test-Path $backupRoot) { throw 'Leftover original profile backup. Do not merge it into an existing test profile; follow docs/guides/002-acceptance-harness-safety.md before rerunning.' }
 
 Stop-App
-if (Test-Path $appRoot) { Move-Item $appRoot $backupRoot -Force }
-
+$profileIsolated=$false
+$hadOriginalProfile=Test-Path -LiteralPath $appRoot
 try {
+if ($hadOriginalProfile) { Move-Item -LiteralPath $appRoot -Destination $backupRoot -ErrorAction Stop }
+$profileIsolated=$true
 
 # ================================================================= A. build + static
 if (Want 'A') {
@@ -236,7 +304,7 @@ if (Want 'A') {
             Check "A1.$proj" "$proj unit tests" ($m.Success -and $m.Groups[1].Value -eq 'Passed' -and [int]$m.Groups[2].Value -eq 0) $m.Value
         }
         $out = & dotnet test tests/SmartSnippets.Core.Tests -c Release --filter 'Category=Benchmark' --nologo 2>&1 | Out-String
-        Check 'A2' '10k-snippet search benchmark (003, AC13 indicative)' ($out -match 'Passed:\s+1') ''
+        Add-Result 'INFO' 'A2' '10k Core benchmark (diagnostic only; AC13 decided by P1/P2)' $out
     }
 
     if (-not $SkipBuild) {
@@ -256,10 +324,9 @@ if (Want 'A') {
     Check 'A4.binding' 'no reflection {Binding} in XAML (x:Bind only)' (-not $bindings) (($bindings | Select-Object -First 3 | ForEach-Object { $_.Path | Split-Path -Leaf }) -join ',')
     $pres = Get-Content src\SmartSnippets.Presentation\SmartSnippets.Presentation.csproj -Raw
     Check 'A4.layering' 'Presentation has no WinUI/Windows target' (($pres -notmatch 'UseWinUI') -and ($pres -notmatch 'windows10'))
-    $keyevents = 'store_loaded', 'settings_loaded', 'hotkey_registered', 'hotkey_changed', 'theme_applied', 'tray_readded', 'restart_elevated_started', 'exit_unregistered', 'migration_backup', 'snippet_saved', 'snippet_deleted', 'folder_created', 'folder_renamed', 'folder_deleted', 'app_started', 'tray_icon', 'tray_icon_load_failed', 'tray_theme_changed', 'popup_ready_ms', 'popup_search_ms', 'insert_result', 'clipboard_swap', 'clipboard_restore'
-    $src = (Get-ChildItem src -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Get-Content -Raw) -join "`n"
-    $missing = $keyevents | Where-Object { $src -notmatch ('"' + $_ + '"') }
-    Check 'A4.logevents' 'all runbook log events exist in code' (-not $missing) ($missing -join ',')
+    $audit = @(Get-HarnessLogAudit $root)
+    $missing = @($audit | Where-Object { -not $_.Emitted } | ForEach-Object { $_.Event })
+    Check 'A4.logevents' 'every consumed runbook event has an AppLog emitter' ($missing.Count -eq 0) "audited=$($audit.Count); missing=$($missing -join ',')"
 }
 
 if (-not (Test-Path $exe)) { throw "publish\SmartSnippets.App.exe not found; run without -SkipBuild" }
@@ -340,8 +407,9 @@ if (Want 'C') {
         Stop-App
     }
 }
-if ((Want 'C') -and ((Get-Process -Name SmartSnippets.App -ErrorAction SilentlyContinue))) {
-    $p = Get-Process -Name SmartSnippets.App | Select-Object -First 1
+if ((Want 'C') -and @($script:Procs | Where-Object { -not $_.HasExited }).Count) {
+    Assert-NoForeignApp
+    $p = $script:Procs | Where-Object { -not $_.HasExited } | Select-Object -First 1
 
     # hotkey -> popup (needs a foreign foreground window)
     $target = Start-Target
@@ -349,14 +417,14 @@ if ((Want 'C') -and ((Get-Process -Name SmartSnippets.App -ErrorAction SilentlyC
         $from = (Get-LogLines).Count
         Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
         $ok = Wait-Log 'popup_ready_ms' $from 4000
-        $ms = ''
-        if ($ok) { $ms = ((Get-LogLines)[$from..((Get-LogLines).Count - 1)] | Where-Object { $_ -match 'popup_ready_ms (\d+)' } | Select-Object -First 1) -replace '.*popup_ready_ms ', '' }
+        $ms = $null
+        if ($ok) { $ms = ConvertFrom-PopupReadyLog @(Get-LogLines | Select-Object -Skip $from) }
         Check 'C3.popup' 'Ctrl+Shift+Space opens the popup over another app' $ok "popup_ready_ms=$ms"
-        if ($ms) { Check 'C3.latency' 'popup ready within 300 ms (AC13)' ([int]$ms -le 300) "$ms ms" }
+        if ($null -ne $ms) { Check 'C3.latency' 'popup ready within 300 ms (AC13)' ([int]$ms -le 300) "$ms ms" }
         Send-Chord @([byte]$VK.Esc)
         Start-Sleep -Milliseconds 400
     }
-    else { Skip 'C3' 'hotkey opens popup' 'could not start/focus Notepad as target' }
+    else { Check 'C3' 'hotkey opens popup' $false 'could not start/focus Notepad as target' }
 
     # close with X hides, hotkey stays alive, one-time hint recorded
     $w = Get-Main $p
@@ -377,9 +445,9 @@ if ((Want 'C') -and ((Get-Process -Name SmartSnippets.App -ErrorAction SilentlyC
 
     # second launch shows the hidden window, still one process
     $from = (Get-LogLines).Count
-    $second = Start-Process $exe -PassThru
-    $null = $second.WaitForExit(10000)
-    Check 'C5.exit' 'second instance exits' $second.HasExited
+    $second = Start-App -NoWait
+    $secondExited = Wait-OwnedSecondLaunch $second
+    Check 'C5.exit' 'second instance exits' $secondExited
     Check 'C5.window' 'existing instance shows its main window again' ([bool](Wait-Main $p 6000))
     Check 'C5.single' 'only one SmartSnippets process remains' (@(Get-Process -Name SmartSnippets.App).Count -eq 1)
     Stop-Target
@@ -423,16 +491,17 @@ if (Want 'C') {
     Check 'C6.clamp' 'custom text size is clamped to 10-32' ([double]$after -le 32 -and [double]$after -ge 10) "stored=$after"
 
     # startup toggle (HKCU Run)
-    $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-    $had = (Get-ItemProperty $runKey -Name SmartSnippets -ErrorAction SilentlyContinue)
-    $toggle = Find-ById $w 'StartupToggle'
-    $state = Get-ToggleState $toggle
-    if ($state -eq 'Off') { Toggle-El $toggle; Start-Sleep -Milliseconds 800 }
-    $val = (Get-ItemProperty $runKey -Name SmartSnippets -ErrorAction SilentlyContinue).SmartSnippets
-    Check 'C7.on' 'Start at login ON writes HKCU Run value with --background' ($val -and $val -match '--background' -and $val -match 'SmartSnippets.App.exe') $val
-    Toggle-El $toggle; Start-Sleep -Milliseconds 800
-    Check 'C7.off' 'Start at login OFF removes the Run value' (-not (Get-ItemProperty $runKey -Name SmartSnippets -ErrorAction SilentlyContinue))
-    if ($had) { Set-ItemProperty $runKey -Name SmartSnippets -Value $had.SmartSnippets }
+    $runKey = 'Software\Microsoft\Windows\CurrentVersion\Run'
+    $runOriginal=Save-HarnessRegistryOriginal $config.RegistryJournal $config.RunId $runKey 'SmartSnippets'
+    try {
+        $toggle = Find-ById $w 'StartupToggle'
+        $state = Get-ToggleState $toggle
+        if ($state -eq 'Off') { Toggle-El $toggle; Start-Sleep -Milliseconds 800 }
+        $val = (Read-HarnessRegistryValue $runKey 'SmartSnippets').Value
+        Check 'C7.on' 'Start at login ON writes HKCU Run value with --background' ($val -and $val -match '--background' -and $val -match 'SmartSnippets.App.exe') 'registry payload withheld'
+        Toggle-El $toggle; Start-Sleep -Milliseconds 800
+        Check 'C7.off' 'Start at login OFF removes the Run value' (-not (Read-HarnessRegistryValue $runKey 'SmartSnippets').Exists)
+    } finally { Restore-HarnessRegistryValue $runOriginal }
 
     # persistence over restart
     Stop-App
@@ -506,7 +575,7 @@ if (Want 'C') {
         [void][Win32Verify]::PostMessage($hwndMsg, $msgId, [IntPtr]::Zero, [IntPtr]::Zero)
         Check 'C10.taskbar' 'TaskbarCreated message makes the tray re-add the icon (tray_readded / tray_add attempt)' (Wait-Log 'tray_readded|tray_added|tray_add_failed' $from 4000) (Tail $from)
     }
-    else { Skip 'C10.taskbar' 'tray re-add' 'message window not found' }
+    else { Check 'C10.taskbar' 'tray re-add' $false 'message window not found' }
 
     # tray menu: open it through the tray callback (right-button-up) and read the real Win32 menu
     $WM_TRAY = 0x8001; $WM_RBUTTONUP = 0x0205
@@ -516,7 +585,7 @@ if (Want 'C') {
         $menuItems = @()
         if ($menuWnd) { $menuItems = @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) }
         $joined = $menuItems -join ' | '
-        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Exit, no Diagnostics' (($menuItems.Count -eq 5) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -notmatch 'Diagnostics') -and ($joined -match 'Exit')) $joined
+        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Exit, no Diagnostics' (($menuItems.Count -eq 5) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -notmatch 'Diagnostics') -and ($joined -match 'Exit')) "menu items=$($menuItems.Count); menu text withheld"
         Check 'C11.order' 'order: Open, Show popup, Settings first (design) then Restart, Exit last' (($menuItems.Count -gt 0) -and ($menuItems[0] -match 'Open') -and ($menuItems[1] -match 'Show popup') -and ($menuItems[2] -match 'Settings') -and ($menuItems[-1] -match 'Exit')) ''
         Check 'C11.accel' 'Show popup row shows the live hotkey text' ($joined -match 'Show popup\tCtrl\+Shift\+Space') ''
 
@@ -539,7 +608,7 @@ if (Want 'C') {
     $p = Start-App
     $null = Wait-Main $p
     Check 'C13.keeps' 'startup with hotkey taken: app keeps running' ($held -and -not $p.HasExited)
-    Check 'C13.log' 'hotkey_startup_failed / hotkey_register_failed logged' ((Log-Has 'hotkey_startup_failed') -or (Log-Has 'hotkey_register_failed'))
+    Check 'C13.log' 'hotkey_startup_failed logged' (Log-Has 'hotkey_startup_failed')
     Nav $p 'SettingsItem'
     $w = Get-Main $p
     $text = (Find-All $w ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name }) -join '|'
@@ -728,7 +797,7 @@ if (Want 'D') {
         Press (Get-Main $p) 'Discard changes'
         Start-Sleep -Milliseconds 500
     }
-    else { Skip 'D11' 'unsaved-changes guard' 'needs at least two snippets' }
+    else { Check 'D11' 'unsaved-changes guard' $false 'fixture must have at least two snippets' }
 
     # D12 folders: rename and delete moves snippets to Unfiled
     Nav $p 'FoldersItem'
@@ -756,7 +825,7 @@ if (Want 'D') {
             Check 'D12.propagate' 'rename is reflected in the Snippets page immediately' (($texts -match 'Customers') -and -not ($texts -cmatch '(^|[|])Clients(,|[|]|$)')) (($texts -split '[|]' | Where-Object { $_ -match 'Cust|Clie' }) -join ' ; ')
             Nav $p 'FoldersItem'
         }
-        else { Skip 'D12.rename' 'rename editing' 'rename edit box not found in UI tree' }
+        else { Check 'D12.rename' 'rename editing' $false 'rename edit box not found in UI tree' }
     }
     $moved = ((Sql "select count(*) from snippets where folder_id is not null;") -join '')
     $deleteBtn = @(Find-All (Get-Main $p) ([Windows.Automation.ControlType]::Button)) | Where-Object { $_.Current.Name -match 'Delete' } | Select-Object -First 1
@@ -782,7 +851,7 @@ if (Want 'D') {
     $w = Get-Main $p
     $listItems = @(Find-All $w ([Windows.Automation.ControlType]::ListItem) | ForEach-Object { $_.Current.Name }) | Where-Object { $_ }
     $bad = @($listItems | Where-Object { $_ -match 'ViewModel' })
-    Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) (($bad | Select-Object -First 2) -join ' ; ')
+    Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) "offending items=$($bad.Count); accessible names withheld"
 
     # Keep the sqlite process alive with its transaction open while the UI attempts a write.
     $lockMarker = Join-Path ([IO.Path]::GetTempPath()) ("ss-lock-" + [guid]::NewGuid() + '.txt')
@@ -816,7 +885,7 @@ if (Want 'D') {
         if ($retry) { Invoke-El $retry }
         Check 'D-lock.retry' 'retry saves after lock release' ([bool](Wait-Until { ((Sql "select count(*) from snippets where text='locked-save-probe';") -join '') -eq '1' } 10000 150))
     } finally {
-        if ($locker -and -not $locker.HasExited) { $locker.Kill(); $locker.WaitForExit() }
+        if ($locker -and -not $locker.HasExited) { $locker.Kill(); if (-not $locker.WaitForExit(5000)) { throw 'Owned SQLite locker did not exit' } }
         if ($locker) { $locker.Dispose() }
         Remove-Item $lockMarker -Force -ErrorAction SilentlyContinue
     }
@@ -828,88 +897,21 @@ if (Want 'D') {
     Stop-App
 }
 
-if (Want 'E') {
-    Section 'E. Popup basic verification (incomplete)'
-    Reset-Profile
-    $p = Start-App
-    if (-not (Wait-Main $p)) { throw 'E requires the main window' }
-    if (-not (Create-Snippet $p 'popup alpha bravo probe')) { throw 'E could not create first test snippet' }
-    if (-not (Create-Snippet $p 'popup alpha charlie probe')) { throw 'E could not create second test snippet' }
-    $target = Start-Target
-    if (-not $target) { throw 'E requires Notepad' }
-    $initialText = Get-NotepadText $target
-    $beforeUsage = (Sql 'select coalesce(sum(usage_count), 0) from snippets;') -join ''
-    $null = Set-Foreground $target
-    Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
-    $popup = Wait-Until { Get-PopupWindow $p.Id } 5000 100
-    if (-not $popup) { throw 'E popup did not appear' }
-    $search = Find-ById $popup 'PopupSearch'
-    Check 'E1.visible' 'popup opens and search is focused' ([bool]$popup -and [bool]$search -and $search.Current.HasKeyboardFocus)
-    Set-Text $search 'alpha bravo'
-    $from = (Get-LogLines).Count
-    $count = Wait-Until { $c = Find-ById (Get-PopupWindow $p.Id) 'PopupCount'; if ($c -and $c.Current.Name -match '^1 of 2') { $c.Current.Name } } 5000 100
-    Check 'E2.and' 'two search terms are ANDed' ([bool]$count) "$count"
-    Set-Text $search 'zzqxv'
-    $empty = Wait-Until { Find-ByName (Get-PopupWindow $p.Id) 'No snippets match' } 5000 100
-    Check 'E2.empty' 'unmatched search shows empty state' ([bool]$empty)
-    foreach ($pair in @(@('PopupLayoutButton','Toggle layout'), @('PopupSortButton','Sort'), @('PopupAddButton','Add snippet'), @('PopupOpenMainButton','Open main window'))) {
-        $button = Find-ById (Get-PopupWindow $p.Id) $pair[0]
-        Check "E6.$($pair[0])" 'toolbar button has expected accessible name and tooltip' ([bool]$button -and $button.Current.Name -eq $pair[1] -and -not [string]::IsNullOrWhiteSpace($button.Current.HelpText))
-    }
-    Send-Chord @([byte]$VK.Esc)
-    $closed = Wait-Until { -not (Get-PopupWindow $p.Id) } 5000 100
-    $afterUsage = (Sql 'select coalesce(sum(usage_count), 0) from snippets;') -join ''
-    Check 'E4' 'Escape closes without insertion or usage' ([bool]$closed -and $initialText -ceq (Get-NotepadText $target) -and $beforeUsage -eq $afterUsage)
-    Stop-Target
-    Stop-App
-}
+if (Want 'E') { . (Join-Path $PSScriptRoot 'lib\PopupSection.ps1') }
 
-if (Want 'F') {
-    Section 'F. Insertion basic verification (incomplete)'
-    $savedClipboard = Save-ClipboardText
-    try {
-        Reset-Profile
-        $p = Start-App
-        if (-not (Wait-Main $p)) { throw 'F requires the main window' }
-        $probe = "Héllo – naïve 👋 世界`r`n`tline 2  `r`nline 3"
-        if (-not (Create-Snippet $p $probe)) { throw 'F could not create Unicode probe' }
-        $target = Start-Target
-        if (-not $target) { throw 'F requires Notepad' }
-        Set-Clipboard -Value 'SMART-SNIPPETS-CLIPBOARD-SENTINEL'
-        $before = (Sql 'select usage_count from snippets order by id desc limit 1;') -join ''
-        $null = Set-Foreground $target
-        Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
-        $popup = Wait-Until { Get-PopupWindow $p.Id } 5000 100
-        if (-not $popup) { throw 'F popup did not appear' }
-        $from = (Get-LogLines).Count
-        Send-Chord @([byte]$VK.Enter)
-        $inserted = Wait-Log 'insert_result outcome=Inserted' $from 10000
-        $text = Wait-Until { $s = Get-NotepadText $target; if ($s) { $s } } 10000 100
-        Check 'F1' 'Unicode and multiline probe inserted with CRLF' ($inserted -and $text -ceq $probe) "actual UTF-16 length=$($text.Length) expected=$($probe.Length)"
-        $restored = Wait-Until { (Get-Clipboard -Raw -ErrorAction SilentlyContinue) -ceq 'SMART-SNIPPETS-CLIPBOARD-SENTINEL' } 10000 150
-        Check 'F3' 'clipboard sentinel restored' ([bool]$restored)
-        $usage = (Sql 'select usage_count, last_used_at is not null from snippets order by id desc limit 1;') -join ''
-        Check 'F4.database' 'usage increments exactly once and last-used is set' ($usage -eq "$([int]$before + 1)|1") $usage
-        Add-Result 'INFO' 'F12' 'N/A — uncertain dispatch is unit-tested' 'InsertionServiceTests.FailedDispatch_OnlyUncertainReleasesAndWaits and SendThrows_IsUncertain; PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution'
-        Skip 'F8' 'elevated target' 'requires user UAC acceptance; see compatibility matrix'
-    } finally {
-        Stop-Target
-        Stop-App
-        Restore-ClipboardText $savedClipboard
-    }
-}
+if (Want 'F') { . (Join-Path $PSScriptRoot 'lib\InsertionSection.ps1') }
 
 # Release checks.
 if (Want 'G') {
     Section 'G. Release artifact and icon structure'
-    $priorLogText = (Get-LogLines) -join "`n"
     $info = (Get-Item $exe).VersionInfo
     if ($ArtifactZip -and [IO.Path]::GetFileName($ArtifactZip) -match '^SmartSnippets-win-x64-(.+)\.zip$') {
         $expectedVersion = $Matches[1]
         $numericVersion = ($expectedVersion -split '-', 2)[0]
         $validFileVersion = $info.FileVersion -match ('^' + [regex]::Escape($numericVersion) + '\.\d+$')
-        Check 'G1' 'ProductVersion and FileVersion match release archive' ($info.ProductVersion.StartsWith($expectedVersion) -and $validFileVersion) "ProductVersion=$($info.ProductVersion); FileVersion=$($info.FileVersion)"
-    } else { Skip 'G1' 'release version' 'requires -ArtifactZip named SmartSnippets-win-x64-<version>.zip' }
+        Check 'G1' 'ProductVersion and FileVersion match release archive' (($info.ProductVersion -split '\+')[0] -eq $expectedVersion -and $validFileVersion) "ProductVersion=$($info.ProductVersion); FileVersion=$($info.FileVersion)"
+    } elseif ($ArtifactZip) { Check 'G1' 'release version' $false 'ArtifactZip must be named SmartSnippets-win-x64-<version>.zip' }
+    else { Skip 'G1' 'release version' 'requires -ArtifactZip named SmartSnippets-win-x64-<version>.zip' }
     function Get-IcoFrameCount([string]$Path) {
         if (-not (Test-Path $Path -PathType Leaf)) { return 0 }
         $bytes = [IO.File]::ReadAllBytes($Path)
@@ -982,24 +984,21 @@ if (Want 'G') {
     $messageData = [Runtime.InteropServices.Marshal]::StringToHGlobalUni('ImmersiveColorSet')
     try {
         $from = (Get-LogLines).Count
-        [void][Win32Verify]::SendMessage($hwndMsg, 0x001A, [IntPtr]::Zero, $messageData)
+        [Win32Verify]::SendBounded($hwndMsg, 0x001A, [IntPtr]::Zero, $messageData)
         Check 'G6' 'theme broadcast re-evaluates icon without a crash' ((Wait-Log 'tray_icon state=' $from 5000) -and -not $p.HasExited) (Tail $from)
     } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($messageData) }
     if ($FlipTaskbarTheme) {
-        $keyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-        $key = Get-Item $keyPath
-        $names = @($key.GetValueNames())
-        $existed = $names -contains 'SystemUsesLightTheme'
-        $old = $key.GetValue('SystemUsesLightTheme', 0)
+        $keyPath = 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        $themeOriginal=Save-HarnessRegistryOriginal $config.RegistryJournal $config.RunId $keyPath 'SystemUsesLightTheme'
+        $old=if ($themeOriginal.Exists) { $themeOriginal.Value } else { 0 }
         try {
             $from = (Get-LogLines).Count
-            New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $(if ($old -eq 1) { 0 } else { 1 }) -Force | Out-Null
+            Restore-HarnessRegistryValue ([pscustomobject]@{ Key=$keyPath; Name='SystemUsesLightTheme'; Exists=$true; Kind='DWord'; Value=$(if ($old -eq 1) { 0 } else { 1 }) })
             $result = [IntPtr]::Zero
             [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
             Check 'G6b' 'taskbar theme flip triggers tray_theme_changed' (Wait-Log 'tray_theme_changed' $from 5000) (Tail $from)
         } finally {
-            if ($existed) { New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $old -Force | Out-Null }
-            else { Remove-ItemProperty $keyPath -Name SystemUsesLightTheme -ErrorAction SilentlyContinue }
+            Restore-HarnessRegistryValue $themeOriginal
             $result = [IntPtr]::Zero
             [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
         }
@@ -1008,39 +1007,40 @@ if (Want 'G') {
     $menuWnd = Wait-Until { $m = [Win32Verify]::FindWindowW('#32768', $null); if ($m -ne [IntPtr]::Zero) { $m } } 3000 150
     $menuItems = if ($menuWnd) { @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) } else { @() }
     $joined = $menuItems -join ' | '
-    Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') $joined
+    Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') "menu items=$($menuItems.Count); menu text withheld"
     Send-Chord @([byte]$VK.Esc)
     Stop-App
-    $allLogText = $priorLogText + "`n" + ((Get-LogLines) -join "`n")
-    Check 'G10' 'log excludes known acceptance snippet text' (-not ($allLogText -match 'smart-snippets-probe|locked-save-probe|ZZ-PRIVACY-MARKER-7431'))
     $gateDir = Join-Path ([IO.Path]::GetTempPath()) ('ss-fake-aot-' + [guid]::NewGuid())
     try {
         New-Item -ItemType Directory -Path $gateDir | Out-Null
         [IO.File]::WriteAllText((Join-Path $gateDir 'SmartSnippets.App.dll'), 'not a real assembly')
         $shell = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
         $gateOutput = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output $gateDir 2>&1 | Out-String
-        Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') $gateOutput
+        Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') "exit=$LASTEXITCODE; gate output withheld"
     } finally {
         Remove-Item $gateDir -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item "$gateDir.log" -Force -ErrorAction SilentlyContinue
     }
 }
-if (Want 'P') {
-    Section 'P. Performance diagnostic'
-    if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-        $benchmark = & dotnet test tests/SmartSnippets.Core.Tests -c Release --filter 'Category=Benchmark' --logger 'console;verbosity=detailed' 2>&1 | Out-String
-        Add-Result 'INFO' 'P3' 'Core benchmark (diagnostic only; does not decide AC13)' $benchmark
-    } else { Add-Result 'INFO' 'P3' 'Core benchmark' 'SDK unavailable; diagnostic not run' }
-}
-foreach ($section in 'E', 'F', 'P') {
-    if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
-}
+if (Want 'P') { . (Join-Path $PSScriptRoot 'lib\PerformanceSection.ps1') }
 
 }
+catch { Add-Result 'FAIL' 'HARNESS' 'acceptance aborted; remaining checks not executed' "error type=$($_.Exception.GetType().Name); exception payload withheld" }
 finally {
     foreach ($id in $script:HotkeyIds) { [void][Win32Verify]::UnregisterHotKey([IntPtr]::Zero, $id) }
-    Stop-Target
-    Restore-Profile
+    try {
+        if ($profileIsolated) {
+        Stop-Target
+        Stop-App
+        Archive-Logs
+        if (Want 'G') { Check 'G10' 'whole-run logs exclude acceptance snippet text and disposable target titles' ($script:ArchivedLogs.Count -gt 0 -and (Test-LogPrivacy $script:ArchivedLogs.ToArray() $script:PrivacySecrets.ToArray())) "archived lines=$($script:ArchivedLogs.Count) secrets=$($script:PrivacySecrets.Count)" }
+        }
+    } catch { Add-Result 'FAIL' 'HARNESS.cleanup' 'final evidence collection failed' "error type=$($_.Exception.GetType().Name); exception payload withheld" }
+    finally {
+        $action=Get-ProfileCleanupAction $profileIsolated $hadOriginalProfile (Test-Path -LiteralPath $backupRoot) (Test-Path -LiteralPath $appRoot)
+        if ($action -eq 'RestoreIsolated') { Restore-Profile }
+        elseif ($action -eq 'MoveBackupBackOnly') { Move-Item -LiteralPath $backupRoot -Destination $appRoot -ErrorAction Stop }
+    }
 }
 
 # ================================================================= summary
@@ -1056,4 +1056,6 @@ if ($fail) {
 }
 Write-Host '====================================================' -ForegroundColor Cyan
 if ($ReportPath) { $script:Results | ConvertTo-Json -Depth 3 | Set-Content $ReportPath -Encoding UTF8 }
-exit $(if ($fail) { 1 } else { 0 })
+$exitCode=if ($fail) { 1 } else { 0 }
+Complete-HarnessWorker $config $exitCode
+exit $exitCode
