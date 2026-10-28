@@ -20,24 +20,28 @@
 
         <TextBlock Grid.Row="0" Style="{ThemeResource TitleTextBlockStyle}" Text="Folders" />
 
-        <StackPanel
+        <Grid
             Grid.Row="1"
             MaxWidth="560"
-            HorizontalAlignment="Left"
-            Orientation="Horizontal"
-            Spacing="8">
+            HorizontalAlignment="Stretch"
+            ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
             <TextBox
-                Width="320"
+                Grid.Column="0"
                 KeyDown="OnNewFolderKeyDown"
                 PlaceholderText="New folder name"
                 Text="{x:Bind ViewModel.NewFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                 automation:AutomationProperties.Name="New folder name" />
             <Button
+                Grid.Column="1"
                 Command="{x:Bind ViewModel.CreateCommand, Mode=OneWay}"
                 Content="Create"
                 ToolTipService.ToolTip="Create folder"
                 automation:AutomationProperties.Name="Create folder" />
-        </StackPanel>
+        </Grid>
 
         <TextBlock
             Grid.Row="2"
