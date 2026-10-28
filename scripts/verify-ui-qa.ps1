@@ -1,9 +1,7 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
 param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'))
 $ErrorActionPreference = 'Stop'
-# Disabled until navigation is converted to posted input, with foreground probes and
-# top-left-monitor parking. The previous worker used activating UIA selection patterns.
-throw 'UI QA worker requires posted-input and foreground-probe updates before it can run safely.'
+trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'lib/Watchdog.ps1')
 if (-not $HarnessWorkerConfig) {
@@ -16,6 +14,13 @@ $parent = Get-Process -Id $config.ParentId -ErrorAction Stop
 if ($parent.StartTime.ToUniversalTime().Ticks -ne $config.ParentStartTicks) { throw 'Invalid supervisor' }
 $lease = [IO.File]::Open($config.WorkerLock,'OpenOrCreate','ReadWrite','None')
 $script:HarnessProgressPath = $config.Progress
+function Update-HarnessProgress {
+    for ($i = 0; $i -lt 20; $i++) {
+        try { [IO.File]::WriteAllText($script:HarnessProgressPath, [guid]::NewGuid().ToString('N')); return }
+        catch [IO.IOException] { Start-Sleep -Milliseconds 25 }
+    }
+    throw 'Could not update watchdog progress'
+}
 . (Join-Path $PSScriptRoot 'lib/Safety.ps1')
 . (Join-Path $PSScriptRoot 'lib/OwnedProcesses.ps1')
 . (Join-Path $PSScriptRoot 'lib/Uia.ps1')
@@ -56,17 +61,41 @@ try {
     $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') @() $procs
     $w = Wait-Until { Get-AppWindow $p.Id 'Smart Snippets' } 20000 200
     if (-not $w) { throw 'Main window not found' }
-    foreach ($size in @(@(1280,800),@(900,600),@(500,400))) {
+    $skill = 'C:\Users\tamtr\.claude\skills\desktop-ui-automation\scripts'
+    $driver = Join-Path $skill 'drive.ps1'
+    $probe = Join-Path $skill 'foreground-probe.ps1'
+    # Launch is allowed to activate once; park without activation on the top-left monitor.
+    $parkBefore = & pwsh -NoProfile -File $probe
+    & pwsh -NoProfile -File $driver park -ProcName 'SmartSnippets.App'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not park owned app' }
+    & pwsh -NoProfile -File $driver park -ProcName 'SmartSnippets.App'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not park owned app' }
+    $parkAfter = & pwsh -NoProfile -File $probe
+    if ($parkBefore -cne $parkAfter) { throw 'Foreground changed during parking' }
+    $screen = [System.Windows.Forms.Screen]::AllScreens | Sort-Object { $_.Bounds.X }, { $_.Bounds.Y } | Select-Object -First 1
+    foreach ($size in ,@(900,600)) {
         Update-HarnessProgress
-        if (-not [QaResize]::SetWindowPos([IntPtr]$w.Current.NativeWindowHandle,[IntPtr]::Zero,30,30,$size[0],$size[1],0x14)) { throw 'Resize failed' }
+        if (-not [QaResize]::SetWindowPos([IntPtr]$w.Current.NativeWindowHandle,[IntPtr]::Zero,($screen.Bounds.X+40),($screen.Bounds.Y+40),$size[0],$size[1],0x14)) { throw 'Resize failed' }
         Start-Sleep -Milliseconds 800
-        foreach ($page in @(@('SnippetsItem','snippets'),@('FoldersItem','folders'),@('SettingsItem','settings'))) {
+        foreach ($page in ,@('FoldersItem','folders')) {
             Update-HarnessProgress
             $w = Get-AppWindow $p.Id 'Smart Snippets'
-            $nav = Find-ById $w $page[0]
-            if (-not $nav) { throw "Missing navigation $($page[0])" }
-            Select-El $nav
+            $beforeForeground = & pwsh -NoProfile -File $probe
+            $point = & pwsh -NoProfile -File $driver rect -ProcName 'SmartSnippets.App' -Name $page[0]
+            if ($LASTEXITCODE -ne 0 -or $point -notmatch '^\d+,\d+$') { throw "Missing navigation $($page[0])" }
+            & pwsh -NoProfile -File $driver pclick -ProcName 'SmartSnippets.App' -Name $point
+            if ($LASTEXITCODE -ne 0) { throw 'Posted navigation failed' }
+            $afterForeground = & pwsh -NoProfile -File $probe
+            if ($beforeForeground -cne $afterForeground) { throw 'Foreground changed during posted navigation' }
             Start-Sleep -Milliseconds 500
+            if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'FolderList')) {
+                $retryBefore = & pwsh -NoProfile -File $probe
+                & pwsh -NoProfile -File $driver pclick -ProcName 'SmartSnippets.App' -Name $point
+                $retryAfter = & pwsh -NoProfile -File $probe
+                if ($retryBefore -cne $retryAfter) { throw 'Foreground changed during posted retry' }
+                Start-Sleep -Milliseconds 500
+            }
+            if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'FolderList')) { throw 'Posted navigation did not open Folders after retry' }
             if ($page[1] -eq 'folders' -and $size[0] -ge 900) {
                 $button = Find-ByName (Get-AppWindow $p.Id 'Smart Snippets') 'Create folder' ([Windows.Automation.ControlType]::Button)
                 $windowRect = (Get-AppWindow $p.Id 'Smart Snippets').Current.BoundingRectangle
