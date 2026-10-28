@@ -16,6 +16,20 @@ public static class ClipboardSafety
         }
     }
 
+    /// <summary>Installs every exclusion marker; registration and write failures are both reported.</summary>
+    public static bool InstallMarkers(IEnumerable<string> names, Func<string, uint> register, Func<uint, bool> write, ISet<uint> registered)
+    {
+        var success = true;
+        foreach (var name in names)
+        {
+            var format = register(name);
+            if (format == 0) { success = false; continue; }
+            registered.Add(format);
+            if (!write(format)) success = false;
+        }
+        return success;
+    }
+
     /// <summary>Captures the sequence before closing, so a subsequent owner's write cannot be mistaken for ours.</summary>
     public static uint CaptureBeforeClose(Func<uint> sequence, Action close)
     {

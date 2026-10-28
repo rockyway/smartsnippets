@@ -122,10 +122,9 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         {
             if (GetClipboardSequenceNumber() != snapshot.Sequence) { _pending = null; return RestoreStatus.ClipboardChanged; }
             if (!PInvoke.EmptyClipboard()) { _pending = null; return RestoreStatus.Failed; }
-            var failed = 0;
+            var failed = SetMarkers(out var markers) ? 0 : 1;
             foreach (var entry in snapshot.Entries)
-                if (!SetEntry(entry)) failed++;
-            SetMarkers();
+                if (!markers.Contains(entry.Format) && !SetEntry(entry)) failed++;
             _pending = null;
             AppLog.Info("clipboard_restore_formats", $"failed_formats={failed}");
             return failed == 0 ? RestoreStatus.Restored : RestoreStatus.Partial;
@@ -201,18 +200,19 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
 
     private static bool SetText(string text)
     {
-        if (!SetData((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0"))) return false;
-        SetMarkers();
-        return true;
+        // Never publish the text unless all privacy markers were installed first.
+        if (!SetMarkers(out _)) return false;
+        return SetData((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0"));
     }
 
-    private static void SetMarkers()
+    private static bool SetMarkers(out HashSet<uint> formats)
     {
-        foreach (var name in new[] { "ExcludeClipboardContentFromMonitorProcessing", "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard" })
-        {
-            var format = PInvoke.RegisterClipboardFormat(name);
-            if (format != 0) SetData(format, new byte[4]);
-        }
+        formats = [];
+        var success = ClipboardSafety.InstallMarkers(
+            ["ExcludeClipboardContentFromMonitorProcessing", "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"],
+            PInvoke.RegisterClipboardFormat, format => SetData(format, new byte[4]), formats);
+        if (!success) AppLog.Info("clipboard_markers_failed");
+        return success;
     }
 
     private static unsafe bool SetEntry(Entry entry)

@@ -23,6 +23,29 @@ public sealed class ClipboardSafetyTests
         Assert.Equal(new uint[] { 1 }, visited);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MarkerRegistrationOrWriteFailure_IsReported(bool registrationFailure)
+    {
+        var registered = new HashSet<uint>();
+        var writes = new List<uint>();
+        var success = ClipboardSafety.InstallMarkers(["first", "second"],
+            name => name == "first" && registrationFailure ? 0u : name == "first" ? 1u : 2u,
+            format => { writes.Add(format); return registrationFailure || format != 1; }, registered);
+        Assert.False(success);
+        Assert.Contains(2u, writes);
+        Assert.Equal(!registrationFailure, writes.Contains(1u));
+    }
+
+    [Fact]
+    public void MarkerSuccess_RegistersAndWritesAll()
+    {
+        var registered = new HashSet<uint>();
+        Assert.True(ClipboardSafety.InstallMarkers(["one", "two"], name => name == "one" ? 1u : 2u, _ => true, registered));
+        Assert.Equal(new uint[] { 1, 2 }, registered.Order());
+    }
+
     [Fact]
     public void CaptureBeforeClose_ConcurrentWriterChangesSequenceAfterCapture()
     {
