@@ -67,6 +67,7 @@ $script:WorkerLease=[IO.File]::Open($config.WorkerLock,[IO.FileMode]::OpenOrCrea
 $script:HarnessProgressPath = $config.Progress
 Update-HarnessProgress
 . (Join-Path $PSScriptRoot 'lib\Safety.ps1')
+. (Join-Path $PSScriptRoot 'lib\OwnedProcesses.ps1')
 . (Join-Path $PSScriptRoot 'lib\Uia.ps1')
 . (Join-Path $PSScriptRoot 'lib\Targets.ps1')
 . (Join-Path $PSScriptRoot 'lib\Perf.ps1')
@@ -137,7 +138,7 @@ if ($ArtifactZip) {
 }
 
 $script:Results = New-Object System.Collections.ArrayList
-$script:Procs = @()
+$script:Procs = New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]'
 $script:HotkeyIds = @()
 
 # ----------------------------------------------------------------- reporting
@@ -167,12 +168,7 @@ function Assert-NoForeignApp {
     }
 }
 function Stop-App {
-    foreach ($proc in $script:Procs) {
-        if (-not $proc.HasExited) {
-            $proc.Kill()
-            if (-not $proc.WaitForExit(5000)) { throw 'Owned Smart Snippets did not exit; profile mutation refused' }
-        }
-    }
+    foreach ($proc in $script:Procs) { Stop-OwnedProcess $proc }
     Assert-NoForeignApp
 }
 function Reset-Profile([scriptblock]$Seed = $null) {
@@ -192,11 +188,9 @@ function Wait-Log([string]$Pattern, [int]$From = 0, [int]$TimeoutMs = 8000) {
 }
 function Start-App([string[]]$AppArgs = @(), [switch]$NoWait) {
     $from = (Get-LogLines).Count
-    $p = if ($AppArgs.Count) { Start-Process $exe -ArgumentList $AppArgs -PassThru } else { Start-Process $exe -PassThru }
-    $null = $p.Handle # Pin process identity before a short-lived redirect process can exit.
-    $script:Procs += $p
+    $p = Start-OwnedProcess -Path $exe -ProcessArgs $AppArgs -Owned $script:Procs
     if (-not $NoWait) { $null = Wait-Log 'tray_added|second_instance_redirect|hotkey_startup_failed' $from 15000 }
-    Start-Sleep -Milliseconds 600
+    if (-not $NoWait) { Start-Sleep -Milliseconds 600 }
     return $p
 }
 function Get-Main($Proc) { Get-AppWindow $Proc.Id 'Smart Snippets' }
@@ -451,9 +445,9 @@ if ((Want 'C') -and @($script:Procs | Where-Object { -not $_.HasExited }).Count)
 
     # second launch shows the hidden window, still one process
     $from = (Get-LogLines).Count
-    $second = Start-Process $exe -PassThru
-    $null = $second.WaitForExit(10000)
-    Check 'C5.exit' 'second instance exits' $second.HasExited
+    $second = Start-App -NoWait
+    $secondExited = Wait-OwnedSecondLaunch $second
+    Check 'C5.exit' 'second instance exits' $secondExited
     Check 'C5.window' 'existing instance shows its main window again' ([bool](Wait-Main $p 6000))
     Check 'C5.single' 'only one SmartSnippets process remains' (@(Get-Process -Name SmartSnippets.App).Count -eq 1)
     Stop-Target

@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/lib/LogAudit.ps1"
 . "$PSScriptRoot/lib/Safety.ps1"
 . "$PSScriptRoot/lib/Watchdog.ps1"
+. "$PSScriptRoot/lib/OwnedProcesses.ps1"
 $script:AssertionCount=0
 function Assert($Condition, $Message) { if (-not $Condition) { throw $Message }; $script:AssertionCount++; Write-Host "PASS $Message" }
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
@@ -64,6 +65,17 @@ try {
     Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'replaced user document refused'
     $targetWindow.Title='SS-owned-123.txt - Notepad'; $actualTarget.Path='C:\other\notepad.exe'
     Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'launcher executable mismatch refused'
+    $testOwned=New-Object Collections.ArrayList
+    $fakeSecond=[pscustomobject]@{ Pinned=$false; HasExited=$false; Kills=0; RegisteredAtWait=$false; WaitBudgets=@(); Registry=$testOwned }
+    $fakeSecond | Add-Member ScriptProperty Handle { $this.Pinned=$true; return 123 }
+    $fakeSecond | Add-Member ScriptMethod Kill { $this.Kills++; $this.HasExited=$true }
+    $fakeSecond | Add-Member ScriptMethod WaitForExit { param($budget) $this.RegisteredAtWait=$this.Registry.Contains($this); $this.WaitBudgets+=@($budget); return $this.HasExited }
+    $launched=Start-OwnedProcess 'fake-app.exe' @() $testOwned { param($path,$appArgs) $fakeSecond }
+    Assert ($launched -eq $fakeSecond -and $fakeSecond.Pinned -and $testOwned.Count -eq 1 -and $fakeSecond.WaitBudgets.Count -eq 0) 'second-launch helper pins and registers identity before any wait'
+    $exited=Wait-OwnedSecondLaunch $launched -TimeoutMs 10
+    Assert (-not $exited -and $fakeSecond.RegisteredAtWait -and $fakeSecond.Kills -eq 1 -and $fakeSecond.HasExited -and ($fakeSecond.WaitBudgets -join ',') -eq '10,5000') 'failed non-exiting second launch stops exact owned process before recovery'
+    Stop-OwnedProcess $launched
+    Assert ($fakeSecond.Kills -eq 1) 'later owned cleanup does not re-kill already stopped second launch'
     $sql = @(New-PerfLibrarySql -Count 10000 -Seed 42)
     $sql2 = @(New-PerfLibrarySql -Count 10000 -Seed 42)
     if ($DatasetDigestPath) {
