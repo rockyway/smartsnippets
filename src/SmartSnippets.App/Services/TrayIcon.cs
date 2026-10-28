@@ -24,7 +24,7 @@ internal sealed unsafe class TrayIcon : IDisposable
 
     private readonly MessageWindow _window;
     private readonly Action _onOpen;
-    private readonly Action _onShowPopup;
+    private readonly Action<HWND> _onShowPopup;
     private readonly Action _onSettings;
     private readonly Action _onRestartAdmin;
     private readonly Action _onDiagnostics;
@@ -38,7 +38,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     public TrayIcon(
         MessageWindow window,
         Action onOpen,
-        Action onShowPopup,
+        Action<HWND> onShowPopup,
         Action onSettings,
         Action onRestartAdmin,
         Action onDiagnostics,
@@ -241,15 +241,8 @@ internal sealed unsafe class TrayIcon : IDisposable
                     _onOpen();
                     break;
                 case CommandShowPopup:
-                    // Hand foreground back so the popup captures the window the user was working in, not ours.
-                    // Clicking the tray makes the taskbar foreground, so look past shell windows.
-                    var target = PreviousAppWindow(previousForeground);
-                    if (!target.IsNull)
-                    {
-                        PInvoke.SetForegroundWindow(target);
-                    }
-
-                    _onShowPopup();
+                    // Capture the selected window directly, without racing a foreground switch.
+                    _onShowPopup(PreviousAppWindow(previousForeground));
                     break;
                 case CommandSettings:
                     _onSettings();
@@ -273,7 +266,7 @@ internal sealed unsafe class TrayIcon : IDisposable
 
     /// <summary>
     /// The window the user was working in before opening the tray menu: the foreground window if it is an
-    /// app window, otherwise the first app window in Z-order. Plan 006 replaces this with full target tracking.
+    /// app window, otherwise the first app window in Z-order.
     /// </summary>
     private static HWND PreviousAppWindow(HWND foreground)
     {

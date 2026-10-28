@@ -37,6 +37,8 @@ internal sealed class AppHost
     private HotkeyService? _hotkeyService;
     private HotkeyManager? _hotkeyManager;
     private PopupWindow? _popup;
+    private PopupViewModel? _popupViewModel;
+    private bool _popupVisible;
     private MainWindow? _mainWindow;
     private TrayIcon? _tray;
     private SnippetsPageViewModel? _snippetsViewModel;
@@ -145,10 +147,8 @@ internal sealed class AppHost
         Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront());
 
         // Step 7: popup, then the main window (created hidden).
-        var popup = new PopupWindow(new ClipboardPasteInserter(messageWindow.Handle));
+        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
         _popup = popup;
-        popup.Prewarm();
-        theme.Register(popup);
 
         UIElement CreatePage(PageKind kind) => kind switch
         {
@@ -186,7 +186,7 @@ internal sealed class AppHost
         var tray = new TrayIcon(
             messageWindow,
             onOpen: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Snippets)),
-            onShowPopup: () => _ui!.Post(ShowPopupFromTray),
+            onShowPopup: hwnd => _ui!.Post(() => ShowPopupFromTray(hwnd)),
             onSettings: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Settings)),
             onRestartAdmin: () => _ui!.Post(() => RestartAsAdministrator(elevation)),
             onDiagnostics: () => _ui!.Post(ShowDiagnostics),
@@ -194,11 +194,19 @@ internal sealed class AppHost
             showRestartAdmin: !elevation.IsElevated,
             hotkeyDisplay: () => hotkeyManager.Status.IsRegistered ? hotkeyManager.Status.Gesture.ToDisplayString() : null);
         _tray = tray;
-        tray.State = hotkeyStatus.IsRegistered ? TrayState.Ready : TrayState.HotkeyUnavailable;
-        hotkeyManager.StatusChanged += (_, _) => _ui!.Post(
-            () => tray.State = hotkeyManager.Status.IsRegistered ? TrayState.Ready : TrayState.HotkeyUnavailable);
+        hotkeyManager.StatusChanged += (_, _) => _ui!.Post(UpdateTrayState);
         tray.Add();
         Notices = new Notifier(tray);
+        UpdateTrayState();
+        var popupDialogs = new DialogService(() => popup.ContentXamlRoot, () => { });
+        var insertion = new InterimInsertionService(Store, new ClipboardPasteInserter(messageWindow.Handle));
+        _popupViewModel = new PopupViewModel(Store, settingsStore, settings, insertion, new ClipboardService(), elevation,
+            popup, popupDialogs, Notices, () => _ui!.Post(ShutDown));
+        popup.ViewModel = _popupViewModel;
+        popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
+        popup.VisibleChanged += (_, visible) => { _popupVisible = visible; UpdateTrayState(); };
+        popup.Prewarm();
+        theme.Register(popup);
 
         if (!hotkeyStatus.IsRegistered)
         {
@@ -216,19 +224,27 @@ internal sealed class AppHost
 
     private void OnHotkeyPressed(long timestamp)
     {
-        var target = ForegroundTarget.Capture();
+        var target = TargetCapture.CaptureForeground();
         if (target is null)
         {
             AppLog.Info("hotkey_ignored_own_or_no_window");
             return;
         }
 
-        _popup?.ShowFor(target.Value, timestamp);
+        _popup?.ShowFor(target, timestamp);
     }
 
-    // Tray "Show popup": same path as the hotkey. The tray menu has already closed, so the previously active
-    // window is foreground again by the time the posted callback runs. Plan 006 refines target capture.
-    private void ShowPopupFromTray() => OnHotkeyPressed(System.Diagnostics.Stopwatch.GetTimestamp());
+    private void ShowPopupFromTray(HWND hwnd)
+    {
+        var target = TargetCapture.CaptureFrom(hwnd);
+        if (target is not null) _popup?.ShowFor(target, System.Diagnostics.Stopwatch.GetTimestamp());
+    }
+
+    private void UpdateTrayState()
+    {
+        if (_tray is not null && _hotkeyManager is not null)
+            _tray.State = TrayStatePolicy.Compute(_hotkeyManager.Status.IsRegistered, _popupVisible);
+    }
 
     private void ShowCloseHintOnce()
     {
@@ -324,6 +340,7 @@ internal sealed class AppHost
             _hotkeyManager?.UnregisterAll();
             AppLog.Info("exit_unregistered");
             _tray?.Dispose();
+            _popupViewModel?.Dispose();
             _popup?.Close();
             _diagnostics?.Close();
             _mainWindow?.CloseForExit();
