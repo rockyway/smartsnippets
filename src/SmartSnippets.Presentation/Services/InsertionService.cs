@@ -83,6 +83,7 @@ public sealed class InsertionService(
                                 AppLog.Info("foreground_gate", "ok=False");
                                 if (options.AllowClipboardLoss)
                                 {
+                                    if (snapshot is not null) dispatcher.DiscardClipboardSnapshot(snapshot);
                                     skipRestore = true;
                                     AppLog.Info("manual_paste_fallback", "reason=ForegroundLost status=Swapped");
                                     outcome = InsertionOutcome.CopiedForManualPaste;

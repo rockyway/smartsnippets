@@ -11,7 +11,9 @@ internal static unsafe class ElevationProbe
 {
     private const int ErrorInvalidParameter = 87;
 
-    public static bool IsBlocked(ForegroundTargetInfo target)
+    public static bool IsBlocked(ForegroundTargetInfo target) => IsBlocked(target.ProcessId);
+
+    public static bool IsBlocked(uint processId)
     {
         if (IsOwnProcessElevated())
         {
@@ -23,7 +25,7 @@ internal static unsafe class ElevationProbe
             ownRid = 0x2000; // medium
         }
 
-        var process = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, target.ProcessId);
+        var process = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
         if (process.IsNull)
         {
             var error = Marshal.GetLastPInvokeError();

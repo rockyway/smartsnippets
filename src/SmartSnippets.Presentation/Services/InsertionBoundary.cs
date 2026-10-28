@@ -40,6 +40,8 @@ public interface IPasteDispatcher
     DispatchState SendPaste();
     void ReleasePasteKeys();
     RestoreStatus TryRestoreClipboard(IClipboardSnapshot snapshot);
+    /// <summary>Discards a pending restore when the snippet is intentionally left for manual paste.</summary>
+    void DiscardClipboardSnapshot(IClipboardSnapshot snapshot);
 }
 
 public sealed record InsertionTimings(TimeSpan RestoreDelay, int ClipboardAttempts, TimeSpan ClipboardRetryDelay)

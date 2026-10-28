@@ -40,4 +40,5 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
     public DispatchState SendPaste() { calls.Add("send"); OnSend?.Invoke(); if (ThrowSend) throw new InvalidOperationException(); return Dispatch; }
     public void ReleasePasteKeys() => calls.Add("release");
     public RestoreStatus TryRestoreClipboard(IClipboardSnapshot snapshot) { calls.Add("restore"); return Restores.Count > 0 ? Restores.Dequeue() : RestoreStatus.Restored; }
+    public void DiscardClipboardSnapshot(IClipboardSnapshot snapshot) => calls.Add("discard");
 }
