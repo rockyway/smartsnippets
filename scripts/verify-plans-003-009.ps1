@@ -843,41 +843,7 @@ if (Want 'D') {
     Stop-App
 }
 
-if (Want 'E') {
-    Section 'E. Popup basic verification (incomplete)'
-    Reset-Profile
-    $p = Start-App
-    if (-not (Wait-Main $p)) { throw 'E requires the main window' }
-    if (-not (Create-Snippet $p 'popup alpha bravo probe')) { throw 'E could not create first test snippet' }
-    if (-not (Create-Snippet $p 'popup alpha charlie probe')) { throw 'E could not create second test snippet' }
-    $target = Start-Target
-    if (-not $target) { throw 'E requires Notepad' }
-    $initialText = Get-NotepadText $target
-    $beforeUsage = (Sql 'select coalesce(sum(usage_count), 0) from snippets;') -join ''
-    $null = Set-Foreground $target
-    Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
-    $popup = Wait-Until { Get-PopupWindow $p.Id } 5000 100
-    if (-not $popup) { throw 'E popup did not appear' }
-    $search = Find-ById $popup 'PopupSearch'
-    Check 'E1.visible' 'popup opens and search is focused' ([bool]$popup -and [bool]$search -and $search.Current.HasKeyboardFocus)
-    Set-Text $search 'alpha bravo'
-    $from = (Get-LogLines).Count
-    $count = Wait-Until { $c = Find-ById (Get-PopupWindow $p.Id) 'PopupCount'; if ($c -and $c.Current.Name -match '^1 of 2') { $c.Current.Name } } 5000 100
-    Check 'E2.and' 'two search terms are ANDed' ([bool]$count) "$count"
-    Set-Text $search 'zzqxv'
-    $empty = Wait-Until { Find-ByName (Get-PopupWindow $p.Id) 'No snippets match' } 5000 100
-    Check 'E2.empty' 'unmatched search shows empty state' ([bool]$empty)
-    foreach ($pair in @(@('PopupLayoutButton','Toggle layout'), @('PopupSortButton','Sort'), @('PopupAddButton','Add snippet'), @('PopupOpenMainButton','Open main window'))) {
-        $button = Find-ById (Get-PopupWindow $p.Id) $pair[0]
-        Check "E6.$($pair[0])" 'toolbar button has expected accessible name and tooltip' ([bool]$button -and $button.Current.Name -eq $pair[1] -and -not [string]::IsNullOrWhiteSpace($button.Current.HelpText))
-    }
-    Send-Chord @([byte]$VK.Esc)
-    $closed = Wait-Until { -not (Get-PopupWindow $p.Id) } 5000 100
-    $afterUsage = (Sql 'select coalesce(sum(usage_count), 0) from snippets;') -join ''
-    Check 'E4' 'Escape closes without insertion or usage' ([bool]$closed -and $initialText -ceq (Get-NotepadText $target) -and $beforeUsage -eq $afterUsage)
-    Stop-Target
-    Stop-App
-}
+if (Want 'E') { . (Join-Path $PSScriptRoot 'lib\PopupSection.ps1') }
 
 if (Want 'F') {
     Section 'F. Insertion basic verification (incomplete)'
@@ -1038,7 +1004,7 @@ if (Want 'G') {
     }
 }
 if (Want 'P') { . (Join-Path $PSScriptRoot 'lib\PerformanceSection.ps1') }
-foreach ($section in 'E', 'F') {
+foreach ($section in 'F') {
     if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
 }
 

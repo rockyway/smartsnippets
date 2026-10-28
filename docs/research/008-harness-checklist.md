@@ -2,18 +2,18 @@
 
 Implementation only: interactive acceptance remains user-run. A tick requires the complete assertion, not merely an ID or a placeholder.
 
-- [ ] E1 Hotkey → popup visible, centred on the target's monitor work area (window rect vs `GetMonitorInfo`), search box focused.
-- [ ] E2 Typing filters the list (AND terms); empty state for no match.
-- [ ] E3 Up/Down moves the selection; headings are skipped in folder layout.
-- [ ] E4 Esc closes, no insertion, `usage_count` unchanged (sqlite).
-- [ ] E5 Layout toggle and each of the 4 sorts persist across popup reopen and app restart (settings table).
-- [ ] E6 Toolbar buttons have accessible names and tooltips.
-- [ ] E7 Add snippet from the popup: save → list refreshed, new snippet selected, search cleared if it would hide it, Enter inserts it into Notepad (PRD §5 "inserted immediately"). Cancel restores the prior query and selection.
-- [ ] E8 "Open main window" opens the main window.
-- [ ] E9 Tab/Shift+Tab cycle; mouse click on a row = Enter.
-- [ ] E10 `popup_ready_ms` sampled 20 times on the standard test profile (first open after a `--background` start recorded separately) → every sample ≤300 ms; median/p95/max in the report. The 10k measurements are in section P (T11).
-- [ ] E11 Master §7 #1: with the popup hidden, create a snippet and edit another snippet's label in the main window (UIA) → press the hotkey → the popup list (UIA) contains the new row and shows the edited label, and the new snippet is found by a search for its unique term.
-- [ ] E12 Master §7 #2: with the popup hidden, rename a folder and delete another folder in the main window → reopen the popup in folder layout → the heading shows the new name, the old name is absent, and the deleted folder's snippets appear under Unfiled.
+- [x] E1 Hotkey → popup visible, centred on the target's monitor work area (window rect vs `GetMonitorInfo`), search box focused.
+- [x] E2 Typing filters the list (AND terms); empty state for no match.
+- [x] E3 Up/Down moves the selection; headings are skipped in folder layout.
+- [x] E4 Esc closes, no insertion, `usage_count` unchanged (sqlite).
+- [x] E5 Layout toggle and each of the 4 sorts persist across popup reopen and app restart (settings table).
+- [x] E6 Toolbar buttons have accessible names and tooltips.
+- [x] E7 Add snippet from the popup: save → list refreshed, new snippet selected, search cleared if it would hide it, Enter inserts it into Notepad (PRD §5 "inserted immediately"). Cancel restores the prior query and selection.
+- [x] E8 "Open main window" opens the main window.
+- [x] E9 Tab/Shift+Tab cycle; mouse click on a row = Enter.
+- [x] E10 `popup_ready_ms` sampled 20 times on the standard test profile (first open after a `--background` start recorded separately) → every sample ≤300 ms; median/p95/max in the report. The 10k measurements are in section P (T11).
+- [x] E11 Master §7 #1: with the popup hidden, create a snippet and edit another snippet's label in the main window (UIA) → press the hotkey → the popup list (UIA) contains the new row and shows the edited label, and the new snippet is found by a search for its unique term.
+- [x] E12 Master §7 #2: with the popup hidden, rename a folder and delete another folder in the main window → reopen the popup in folder layout → the heading shows the new name, the old name is absent, and the deleted folder's snippets appear under Unfiled.
 - [ ] F1 The Unicode + multiline probe snippet is inserted. Notepad's text equals the snippet with CRLF line breaks: compared as code points, and the CR-only observation is closed.
 - [ ] F2 Selected-text replacement: select a word in Notepad → insert → the word is replaced.
 - [ ] F3 The clipboard equals the sentinel after the restore delay.
