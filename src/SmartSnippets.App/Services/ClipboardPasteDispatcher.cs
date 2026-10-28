@@ -86,8 +86,9 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         }
         finally
         {
-            PInvoke.CloseClipboard();
-            if (_pending == snapshot && snapshot is not null) snapshot.Sequence = GetClipboardSequenceNumber();
+            if (_pending == snapshot && snapshot is not null)
+                snapshot.Sequence = ClipboardSafety.CaptureBeforeClose(GetClipboardSequenceNumber, () => PInvoke.CloseClipboard());
+            else PInvoke.CloseClipboard();
         }
         return new(status, snapshot);
     }
