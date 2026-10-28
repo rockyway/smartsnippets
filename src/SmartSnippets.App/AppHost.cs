@@ -34,6 +34,7 @@ internal sealed class AppHost
     private ISettingsStore? _settingsStore;
     private ThemeService? _theme;
     private MessageWindow? _messageWindow;
+    private ClipboardPasteDispatcher? _pasteDispatcher;
     private HotkeyService? _hotkeyService;
     private HotkeyManager? _hotkeyManager;
     private PopupWindow? _popup;
@@ -59,6 +60,8 @@ internal sealed class AppHost
     internal INotifier Notices { get; private set; } = null!;
 
     internal IUiDispatcher Dispatcher => _ui!;
+
+    internal IInsertionService Insertion { get; private set; } = null!;
 
     public void Start(bool startInBackground)
     {
@@ -135,6 +138,10 @@ internal sealed class AppHost
         // Step 6: Win32 services and the saved hotkey.
         var messageWindow = new MessageWindow();
         _messageWindow = messageWindow;
+        var pasteDispatcher = new ClipboardPasteDispatcher(messageWindow.Handle);
+        _pasteDispatcher = pasteDispatcher;
+        Insertion = new InsertionService(Store, new Win32TargetProbe(), pasteDispatcher);
+        AppLog.Info("insertion_ready");
         var hotkeyService = new HotkeyService(messageWindow);
         _hotkeyService = hotkeyService;
         hotkeyService.HotkeyPressed += OnHotkeyPressed;
@@ -173,7 +180,7 @@ internal sealed class AppHost
                     startup,
                     hotkeyManager,
                     elevation,
-                    requestExit: () => _ui!.Post(ShutDown)),
+                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync())),
             },
         };
 
@@ -199,9 +206,9 @@ internal sealed class AppHost
         Notices = new Notifier(tray);
         UpdateTrayState();
         var popupDialogs = new DialogService(() => popup.ContentXamlRoot, () => { });
-        var insertion = new InterimInsertionService(Store, new ClipboardPasteInserter(messageWindow.Handle));
-        _popupViewModel = new PopupViewModel(Store, settingsStore, settings, insertion, new ClipboardService(), elevation,
-            popup, popupDialogs, Notices, () => _ui!.Post(ShutDown));
+        
+        _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
+            popup, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += (_, visible) => { _popupVisible = visible; UpdateTrayState(); };
@@ -271,7 +278,7 @@ internal sealed class AppHost
         if (result.Outcome == ElevationOutcome.Started)
         {
             // The elevated copy waits for this process to exit, so do not stop for an unsaved-changes prompt.
-            ShutDown();
+            _ = ShutDownAsync();
             return;
         }
 
@@ -312,7 +319,7 @@ internal sealed class AppHost
                 return;
             }
 
-            ShutDown();
+            await ShutDownAsync();
         }
         catch (Exception ex)
         {
@@ -320,17 +327,33 @@ internal sealed class AppHost
         }
     }
 
-    private void ShutDown()
+    private async Task ShutDownAsync()
     {
-        if (_exiting)
-        {
-            return;
-        }
-
+        if (_exiting) return;
         _exiting = true;
-        ReleaseResources();
-        AppLog.Shutdown();
-        Application.Current.Exit();
+        try
+        {
+            if (_pasteDispatcher is { } dispatcher)
+            {
+                var status = await dispatcher.RestorePendingAsync();
+                if (status == RestoreStatus.Busy)
+                {
+                    _exiting = false;
+                    Notices?.Notify("Clipboard in use", "Smart Snippets could not restore your clipboard. Close the app using it and try Exit again.");
+                    return;
+                }
+                if (status is RestoreStatus.Failed or RestoreStatus.Partial)
+                    Notices?.Notify("Clipboard restore failed", "Your previous clipboard couldn't be fully restored.");
+            }
+            ReleaseResources();
+            AppLog.Shutdown();
+            Application.Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            _exiting = false;
+            AppLog.Error("exit_failed", ex);
+        }
     }
 
     private void ReleaseResources()
@@ -362,6 +385,6 @@ internal sealed class AppHost
             message,
             "Smart Snippets",
             MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_ICONERROR | MESSAGEBOX_STYLE.MB_TOPMOST | MESSAGEBOX_STYLE.MB_SETFOREGROUND);
-        ShutDown();
+        _ = ShutDownAsync();
     }
 }

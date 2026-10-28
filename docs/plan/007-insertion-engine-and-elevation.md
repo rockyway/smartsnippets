@@ -1130,7 +1130,22 @@ confirm at approval:
 
 ## 10. Implementation notes
 
-*(Filled during implementation.)*
+Worktree implementation: the Presentation insertion state machine, messages, Windows boundary and
+AppHost composition are present. The 006 popup is not present in this worktree: the prototype
+`PopupWindow` still uses the temporary `ClipboardPasteInserter` bridge, and the newly composed
+service is not yet called. The bridge now uses the same hardened dispatcher and target probe rather
+than a separate Win32 clipboard path. At merge, replace 006's interim adapter with `AppHost.Insertion`,
+keep the composed dispatcher and asynchronous shutdown flush, and remove the prototype bridge.
+The manual runbook requires that merged popup and remains unrun. The T7 prototype audit therefore
+does not yet pass.
+
+The dispatcher boundary adds `DiscardClipboardSnapshot`: the foreground-lost manual-paste branch
+must discard its pending exit restore so shutdown does not replace the intentionally retained text.
+The runbook and remaining exhaustive state-machine test cases remain to be verified before calling
+this plan complete. Exit retries clipboard contention asynchronously and cancels shutdown if retries
+are exhausted. On a successful final gate, the service logs
+`foreground_gate` after the dispatcher logs `paste_sent`, so file I/O does not widen the race between
+the actual foreground check and input dispatch; this differs from the proposed T7 log ordering.
 
 ## 11. Review response
 
@@ -1152,3 +1167,4 @@ Review: [docs/review/006-008-implementation-readiness.md](../review/006-008-impl
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 1–3, 7 addressed; user decisions recorded |
 | 2026-10-28 | Plan approved (G2) | User: "approve" |
+| 2026-10-28 | Implementation in progress | 006 integration and manual runbook pending; see §10 |

@@ -127,7 +127,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 | 004 | [004-app-shell-lifecycle-and-settings.md](004-app-shell-lifecycle-and-settings.md) | Single instance, tray, hotkey service + configuration, theme, text size, start at login, restart as admin | 002, 003 | Complete — CI green; manual runbook §7 pending |
 | 005 | [005-main-window-management.md](005-main-window-management.md) | Main window: snippet list/search/editor, folder management screen, confirmations | 003, 004 | Complete — CI green (run #28, `6e75872`); manual runbook (§7) pending on user PC |
 | 006 | [006-popup-search-and-toolbar.md](006-popup-search-and-toolbar.md) | Popup: positioning, search, layouts, sorts, keyboard/mouse, add-snippet, open main | 003, 004, 005 (shared editor) | Implemented; manual acceptance pending |
-| 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | Placeholder |
+| 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | In progress; 006 integration and manual runbook pending |
 | 008 | [008-release-hardening-and-acceptance.md](008-release-hardening-and-acceptance.md) | AOT release artifact, perf acceptance, compatibility matrix, full runbook, wiring audit | 003–007 | Placeholder |
 | 009 | [009-design-alignment-004-005.md](009-design-alignment-004-005.md) | Align built 004/005 surfaces (main window, folders, settings, dialogs, tray menu, tokens) with `docs/design/001-smart-snippets-design.html` | 004, 005 | Complete — CI green on `main` (run #33); manual runbook pending |
 
@@ -175,6 +175,10 @@ decomposition, not the contents of undetailed subplans.
   CI plus user-run runbooks; unchecked runbook items block completion.
 
 ## 9. Progress and handoff log
+
+Plan 007 has an insertion engine and Win32 boundary on its feature branch, but the 006 popup is
+not yet integrated in that worktree. The prototype path remains active; do not consider AC9/AC10
+or the 007 runbook complete until the branches are integrated and verified.
 
 | Date | Subplan | Status change | Notes |
 |---|---|---|---|
