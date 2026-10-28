@@ -46,6 +46,26 @@ public sealed class InsertionServiceTests
     { _probe.Result = check; Assert.Equal(expected, (await Insert()).Outcome); Assert.Equal(new[] { "check" }, _calls); Assert.Equal(0, Usage); }
 
     [Fact]
+    public async Task ModifierReleaseFailure_StopsBeforeClipboardAndPaste()
+    {
+        _dispatcher.ModifiersReleased = false;
+        Assert.Equal(InsertionOutcome.PasteFailed, (await Insert()).Outcome);
+        Assert.DoesNotContain("swap", _calls);
+        Assert.DoesNotContain("send", _calls);
+        Assert.Equal(0, Usage);
+    }
+
+    [Fact]
+    public async Task PasteKeyCleanupFailure_StillUncertainAndRestores()
+    {
+        _dispatcher.Dispatch = DispatchState.Uncertain;
+        _dispatcher.PasteKeysReleased = false;
+        Assert.Equal(InsertionOutcome.MaybePasted, (await Insert()).Outcome);
+        Assert.Contains("restore", _calls);
+        Assert.Equal(0, Usage);
+    }
+
+    [Fact]
     public async Task FocusFailed_NoClipboard() { _dispatcher.Focus = null; Assert.Equal(InsertionOutcome.FocusFailed, (await Insert()).Outcome); Assert.DoesNotContain("swap", _calls); }
 
     [Theory]

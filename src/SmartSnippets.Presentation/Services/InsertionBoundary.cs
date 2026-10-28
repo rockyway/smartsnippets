@@ -32,13 +32,15 @@ public sealed record ClipboardSwap(SwapStatus Status, IClipboardSnapshot? Snapsh
 public interface IPasteDispatcher
 {
     Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct);
-    void ReleaseHeldModifiers();
+    /// <summary>False means release was incomplete; do not mutate the clipboard or paste.</summary>
+    bool ReleaseHeldModifiers();
     /// <summary>Snapshots before emptying; incomplete snapshots must not be emptied unless allowed.</summary>
     ClipboardSwap TrySwapClipboard(string text, bool allowIncomplete);
     SwapStatus TryPlaceText(string text);
     /// <summary>Four injected events mean Dispatched, zero NotDispatched, and one to three Uncertain.</summary>
     DispatchState SendPaste();
-    void ReleasePasteKeys();
+    /// <summary>Attempts key-up cleanup and reports whether all events were injected.</summary>
+    bool ReleasePasteKeys();
     RestoreStatus TryRestoreClipboard(IClipboardSnapshot snapshot);
     /// <summary>Discards a pending restore when the snippet is intentionally left for manual paste.</summary>
     void DiscardClipboardSnapshot(IClipboardSnapshot snapshot);

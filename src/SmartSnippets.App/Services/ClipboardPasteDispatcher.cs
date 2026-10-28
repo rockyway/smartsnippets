@@ -56,7 +56,7 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         return PInvoke.GetForegroundWindow() == hwnd;
     }
 
-    public void ReleaseHeldModifiers()
+    public bool ReleaseHeldModifiers()
     {
         VIRTUAL_KEY[] keys = [VIRTUAL_KEY.VK_SHIFT, VIRTUAL_KEY.VK_CONTROL, VIRTUAL_KEY.VK_MENU, VIRTUAL_KEY.VK_LWIN, VIRTUAL_KEY.VK_RWIN];
         var held = keys.Where(key => (PInvoke.GetAsyncKeyState((int)key) & 0x8000) != 0).ToArray();
@@ -67,7 +67,15 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
             inputs.Add(KeyInput((VIRTUAL_KEY)0xE8, true));
         }
         inputs.AddRange(held.Select(key => KeyInput(key, true)));
-        if (inputs.Count != 0) Send(inputs.ToArray());
+        if (inputs.Count == 0) return true;
+        var batch = inputs.ToArray();
+        if (Send(batch) == batch.Length) return true;
+        // Only key-ups are safe to retry after a partially injected batch.
+        var cleanup = new List<INPUT> { KeyInput((VIRTUAL_KEY)0xE8, true) };
+        cleanup.AddRange(held.Select(key => KeyInput(key, true)));
+        var cleaned = SendKeyUps(cleanup.ToArray());
+        AppLog.Info("modifier_release_failed", $"cleanup={cleaned}");
+        return false;
     }
 
     public ClipboardSwap TrySwapClipboard(string text, bool allowIncomplete)
@@ -111,7 +119,14 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         return state;
     }
 
-    public void ReleasePasteKeys() => Send([KeyInput(VIRTUAL_KEY.VK_V, true), KeyInput(VIRTUAL_KEY.VK_CONTROL, true)]);
+    public bool ReleasePasteKeys() => SendKeyUps([KeyInput(VIRTUAL_KEY.VK_V, true), KeyInput(VIRTUAL_KEY.VK_CONTROL, true)]);
+
+    private static bool SendKeyUps(INPUT[] inputs)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+            if (Send(inputs) == inputs.Length) return true;
+        return false;
+    }
 
     public RestoreStatus TryRestoreClipboard(IClipboardSnapshot saved)
     {

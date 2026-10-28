@@ -57,7 +57,11 @@ public sealed class InsertionService(
                         outcome = options.AllowClipboardLoss ? await PlaceForManualPaste(text, "FocusFailed", ct) : InsertionOutcome.FocusFailed;
                     else
                     {
-                        dispatcher.ReleaseHeldModifiers();
+                        if (!dispatcher.ReleaseHeldModifiers())
+                        {
+                            AppLog.Info("modifier_release_failed");
+                            throw new InvalidOperationException("Modifier release failed.");
+                        }
                         ct.ThrowIfCancellationRequested();
                         ClipboardSwap swap = new(SwapStatus.Busy, null);
                         var attempts = 0;
@@ -104,7 +108,7 @@ public sealed class InsertionService(
                                 {
                                     waitBeforeRestore = true;
                                     outcome = InsertionOutcome.MaybePasted;
-                                    try { dispatcher.ReleasePasteKeys(); AppLog.Info("paste_keys_released"); }
+                                    try { AppLog.Info(dispatcher.ReleasePasteKeys() ? "paste_keys_released" : "paste_key_release_failed"); }
                                     catch (Exception ex) { AppLog.Info("paste_key_release_failed", $"kind={ex.GetType().Name}"); }
                                 }
                                 else if (dispatch == DispatchState.NotDispatched) outcome = InsertionOutcome.PasteFailed;

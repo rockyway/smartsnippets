@@ -26,7 +26,9 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
     public bool ThrowSend { get; set; }
     public bool FailAfterEmpty { get; set; }
     public Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct) { calls.Add("focus"); return FocusOverride?.Invoke() ?? Task.FromResult(Focus); }
-    public void ReleaseHeldModifiers() => calls.Add("modifiers");
+    public bool ModifiersReleased { get; set; } = true;
+    public bool PasteKeysReleased { get; set; } = true;
+    public bool ReleaseHeldModifiers() { calls.Add("modifiers"); return ModifiersReleased; }
     public ClipboardSwap TrySwapClipboard(string text, bool allowIncomplete)
     {
         calls.Add("swap"); Text = text; AllowIncomplete = allowIncomplete;
@@ -39,7 +41,7 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
     }
     public SwapStatus TryPlaceText(string text) { calls.Add("place"); Text = text; return Place; }
     public DispatchState SendPaste() { calls.Add("send"); OnSend?.Invoke(); if (ThrowSend) throw new InvalidOperationException(); return Dispatch; }
-    public void ReleasePasteKeys() => calls.Add("release");
+    public bool ReleasePasteKeys() { calls.Add("release"); return PasteKeysReleased; }
     public RestoreStatus TryRestoreClipboard(IClipboardSnapshot snapshot) { calls.Add("restore"); return Restores.Count > 0 ? Restores.Dequeue() : RestoreStatus.Restored; }
     public void DiscardClipboardSnapshot(IClipboardSnapshot snapshot) => calls.Add("discard");
 }
