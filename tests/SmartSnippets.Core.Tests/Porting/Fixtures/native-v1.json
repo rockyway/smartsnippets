@@ -1,0 +1,9 @@
+{"format":"smart-snippets","version":1,"folders":[{"name":"Work"},{"name":"Home"},{"name":"Empty folder"},{"nope":1}],"snippets":[
+{"text":"hello","label":"Greeting","isLabelCustom":true,"folder":"Work","tags":["mail"],"createdAt":1700000000000,"updatedAt":1700000500000,"lastUsedAt":1700000900000,"usageCount":4},
+{"text":"hello","label":"Greeting","isLabelCustom":true,"folder":"Home","tags":["mail"],"usageCount":1},
+{"text":"hello","label":"Hi","isLabelCustom":true,"folder":"Work","tags":["mail"]},
+{"text":"hello","label":"Greeting","isLabelCustom":true,"folder":"work","tags":["mail"],"usageCount":9},
+{"text":"a\rb","label":"One","folder":null,"tags":[]},
+{"text":"a\nb","label":"Two","folder":null,"tags":[]},
+{"text":"Note","label":"stale","isLabelCustom":false,"folder":null,"lastUsedAt":null}
+]}

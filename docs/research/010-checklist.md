@@ -73,49 +73,49 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T3 — TermFlow and native mappers, value rules (AC1, AC3, AC4)
 
-- [ ] T3 implementation and task verification
-- [ ] `Date_Int_Kept`
-- [ ] `Date_1e400_Invalid`
-- [ ] `Date_Fraction_Invalid`
-- [ ] `Date_IntegralDouble_Kept`
-- [ ] `Date_Negative_Invalid`
-- [ ] `Date_String_Invalid`
-- [ ] `Date_Future_ClampedToNow`
-- [ ] `Date_LongMax_ClampedToNow`
-- [ ] `Date_TwoPow63_ClampedToNow`
-- [ ] `Date_TwoPow63Scientific_ClampedToNow`
-- [ ] `Date_1e300_ClampedToNow`
-- [ ] `Date_LongMin_Invalid`
-- [ ] `Date_Minus1e300_Invalid`
-- [ ] `Usage_Negative_Zero`
-- [ ] `Usage_Fraction_Zero`
-- [ ] `Usage_String_Zero`
-- [ ] `Usage_OneBillionAndThree_KeptExactly`
-- [ ] `Usage_IntMax_KeptExactly`
-- [ ] `Usage_IntMaxPlusOne_Saturated`
-- [ ] `Usage_LongMax_Saturated`
-- [ ] `Usage_TwoPow63_Saturated`
-- [ ] `Usage_TwoPow63Scientific_Saturated`
-- [ ] `Usage_1e300_Saturated`
-- [ ] `Usage_1e400_Zero`
-- [ ] `UpdatedBeforeCreated_SetToCreated`
-- [ ] `Text_LoneSurrogate_RejectedInvalidText`
-- [ ] `Label_LoneSurrogate_RejectedWrongFieldType`
-- [ ] `Null_IsAbsent`
-- [ ] `TermFlow_Fixture_PerEntryOutcomes`
-- [ ] `TermFlow_Fixture_StatsKept`
-- [ ] `TermFlow_Fixture_StatsDefaulted`
-- [ ] `TermFlow_IdIgnored_NotRequired`
-- [ ] `TermFlow_TextVerbatim_NoTrim_LineEndingsKept`
-- [ ] `TermFlow_LabelWrongType_Rejected`
-- [ ] `TermFlow_TagsElementNotString_Rejected`
-- [ ] `TermFlow_ExtraField_Tolerated`
-- [ ] `Native_Fixture_PerEntryOutcomes`
-- [ ] `Native_IsLabelCustomFalse_LabelNull`
-- [ ] `Native_BatchDedupeIsFullRow`
-- [ ] `TermFlow_BatchDedupeIsTextOnly`
-- [ ] `Native_FoldersList_IncludesEmptyFolder`
-- [ ] `Native_FolderElementMalformed_IgnoredNotCounted`
+- [x] T3 implementation and task verification (46 cases pass; 44 red against mapper stubs)
+- [x] `Date_Int_Kept`
+- [x] `Date_1e400_Invalid`
+- [x] `Date_Fraction_Invalid`
+- [x] `Date_IntegralDouble_Kept`
+- [x] `Date_Negative_Invalid`
+- [x] `Date_String_Invalid`
+- [x] `Date_Future_ClampedToNow`
+- [x] `Date_LongMax_ClampedToNow`
+- [x] `Date_TwoPow63_ClampedToNow`
+- [x] `Date_TwoPow63Scientific_ClampedToNow`
+- [x] `Date_1e300_ClampedToNow`
+- [x] `Date_LongMin_Invalid`
+- [x] `Date_Minus1e300_Invalid`
+- [x] `Usage_Negative_Zero`
+- [x] `Usage_Fraction_Zero`
+- [x] `Usage_String_Zero`
+- [x] `Usage_OneBillionAndThree_KeptExactly`
+- [x] `Usage_IntMax_KeptExactly`
+- [x] `Usage_IntMaxPlusOne_Saturated`
+- [x] `Usage_LongMax_Saturated`
+- [x] `Usage_TwoPow63_Saturated`
+- [x] `Usage_TwoPow63Scientific_Saturated`
+- [x] `Usage_1e300_Saturated`
+- [x] `Usage_1e400_Zero`
+- [x] `UpdatedBeforeCreated_SetToCreated`
+- [x] `Text_LoneSurrogate_RejectedInvalidText`
+- [x] `Label_LoneSurrogate_RejectedWrongFieldType`
+- [x] `Null_IsAbsent`
+- [x] `TermFlow_Fixture_PerEntryOutcomes`
+- [x] `TermFlow_Fixture_StatsKept`
+- [x] `TermFlow_Fixture_StatsDefaulted`
+- [x] `TermFlow_IdIgnored_NotRequired`
+- [x] `TermFlow_TextVerbatim_NoTrim_LineEndingsKept`
+- [x] `TermFlow_LabelWrongType_Rejected`
+- [x] `TermFlow_TagsElementNotString_Rejected`
+- [x] `TermFlow_ExtraField_Tolerated`
+- [x] `Native_Fixture_PerEntryOutcomes`
+- [x] `Native_IsLabelCustomFalse_LabelNull`
+- [x] `Native_BatchDedupeIsFullRow`
+- [x] `TermFlow_BatchDedupeIsTextOnly`
+- [x] `Native_FoldersList_IncludesEmptyFolder`
+- [x] `Native_FolderElementMalformed_IgnoredNotCounted`
 
 ## T4 — Rephlo and InkSpoke mappers (AC1, AC3)
 

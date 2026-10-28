@@ -31,7 +31,12 @@ public static class ImportParser
                 return ImportParseResult.Fail(new(ImportRefusal.MissingEntries, format));
             int count = array.GetArrayLength();
             if (count > SnippetFileRules.MaxImportEntries) return ImportParseResult.Fail(new(ImportRefusal.TooManyEntries, format, EntryCount: count));
-            return ImportParseResult.Ok(new(format, count, new([], [], format == ImportFormat.Native ? DedupeMode.FullRow : DedupeMode.TextOnly), [], []));
+            return format switch
+            {
+                ImportFormat.Native => NativeFormat.Read(root, now),
+                ImportFormat.TermFlow => TermFlowFormat.Read(root, now),
+                _ => ImportParseResult.Ok(new(format, count, new([], [], DedupeMode.TextOnly), [], []))
+            };
         }
         catch (JsonException) { return ImportParseResult.Fail(new(ImportRefusal.InvalidJson)); }
         catch (InvalidOperationException) { return ImportParseResult.Fail(new(ImportRefusal.InvalidJson)); }
