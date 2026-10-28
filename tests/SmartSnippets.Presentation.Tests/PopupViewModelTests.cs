@@ -20,6 +20,42 @@ public sealed class PopupViewModelTests
     private static readonly InsertionTarget Target = new(1, 2, 3, "Notepad, Untitled");
     private PopupViewModel Create(AppSettings? settings = null) => new(_store, _settings, settings ?? new(), _insertion, _clipboard, _elevation, _host, _dialogs, _notices);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreviewSelection_ClosesWithoutInsertionClipboardOrUsage(bool click)
+    {
+        var snippet = _store.SeedSnippet("preview");
+        var usageCalls = 0;
+        _store.OnRecordUsage = _ => usageCalls++;
+        using var vm = Create();
+        vm.Open(Target);
+        Assert.Equal(PopupOpenMode.Fresh, vm.OpenPreview());
+        Assert.Null(vm.Target);
+        Assert.True(vm.IsPreview);
+        if (click) await vm.ActivateAsync(vm.Items.Single());
+        else await vm.InsertSelectedAsync();
+        Assert.Contains("Hide", _host.Calls);
+        Assert.Empty(_insertion.Calls);
+        Assert.Empty(_clipboard.Texts);
+        Assert.Equal(0, usageCalls);
+        Assert.Equal(0, _store.Snippets.Single(s => s.Snippet.Id == snippet.Id).Snippet.UsageCount);
+        vm.Open(Target);
+        Assert.False(vm.IsPreview);
+        await vm.InsertSelectedAsync();
+        Assert.Single(_insertion.Calls);
+    }
+
+    [Fact]
+    public void PreviewDoesNotReplaceEditorTarget()
+    {
+        using var vm = Create();
+        vm.Open(Target);
+        vm.AddSnippetCommand.Execute(null);
+        Assert.Equal(PopupOpenMode.Ignored, vm.OpenPreview());
+        Assert.Equal(Target, vm.Target);
+    }
+
     [Fact]
     public void Search_AndTerms_LayoutsAndStoreChanges()
     {

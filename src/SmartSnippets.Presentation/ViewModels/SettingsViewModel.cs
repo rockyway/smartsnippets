@@ -22,6 +22,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly IHotkeyManager _hotkey;
     private readonly IElevation _elevation;
     private readonly Action? _requestExit;
+    private readonly Action? _previewGlobalDialog;
 
     private AppSettings _settings;
     private bool _suppressStartupToggle;
@@ -79,7 +80,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IStartupRegistration startup,
         IHotkeyManager hotkey,
         IElevation elevation,
-        Action? requestExit = null)
+        Action? requestExit = null,
+        Action? previewGlobalDialog = null)
     {
         _settings = initial;
         _settingsStore = settingsStore;
@@ -89,6 +91,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _hotkey = hotkey;
         _elevation = elevation;
         _requestExit = requestExit;
+        _previewGlobalDialog = previewGlobalDialog;
 
         _selectedTheme = initial.Theme;
         _selectedTextSizePreset = initial.TextSizePreset;
@@ -109,6 +112,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public List<string> CurrentHotkeyParts => [.. SplitKeys(CurrentHotkeyDisplay)];
 
     public string StartAtLoginHint => UiText.StartAtLoginHint;
+
+    public string PreviewGlobalDialogText => UiText.PreviewGlobalDialog;
 
     /// <summary>Hint under the text size options.</summary>
     public string TextSizeHint => UiText.TextSizeHint(TextSize.FontSize);
@@ -199,6 +204,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _suppressStartupToggle = false;
         SetStatus(result.Message, StatusSeverity.Error);
     }
+
+    [RelayCommand]
+    private void PreviewGlobalDialog() => _previewGlobalDialog?.Invoke();
 
     [RelayCommand]
     private void RestoreDefaultHotkey() =>

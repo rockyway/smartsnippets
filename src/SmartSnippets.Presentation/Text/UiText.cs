@@ -69,6 +69,7 @@ public static class UiText
     public const string DeleteFolderConfirm = "Delete folder";
 
     // Settings.
+    public const string PreviewGlobalDialog = "Preview global dialog";
     public const string HotkeyHint = "Press a new combination to capture it. Conflicts are explained here.";
     public static string HotkeyConflict(string attempted, string kept) =>
         $"Another app is already using {attempted}. Your hotkey is still {kept}. Try a different combination.";

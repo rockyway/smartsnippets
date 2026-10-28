@@ -51,6 +51,19 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
 
     public InsertionTarget? Target { get; private set; }
+    public bool IsPreview { get; private set; }
+    public PopupOpenMode OpenPreview()
+    {
+        // Never replace an in-flight insertion or an editor's preserved target.
+        if (IsInserting || IsEditorOpen) return PopupOpenMode.Ignored;
+        Target = null;
+        IsPreview = true;
+        Query = string.Empty;
+        ClearFooter(); StatusText = string.Empty;
+        SelectFirst();
+        AppLog.Info("popup_opened", "mode=Preview");
+        return PopupOpenMode.Fresh;
+    }
     public PopupOpenMode Open(InsertionTarget target)
     {
         if (IsInserting) return PopupOpenMode.Ignored;
@@ -60,6 +73,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             return PopupOpenMode.Resumed;
         }
         Target = target;
+        IsPreview = false;
         Query = string.Empty;
         ClearFooter(); StatusText = string.Empty;
         SelectFirst();
@@ -208,7 +222,9 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     {
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return; }
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=keyboard"); return; }
-        if (IsConfirmingClipboardLoss || Target is null || SelectedId is not { } id) return;
+        if (IsConfirmingClipboardLoss || SelectedId is not { } id) return;
+        if (IsPreview) { _host.Hide(); AppLog.Info("popup_closed", "reason=preview_selection"); return; }
+        if (Target is null) return;
         await InsertAsync(id, default);
     }
     public Task ActivateAsync(PopupItemViewModel item)

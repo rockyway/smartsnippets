@@ -187,7 +187,12 @@ internal sealed class AppHost
                     startup,
                     hotkeyManager,
                     elevation,
-                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync())),
+                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync()),
+                    previewGlobalDialog: () =>
+                    {
+                        if (_mainWindow is { } window)
+                            popup.ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)));
+                    }),
             },
         };
 

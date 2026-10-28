@@ -102,6 +102,15 @@ public sealed partial class PopupWindow : Window, IPopupHost
         Center(); AppWindow.Show(); SetVisible(true); Activate(); PInvoke.SetForegroundWindow(_hwnd);
         Focus(mode == PopupOpenMode.Resumed ? PopupFocusTarget.Editor : PopupFocusTarget.Search);
     }
+    internal void ShowPreview(HWND owner)
+    {
+        if (CanShow?.Invoke() == false || ViewModel.OpenPreview() == PopupOpenMode.Ignored) return;
+        var monitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
+        if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
+            WindowPlacement.CenterOn(AppWindow, PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), LogicalWidth, LogicalHeight);
+        AppWindow.Show(); SetVisible(true); Activate(); PInvoke.SetForegroundWindow(_hwnd);
+        Focus(PopupFocusTarget.Search);
+    }
     private void Center()
     {
         if (ViewModel.Target is not { } target) return;

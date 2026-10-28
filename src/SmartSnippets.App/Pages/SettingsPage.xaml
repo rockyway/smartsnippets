@@ -143,6 +143,12 @@
             <!-- Advanced -->
             <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Advanced" />
             <Button
+                x:Name="PreviewGlobalDialogButton"
+                automation:AutomationProperties.AutomationId="PreviewGlobalDialogButton"
+                automation:AutomationProperties.Name="{x:Bind ViewModel.PreviewGlobalDialogText}"
+                Command="{x:Bind ViewModel.PreviewGlobalDialogCommand}"
+                Content="{x:Bind ViewModel.PreviewGlobalDialogText}" />
+            <Button
                 automation:AutomationProperties.Name="Restart as administrator"
                 Command="{x:Bind ViewModel.RestartAsAdministratorCommand}"
                 Content="Restart as administrator"
