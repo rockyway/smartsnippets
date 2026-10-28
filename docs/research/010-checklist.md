@@ -317,7 +317,7 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T11 — Requirement and master-plan update (scope change)
 
-- [ ] T11 implementation and task verification
+- [x] T11 implementation and task verification (rebased onto local main; all six document greps verified)
 
 ## T12 — Wiring audit (L)
 
@@ -345,5 +345,5 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [ ] Presentation tests (sequential)
 - [ ] scripts/publish-aot.ps1, no IL warnings
 - [ ] T10 budget calibration and Release budget gate
-- [ ] T11 documentation verification
+- [x] T11 documentation verification
 - [ ] T12 wiring, privacy, fixture and runtime audits
