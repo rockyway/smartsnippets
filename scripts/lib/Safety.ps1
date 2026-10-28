@@ -11,7 +11,7 @@ function Invoke-ClipboardRetry([scriptblock]$Operation, [int]$Attempts = 50, [in
     throw 'Clipboard retry budget must be positive'
 }
 function Test-ValidClipboardBackup($Saved) {
-    return $null -ne $Saved -and $Saved.Valid -ceq $true -and $Saved.HasText -is [bool] -and (-not $Saved.HasText -or $Saved.Text -is [string])
+    return $null -ne $Saved -and $Saved.Valid -is [bool] -and $Saved.Valid -ceq $true -and $Saved.HasText -is [bool] -and (-not $Saved.HasText -or $Saved.Text -is [string])
 }
 function Get-ProfileCleanupAction([bool]$Isolated, [bool]$HadOriginal, [bool]$BackupExists, [bool]$ActiveExists) {
     if ($Isolated) { return 'RestoreIsolated' }

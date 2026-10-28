@@ -117,8 +117,14 @@ public static class VerifyClipboard {
 function Export-ClipboardTextBackup($Saved, [string]$Path) {
     if (-not (Test-ValidClipboardBackup $Saved)) { throw 'Invalid clipboard backup cannot be serialized' }
     $cipher=$null
-    if ($Saved.HasText -and $Saved.Text.Length -gt 0) { $cipher=ConvertTo-SecureString -String $Saved.Text -AsPlainText -Force }
-    [pscustomobject]@{ Valid=$true; HasText=$Saved.HasText; NonEmpty=($Saved.HasText -and $Saved.Text.Length -gt 0); Cipher=$cipher } | Export-Clixml -LiteralPath $Path
+    try {
+        if ($Saved.HasText -and $Saved.Text.Length -gt 0) {
+            $cipher=[Security.SecureString]::new()
+            foreach ($character in $Saved.Text.ToCharArray()) { $cipher.AppendChar($character) }
+            $cipher.MakeReadOnly()
+        }
+        [pscustomobject]@{ Valid=$true; HasText=$Saved.HasText; NonEmpty=($Saved.HasText -and $Saved.Text.Length -gt 0); Cipher=$cipher } | Export-Clixml -LiteralPath $Path
+    } finally { if ($cipher) { $cipher.Dispose() } }
 }
 function Import-ClipboardTextBackup([string]$Path) {
     $protected=Import-Clixml -LiteralPath $Path
@@ -133,16 +139,16 @@ function Import-ClipboardTextBackup([string]$Path) {
     }
     [pscustomobject]@{ Valid=$true; HasText=$protected.HasText; Text=$text }
 }
-function Read-ClipboardText { Invoke-ClipboardRetry { [VerifyClipboard]::ReadText() } }
-function Set-ClipboardText([AllowEmptyString()][string]$Text) { Invoke-ClipboardRetry { [VerifyClipboard]::WriteText($Text) } }
-function Save-ClipboardText {
+function Read-ClipboardText([int]$Attempts=50, [int]$DelayMs=100) { Invoke-ClipboardRetry { [VerifyClipboard]::ReadText() } -Attempts $Attempts -DelayMs $DelayMs }
+function Set-ClipboardText([AllowEmptyString()][string]$Text, [int]$Attempts=50, [int]$DelayMs=100) { Invoke-ClipboardRetry { [VerifyClipboard]::WriteText($Text) } -Attempts $Attempts -DelayMs $DelayMs }
+function Save-ClipboardText([int]$Attempts=50, [int]$DelayMs=100) {
     # Exceptions are not an empty snapshot. Abort before callers mutate anything on read failure.
-    $value = Read-ClipboardText
+    $value = Read-ClipboardText -Attempts $Attempts -DelayMs $DelayMs
     return [pscustomobject]@{ Valid = $true; HasText = $null -ne $value; Text = $value }
 }
-function Restore-ClipboardText($Saved) {
+function Restore-ClipboardText($Saved, [int]$Attempts=50, [int]$DelayMs=100) {
     if (-not (Test-ValidClipboardBackup $Saved)) { throw 'Invalid clipboard backup; refusing to clear or overwrite the clipboard' }
-    if ($Saved.HasText) { Set-ClipboardText $Saved.Text } else { Invoke-ClipboardRetry { [VerifyClipboard]::Clear() } }
+    if ($Saved.HasText) { Set-ClipboardText $Saved.Text -Attempts $Attempts -DelayMs $DelayMs } else { Invoke-ClipboardRetry { [VerifyClipboard]::Clear() } -Attempts $Attempts -DelayMs $DelayMs }
 }
 function Set-UnsaveableClipboard([string]$Sentinel = 'SMART-SNIPPETS-CLIPBOARD-SENTINEL') {
     Invoke-ClipboardRetry { [VerifyClipboard]::Install($Sentinel) }
