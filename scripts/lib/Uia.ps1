@@ -77,6 +77,7 @@ public static class Win32Verify {
     [StructLayout(LayoutKind.Explicit)] struct InputUnion { [FieldOffset(0)] public KeyboardInput Keyboard; [FieldOffset(0)] public MouseInput Mouse; }
     [StructLayout(LayoutKind.Sequential)] struct Input { public uint Type; public InputUnion Data; }
     [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint count, Input[] inputs, int size);
+    public static int KeyboardInputLayoutSize { get { return Marshal.SizeOf(typeof(Input)); } }
     public static void TypeCharacter(char value) {
         var down=new Input { Type=1, Data=new InputUnion { Keyboard=new KeyboardInput { Scan=value, Flags=4 } } };
         var up=new Input { Type=1, Data=new InputUnion { Keyboard=new KeyboardInput { Scan=value, Flags=6 } } };

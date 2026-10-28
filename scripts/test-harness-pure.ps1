@@ -1,8 +1,11 @@
+param([string]$DatasetDigestPath = '')
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/lib/Perf.ps1"
 . "$PSScriptRoot/lib/LogAudit.ps1"
 . "$PSScriptRoot/lib/Safety.ps1"
-function Assert($Condition, $Message) { if (-not $Condition) { throw $Message }; Write-Host "PASS $Message" }
+. "$PSScriptRoot/lib/Watchdog.ps1"
+$script:AssertionCount=0
+function Assert($Condition, $Message) { if (-not $Condition) { throw $Message }; $script:AssertionCount++; Write-Host "PASS $Message" }
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
 New-Item -ItemType Directory $dir | Out-Null
 try {
@@ -63,6 +66,12 @@ try {
     Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'launcher executable mismatch refused'
     $sql = @(New-PerfLibrarySql -Count 10000 -Seed 42)
     $sql2 = @(New-PerfLibrarySql -Count 10000 -Seed 42)
+    if ($DatasetDigestPath) {
+        $hash=[Security.Cryptography.SHA256]::Create()
+        try { $digest=[BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($sql -join "`n"))).Replace('-','').ToLowerInvariant() }
+        finally { $hash.Dispose() }
+        [IO.File]::WriteAllText($DatasetDigestPath,$digest)
+    }
     Assert (($sql -join "`n") -ceq ($sql2 -join "`n")) 'seed 42 produces identical 10k SQL'
     # Read the authoritative migration, not a parallel hand-maintained schema.
     $migration = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../src/SmartSnippets.Core/Data/Migrations.cs'))
@@ -120,8 +129,30 @@ try {
     Assert (-not (Test-LogPrivacy @('body a.b[1]') @('a.b[1]'))) 'privacy uses literal not regex matching'
     # Substitute just the native boundary; exercise the real helper comparisons without touching
     # the desktop clipboard. Clipboard.ps1 skips Add-Type when this test double is present.
-    Add-Type 'public static class VerifyClipboard { public static string Value; public static int Reads; public static int Writes; public static bool FailRead; public static string Text; public static string ReadText() { Reads++; if (FailRead) throw new System.Exception("PRIVATE"); return Text; } public static void WriteText(string s) { Writes++; Text=s; } public static void Clear() { Writes++; Text=null; } public static void Install(string s) { Value="13:40:TEXT|49152:67112960:BIG"; } public static string Fingerprint() { return Value; } public static string OrderedFingerprint() { return Value; } }'
+    Add-Type 'public static class VerifyClipboard { public static string Value; public static int Reads; public static int Writes; public static int WritesFailFor; public static bool FailRead; public static string Text; public static string ReadText() { Reads++; if (FailRead) throw new System.Exception("PRIVATE"); return Text; } public static void WriteText(string s) { Writes++; if (WritesFailFor>0) { WritesFailFor--; throw new System.Exception("PRIVATE"); } Text=s; } public static void Clear() { Writes++; Text=null; } public static void Install(string s) { Value="13:40:TEXT|49152:67112960:BIG"; } public static string Fingerprint() { return Value; } public static string OrderedFingerprint() { return Value; } }'
     . "$PSScriptRoot/lib/Clipboard.ps1"
+    $script:HarnessProgressPath=Join-Path $dir 'heartbeat'
+    Update-HarnessProgress
+    $firstPulse=[IO.File]::ReadAllText($script:HarnessProgressPath)
+    Update-HarnessProgress
+    Assert ($firstPulse -cne [IO.File]::ReadAllText($script:HarnessProgressPath)) 'watchdog progress advances independently of log content'
+    $script:HarnessProgressPath=$null
+    # Supervisor integration uses only a fake CLI worker and a TEMP lock/report. Only=A disables
+    # clipboard backstops; no app, Notepad, UIA, real profile or desktop API is involved.
+    $fakeWorker=Join-Path $dir 'fake-worker.ps1'
+    $testLock=Join-Path $dir 'worker.lock'; $testReport=Join-Path $dir 'fake-report.json'
+    [IO.File]::WriteAllText($fakeWorker, 'param([string[]]$Only,[string]$HarnessWorkerConfig) exit 0')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -TimeoutSeconds 10 -LockPath $testLock) -eq 0) 'supervisor runs an isolated CLI worker to completion'
+    $held=[IO.File]::Open($testLock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    $overlapRefused=$false
+    try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock } catch { $overlapRefused=$true }
+    finally { $held.Dispose() }
+    Assert $overlapRefused 'exclusive lease refuses a concurrent supervisor before launch'
+    [IO.File]::WriteAllText($fakeWorker, 'param([string[]]$Only,[string]$HarnessWorkerConfig,[string]$ReportPath) ''{"Status":"PASS"}'' | Set-Content -LiteralPath $ReportPath; Start-Sleep -Seconds 30')
+    $timedOut=$false; $timer=[Diagnostics.Stopwatch]::StartNew()
+    try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -TimeoutSeconds 2 -LockPath $testLock } catch { $timedOut=$true }
+    $failedReport=Get-Content -LiteralPath $testReport -Raw | ConvertFrom-Json
+    Assert ($timedOut -and $timer.Elapsed.TotalSeconds -lt 15 -and $failedReport.Status -eq 'FAIL') 'blocked CLI worker is killed promptly and cannot leave a PASS report'
     $protectedPath=Join-Path $dir 'clipboard-backup.clixml'
     Export-ClipboardTextBackup ([pscustomobject]@{ Valid=$true; HasText=$true; Text='PRIVATE-CLIPBOARD-ROUNDTRIP' }) $protectedPath
     $roundtrip=Import-ClipboardTextBackup $protectedPath
@@ -132,11 +163,19 @@ try {
     Assert ($roundtrip.HasText -and $roundtrip.Text -ceq '') 'protected empty text remains a text snapshot'
     Export-ClipboardTextBackup ([pscustomobject]@{ Valid=$true; HasText=$false; Text=$null }) $protectedPath
     Assert (-not (Import-ClipboardTextBackup $protectedPath).HasText) 'protected no-text snapshot stays distinct'
+    [VerifyClipboard]::FailRead=$true
+    $failedSnapshot=$false; $writesBefore=[VerifyClipboard]::Writes
+    try { $null=Save-ClipboardText -Attempts 2 -DelayMs 0 } catch { $failedSnapshot=$true }
+    Assert ($failedSnapshot -and [VerifyClipboard]::Writes -eq $writesBefore) 'native read failure aborts snapshot instead of manufacturing no-text backup'
+    [VerifyClipboard]::FailRead=$false
     [VerifyClipboard]::Text='original'
     $savedText=Save-ClipboardText
     Set-ClipboardText 'fixture'
     Restore-ClipboardText $savedText
     Assert ([VerifyClipboard]::Text -ceq 'original') 'real snapshot/restore wrappers preserve text through a fake native boundary'
+    [VerifyClipboard]::Text='fixture'; [VerifyClipboard]::WritesFailFor=2; $writesBefore=[VerifyClipboard]::Writes
+    Restore-ClipboardText $savedText -Attempts 3 -DelayMs 0
+    Assert ([VerifyClipboard]::Text -ceq 'original' -and [VerifyClipboard]::Writes -eq $writesBefore+3) 'restore wrapper retries contention and restores validated text'
     $writes=[VerifyClipboard]::Writes; $invalidRefused=$false
     try { Restore-ClipboardText ([pscustomobject]@{ HasText=$false }) } catch { $invalidRefused=$true }
     Assert ($invalidRefused -and [VerifyClipboard]::Writes -eq $writes) 'invalid backup cannot clear clipboard'
@@ -151,3 +190,4 @@ try {
     [VerifyClipboard]::Value = '13:40:CHANGED'
     Assert (-not (Test-UnsaveableClipboardRestored)) 'F10 restored Unicode hash must match'
 } finally { Remove-Item $dir -Recurse -Force }
+Write-Host "Assertions PASS: $script:AssertionCount"

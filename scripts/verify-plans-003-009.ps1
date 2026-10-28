@@ -14,7 +14,11 @@
   sign-out) is reported as SKIP with the reason.
 
   The real %LOCALAPPDATA%\SmartSnippets profile is moved aside for the run and restored in `finally`.
-  Requires: Windows PowerShell 5.1, .NET 10 SDK, sqlite3.exe on PATH, an interactive desktop session.
+  Requires: 64-bit Windows PowerShell 5.1 or PowerShell 7, .NET 10 SDK, sqlite3.exe on PATH,
+  an interactive desktop session, and verified classic single-document Notepad.
+  Safety/abort recovery: docs/guides/002-acceptance-harness-safety.md.
+  A supervisor holds an exclusive profile lease and bounds stalled automation; do not invoke
+  the internal worker parameter or assume a hard-aborted run restored the profile automatically.
   Do not touch the keyboard/mouse while it runs (it sends real key presses).
   E/F back up and restore clipboard TEXT only; non-text clipboard data is replaced by test payloads.
 
@@ -24,6 +28,8 @@
 .PARAMETER PerfLibrary Number of generated performance snippets (default 10000); use -Only P.
 .PARAMETER FlipTaskbarTheme Opt in to changing/restoring the real taskbar theme for G6b.
 .PARAMETER Only        Run only the given sections, e.g. -Only B,D
+.PARAMETER TargetExe   Trusted classic Notepad executable; packaged/tabbed/redirected targets are refused.
+.PARAMETER WatchdogTimeoutSeconds Maximum worker silence (default 600); also bounds blocking UIA/provider calls.
 #>
 param(
     [switch]$SkipBuild,

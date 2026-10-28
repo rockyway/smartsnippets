@@ -57,12 +57,12 @@
 | TrayIcon | tray_added, tray_add_failed, tray_readded, tray_icon, tray_icon_load_failed, tray_theme_changed |
 | Main-window view-models | snippet_saved, snippet_deleted, folder_created, folder_renamed, folder_deleted |
 | PopupWindow | popup_ready_ms, popup_search_ms, popup_open_ignored |
-| PopupViewModel | popup_opened, popup_closed, popup_layout, popup_sort, popup_add_opened, popup_add_saved, popup_add_cancelled, popup_insert, popup_paste_anyway, popup_paste_cancelled |
+| PopupViewModel | popup_opened, popup_closed, popup_layout, popup_sort, popup_add_opened, popup_add_saved, popup_add_cancelled, popup_insert, popup_insert_ignored, popup_paste_anyway, popup_paste_cancelled |
 | InsertionService / ClipboardPasteDispatcher | insert_start, target_check, target_rejected, foreground_gate, clipboard_swap, clipboard_restore, clipboard_restore_formats, insert_result, manual_paste_fallback, usage_record_failed, paste_sent |
 
 Runtime appearance of success/failure/optional events remains part of the user-run report; absence of naturally untriggered failure events is not a static wiring failure.
 
-## Local validation
+## Original local validation (before independent review)
 
 | Command / check | Result |
 |---|---|
@@ -76,3 +76,18 @@ Runtime appearance of success/failure/optional events remains part of the user-r
 | `pwsh -NoProfile -File scripts/publish-aot.ps1 -Output publish` | PASS; 0 IL2xxx/IL3xxx warnings, native exe + e_sqlite3.dll present, no SmartSnippets.App.dll |
 
 Local native output is unversioned `0.0.0-dev` (FileVersion 0.0.0.0), not a downloaded release candidate. No desktop automation was run. RC measurements, matrix, R1–R14 and acceptance sign-off remain PENDING-USER. CLI stdout was captured during the session; no test/profile/clipboard side effects from the pure checks persist.
+
+## Independent review remediation — non-interactive validation
+
+Safety and abort/concurrency procedures: [002-acceptance-harness-safety.md](../guides/002-acceptance-harness-safety.md). Seven finding-specific commits replace unowned clipboard publication, global process cleanup, failed-read-as-empty snapshots, unbounded native menu reads, misrouted duplicate input, programmatic-only E2 query input and raw-log diagnostics. Follow-ups add encrypted recovery subprocesses, exclusive profile leases, a protected move boundary, title tokens and explicitly diagnostic non-10k results. Native input delivery/clipboard ownership remain user-run checks, not inferred from compilation.
+
+- Only verified classic single-document Notepad is accepted. Modern tabbed/packaged Notepad (including launcher reuse/session restoration) is **refused**, never killed or used as a target. Use the safety guide; do not weaken the identity predicate to obtain PASS.
+- The plan002 prototype script now refuses execution instead of retaining unsafe dormant cleanup/profile code.
+- Supervisor tests launch **fake CLI workers only**, with temporary lock/report paths and `Only=A` to disable clipboard backstops. They exercise completion, concurrent-lease refusal and watchdog termination/FAIL-report replacement without app/Notepad/UIA/profile/clipboard access.
+- `test-harness-pure.ps1`: **76 assertions PASS in each shell** (Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.9). The 47 added assertions cover target identity (7), clipboard retry/validation/recovery (14), watchdog/lease logic (4), duplicate message plans (4), log collection/sanitization (9), and profile/evidence/title improvements (9).
+- Full seed-42 generated SQL SHA-256 matches across both shells: `c6dd44821b918cfe64312aa298271b37e17e1fe7231566244d3a766193f4aead`. Exact 10k fixture/search distributions still pass.
+- All **19** `.ps1` files parse in each shell: **0 errors** (`test-harness-parsing.ps1`).
+- Native-definition test: **2 C# definitions compile + 1 managed INPUT ABI layout check PASS per shell**. No native API is invoked by that test.
+- `dotnet build`: **0 warnings, 0 errors**. Core: **176 passed**. Presentation: **335 passed**, including 2 new pending-duplicate theory cases. Test projects ran sequentially.
+- Initial new DPAPI roundtrip verification exposed a machine-local Windows PowerShell Security module type-data autoload failure. Recovery serialization was changed to construct SecureString directly (no Security cmdlet autoload); final runs in both shells pass. No failure was waived.
+- No interactive acceptance, clipboard mutation, Notepad/app launch, AOT re-publish, release or push was performed during remediation verification. The encrypted roundtrip tests use synthetic text in temporary files, not the desktop clipboard. The new targeted F5 route must produce its own keyboard/row gate receipt in desktop acceptance; failure to deliver is FAIL, never a fallback click on the underlying app.
