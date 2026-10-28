@@ -33,12 +33,25 @@ param(
     [string]$ArtifactZip = '',
     [ValidateRange(10, 1000000)][int]$PerfLibrary = 10000,
     [switch]$FlipTaskbarTheme,
-    [string]$TargetExe = "$env:WINDIR\System32\notepad.exe"
+    [string]$TargetExe = "$env:WINDIR\System32\notepad.exe",
+    [ValidateRange(30, 3600)][int]$WatchdogTimeoutSeconds = 600,
+    [Parameter(DontShow=$true)][string]$HarnessWorkerConfig = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
+. (Join-Path $PSScriptRoot 'lib\Watchdog.ps1')
+$script:HarnessProgressPath = $null
+if (-not $HarnessWorkerConfig) {
+    $code = Invoke-HarnessWorker -ScriptPath $PSCommandPath -Arguments $PSBoundParameters -TimeoutSeconds $WatchdogTimeoutSeconds
+    exit $code
+}
+$config = Import-Clixml -LiteralPath $HarnessWorkerConfig
+$supervisor = Get-Process -Id $config.ParentId -ErrorAction Stop
+if ($supervisor.StartTime.ToUniversalTime().Ticks -ne $config.ParentStartTicks) { throw 'Invalid acceptance supervisor identity' }
+$script:HarnessProgressPath = $config.Progress
+Update-HarnessProgress
 . (Join-Path $PSScriptRoot 'lib\Safety.ps1')
 . (Join-Path $PSScriptRoot 'lib\Uia.ps1')
 . (Join-Path $PSScriptRoot 'lib\Targets.ps1')
@@ -115,6 +128,7 @@ $script:HotkeyIds = @()
 
 # ----------------------------------------------------------------- reporting
 function Add-Result($Status, $Id, $Name, $Detail) {
+    Update-HarnessProgress
     [void]$script:Results.Add([pscustomobject]@{ Status = $Status; Id = $Id; Name = $Name; Detail = $Detail })
     $color = switch ($Status) { 'PASS' { 'Green' } 'FAIL' { 'Red' } 'SKIP' { 'DarkYellow' } 'WARN' { 'Yellow' } default { 'Gray' } }
     $line = ('  [{0}] {1} {2}' -f $Status, $Id, $Name)
@@ -124,7 +138,7 @@ function Add-Result($Status, $Id, $Name, $Detail) {
 function Check($Id, $Name, $Ok, $Detail = '') { Add-Result $(if ($Ok) { 'PASS' } else { 'FAIL' }) $Id $Name $Detail }
 function Skip($Id, $Name, $Reason) { Add-Result 'SKIP' $Id $Name $Reason }
 function Warn($Id, $Name, $Detail) { Add-Result 'WARN' $Id $Name $Detail }
-function Section($Title) { Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
+function Section($Title) { Update-HarnessProgress; Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
 function Want($Section) { ($Only.Count -eq 0) -or ($Only -contains $Section) }
 if ($artifactInfo) { Add-Result 'INFO' 'Artifact' 'Downloaded release artifact' $artifactInfo }
 
@@ -858,7 +872,7 @@ if (Want 'D') {
         if ($retry) { Invoke-El $retry }
         Check 'D-lock.retry' 'retry saves after lock release' ([bool](Wait-Until { ((Sql "select count(*) from snippets where text='locked-save-probe';") -join '') -eq '1' } 10000 150))
     } finally {
-        if ($locker -and -not $locker.HasExited) { $locker.Kill(); $locker.WaitForExit() }
+        if ($locker -and -not $locker.HasExited) { $locker.Kill(); if (-not $locker.WaitForExit(5000)) { throw 'Owned SQLite locker did not exit' } }
         if ($locker) { $locker.Dispose() }
         Remove-Item $lockMarker -Force -ErrorAction SilentlyContinue
     }
@@ -957,7 +971,7 @@ if (Want 'G') {
     $messageData = [Runtime.InteropServices.Marshal]::StringToHGlobalUni('ImmersiveColorSet')
     try {
         $from = (Get-LogLines).Count
-        [void][Win32Verify]::SendMessage($hwndMsg, 0x001A, [IntPtr]::Zero, $messageData)
+        [Win32Verify]::SendBounded($hwndMsg, 0x001A, [IntPtr]::Zero, $messageData)
         Check 'G6' 'theme broadcast re-evaluates icon without a crash' ((Wait-Log 'tray_icon state=' $from 5000) -and -not $p.HasExited) (Tail $from)
     } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($messageData) }
     if ($FlipTaskbarTheme) {

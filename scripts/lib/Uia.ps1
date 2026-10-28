@@ -35,13 +35,19 @@ public static class Win32Verify {
     [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
-    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] static extern IntPtr SendMessageTimeoutRaw(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
+    public static IntPtr SendBounded(IntPtr h, uint msg, IntPtr w, IntPtr l) {
+        IntPtr result;
+        if (SendMessageTimeoutRaw(h, msg, w, l, 0x22, 2000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("Native window operation timed out or failed");
+        return result;
+    }
     [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, string l, uint flags, uint timeout, out IntPtr result);
     [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr hMenu);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetMenuString(IntPtr hMenu, uint id, StringBuilder sb, int max, uint flags);
     [DllImport("user32.dll")] public static extern uint GetMenuItemID(IntPtr hMenu, int pos);
     public static string[] MenuItems(IntPtr menuWnd) {
-        IntPtr hm = SendMessage(menuWnd, 0x1E1, IntPtr.Zero, IntPtr.Zero);
+        IntPtr hm = SendBounded(menuWnd, 0x1E1, IntPtr.Zero, IntPtr.Zero);
         if (hm == IntPtr.Zero) return new string[0];
         int n = GetMenuItemCount(hm);
         var r = new System.Collections.Generic.List<string>();
@@ -77,6 +83,7 @@ $script:AE = [Windows.Automation.AutomationElement]
 $script:TS = [Windows.Automation.TreeScope]
 
 function Get-AppWindows([int]$ProcId) {
+    Update-HarnessProgress
     $c = New-Object Windows.Automation.PropertyCondition($script:AE::ProcessIdProperty, $ProcId)
     @($script:AE::RootElement.FindAll($script:TS::Children, $c))
 }
@@ -84,11 +91,13 @@ function Get-AppWindow([int]$ProcId, [string]$Name) {
     Get-AppWindows $ProcId | Where-Object { $_.Current.Name -eq $Name } | Select-Object -First 1
 }
 function Find-ById($Root, [string]$Id) {
+    Update-HarnessProgress
     if (-not $Root) { return $null }
     $c = New-Object Windows.Automation.PropertyCondition($script:AE::AutomationIdProperty, $Id)
     $Root.FindFirst($script:TS::Descendants, $c)
 }
 function Find-ByName($Root, [string]$Name, $Type = $null) {
+    Update-HarnessProgress
     if (-not $Root) { return $null }
     $c = New-Object Windows.Automation.PropertyCondition($script:AE::NameProperty, $Name)
     if ($Type) {
@@ -98,12 +107,14 @@ function Find-ByName($Root, [string]$Name, $Type = $null) {
     $Root.FindFirst($script:TS::Descendants, $c)
 }
 function Find-All($Root, $Type) {
+    Update-HarnessProgress
     $t = New-Object Windows.Automation.PropertyCondition($script:AE::ControlTypeProperty, $Type)
     @($Root.FindAll($script:TS::Descendants, $t))
 }
 function Wait-Until([scriptblock]$Cond, [int]$TimeoutMs = 5000, [int]$PollMs = 100) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     while ($sw.ElapsedMilliseconds -lt $TimeoutMs) {
+        Update-HarnessProgress
         $r = & $Cond
         if ($r) { return $r }
         Start-Sleep -Milliseconds $PollMs
@@ -111,27 +122,33 @@ function Wait-Until([scriptblock]$Cond, [int]$TimeoutMs = 5000, [int]$PollMs = 1
     return $null
 }
 function Invoke-El($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
     $p.Invoke()
 }
 function Select-El($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
     $p.Select()
 }
 function Set-Text($El, [string]$Text) {
+    Update-HarnessProgress
     # ValuePattern replaces the whole value and keeps CR/LF/spaces exactly.
     $p = $El.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
     $p.SetValue($Text)
 }
 function Get-Text($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
     $p.Current.Value
 }
 function Toggle-El($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $p.Toggle()
 }
 function Get-ToggleState($El) {
+    Update-HarnessProgress
     $p = $El.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $p.Current.ToggleState.ToString()
 }
