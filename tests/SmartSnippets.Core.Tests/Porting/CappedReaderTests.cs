@@ -12,7 +12,12 @@ public class CappedReaderTests
     [Fact] public async Task Utf16BeBom_NotUtf8() => Assert.Equal(ImportRefusal.NotUtf8, (await Read([0xfe, 0xff])).Refusal);
     [Fact] public async Task Utf32Bom_NotUtf8() => Assert.Equal(ImportRefusal.NotUtf8, (await Read([0, 0, 0xfe, 0xff])).Refusal);
     [Fact] public async Task InvalidUtf8InsideString_NotUtf8() => Assert.Equal(ImportRefusal.NotUtf8, (await Read([34, 0xc3, 0x28, 34])).Refusal);
-    [Fact] public async Task Empty_ReturnsEmptyBytes() => Assert.Empty((await Read([])).Utf8Json!);
+    [Fact] public async Task Empty_ReturnsEmptyBytes()
+    {
+        var bytes = (await Read([])).Utf8Json!;
+        Assert.Empty(bytes);
+        Assert.Equal(ImportRefusal.InvalidJson, ImportParser.Parse(bytes, DateTimeOffset.UtcNow).Failure!.Refusal);
+    }
     [Fact] public async Task TooLarge_StopsReadingAtCapPlusOne()
     {
         var stream = new CountingStream(64 * 1024 * 1024, false);

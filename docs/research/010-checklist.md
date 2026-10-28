@@ -9,7 +9,7 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T1 — Bounded read, encoding and file rules (AC8)
 
-- [ ] T1 implementation and task verification (empty-input parser hop and per-test red-first verification pending)
+- [x] T1 implementation and task verification (58 Porting cases pass; historical red-first deviation retained in plan §10)
 - [x] `MaxImportBytes_Is32MiB`
 - [x] `MaxImportEntries_IsCalibratedValue`
 - [x] `ExactlyCap_Accepted`
@@ -26,7 +26,7 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Utf16BeBom_NotUtf8`
 - [x] `Utf32Bom_NotUtf8`
 - [x] `InvalidUtf8InsideString_NotUtf8`
-- [ ] `Empty_ReturnsEmptyBytes` (empty bytes asserted; parser hop pending)
+- [x] `Empty_ReturnsEmptyBytes` (including empty-input parser hop)
 - [x] `HasJsonExtension`
 - [x] `ExportBaseName_IsInvariantDate`
 - [x] `Write_NewFile_CreatedNoTempLeft`
