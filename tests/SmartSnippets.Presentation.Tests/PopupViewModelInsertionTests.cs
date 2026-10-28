@@ -136,6 +136,35 @@ public sealed class PopupViewModelInsertionTests
         vm.Query = "a"; Assert.Equal(PopupFooterState.None, vm.FooterState);
     }
     [Fact]
+    public async Task ClipboardNotPreserved_ShowsAgain_PromptState_FocusFooter_SameSelection()
+    {
+        var snippet = _store.SeedSnippet("a"); Outcome(InsertionOutcome.ClipboardNotPreserved); using var vm = Create();
+        await vm.InsertSelectedAsync(); Assert.Equal(PopupFooterState.ConfirmClipboardLoss, vm.FooterState);
+        Assert.Equal(snippet.Id, vm.Items[vm.SelectedIndex].SnippetId); Assert.Contains("ShowAgain", _host.Calls);
+        Assert.Equal("Focus:Footer", _host.Calls[^1]); Assert.False(vm.CanCopyFailedText);
+    }
+    [Fact]
+    public async Task PasteAnyway_HidesThenInserts_SameIdAndTarget_AllowClipboardLossTrue()
+    {
+        var snippet = _store.SeedSnippet("a"); Outcome(InsertionOutcome.ClipboardNotPreserved); using var vm = Create(); await vm.InsertSelectedAsync();
+        _insertion.OnCall = () => Assert.Equal("Hide", _host.Calls[^1]);
+        await vm.PasteAnywayCommand.ExecuteAsync(null); var call = _insertion.Calls[^1];
+        Assert.Equal(snippet.Id, call.Id); Assert.Equal(Target, call.Target); Assert.True(call.Options.AllowClipboardLoss);
+    }
+    [Fact]
+    public async Task MaybePasted_ShowsAgain_CautionState_CopyTextShown_NoRestart()
+    {
+        _store.SeedSnippet("a"); Outcome(InsertionOutcome.MaybePasted); using var vm = Create(); await vm.InsertSelectedAsync();
+        Assert.True(vm.IsFooterCaution); Assert.True(vm.CanCopyFailedText); Assert.False(vm.CanRestartAsAdmin); Assert.Contains("ShowAgain", _host.Calls);
+    }
+    [Fact]
+    public async Task Failure_CopyText_DisappearsIfSnippetDeleted()
+    {
+        var snippet = _store.SeedSnippet("body"); Outcome(InsertionOutcome.TargetClosed); using var vm = Create(); await vm.InsertSelectedAsync();
+        vm.CopyFailedTextCommand.Execute(null); Assert.Equal("body", Assert.Single(_clipboard.Texts));
+        _store.DeleteSnippet(snippet.Id); Assert.False(vm.CanCopyFailedText);
+    }
+    [Fact]
     public async Task ViewModel_NeverRecordsUsage()
     {
         var s = _store.SeedSnippet("a"); using var vm = Create(); await vm.InsertSelectedAsync(); Assert.Equal(0, _store.Snippets.Single(v => v.Snippet.Id == s.Id).Snippet.UsageCount);
