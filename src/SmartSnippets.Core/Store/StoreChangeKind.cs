@@ -10,4 +10,5 @@ public enum StoreChangeKind
     FolderDeleted,
     UsageRecorded,
     Reloaded,
+    Imported,
 }
