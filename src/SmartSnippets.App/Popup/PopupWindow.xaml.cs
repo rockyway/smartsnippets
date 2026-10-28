@@ -90,7 +90,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
             WindowPlacement.CenterOn(AppWindow, PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), LogicalWidth, LogicalHeight);
     }
-    public void Hide() { if (!AppWindow.IsVisible && !_visible) return; AppWindow.Hide(); SetVisible(false); }
+    public void Hide()
+    {
+        if (!AppWindow.IsVisible && !_visible) return;
+        CompositionTarget.Rendered -= OnRendered;
+        _searchStarted = 0; _awaitingLayout = false; _awaitingFrame = false;
+        AppWindow.Hide(); SetVisible(false);
+    }
     public void ShowAgain()
     {
         Center(); AppWindow.Show(); SetVisible(true);
