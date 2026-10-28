@@ -77,7 +77,7 @@ Runtime appearance of success/failure/optional events remains part of the user-r
 
 Local native output is unversioned `0.0.0-dev` (FileVersion 0.0.0.0), not a downloaded release candidate. No desktop automation was run. RC measurements, matrix, R1–R14 and acceptance sign-off remain PENDING-USER. CLI stdout was captured during the session; no test/profile/clipboard side effects from the pure checks persist.
 
-## Independent review remediation — non-interactive validation
+## Round-1 independent review remediation — non-interactive validation
 
 Safety and abort/concurrency procedures: [002-acceptance-harness-safety.md](../guides/002-acceptance-harness-safety.md). Seven finding-specific commits replace unowned clipboard publication, global process cleanup, failed-read-as-empty snapshots, unbounded native menu reads, misrouted duplicate input, programmatic-only E2 query input and raw-log diagnostics. Follow-ups add encrypted recovery subprocesses, exclusive profile leases, a protected move boundary, title tokens and explicitly diagnostic non-10k results. Native input delivery/clipboard ownership remain user-run checks, not inferred from compilation.
 
@@ -91,3 +91,14 @@ Safety and abort/concurrency procedures: [002-acceptance-harness-safety.md](../g
 - `dotnet build`: **0 warnings, 0 errors**. Core: **176 passed**. Presentation: **335 passed**, including 2 new pending-duplicate theory cases. Test projects ran sequentially.
 - Initial new DPAPI roundtrip verification exposed a machine-local Windows PowerShell Security module type-data autoload failure. Recovery serialization was changed to construct SecureString directly (no Security cmdlet autoload); final runs in both shells pass. No failure was waived.
 - No interactive acceptance, clipboard mutation, Notepad/app launch, AOT re-publish, release or push was performed during remediation verification. The encrypted roundtrip tests use synthetic text in temporary files, not the desktop clipboard. The new targeted F5 route must produce its own keyboard/row gate receipt in desktop acceptance; failure to deliver is FAIL, never a fallback click on the underlying app.
+
+## Round-2 scoped remediation
+
+Scope: implement review findings 1/2/3/6; document, rather than implement, descendant-process containment and clipboard/supervisor orchestration coverage (findings 4/5). See the safety guide's Known limitations. No job objects or new handoff framework were added.
+
+- Bootstrap explicitly propagates nested exit codes and fails terminating errors. A fresh RunId/completion acknowledgement is required for exit 0; requested reports must match the run and acknowledged SHA-256. Early exit/stale reports cannot supply acceptance evidence.
+- C5 launches through the pinned owned-process helper; a failed second-launch wait stops that exact process in finally before profile recovery.
+- C7 and G6b durably journal original value existence/type/value before mutation. C7 now restores in finally. Supervisor recovery independently replays the allowlisted run-specific registry journal after worker exit/kill, retaining it on failure/abort; manual recovery is documented. Tests inject file-backed readers/writers and never change real HKCU.
+- D14 and C11/G7 withhold raw names/menu text. The privacy claim now explicitly covers app-log summaries, not every UI/DB/machine report detail; reports require review before sharing.
+- Final checks: all **22** scripts parse with **0 errors** in Windows PowerShell 5.1.26100.9711 and PowerShell 7.6.9; **101 pure assertions PASS per shell** (24 added this round: worker verdict/completion 8, owned second-launch boundary 3, registry recovery 13); both native definitions compile plus managed INPUT ABI check (3 checks per shell). Cross-shell seed-42 SQL hashes still match.
+- `dotnet build`: **0 warnings/errors**. Core **176 passed**; Presentation **335 passed**, run sequentially. No interactive acceptance, real registry/clipboard mutation, Notepad/app launch or AOT re-publish was performed. Fake supervisor tests still use Only=A; clipboard-process lease/backup handoff and actual native/UI delivery remain manual-run evidence, not conclusions from the test count.
