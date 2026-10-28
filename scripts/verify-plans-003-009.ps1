@@ -571,7 +571,7 @@ if (Want 'D') {
     $hex = HexOf $text1
     $hexLf = HexOf ($text1 -replace "`r`n", "`r")
     Check 'D1.exact' 'stored text keeps whitespace exactly (leading/trailing spaces, not trimmed)' ($row -like "$hex|*" -or $row -like "$hexLf|*") ''
-    if ($row -like "$hexLf|*" -and $row -notlike "$hex|*") { Warn 'D1.eol' 'TextBox stores line breaks as lone CR (0x0D), not CRLF' 'WinUI TextBox.Text normalizes CRLF to CR; paste into some targets may need CRLF (PRD 3.8, plan 007)' }
+    Check 'D1.eol' 'stored TextBox line endings are CR or CRLF; insertion normalizes to CRLF (F1)' ($row -like "$hex|*" -or $row -like "$hexLf|*") 'End-to-end insertion proof remains F1'
     Check 'D1.label' 'auto label is the first line ("Hello"), not custom' ($row -match '\|Hello\|0\|0$') $row
     Check 'D1.usage' 'new snippet has usage_count 0' ($row -match '\|0$')
 
