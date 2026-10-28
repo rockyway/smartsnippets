@@ -213,7 +213,7 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `CreateSnippet_InjectedFailure_LogHasNoMessage`
 - [x] `Pipeline_EachFixture_CountsMatchIndependentTable_AndBalanced`
 - [x] `Pipeline_SameFileTwice_SecondImportsZero_NoEvent`
-- [x] `FakeSnippetStore_Import_MatchesRealStoreCounts`
+- [x] `FakeSnippetStore_Import_MatchesRealStoreCounts` (all four fixtures; full reopened persisted-row projection; stats-discard and tag-order mutations confirmed red)
 
 ## T7 — Native export (AC7)
 

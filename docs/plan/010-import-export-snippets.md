@@ -1600,8 +1600,12 @@ fails for the stated reason.
     `Import_AllDuplicates_NoWrite_NoEvent` and the AC6 tests. "Store never called" is proved by call counting at the
     orchestration boundary (finding 9), in T9: `FakeSnippetStore.ImportCalls == 0`, and `ThrowOnImport` makes any
     call fail the test.
-  - **Fake parity:** `FakeSnippetStore_Import_MatchesRealStoreCounts` (Presentation tests, the TermFlow and native
-    fixture bytes embedded as strings) so view-model tests cannot drift from Core.
+  - **Fake parity:** `FakeSnippetStore_Import_MatchesRealStoreCounts` (Presentation tests, all four shared synthetic
+    fixtures). Compare summary/folder names, then full row projections against a freshly reopened real store:
+    `(Text, Label, IsLabelCustom, FolderName, ordered ordinal Tags, UsageCount, CreatedAt, UpdatedAt, LastUsedAt)`.
+    Exclude reassigned ids. Use a fixed parse time and a real-store clock matching the fake's first atomic import tick,
+    so both preserved and fresh timestamps are checked. This oracle must fail if the fake discards imported stats or
+    reorders tags.
 
 ### T7 — Native export (AC7)
 - **Files:** `src/SmartSnippets.Core/Porting/NativeExport.cs`, `NativeJsonContext.cs`;
@@ -2160,6 +2164,11 @@ The only remaining "stop" is the standing instruction for plan defects, and an R
 working elevated), which would be a defect report, not a pending decision.
 
 ## 10. Approval log
+
+**Review fix 3:** full persisted-row fake parity now covers all four fixtures and every stored field except ids.
+The review's stats-discard mutation passed the old oracle (2/2), but fails the strengthened oracle (2 failures / 2
+fresh-format passes). A reversed-tag-order mutation also fails (1 failure / 3 passes). Both mutations reverted;
+**4/4 parity cases pass** against reopened SQLite rows with controlled clocks.
 
 **Review fix 2 (user-directed):** native explicit folders now share the same 50,000 workload-entry limit with
 snippets on import and export. Raw folder slots count before mapping, including malformed/duplicate entries.
