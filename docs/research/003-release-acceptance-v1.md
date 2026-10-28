@@ -8,7 +8,7 @@ PENDING-USER: record accepted rc tag, commit, GitHub run, archive filename, SHA-
 
 ## Verify script and master integration
 
-PENDING-USER: after implementation, download the rc zip and `.sha256`; run `powershell -ExecutionPolicy Bypass -File scripts/verify-plans-003-009.ps1 -ArtifactZip <path> -ReportPath docs\research\003-run.md`. The current harness does **not** yet support `-ArtifactZip`, E/F/G/P, or D-lock. Do not run this command until those are implemented. Attach the report and cite E11 + popup live store test (#1), E12 + folder live test (#2), F4 (#3), C9.restart (#4), C12.free (#5), B (#6). All six are PENDING-USER.
+PENDING-USER: after implementation, download the rc zip and `.sha256`; run `powershell -ExecutionPolicy Bypass -File scripts/verify-plans-003-009.ps1 -ArtifactZip <path> -ReportPath docs\research\003-run.md`. The harness now validates and extracts `-ArtifactZip`, but E/F/P, D-lock and most G checks are **not implemented**, and report explicit failures; do not use an incomplete run for acceptance. Attach the final report. Master §7 #1: E11 plus `PopupViewModelListTests.WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept` and `WhileShown_SnippetAdded_AppearsInSortOrder_SelectionKept`; #2: E12 plus `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept` and D12; #3: F4; #4: C9 and missing C9.restart; #5: C12.free; #6: B. All integration results are PENDING-USER.
 
 ## Performance
 
@@ -42,10 +42,10 @@ PENDING-USER: T14 is reserved for the user. Plan 008 §7.2 lists planned evidenc
 ## Wiring audit (T15, static inspection; incomplete)
 
 - Shared `publish-aot.ps1` is called by CI, release and A3. Version flows from tag through workflow outputs to publish properties and release version check; G1 is not implemented.
-- Icon assets, generator, loaders, taskbar theme handling and related log events are not yet implemented. T5–T7 remain open.
-- `AppHost.UpdateTrayState` is the only tray state assignment and calls the existing Presentation `TrayStatePolicy`; hotkey and popup events call it. Both subscriptions use anonymous handlers and are not explicitly unsubscribed on exit; this is an open audit finding.
+- `assets/icons/*.svg` → `scripts/icons/generate_icons.py` → seven checked-in `Assets/*.ico` → csproj content/publish. `ApplicationIcon` embeds the mark; MainWindow uses `AppWindow.SetIcon`. TrayIcon loads and caches theme/state variants at system DPI and falls back to the shared stock icon on load failure. `TaskbarTheme.IsLight` reads the registry at construction, theme broadcast and Explorer restart. Visual, high-contrast, elevated broadcast, published-exe icon and DPI checks remain PENDING-USER.
+- `AppHost.UpdateTrayState` is the only tray state assignment and calls Presentation `TrayStatePolicy`; hotkey status and popup visibility events call it. Named handlers are unsubscribed during resource cleanup.
 - Popup calls the one `IInsertionService` contract; `InsertionService` records usage only for `Inserted`; `SnippetStore` raises `Changed`. `UiText.InsertionMessage` covers the enum including clipboard-loss and uncertain-dispatch outcomes. Relevant tests include `InsertionServiceTests.IncompleteSnapshot_DoesNotEmpty`, `OverCap_NotPreserved_NoEmptyClipboard`, `SendThrows_IsUncertain`, and `PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution`.
-- `popup_ready_ms` and `popup_search_ms` are emitted by PopupWindow; E/P consumers are not implemented. New 008 tray log events are not implemented or included in A4. Runtime log evidence is PENDING-USER.
+- `popup_ready_ms` and `popup_search_ms` are emitted by PopupWindow; E/P consumers are not implemented. A4 now includes 008 and selected insertion/popup events. Runtime log evidence is PENDING-USER.
 - Diagnostics callback, menu item, window and ProbeRepository were removed; prototype-only repository tests were removed while migration tests remain.
 
 ## Observations and insertion notes
