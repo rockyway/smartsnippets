@@ -1535,18 +1535,29 @@ any of them at approval.
 
 ## 10. Implementation notes and wiring audit
 
-**Implementation in progress; not ready for acceptance.** The popup view-model, window, compact
-editor, target capture, interim insertion adapter and tray wiring have been added. `PopupWindow`
-uses the T0b constructor, host interface, `ShowFor`, `Prewarm`, and `VisibleChanged` signatures;
-`ForegroundActivation.TryActivate` and the tray HWND callback are present. The settings page uses
-`SaveShell`.
+**Implementation status:** implemented, automated checks pass; manual acceptance in §7 remains
+pending. The shared insertion contract was not changed and the interim adapter remains until 007.
+The shipped Ctrl+Enter route is `PreviewKeyDown`; runbook 12a must still validate it.
 
-A preliminary wiring grep confirms a single `tray.State` writer, one popup view-model construction,
-`AllowClipboardLoss: true` only on the explicit confirmation path, and the scoped preview key
-handler. Full binding/accessibility and runtime audits remain outstanding. In particular, the list
-visual design, search timing render hook, mixed-DPI retry, status logging, and all listed tests and
-manual runbook checks still require completion. Do not mark the plan complete on the basis of a
-successful compile alone.
+**T12 wiring audit:**
+
+| Hop / invariant | Evidence |
+|---|---|
+| Capture → target → popup | Both AppHost entry points call `TargetCapture`; only `TargetCapture` creates `InsertionTarget`; foreground capture alone calls `ForegroundTarget.Capture`. Tray passes the discovered HWND directly. |
+| Popup → insertion | AppHost constructs one `InterimInsertionService` and one `PopupViewModel`; the window implements `IPopupHost` and the view-model is disposed on exit. `AllowClipboardLoss: true` appears only in Paste anyway. |
+| Changes and persistence | The popup subscribes to `store.Changed`, rebuilds its snapshot, and unsubscribes on disposal. Layout and sort write their keys; the Settings page calls `SaveShell`. |
+| Tray and notices | `VisibleChanged` and hotkey status call `UpdateTrayState`, the only `_tray.State` writer; it uses `TrayStatePolicy`. `Notices` reaches the view-model and reopen-failure callback. |
+| Editor | `IsCompact=True` and `EscapePressed` are used only by the popup; its sole `PreviewKeyDown` handler routes Ctrl+Enter. Its dialog service uses the popup XamlRoot. |
+| Bindings | Every popup and row `x:Bind` resolves against the view-model, row item, text-size service or window/control helper; WinUI compilation succeeds. `ItemsSource` is a concrete `List<PopupItemViewModel>`. |
+| Privacy | Popup logs carry IDs, outcomes, modes, layout and counts; no query, title, display name, label or snippet text is passed to a popup log. |
+| Timing | Search changes start timing before setting the query; changed items wait for list layout and `CompositionTarget.Rendered`, while identical results wait for the next rendered frame. New edits supersede earlier ones. |
+
+Implementation details differ from the draft in two places: the text-change handler explicitly
+updates the view-model instead of a two-way binding, so timing starts before filtering; and the
+row is a small typed `PopupRow` control with instance visibility helpers instead of template
+converters. Footer styling uses WinUI `InfoBar` severity. Several planned individual test cases
+are combined in theories or multi-assertion tests. Manual accessibility, mixed-DPI, Ctrl+Enter,
+performance and activation checks are deliberately left to the user's runbook.
 
 ## 11. Review response
 
