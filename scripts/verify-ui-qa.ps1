@@ -21,6 +21,7 @@ function Update-HarnessProgress {
     }
     throw 'Could not update watchdog progress'
 }
+. (Join-Path $PSScriptRoot 'lib/PostedInput.ps1')
 . (Join-Path $PSScriptRoot 'lib/Safety.ps1')
 . (Join-Path $PSScriptRoot 'lib/OwnedProcesses.ps1')
 . (Join-Path $PSScriptRoot 'lib/Uia.ps1')
@@ -81,16 +82,18 @@ try {
             Update-HarnessProgress
             $w = Get-AppWindow $p.Id 'Smart Snippets'
             $beforeForeground = & pwsh -NoProfile -File $probe
-            $point = & pwsh -NoProfile -File $driver rect -ProcName 'SmartSnippets.App' -Name $page[0]
-            if ($LASTEXITCODE -ne 0 -or $point -notmatch '^\d+,\d+$') { throw "Missing navigation $($page[0])" }
-            & pwsh -NoProfile -File $driver pclick -ProcName 'SmartSnippets.App' -Name $point
-            if ($LASTEXITCODE -ne 0) { throw 'Posted navigation failed' }
+            $nav = Find-ById $w $page[0]
+            if (-not $nav -or $nav.Current.IsOffscreen) { throw "Missing or offscreen navigation $($page[0])" }
+            $rect = $nav.Current.BoundingRectangle
+            $x = [int]($rect.X + $rect.Width / 2); $y = [int]($rect.Y + $rect.Height / 2)
+            $inputWindow = [SmartSnippetsPostedInput]::Click([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y)
+            Write-Host "Posted navigation to owned child HWND $inputWindow"
             $afterForeground = & pwsh -NoProfile -File $probe
             if ($beforeForeground -cne $afterForeground) { throw 'Foreground changed during posted navigation' }
             Start-Sleep -Milliseconds 500
             if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'FolderList')) {
                 $retryBefore = & pwsh -NoProfile -File $probe
-                & pwsh -NoProfile -File $driver pclick -ProcName 'SmartSnippets.App' -Name $point
+                $null = [SmartSnippetsPostedInput]::Click([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y)
                 $retryAfter = & pwsh -NoProfile -File $probe
                 if ($retryBefore -cne $retryAfter) { throw 'Foreground changed during posted retry' }
                 Start-Sleep -Milliseconds 500
