@@ -1,3 +1,6 @@
+using SmartSnippets.Core.Settings;
+using SmartSnippets.Presentation.Services;
+
 namespace SmartSnippets.Presentation.Text;
 
 /// <summary>
@@ -50,6 +53,8 @@ public static class UiText
 
     // Folders.
     public const string FolderNameTaken = "That folder name is already taken. Try another.";
+    public const string FolderCreateFailed = "Couldn't create the folder. Try again.";
+    public const string NewFolderPlaceholder = "Folder name";
     public static string SnippetCount(int count) => count == 1 ? "1 snippet" : $"{count} snippets";
     public static string UnfiledCount(int count) => $"{SnippetCount(count)}, built in";
     public const string FolderDeleteNote = "Deleting a folder moves its snippets to Unfiled. The snippets themselves are kept.";
@@ -68,6 +73,65 @@ public static class UiText
         $"Another app is already using {attempted}. Your hotkey is still {kept}. Try a different combination.";
     public static string TextSizeHint(double size) => $"{size:0.#} units. Custom accepts 10 to 32.";
     public const string StartAtLoginHint = "Starts in the background without opening the main window.";
+
+    // Global popup.
+    public const string PopupSearchPlaceholder = "Search label, text, folder, or tag";
+    public const string PopupSearchName = "Search snippets";
+    public const string PopupHint = "↑↓ move · Enter insert · Esc close";
+    public static string CountOf(int n, int m) => $"{n} of {m} {(m == 1 ? "snippet" : "snippets")}";
+    public static string FolderHeading(string name, int n) => $"{name} ({n})";
+    public const string NoSnippetsMatch = "No snippets match";
+    public const string NoSnippetsMatchBody = "Try fewer words, or add a new snippet with the plus button.";
+    public static string LayoutTooltip(PopupLayout layout) => layout == PopupLayout.Folder ? "Layout: folder" : "Layout: flat";
+    public static string SortName(SortField sort) => sort switch
+    {
+        SortField.UsageCount => "Usage count", SortField.Created => "Created date", SortField.Updated => "Updated date", _ => "Last used",
+    };
+    public static string SortTooltip(SortField sort) => "Sort: " + SortName(sort).ToLowerInvariant();
+    public const string ToggleLayout = "Toggle layout";
+    public const string SortButton = "Sort";
+    public const string AddSnippet = "Add snippet";
+    public const string OpenMainWindow = "Open main window";
+    public static string TargetKept(string name) => $"Insertion target kept: {name}";
+    public const string CtrlEnterSaves = "Ctrl+Enter saves";
+    public const string Cancel = "Cancel";
+    public const string SnippetAddedReady = "Snippet added and ready to insert";
+    public const string RestartAsAdministrator = "Restart as administrator";
+    public const string InsertFailedGeneric = "Couldn't insert the snippet. Nothing was pasted.";
+    public const string ClipboardLossPrompt = "Some of what's on your clipboard can't be restored after pasting. Paste anyway?";
+    public const string PasteAnyway = "Paste anyway";
+    public const string ConfirmHint = "Enter choose · Esc cancel";
+    public const string Dismiss = "Dismiss";
+    public const string DismissHint = "Enter dismiss · Esc close";
+    public const string MaybePastedFallback = "The snippet may already have been pasted. Check the target app before inserting it again.";
+    public const string CopiedForManualPasteFallback = "The snippet is on your clipboard. Click in the target app and press Ctrl+V.";
+    public const string InsertNoticeTitle = "Snippet inserted";
+
+    // Insertion (007).
+    public const string InsertedRestoreNotice = "Pasted, but your previous clipboard couldn't be fully restored.";
+    public const string RestoreNotice = "Your previous clipboard couldn't be fully restored.";
+
+    public static string InsertionMessage(InsertionOutcome outcome, string displayName, bool restoreNotice)
+    {
+        var app = string.IsNullOrWhiteSpace(displayName) ? "the target app" : displayName;
+        var message = outcome switch
+        {
+            InsertionOutcome.Inserted => "",
+            InsertionOutcome.TargetClosed => $"Couldn't insert. {app} was closed. Nothing was pasted.",
+            InsertionOutcome.TargetElevated => "The target app is running as administrator. Smart Snippets can't insert text into it.",
+            InsertionOutcome.FocusFailed => $"Couldn't switch back to {app}. Nothing was pasted. Click in {app} and try again.",
+            InsertionOutcome.ClipboardBusy => "Couldn't insert because another app is using the clipboard. Nothing was pasted. Try again in a moment.",
+            InsertionOutcome.PasteFailed => $"Couldn't paste into {app}. Use Copy text and paste it yourself.",
+            InsertionOutcome.SnippetMissing => "Couldn't insert. This snippet was deleted. Nothing was pasted.",
+            InsertionOutcome.Busy => "Already inserting a snippet.",
+            InsertionOutcome.ClipboardNotPreserved => "Your clipboard holds something Smart Snippets can't save and put back. Nothing was pasted. Paste anyway? What's on your clipboard now may be lost.",
+            InsertionOutcome.MaybePasted => $"Smart Snippets may have pasted into {app}. Check it before trying again.",
+            InsertionOutcome.CopiedForManualPaste => $"Couldn't paste into {app}. The snippet is on your clipboard. Paste it yourself with Ctrl+V.",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+        };
+        if (!restoreNotice) return message;
+        return outcome == InsertionOutcome.Inserted ? InsertedRestoreNotice : $"{message} {RestoreNotice}";
+    }
 
     // Tray.
     public const string TrayOpen = "Open Smart Snippets";

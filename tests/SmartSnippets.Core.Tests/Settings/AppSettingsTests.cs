@@ -53,6 +53,24 @@ public sealed class AppSettingsTests
     }
 
     [Fact]
+    public void AppSettings_SaveShell_WritesNoPopupKeys()
+    {
+        var store = new MemoryStore();
+        store.Set(SettingsKeys.PopupLayout, "Folder");
+        store.Set(SettingsKeys.PopupSort, "UsageCount");
+
+        new AppSettings { Theme = ThemeMode.Dark }.SaveShell(store);
+
+        Assert.Equal("Folder", store.Get(SettingsKeys.PopupLayout));
+        Assert.Equal("UsageCount", store.Get(SettingsKeys.PopupSort));
+        Assert.Equal("Dark", store.Get(SettingsKeys.Theme));
+        var empty = new MemoryStore();
+        new AppSettings().SaveShell(empty);
+        Assert.DoesNotContain(SettingsKeys.PopupLayout, empty.Values.Keys);
+        Assert.DoesNotContain(SettingsKeys.PopupSort, empty.Values.Keys);
+    }
+
+    [Fact]
     public void Keys_AreExact()
     {
         var store = new MemoryStore();

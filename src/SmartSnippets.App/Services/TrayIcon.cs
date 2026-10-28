@@ -1,5 +1,7 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using SmartSnippets.Core.Logging;
+using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Text;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -8,14 +10,6 @@ using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace SmartSnippets.App.Services;
 
-/// <summary>Tray status; plan 008 swaps the glyph per state.</summary>
-internal enum TrayState
-{
-    Ready,
-    PopupOpen,
-    HotkeyUnavailable,
-}
-
 internal sealed unsafe class TrayIcon : IDisposable
 {
     private const uint CallbackMessage = PInvoke.WM_APP + 1;
@@ -23,7 +17,6 @@ internal sealed unsafe class TrayIcon : IDisposable
     private const nuint CommandOpen = 1;
     private const nuint CommandSettings = 2;
     private const nuint CommandRestartAdmin = 3;
-    private const nuint CommandDiagnostics = 4;
     private const nuint CommandExit = 5;
     private const nuint CommandShowPopup = 6;
     private const string Tooltip = "Smart Snippets — running in background";
@@ -31,24 +24,25 @@ internal sealed unsafe class TrayIcon : IDisposable
 
     private readonly MessageWindow _window;
     private readonly Action _onOpen;
-    private readonly Action _onShowPopup;
+    private readonly Action<HWND> _onShowPopup;
     private readonly Action _onSettings;
     private readonly Action _onRestartAdmin;
-    private readonly Action _onDiagnostics;
     private readonly Action _onExit;
     private readonly bool _showRestartAdmin;
     private readonly Func<string?> _hotkeyDisplay;
     private readonly uint _taskbarCreatedMessage;
     private bool _added;
+    private bool _lightTheme;
+    private uint _dpi;
+    private readonly Dictionary<(bool Light, TrayState State), HICON> _icons = [];
     private TrayState _state = TrayState.Ready;
 
     public TrayIcon(
         MessageWindow window,
         Action onOpen,
-        Action onShowPopup,
+        Action<HWND> onShowPopup,
         Action onSettings,
         Action onRestartAdmin,
-        Action onDiagnostics,
         Action onExit,
         bool showRestartAdmin,
         Func<string?> hotkeyDisplay)
@@ -58,10 +52,10 @@ internal sealed unsafe class TrayIcon : IDisposable
         _onShowPopup = onShowPopup;
         _onSettings = onSettings;
         _onRestartAdmin = onRestartAdmin;
-        _onDiagnostics = onDiagnostics;
         _onExit = onExit;
         _showRestartAdmin = showRestartAdmin;
         _hotkeyDisplay = hotkeyDisplay;
+        RefreshThemeAndDpi();
 
         fixed (char* name = "TaskbarCreated")
         {
@@ -74,6 +68,7 @@ internal sealed unsafe class TrayIcon : IDisposable
             PInvoke.ChangeWindowMessageFilterEx(_window.Handle, _taskbarCreatedMessage, WINDOW_MESSAGE_FILTER_ACTION.MSGFLT_ALLOW, null);
         }
 
+        PInvoke.ChangeWindowMessageFilterEx(_window.Handle, 0x001A, WINDOW_MESSAGE_FILTER_ACTION.MSGFLT_ALLOW, null);
         _window.MessageReceived += OnMessage;
     }
 
@@ -88,7 +83,7 @@ internal sealed unsafe class TrayIcon : IDisposable
             }
 
             _state = value;
-            UpdateTooltip();
+            UpdateIcon();
         }
     }
 
@@ -97,30 +92,60 @@ internal sealed unsafe class TrayIcon : IDisposable
         var data = CreateData();
         data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_MESSAGE | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
         data.uCallbackMessage = CallbackMessage;
-        data.hIcon = PInvoke.LoadIcon(HINSTANCE.Null, PInvoke.IDI_APPLICATION);
+        data.hIcon = GetIcon();
         data.szTip = TooltipFor(_state);
         _added = PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_ADD, in data);
         AppLog.Info(_added ? "tray_added" : "tray_add_failed");
+        LogIcon();
         return _added;
     }
 
     private static string TooltipFor(TrayState state) =>
         state == TrayState.HotkeyUnavailable ? TooltipHotkeyUnavailable : Tooltip;
 
-    private void UpdateTooltip()
+    private HICON GetIcon()
     {
-        if (!_added)
+        var key = (_lightTheme, _state);
+        if (_icons.TryGetValue(key, out var cached)) return cached;
+        var name = $"Tray-{(_lightTheme ? "Light" : "Dark")}-{_state}.ico";
+        var path = Path.Combine(AppContext.BaseDirectory, "Assets", name);
+        var width = TrayIconNative.GetSystemMetricsForDpi(49, _dpi); // SM_CXSMICON
+        var height = TrayIconNative.GetSystemMetricsForDpi(50, _dpi); // SM_CYSMICON
+        var handle = TrayIconNative.LoadImage(0, path, 1, width, height, 0x10); // IMAGE_ICON, LR_LOADFROMFILE
+        if (handle == 0)
         {
-            return;
+            AppLog.Info("tray_icon_load_failed", $"name={name}");
+            return PInvoke.LoadIcon(HINSTANCE.Null, PInvoke.IDI_APPLICATION);
         }
+        var icon = new HICON(handle);
+        _icons.Add(key, icon);
+        return icon;
+    }
 
+    private void DestroyCachedIcons()
+    {
+        foreach (var icon in _icons.Values) TrayIconNative.DestroyIcon((nint)icon.Value);
+        _icons.Clear();
+    }
+
+    private void RefreshThemeAndDpi()
+    {
+        _lightTheme = TaskbarTheme.IsLight();
+        _dpi = TrayIconNative.GetDpiForSystem();
+        if (_dpi == 0) _dpi = 96;
+    }
+
+    private void LogIcon() => AppLog.Info("tray_icon", $"state={_state} theme={(_lightTheme ? "light" : "dark")}");
+
+    private void UpdateIcon()
+    {
+        if (!_added) return;
         var data = CreateData();
-        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
+        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
+        data.hIcon = GetIcon();
         data.szTip = TooltipFor(_state);
-        if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, in data))
-        {
-            AppLog.Info("tray_tooltip_failed");
-        }
+        if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, in data)) AppLog.Info("tray_icon_update_failed");
+        LogIcon();
     }
 
     /// <summary>Shows a tray balloon notification (title up to 63 and text up to 255 characters).</summary>
@@ -151,6 +176,7 @@ internal sealed unsafe class TrayIcon : IDisposable
             PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_DELETE, in data);
             _added = false;
         }
+        DestroyCachedIcons();
     }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
@@ -170,11 +196,26 @@ internal sealed unsafe class TrayIcon : IDisposable
         {
             // Explorer restarted: its tray no longer holds our icon.
             _added = false;
+            DestroyCachedIcons();
+            RefreshThemeAndDpi();
             if (Add())
             {
                 AppLog.Info("tray_readded");
             }
 
+            return;
+        }
+
+        if (message == 0x001A && lParam != 0 && Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet")
+        {
+            var light = TaskbarTheme.IsLight();
+            if (light != _lightTheme)
+            {
+                DestroyCachedIcons();
+                RefreshThemeAndDpi();
+                AppLog.Info("tray_theme_changed", $"theme={(_lightTheme ? "light" : "dark")}");
+            }
+            UpdateIcon();
             return;
         }
 
@@ -217,7 +258,6 @@ internal sealed unsafe class TrayIcon : IDisposable
             fixed (char* showPopup = showPopupText)
             fixed (char* settings = UiText.TraySettings)
             fixed (char* restart = "Restart as administrator")
-            fixed (char* diagnostics = "Diagnostics")
             fixed (char* exit = UiText.TrayExit)
             {
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandOpen, open);
@@ -227,10 +267,8 @@ internal sealed unsafe class TrayIcon : IDisposable
                 if (_showRestartAdmin)
                 {
                     PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandRestartAdmin, restart);
+                    PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
                 }
-
-                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandDiagnostics, diagnostics);
-                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandExit, exit);
             }
 
@@ -248,24 +286,14 @@ internal sealed unsafe class TrayIcon : IDisposable
                     _onOpen();
                     break;
                 case CommandShowPopup:
-                    // Hand foreground back so the popup captures the window the user was working in, not ours.
-                    // Clicking the tray makes the taskbar foreground, so look past shell windows.
-                    var target = PreviousAppWindow(previousForeground);
-                    if (!target.IsNull)
-                    {
-                        PInvoke.SetForegroundWindow(target);
-                    }
-
-                    _onShowPopup();
+                    // Capture the selected window directly, without racing a foreground switch.
+                    _onShowPopup(PreviousAppWindow(previousForeground));
                     break;
                 case CommandSettings:
                     _onSettings();
                     break;
                 case CommandRestartAdmin:
                     _onRestartAdmin();
-                    break;
-                case CommandDiagnostics:
-                    _onDiagnostics();
                     break;
                 case CommandExit:
                     _onExit();
@@ -280,7 +308,7 @@ internal sealed unsafe class TrayIcon : IDisposable
 
     /// <summary>
     /// The window the user was working in before opening the tray menu: the foreground window if it is an
-    /// app window, otherwise the first app window in Z-order. Plan 006 replaces this with full target tracking.
+    /// app window, otherwise the first app window in Z-order.
     /// </summary>
     private static HWND PreviousAppWindow(HWND foreground)
     {

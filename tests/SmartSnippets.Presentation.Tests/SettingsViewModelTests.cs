@@ -58,6 +58,19 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void ThemeChange_AfterPopupLayoutChange_KeepsPopupLayout()
+    {
+        using var vm = Create();
+        _store.Set(SettingsKeys.PopupLayout, PopupLayout.Folder.ToString());
+        _store.Set(SettingsKeys.PopupSort, SortField.UsageCount.ToString());
+
+        vm.SelectedTheme = ThemeMode.Dark;
+
+        Assert.Equal(PopupLayout.Folder, AppSettings.Load(_store).PopupLayout);
+        Assert.Equal(SortField.UsageCount, AppSettings.Load(_store).PopupSort);
+    }
+
+    [Fact]
     public void TextSizePreset_AppliesAndPersists()
     {
         var vm = Create();

@@ -2,7 +2,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.AppLifecycle;
-using SmartSnippets.App.Diagnostics;
 using SmartSnippets.App.Pages;
 using SmartSnippets.App.Popup;
 using SmartSnippets.App.Services;
@@ -34,14 +33,18 @@ internal sealed class AppHost
     private ISettingsStore? _settingsStore;
     private ThemeService? _theme;
     private MessageWindow? _messageWindow;
+    private ClipboardPasteDispatcher? _pasteDispatcher;
+    private InsertionShutdownCoordinator? _insertionCoordinator;
     private HotkeyService? _hotkeyService;
     private HotkeyManager? _hotkeyManager;
     private PopupWindow? _popup;
+    private PopupViewModel? _popupViewModel;
+    private DeferredPopupHost? _popupHost;
+    private bool _popupVisible;
     private MainWindow? _mainWindow;
     private TrayIcon? _tray;
     private SnippetsPageViewModel? _snippetsViewModel;
     private FoldersPageViewModel? _foldersViewModel;
-    private DiagnosticsWindow? _diagnostics;
     private bool _exiting;
 
     /// <summary>Created once at start-up; plan 005 view-models take it through their constructors.</summary>
@@ -58,8 +61,13 @@ internal sealed class AppHost
 
     internal IUiDispatcher Dispatcher => _ui!;
 
+    internal IInsertionService Insertion { get; private set; } = null!;
+
     public void Start(bool startInBackground)
     {
+        var executable = Environment.ProcessPath;
+        var version = executable is null ? null : System.Diagnostics.FileVersionInfo.GetVersionInfo(executable).ProductVersion;
+        AppLog.Info("app_started", $"version={version ?? "unknown"}");
         _queue = DispatcherQueue.GetForCurrentThread();
         _ui = new UiDispatcher(_queue);
 
@@ -133,6 +141,11 @@ internal sealed class AppHost
         // Step 6: Win32 services and the saved hotkey.
         var messageWindow = new MessageWindow();
         _messageWindow = messageWindow;
+        var pasteDispatcher = new ClipboardPasteDispatcher(messageWindow.Handle);
+        _pasteDispatcher = pasteDispatcher;
+        _insertionCoordinator = new InsertionShutdownCoordinator(new InsertionService(Store, new Win32TargetProbe(), pasteDispatcher));
+        Insertion = _insertionCoordinator;
+        AppLog.Info("insertion_ready");
         var hotkeyService = new HotkeyService(messageWindow);
         _hotkeyService = hotkeyService;
         hotkeyService.HotkeyPressed += OnHotkeyPressed;
@@ -145,10 +158,9 @@ internal sealed class AppHost
         Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront());
 
         // Step 7: popup, then the main window (created hidden).
-        var popup = new PopupWindow(new ClipboardPasteInserter(messageWindow.Handle));
+        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
         _popup = popup;
-        popup.Prewarm();
-        theme.Register(popup);
+        popup.CanShow = () => !_exiting;
 
         UIElement CreatePage(PageKind kind) => kind switch
         {
@@ -173,7 +185,7 @@ internal sealed class AppHost
                     startup,
                     hotkeyManager,
                     elevation,
-                    requestExit: () => _ui!.Post(ShutDown)),
+                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync())),
             },
         };
 
@@ -186,19 +198,27 @@ internal sealed class AppHost
         var tray = new TrayIcon(
             messageWindow,
             onOpen: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Snippets)),
-            onShowPopup: () => _ui!.Post(ShowPopupFromTray),
+            onShowPopup: hwnd => _ui!.Post(() => ShowPopupFromTray(hwnd)),
             onSettings: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Settings)),
             onRestartAdmin: () => _ui!.Post(() => RestartAsAdministrator(elevation)),
-            onDiagnostics: () => _ui!.Post(ShowDiagnostics),
             onExit: () => _ui!.Post(() => _ = ExitAsync()),
             showRestartAdmin: !elevation.IsElevated,
             hotkeyDisplay: () => hotkeyManager.Status.IsRegistered ? hotkeyManager.Status.Gesture.ToDisplayString() : null);
         _tray = tray;
-        tray.State = hotkeyStatus.IsRegistered ? TrayState.Ready : TrayState.HotkeyUnavailable;
-        hotkeyManager.StatusChanged += (_, _) => _ui!.Post(
-            () => tray.State = hotkeyManager.Status.IsRegistered ? TrayState.Ready : TrayState.HotkeyUnavailable);
+        hotkeyManager.StatusChanged += OnHotkeyStatusChanged;
         tray.Add();
         Notices = new Notifier(tray);
+        UpdateTrayState();
+        var popupDialogs = new DialogService(() => popup.ContentXamlRoot, () => { });
+        
+        _popupHost = new DeferredPopupHost(popup);
+        _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
+            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
+        popup.ViewModel = _popupViewModel;
+        popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
+        popup.VisibleChanged += OnPopupVisibleChanged;
+        popup.Prewarm();
+        theme.Register(popup);
 
         if (!hotkeyStatus.IsRegistered)
         {
@@ -216,19 +236,37 @@ internal sealed class AppHost
 
     private void OnHotkeyPressed(long timestamp)
     {
-        var target = ForegroundTarget.Capture();
+        if (_exiting) return;
+        var target = TargetCapture.CaptureForeground();
         if (target is null)
         {
             AppLog.Info("hotkey_ignored_own_or_no_window");
             return;
         }
 
-        _popup?.ShowFor(target.Value, timestamp);
+        _popup?.ShowFor(target, timestamp);
     }
 
-    // Tray "Show popup": same path as the hotkey. The tray menu has already closed, so the previously active
-    // window is foreground again by the time the posted callback runs. Plan 006 refines target capture.
-    private void ShowPopupFromTray() => OnHotkeyPressed(System.Diagnostics.Stopwatch.GetTimestamp());
+    private void ShowPopupFromTray(HWND hwnd)
+    {
+        if (_exiting) return;
+        var target = TargetCapture.CaptureFrom(hwnd);
+        if (target is not null) _popup?.ShowFor(target, System.Diagnostics.Stopwatch.GetTimestamp());
+    }
+
+    private void OnHotkeyStatusChanged(object? sender, EventArgs e) => _ui?.Post(UpdateTrayState);
+
+    private void OnPopupVisibleChanged(object? sender, bool visible)
+    {
+        _popupVisible = visible;
+        UpdateTrayState();
+    }
+
+    private void UpdateTrayState()
+    {
+        if (_tray is not null && _hotkeyManager is not null)
+            _tray.State = TrayStatePolicy.Compute(_hotkeyManager.Status.IsRegistered, _popupVisible);
+    }
 
     private void ShowCloseHintOnce()
     {
@@ -255,77 +293,98 @@ internal sealed class AppHost
         if (result.Outcome == ElevationOutcome.Started)
         {
             // The elevated copy waits for this process to exit, so do not stop for an unsaved-changes prompt.
-            ShutDown();
+            _ = ShutDownAsync();
             return;
         }
 
         Notices.Notify("Restart as administrator", result.Message);
     }
 
-    private void ShowDiagnostics()
-    {
-        if (_diagnostics is null)
-        {
-            var window = new DiagnosticsWindow();
-            window.Closed += (_, _) => _diagnostics = null;
-            window.ProbePanel.Children.Add(new TextBlock
-            {
-                Text = _hotkeyManager?.Status.Message ?? string.Empty,
-                TextWrapping = TextWrapping.Wrap,
-            });
-            _theme?.Register(window);
-            _diagnostics = window;
-        }
-
-        _diagnostics.AppWindow.Show();
-        _diagnostics.Activate();
-    }
-
     /// <summary>Tray Exit: asks the current page whether leaving is fine (unsaved changes), then shuts down.</summary>
     private async Task ExitAsync()
     {
+        if (!BeginShutdown()) return;
         try
         {
-            if (_exiting)
-            {
-                return;
-            }
-
             if (_mainWindow is { } window && !await window.CanExitAsync())
             {
+                CancelShutdown();
                 return;
             }
 
-            ShutDown();
+            await FinishShutdownAsync();
         }
         catch (Exception ex)
         {
+            CancelShutdown();
             AppLog.Error("exit_failed", ex);
         }
     }
 
-    private void ShutDown()
+    private bool BeginShutdown()
     {
-        if (_exiting)
-        {
-            return;
-        }
-
+        if (_exiting || (_insertionCoordinator is { } coordinator && !coordinator.TryBeginShutdown())) return false;
         _exiting = true;
-        ReleaseResources();
-        AppLog.Shutdown();
-        Application.Current.Exit();
+        _popupHost?.Suspend();
+        try { _popup?.Hide(); }
+        catch { CancelShutdown(); throw; }
+        return true;
+    }
+
+    private void CancelShutdown()
+    {
+        _insertionCoordinator?.ResumeAdmission();
+        _exiting = false;
+        _popupHost?.Resume();
+    }
+
+    private async Task ShutDownAsync()
+    {
+        if (!BeginShutdown()) return;
+        await FinishShutdownAsync();
+    }
+
+    private async Task FinishShutdownAsync()
+    {
+        try
+        {
+            if (_insertionCoordinator is { } coordinator)
+                await coordinator.WaitForIdleAsync();
+            if (_pasteDispatcher is { } dispatcher)
+            {
+                var status = await dispatcher.RestorePendingAsync();
+                if (status == RestoreStatus.Busy)
+                {
+                    CancelShutdown();
+                    Notices?.Notify("Clipboard in use", "Smart Snippets could not restore your clipboard. Close the app using it and try Exit again.");
+                    return;
+                }
+                if (status is RestoreStatus.Failed or RestoreStatus.Partial)
+                    Notices?.Notify("Clipboard restore failed", "Your previous clipboard couldn't be fully restored.");
+            }
+            _popupHost?.Commit();
+            ReleaseResources();
+            AppLog.Shutdown();
+            Application.Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            CancelShutdown();
+            AppLog.Error("exit_failed", ex);
+        }
     }
 
     private void ReleaseResources()
     {
         try
         {
+            if (_hotkeyManager is not null) _hotkeyManager.StatusChanged -= OnHotkeyStatusChanged;
+            if (_popup is not null) _popup.VisibleChanged -= OnPopupVisibleChanged;
             _hotkeyManager?.UnregisterAll();
             AppLog.Info("exit_unregistered");
             _tray?.Dispose();
+            _popupViewModel?.Dispose();
             _popup?.Close();
-            _diagnostics?.Close();
             _mainWindow?.CloseForExit();
             _snippetsViewModel?.Dispose();
             _foldersViewModel?.Dispose();
@@ -345,6 +404,6 @@ internal sealed class AppHost
             message,
             "Smart Snippets",
             MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_ICONERROR | MESSAGEBOX_STYLE.MB_TOPMOST | MESSAGEBOX_STYLE.MB_SETFOREGROUND);
-        ShutDown();
+        _ = ShutDownAsync();
     }
 }

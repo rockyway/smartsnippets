@@ -2,24 +2,42 @@
     x:Class="SmartSnippets.App.Popup.PopupWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="SmartSnippets">
-    <Grid x:Name="RootGrid" Padding="12" RowSpacing="8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <TextBox
-            x:Name="SearchBox"
-            PlaceholderText="Search snippets"
-            KeyDown="OnKeyDown" />
-        <ListView
-            x:Name="ResultsList"
-            Grid.Row="1"
-            IsItemClickEnabled="True"
-            SelectionMode="Single"
-            ItemClick="OnItemClick"
-            KeyDown="OnKeyDown">
-            <ListViewItem Content="Insert test string" />
-        </ListView>
+    xmlns:automation="using:Microsoft.UI.Xaml.Automation"
+    xmlns:controls="using:SmartSnippets.App.Controls"
+    xmlns:vm="using:SmartSnippets.Presentation.ViewModels"
+    Title="Smart Snippets popup">
+    <Grid x:Name="RootGrid" Padding="12" KeyDown="OnKeyDown">
+        <Border x:Name="SelectedPalette" Background="{ThemeResource AccentTintBrush}" BorderBrush="{ThemeResource SystemControlHighlightAccentBrush}" Visibility="Collapsed"/>
+        <ContentControl IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <Grid RowSpacing="8">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid ColumnSpacing="4">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchBox" Grid.Column="0" automation:AutomationProperties.AutomationId="PopupSearch" automation:AutomationProperties.Name="{x:Bind SearchName}" PlaceholderText="{x:Bind SearchPlaceholder}" Text="{x:Bind ViewModel.Query, Mode=OneWay}" TextChanged="OnSearchChanged" />
+                <ToggleButton Grid.Column="1" automation:AutomationProperties.AutomationId="PopupLayoutButton" automation:AutomationProperties.Name="{x:Bind ToggleLayoutName}" ToolTipService.ToolTip="{x:Bind ViewModel.LayoutTooltip, Mode=OneWay}" IsChecked="{x:Bind ViewModel.IsFolderLayout, Mode=OneWay}" Command="{x:Bind ViewModel.ToggleLayoutCommand, Mode=OneWay}"><FontIcon Glyph="&#xE8FD;" /></ToggleButton>
+                <Button x:Name="SortButton" Grid.Column="2" automation:AutomationProperties.AutomationId="PopupSortButton" automation:AutomationProperties.Name="{x:Bind SortName}" ToolTipService.ToolTip="{x:Bind ViewModel.SortTooltip, Mode=OneWay}" Click="OnSortClick"><FontIcon Glyph="&#xE8CB;" />
+                    <Button.Flyout><MenuFlyout x:Name="SortFlyout" ShouldConstrainToRootBounds="True"><RadioMenuFlyoutItem x:Name="SortLast" Text="{x:Bind LastUsedText}" Click="OnSortLast"/><RadioMenuFlyoutItem x:Name="SortUsage" Text="{x:Bind UsageCountText}" Click="OnSortUsage"/><RadioMenuFlyoutItem x:Name="SortCreated" Text="{x:Bind CreatedText}" Click="OnSortCreated"/><RadioMenuFlyoutItem x:Name="SortUpdated" Text="{x:Bind UpdatedText}" Click="OnSortUpdated"/></MenuFlyout></Button.Flyout>
+                </Button>
+                <Button Grid.Column="3" automation:AutomationProperties.AutomationId="PopupAddButton" automation:AutomationProperties.Name="{x:Bind AddText}" ToolTipService.ToolTip="{x:Bind AddText}" Command="{x:Bind ViewModel.AddSnippetCommand, Mode=OneWay}"><FontIcon Glyph="&#xE710;" /></Button>
+                <Button Grid.Column="4" automation:AutomationProperties.AutomationId="PopupOpenMainButton" automation:AutomationProperties.Name="{x:Bind MainWindowText}" ToolTipService.ToolTip="{x:Bind MainWindowText}" Command="{x:Bind ViewModel.OpenMainWindowCommand, Mode=OneWay}"><FontIcon Glyph="&#xE8A7;" /></Button>
+            </Grid>
+            <Grid Grid.Row="1">
+                <ListView x:Name="PopupList" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay}" TabFocusNavigation="Once" automation:AutomationProperties.AutomationId="PopupList" ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}" IsItemClickEnabled="True" ItemClick="OnItemClick" SelectionChanged="OnSelectionChanged" ContainerContentChanging="OnContainerContentChanging">
+                    <ListView.ItemTemplate><DataTemplate x:DataType="vm:PopupItemViewModel"><controls:PopupRow Item="{x:Bind}"/></DataTemplate></ListView.ItemTemplate>
+                </ListView>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind Show(ViewModel.IsEmpty), Mode=OneWay}"><FontIcon Glyph="&#xE721;"/><TextBlock Text="{x:Bind ViewModel.EmptyTitle}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EmptyBody}" TextWrapping="Wrap"/></StackPanel>
+            </Grid>
+            <StackPanel Grid.Row="2" Spacing="4">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{x:Bind ViewModel.HintText, Mode=OneWay}"/><TextBlock Grid.Column="1" automation:AutomationProperties.AutomationId="PopupCount" Text="{x:Bind ViewModel.CountText, Mode=OneWay}"/></Grid>
+                <InfoBar IsOpen="{x:Bind ViewModel.HasFooterMessage, Mode=OneWay}" IsClosable="False" Severity="{x:Bind FooterSeverity(ViewModel.FooterState), Mode=OneWay}"><StackPanel Spacing="4"><TextBlock automation:AutomationProperties.AutomationId="PopupFooterError" automation:AutomationProperties.LiveSetting="Assertive" automation:AutomationProperties.ItemStatus="{x:Bind ViewModel.FooterItemStatus, Mode=OneWay}" Text="{x:Bind ViewModel.FooterMessage, Mode=OneWay}" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="6"><Button automation:AutomationProperties.AutomationId="PopupCopyText" Content="{x:Bind CopyText}" Visibility="{x:Bind Show(ViewModel.CanCopyFailedText), Mode=OneWay}" Command="{x:Bind ViewModel.CopyFailedTextCommand, Mode=OneWay}"/><Button automation:AutomationProperties.AutomationId="PopupRestartAdmin" Content="{x:Bind RestartText}" Visibility="{x:Bind Show(ViewModel.CanRestartAsAdmin), Mode=OneWay}" Command="{x:Bind ViewModel.RestartAsAdminCommand, Mode=OneWay}"/><Button x:Name="PasteAnywayButton" automation:AutomationProperties.AutomationId="PopupPasteAnyway" Content="{x:Bind PasteAnywayText}" Visibility="{x:Bind Show(ViewModel.IsConfirmingClipboardLoss), Mode=OneWay}" Command="{x:Bind ViewModel.PasteAnywayCommand, Mode=OneWay}"/><Button automation:AutomationProperties.AutomationId="PopupPasteCancel" Content="{x:Bind CancelText}" Visibility="{x:Bind Show(ViewModel.IsConfirmingClipboardLoss), Mode=OneWay}" Command="{x:Bind ViewModel.CancelPasteAnywayCommand, Mode=OneWay}"/><Button automation:AutomationProperties.AutomationId="PopupDismiss" Content="{x:Bind DismissText}" Visibility="{x:Bind Show(ViewModel.CanDismissFooter), Mode=OneWay}" Command="{x:Bind ViewModel.DismissFooterCommand, Mode=OneWay}"/></StackPanel></StackPanel></InfoBar>
+            </StackPanel>
+        </Grid>
+        </ContentControl>
+        <Grid x:Name="EditorOverlay" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Visibility="{x:Bind Show(ViewModel.IsEditorOpen), Mode=OneWay}" PreviewKeyDown="OnEditorPreviewKeyDown" automation:AutomationProperties.AutomationId="PopupEditor">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Text="{x:Bind ViewModel.EditorTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EditorTargetLine, Mode=OneWay}"/></StackPanel>
+            <controls:SnippetEditor x:Name="EditorControl" Grid.Row="1" IsCompact="True" ViewModel="{x:Bind ViewModel.Editor, Mode=OneWay}" TextSize="{x:Bind TextSize}" EscapePressed="OnEditorEscape"/>
+            <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{x:Bind EditorHint}" VerticalAlignment="Center"/><Button Grid.Column="1" automation:AutomationProperties.AutomationId="PopupEditorCancel" Content="{x:Bind CancelText}" Click="OnEditorCancel"/><Button Grid.Column="2" automation:AutomationProperties.AutomationId="PopupEditorSave" Content="{x:Bind SaveText}" Click="OnEditorSave"/></Grid>
+        </Grid>
     </Grid>
 </Window>

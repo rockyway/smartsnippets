@@ -23,7 +23,10 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipTests,
     [string[]]$Only = @(),
-    [string]$ReportPath = ''
+    [string]$ReportPath = '',
+    [string]$ArtifactZip = '',
+    [ValidateRange(1, 1000000)][int]$PerfLibrary = 10000,
+    [switch]$FlipTaskbarTheme
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +40,33 @@ $dbPath = Join-Path $appRoot 'smartsnippets.db'
 $logPath = Join-Path $appRoot 'logs\app.log'
 $backupRoot = "$appRoot.verify-backup"
 $SecretMarker = 'ZZ-PRIVACY-MARKER-7431'
+$artifactInfo = $null
+if ($ArtifactZip) {
+    $zipPath = (Resolve-Path -LiteralPath $ArtifactZip).Path
+    $hashPath = "$zipPath.sha256"
+    if (-not (Test-Path -LiteralPath $hashPath -PathType Leaf)) { throw "Missing checksum: $hashPath" }
+    $hashLine = (Get-Content -LiteralPath $hashPath -Raw).Trim()
+    if ($hashLine -notmatch '^([0-9a-fA-F]{64})\s+\*?([^\r\n]+)$') { throw 'Invalid SHA-256 file' }
+    $expectedHash = $Matches[1]; $expectedName = $Matches[2]
+    if ($expectedName -cne [IO.Path]::GetFileName($zipPath)) { throw 'Checksum filename does not match archive' }
+    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    if ($actualHash -ine $expectedHash) { throw 'Archive SHA-256 mismatch' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        if (@($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') -or $_ -match '(^|/)\.\.(/|$)' -or $_ -match '\.pdb$' }).Count -gt 0 -or 'SmartSnippets/SmartSnippets.App.exe' -notin $entries) { throw 'Unsafe or invalid release archive layout' }
+    } finally { $archive.Dispose() }
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ('SmartSnippets-verify-' + [guid]::NewGuid())
+    try {
+        [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $temp)
+        if (Test-Path "$root\publish") { Remove-Item "$root\publish" -Recurse -Force }
+        Move-Item (Join-Path $temp 'SmartSnippets') "$root\publish"
+    } finally { if (Test-Path $temp) { Remove-Item $temp -Recurse -Force } }
+    $version = (Get-Item $exe).VersionInfo
+    $artifactInfo = "archive=$([IO.Path]::GetFileName($zipPath)) sha256=$actualHash ProductVersion=$($version.ProductVersion) FileVersion=$($version.FileVersion)"
+    $SkipBuild = $true
+}
 
 $script:Results = New-Object System.Collections.ArrayList
 $script:Procs = @()
@@ -55,6 +85,7 @@ function Skip($Id, $Name, $Reason) { Add-Result 'SKIP' $Id $Name $Reason }
 function Warn($Id, $Name, $Detail) { Add-Result 'WARN' $Id $Name $Detail }
 function Section($Title) { Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
 function Want($Section) { ($Only.Count -eq 0) -or ($Only -contains $Section) }
+if ($artifactInfo) { Add-Result 'INFO' 'Artifact' 'Downloaded release artifact' $artifactInfo }
 
 # ----------------------------------------------------------------- app + profile helpers
 function Stop-App {
@@ -210,7 +241,8 @@ if (Want 'A') {
 
     if (-not $SkipBuild) {
         if (Test-Path publish) { Remove-Item publish -Recurse -Force }
-        $log = & dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish 2>&1 | Out-String
+        & (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output publish
+        $log = Get-Content publish.log -Raw
         $ok = ($LASTEXITCODE -eq 0)
         Check 'A3.build' 'AOT publish succeeds' $ok
         Check 'A3.warnings' 'zero IL2xxx/IL3xxx warnings' (-not ($log -match 'warning IL[23][0-9]{3}'))
@@ -224,7 +256,7 @@ if (Want 'A') {
     Check 'A4.binding' 'no reflection {Binding} in XAML (x:Bind only)' (-not $bindings) (($bindings | Select-Object -First 3 | ForEach-Object { $_.Path | Split-Path -Leaf }) -join ',')
     $pres = Get-Content src\SmartSnippets.Presentation\SmartSnippets.Presentation.csproj -Raw
     Check 'A4.layering' 'Presentation has no WinUI/Windows target' (($pres -notmatch 'UseWinUI') -and ($pres -notmatch 'windows10'))
-    $keyevents = 'store_loaded', 'settings_loaded', 'hotkey_registered', 'hotkey_changed', 'theme_applied', 'tray_readded', 'restart_elevated_started', 'exit_unregistered', 'migration_backup', 'snippet_saved', 'snippet_deleted', 'folder_created', 'folder_renamed', 'folder_deleted'
+    $keyevents = 'store_loaded', 'settings_loaded', 'hotkey_registered', 'hotkey_changed', 'theme_applied', 'tray_readded', 'restart_elevated_started', 'exit_unregistered', 'migration_backup', 'snippet_saved', 'snippet_deleted', 'folder_created', 'folder_renamed', 'folder_deleted', 'app_started', 'tray_icon', 'tray_icon_load_failed', 'tray_theme_changed', 'popup_ready_ms', 'popup_search_ms', 'insert_result', 'clipboard_swap', 'clipboard_restore'
     $src = (Get-ChildItem src -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Get-Content -Raw) -join "`n"
     $missing = $keyevents | Where-Object { $src -notmatch ('"' + $_ + '"') }
     Check 'A4.logevents' 'all runbook log events exist in code' (-not $missing) ($missing -join ',')
@@ -436,6 +468,17 @@ if (Want 'C') {
         Start-Sleep -Milliseconds 1200
         Check 'C9.oldkey' 'old Ctrl+Shift+Space no longer opens the popup' (-not (Log-Has 'popup_ready_ms' $from))
     }
+    Stop-App
+    $p = Start-App
+    $null = Wait-Main $p
+    if ($target) {
+        $null = Set-Foreground $target
+        $from = (Get-LogLines).Count
+        Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Alt, [byte]$VK.K)
+        Check 'C9.restart' 'changed shortcut still opens the popup after restart' (Wait-Log 'popup_ready_ms' $from 4000) (Tail $from)
+        Send-Chord @([byte]$VK.Esc)
+    } else { Check 'C9.restart' 'changed shortcut after restart' $false 'Notepad target unavailable' }
+    Nav $p 'SettingsItem'
     # A conflicting shortcut cannot be driven from outside: a combination owned by another RegisterHotKey
     # client never reaches the recorder (the OS swallows the key press), so the in-page conflict sentence is
     # only reachable with hook-based owners. Startup conflict (C13) and the view-model tests cover the logic.
@@ -473,8 +516,8 @@ if (Want 'C') {
         $menuItems = @()
         if ($menuWnd) { $menuItems = @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) }
         $joined = $menuItems -join ' | '
-        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Diagnostics / Exit' (($menuItems.Count -eq 6) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -match 'Diagnostics') -and ($joined -match 'Exit')) $joined
-        Check 'C11.order' 'order: Open, Show popup, Settings first (design) then Restart, Diagnostics, Exit last' (($menuItems.Count -gt 0) -and ($menuItems[0] -match 'Open') -and ($menuItems[1] -match 'Show popup') -and ($menuItems[2] -match 'Settings') -and ($menuItems[-1] -match 'Exit')) ''
+        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Exit, no Diagnostics' (($menuItems.Count -eq 5) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -notmatch 'Diagnostics') -and ($joined -match 'Exit')) $joined
+        Check 'C11.order' 'order: Open, Show popup, Settings first (design) then Restart, Exit last' (($menuItems.Count -gt 0) -and ($menuItems[0] -match 'Open') -and ($menuItems[1] -match 'Show popup') -and ($menuItems[2] -match 'Settings') -and ($menuItems[-1] -match 'Exit')) ''
         Check 'C11.accel' 'Show popup row shows the live hotkey text' ($joined -match 'Show popup\tCtrl\+Shift\+Space') ''
 
         # pick Exit (last item): Up wraps from nothing to the last item, Enter activates it
@@ -539,7 +582,7 @@ if (Want 'D') {
     $hex = HexOf $text1
     $hexLf = HexOf ($text1 -replace "`r`n", "`r")
     Check 'D1.exact' 'stored text keeps whitespace exactly (leading/trailing spaces, not trimmed)' ($row -like "$hex|*" -or $row -like "$hexLf|*") ''
-    if ($row -like "$hexLf|*" -and $row -notlike "$hex|*") { Warn 'D1.eol' 'TextBox stores line breaks as lone CR (0x0D), not CRLF' 'WinUI TextBox.Text normalizes CRLF to CR; paste into some targets may need CRLF (PRD 3.8, plan 007)' }
+    Check 'D1.eol' 'stored TextBox line endings are CR or CRLF; insertion normalizes to CRLF (F1)' ($row -like "$hex|*" -or $row -like "$hexLf|*") 'End-to-end insertion proof remains F1'
     Check 'D1.label' 'auto label is the first line ("Hello"), not custom' ($row -match '\|Hello\|0\|0$') $row
     Check 'D1.usage' 'new snippet has usage_count 0' ($row -match '\|0$')
 
@@ -741,11 +784,256 @@ if (Want 'D') {
     $bad = @($listItems | Where-Object { $_ -match 'ViewModel' })
     Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) (($bad | Select-Object -First 2) -join ' ; ')
 
+    # Keep the sqlite process alive with its transaction open while the UI attempts a write.
+    $lockMarker = Join-Path ([IO.Path]::GetTempPath()) ("ss-lock-" + [guid]::NewGuid() + '.txt')
+    $locker = $null
+    try {
+        $tb = New-SnippetEditor $p
+        if (-not $tb) { throw 'Could not open editor for D-lock' }
+        $lockText = 'locked-save-probe'
+        Set-Text $tb $lockText
+        $psi = New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName = (Get-Command sqlite3).Source
+        $psi.Arguments = '-batch "' + $dbPath + '"'
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardInput = $true
+        $psi.CreateNoWindow = $true
+        $locker = [Diagnostics.Process]::Start($psi)
+        $locker.StandardInput.WriteLine('BEGIN EXCLUSIVE;')
+        $locker.StandardInput.WriteLine('.once "' + $lockMarker.Replace('\', '/') + '"')
+        $locker.StandardInput.WriteLine("SELECT 'locked';")
+        $locker.StandardInput.Flush()
+        if (-not (Wait-Until { Test-Path $lockMarker } 10000 100)) { throw 'sqlite exclusive transaction did not start' }
+        Invoke-El (Btn (Get-Main $p) 'Save snippet')
+        $retry = Wait-Until { Btn (Get-Main $p) 'Try saving again' } 15000 150
+        Check 'D-lock.error' 'database lock shows inline retry' ([bool]$retry)
+        $field = Find-ById (Get-Main $p) 'SnippetTextBox'
+        Check 'D-lock.text' 'failed save preserves editor text' ([bool]$field -and (Get-Text $field) -eq $lockText)
+        $locker.StandardInput.WriteLine('ROLLBACK;')
+        $locker.StandardInput.WriteLine('.quit')
+        $locker.StandardInput.Flush()
+        if (-not $locker.WaitForExit(10000)) { throw 'sqlite lock did not release' }
+        if ($retry) { Invoke-El $retry }
+        Check 'D-lock.retry' 'retry saves after lock release' ([bool](Wait-Until { ((Sql "select count(*) from snippets where text='locked-save-probe';") -join '') -eq '1' } 10000 150))
+    } finally {
+        if ($locker -and -not $locker.HasExited) { $locker.Kill(); $locker.WaitForExit() }
+        if ($locker) { $locker.Dispose() }
+        Remove-Item $lockMarker -Force -ErrorAction SilentlyContinue
+    }
+
     # D15 privacy: no snippet text in the log
     $logText = (Get-LogLines) -join "`n"
     Check 'D15.privacy' 'app.log never contains snippet text or tags' (-not ($logText -match [regex]::Escape($SecretMarker)) -and -not ($logText -match 'tag test body|custom label body|mail template')) ''
 
     Stop-App
+}
+
+if (Want 'E') {
+    Section 'E. Popup basic verification (incomplete)'
+    Reset-Profile
+    $p = Start-App
+    if (-not (Wait-Main $p)) { throw 'E requires the main window' }
+    if (-not (Create-Snippet $p 'popup alpha bravo probe')) { throw 'E could not create first test snippet' }
+    if (-not (Create-Snippet $p 'popup alpha charlie probe')) { throw 'E could not create second test snippet' }
+    $target = Start-Target
+    if (-not $target) { throw 'E requires Notepad' }
+    $initialText = Get-NotepadText $target
+    $beforeUsage = (Sql 'select coalesce(sum(usage_count), 0) from snippets;') -join ''
+    $null = Set-Foreground $target
+    Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
+    $popup = Wait-Until { Get-PopupWindow $p.Id } 5000 100
+    if (-not $popup) { throw 'E popup did not appear' }
+    $search = Find-ById $popup 'PopupSearch'
+    Check 'E1.visible' 'popup opens and search is focused' ([bool]$popup -and [bool]$search -and $search.Current.HasKeyboardFocus)
+    Set-Text $search 'alpha bravo'
+    $from = (Get-LogLines).Count
+    $count = Wait-Until { $c = Find-ById (Get-PopupWindow $p.Id) 'PopupCount'; if ($c -and $c.Current.Name -match '^1 of 2') { $c.Current.Name } } 5000 100
+    Check 'E2.and' 'two search terms are ANDed' ([bool]$count) "$count"
+    Set-Text $search 'zzqxv'
+    $empty = Wait-Until { Find-ByName (Get-PopupWindow $p.Id) 'No snippets match' } 5000 100
+    Check 'E2.empty' 'unmatched search shows empty state' ([bool]$empty)
+    foreach ($pair in @(@('PopupLayoutButton','Toggle layout'), @('PopupSortButton','Sort'), @('PopupAddButton','Add snippet'), @('PopupOpenMainButton','Open main window'))) {
+        $button = Find-ById (Get-PopupWindow $p.Id) $pair[0]
+        Check "E6.$($pair[0])" 'toolbar button has expected accessible name and tooltip' ([bool]$button -and $button.Current.Name -eq $pair[1] -and -not [string]::IsNullOrWhiteSpace($button.Current.HelpText))
+    }
+    Send-Chord @([byte]$VK.Esc)
+    $closed = Wait-Until { -not (Get-PopupWindow $p.Id) } 5000 100
+    $afterUsage = (Sql 'select coalesce(sum(usage_count), 0) from snippets;') -join ''
+    Check 'E4' 'Escape closes without insertion or usage' ([bool]$closed -and $initialText -ceq (Get-NotepadText $target) -and $beforeUsage -eq $afterUsage)
+    Stop-Target
+    Stop-App
+}
+
+if (Want 'F') {
+    Section 'F. Insertion basic verification (incomplete)'
+    $savedClipboard = Save-ClipboardText
+    try {
+        Reset-Profile
+        $p = Start-App
+        if (-not (Wait-Main $p)) { throw 'F requires the main window' }
+        $probe = "Héllo – naïve 👋 世界`r`n`tline 2  `r`nline 3"
+        if (-not (Create-Snippet $p $probe)) { throw 'F could not create Unicode probe' }
+        $target = Start-Target
+        if (-not $target) { throw 'F requires Notepad' }
+        Set-Clipboard -Value 'SMART-SNIPPETS-CLIPBOARD-SENTINEL'
+        $before = (Sql 'select usage_count from snippets order by id desc limit 1;') -join ''
+        $null = Set-Foreground $target
+        Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
+        $popup = Wait-Until { Get-PopupWindow $p.Id } 5000 100
+        if (-not $popup) { throw 'F popup did not appear' }
+        $from = (Get-LogLines).Count
+        Send-Chord @([byte]$VK.Enter)
+        $inserted = Wait-Log 'insert_result outcome=Inserted' $from 10000
+        $text = Wait-Until { $s = Get-NotepadText $target; if ($s) { $s } } 10000 100
+        Check 'F1' 'Unicode and multiline probe inserted with CRLF' ($inserted -and $text -ceq $probe) "actual UTF-16 length=$($text.Length) expected=$($probe.Length)"
+        $restored = Wait-Until { (Get-Clipboard -Raw -ErrorAction SilentlyContinue) -ceq 'SMART-SNIPPETS-CLIPBOARD-SENTINEL' } 10000 150
+        Check 'F3' 'clipboard sentinel restored' ([bool]$restored)
+        $usage = (Sql 'select usage_count, last_used_at is not null from snippets order by id desc limit 1;') -join ''
+        Check 'F4.database' 'usage increments exactly once and last-used is set' ($usage -eq "$([int]$before + 1)|1") $usage
+        Add-Result 'INFO' 'F12' 'N/A — uncertain dispatch is unit-tested' 'InsertionServiceTests.FailedDispatch_OnlyUncertainReleasesAndWaits and SendThrows_IsUncertain; PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution'
+        Skip 'F8' 'elevated target' 'requires user UAC acceptance; see compatibility matrix'
+    } finally {
+        Stop-Target
+        Stop-App
+        Restore-ClipboardText $savedClipboard
+    }
+}
+
+# Release checks.
+if (Want 'G') {
+    Section 'G. Release artifact and icon structure'
+    $priorLogText = (Get-LogLines) -join "`n"
+    $info = (Get-Item $exe).VersionInfo
+    if ($ArtifactZip -and [IO.Path]::GetFileName($ArtifactZip) -match '^SmartSnippets-win-x64-(.+)\.zip$') {
+        $expectedVersion = $Matches[1]
+        $numericVersion = ($expectedVersion -split '-', 2)[0]
+        $validFileVersion = $info.FileVersion -match ('^' + [regex]::Escape($numericVersion) + '\.\d+$')
+        Check 'G1' 'ProductVersion and FileVersion match release archive' ($info.ProductVersion.StartsWith($expectedVersion) -and $validFileVersion) "ProductVersion=$($info.ProductVersion); FileVersion=$($info.FileVersion)"
+    } else { Skip 'G1' 'release version' 'requires -ArtifactZip named SmartSnippets-win-x64-<version>.zip' }
+    function Get-IcoFrameCount([string]$Path) {
+        if (-not (Test-Path $Path -PathType Leaf)) { return 0 }
+        $bytes = [IO.File]::ReadAllBytes($Path)
+        if ($bytes.Length -lt 6 -or $bytes[0] -ne 0 -or $bytes[1] -ne 0 -or $bytes[2] -ne 1 -or $bytes[3] -ne 0) { return 0 }
+        return [BitConverter]::ToUInt16($bytes, 4)
+    }
+    $appIcon = Join-Path $root 'publish\Assets\SmartSnippets.ico'
+    Check 'G2.frames' 'app icon has eight frames' ((Get-IcoFrameCount $appIcon) -eq 8)
+    Add-Type -AssemblyName System.Drawing
+    function Get-IconPixelHash($Icon) {
+        $bitmap = New-Object Drawing.Bitmap 32, 32
+        try {
+            $graphics = [Drawing.Graphics]::FromImage($bitmap)
+            try { $graphics.Clear([Drawing.Color]::Transparent); $graphics.DrawIcon($Icon, 0, 0, 32, 32) } finally { $graphics.Dispose() }
+            $stream = New-Object IO.MemoryStream
+            try {
+                $bitmap.Save($stream, [Drawing.Imaging.ImageFormat]::Png)
+                $hash = [Security.Cryptography.SHA256]::Create()
+                try { return [Convert]::ToBase64String($hash.ComputeHash($stream.ToArray())) } finally { $hash.Dispose() }
+            } finally { $stream.Dispose() }
+        } finally { $bitmap.Dispose() }
+    }
+    $associated = [Drawing.Icon]::ExtractAssociatedIcon($exe)
+    $sourceIcon = New-Object Drawing.Icon($appIcon, 32, 32)
+    try {
+        $associatedHash = Get-IconPixelHash $associated
+        $expectedIconHash = Get-IconPixelHash $sourceIcon
+        $defaultIconHash = Get-IconPixelHash ([Drawing.SystemIcons]::Application)
+        Check 'G2.associated' 'exe associated icon matches app mark and differs from stock icon' ($associatedHash -eq $expectedIconHash -and $associatedHash -ne $defaultIconHash)
+    } finally { if ($associated) { $associated.Dispose() }; $sourceIcon.Dispose() }
+    foreach ($theme in 'Light', 'Dark') {
+        foreach ($state in 'Ready', 'PopupOpen', 'HotkeyUnavailable') {
+            $name = "Tray-$theme-$state.ico"
+            Check "G3.$theme.$state" 'tray icon has six frames' ((Get-IcoFrameCount (Join-Path "$root\publish\Assets" $name)) -eq 6)
+        }
+    }
+    . (Join-Path $PSScriptRoot 'release-tag.ps1')
+    Check 'G8.tags' 'invalid tags rejected and prerelease accepted' (-not (Test-ReleaseTag 'v1.0') -and -not (Test-ReleaseTag 'v1.0.0.0') -and -not (Test-ReleaseTag '1.0.0') -and (Test-ReleaseTag 'v1.0.0-rc.1'))
+    if ($ArtifactZip) { Check 'G9' 'archive hash and layout validated before extraction' $true $artifactInfo }
+    else { Skip 'G9' 'release archive and checksum' 'requires -ArtifactZip' }
+    Reset-Profile
+    $p = Start-App
+    $null = Wait-Main $p
+    Check 'G4.ready' 'tray starts Ready' (Log-Has 'tray_icon state=Ready')
+    $target = Start-Target
+    if (-not $target) { throw 'G4 requires Notepad target' }
+    $null = Set-Foreground $target
+    $from = (Get-LogLines).Count
+    Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
+    Check 'G4.open' 'popup changes tray state to PopupOpen' (Wait-Log 'tray_icon state=PopupOpen' $from 5000) (Tail $from)
+    $from = (Get-LogLines).Count
+    Send-Chord @([byte]$VK.Esc)
+    Check 'G4.close' 'closing popup returns tray to Ready' (Wait-Log 'tray_icon state=Ready' $from 5000) (Tail $from)
+    Stop-Target
+    Stop-App
+    Reset-Profile
+    $held = [Win32Verify]::RegisterHotKey([IntPtr]::Zero, 9210, 0x4006, 0x20)
+    if (-not $held) { throw 'G5 could not reserve the default hotkey' }
+    try {
+        $p = Start-App
+        $null = Wait-Main $p
+        Check 'G5.unavailable' 'held hotkey produces unavailable tray state' (Wait-Log 'tray_icon state=HotkeyUnavailable' 0 5000)
+    } finally { [void][Win32Verify]::UnregisterHotKey([IntPtr]::Zero, 9210) }
+    Nav $p 'SettingsItem'
+    $from = (Get-LogLines).Count
+    Press (Get-Main $p) 'Restore default shortcut'
+    Check 'G5.ready' 're-applying freed hotkey restores Ready state' (Wait-Log 'tray_icon state=Ready' $from 5000) (Tail $from)
+    $hwndMsg = [Win32Verify]::FindWindowW('SmartSnippets.MessageWindow', $null)
+    if ($hwndMsg -eq [IntPtr]::Zero) { throw 'G6 message window not found' }
+    $messageData = [Runtime.InteropServices.Marshal]::StringToHGlobalUni('ImmersiveColorSet')
+    try {
+        $from = (Get-LogLines).Count
+        [void][Win32Verify]::SendMessage($hwndMsg, 0x001A, [IntPtr]::Zero, $messageData)
+        Check 'G6' 'theme broadcast re-evaluates icon without a crash' ((Wait-Log 'tray_icon state=' $from 5000) -and -not $p.HasExited) (Tail $from)
+    } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($messageData) }
+    if ($FlipTaskbarTheme) {
+        $keyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        $key = Get-Item $keyPath
+        $names = @($key.GetValueNames())
+        $existed = $names -contains 'SystemUsesLightTheme'
+        $old = $key.GetValue('SystemUsesLightTheme', 0)
+        try {
+            $from = (Get-LogLines).Count
+            New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $(if ($old -eq 1) { 0 } else { 1 }) -Force | Out-Null
+            $result = [IntPtr]::Zero
+            [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
+            Check 'G6b' 'taskbar theme flip triggers tray_theme_changed' (Wait-Log 'tray_theme_changed' $from 5000) (Tail $from)
+        } finally {
+            if ($existed) { New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $old -Force | Out-Null }
+            else { Remove-ItemProperty $keyPath -Name SystemUsesLightTheme -ErrorAction SilentlyContinue }
+            $result = [IntPtr]::Zero
+            [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
+        }
+    } else { Skip 'G6b' 'taskbar theme flip' 'opt in with -FlipTaskbarTheme' }
+    [void][Win32Verify]::PostMessage($hwndMsg, 0x8001, [IntPtr]::Zero, [IntPtr]0x0205)
+    $menuWnd = Wait-Until { $m = [Win32Verify]::FindWindowW('#32768', $null); if ($m -ne [IntPtr]::Zero) { $m } } 3000 150
+    $menuItems = if ($menuWnd) { @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) } else { @() }
+    $joined = $menuItems -join ' | '
+    Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') $joined
+    Send-Chord @([byte]$VK.Esc)
+    Stop-App
+    $allLogText = $priorLogText + "`n" + ((Get-LogLines) -join "`n")
+    Check 'G10' 'log excludes known acceptance snippet text' (-not ($allLogText -match 'smart-snippets-probe|locked-save-probe|ZZ-PRIVACY-MARKER-7431'))
+    $gateDir = Join-Path ([IO.Path]::GetTempPath()) ('ss-fake-aot-' + [guid]::NewGuid())
+    try {
+        New-Item -ItemType Directory -Path $gateDir | Out-Null
+        [IO.File]::WriteAllText((Join-Path $gateDir 'SmartSnippets.App.dll'), 'not a real assembly')
+        $shell = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
+        $gateOutput = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output $gateDir 2>&1 | Out-String
+        Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') $gateOutput
+    } finally {
+        Remove-Item $gateDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item "$gateDir.log" -Force -ErrorAction SilentlyContinue
+    }
+}
+if (Want 'P') {
+    Section 'P. Performance diagnostic'
+    if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+        $benchmark = & dotnet test tests/SmartSnippets.Core.Tests -c Release --filter 'Category=Benchmark' --logger 'console;verbosity=detailed' 2>&1 | Out-String
+        Add-Result 'INFO' 'P3' 'Core benchmark (diagnostic only; does not decide AC13)' $benchmark
+    } else { Add-Result 'INFO' 'P3' 'Core benchmark' 'SDK unavailable; diagnostic not run' }
+}
+foreach ($section in 'E', 'F', 'P') {
+    if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
 }
 
 }

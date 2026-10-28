@@ -29,7 +29,13 @@ internal static class WindowPlacement
         var work = new PixelRect(info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom);
         var origin = PopupPlacement.CenterIn(work, width, height);
 
-        window.MoveAndResize(new RectInt32(origin.X, origin.Y, Math.Min(width, work.Width), Math.Min(height, work.Height)));
+        var bounds = new RectInt32(origin.X, origin.Y, Math.Min(width, work.Width), Math.Min(height, work.Height));
+        window.MoveAndResize(bounds);
+        // A mixed-DPI transition can apply the suggested WM_DPICHANGED size after the move.
+        if (window.Size.Width != bounds.Width || window.Size.Height != bounds.Height)
+        {
+            window.MoveAndResize(bounds);
+        }
         return true;
     }
 }

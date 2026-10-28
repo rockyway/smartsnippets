@@ -12,7 +12,8 @@ namespace SmartSnippets.App.Pages;
 /// <summary>Master-detail snippet management: Browse pane, searchable list and <see cref="Controls.SnippetEditor"/> side by side.</summary>
 public sealed partial class SnippetsPage : Page, IGuardedPage
 {
-    private const string WideStateName = "Wide";
+    // Browse 200 + list 320 + an editor that still fits its fields (~360).
+    private const double WideMinWidth = 880;
 
     private SnippetsPageViewModel? _viewModel;
     private ITextSizeService? _textSize;
@@ -65,16 +66,48 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
 
     private Visibility Hide(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
+    private Visibility HasText(string? value) => string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
+
+    private void OnBrowseNewFolderClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel?.List.StartNewFolderCommand.Execute(null);
+        // Defer until the row is visible; an invisible TextBox cannot take focus.
+        DispatcherQueue.TryEnqueue(() => BrowseNewFolderBox.Focus(FocusState.Programmatic));
+    }
+
+    private void OnBrowseNewFolderKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            _viewModel.List.CreateFolderCommand.Execute(null);
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            _viewModel.List.CancelNewFolderCommand.Execute(null);
+        }
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _isWide = LayoutStates.CurrentState?.Name == WideStateName;
+        _isWide = Root.ActualWidth >= WideMinWidth;
         ApplyLayout();
     }
 
-    private void OnLayoutStateChanged(object sender, VisualStateChangedEventArgs e)
+    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        _isWide = e.NewState?.Name == WideStateName;
-        ApplyLayout();
+        var wide = e.NewSize.Width >= WideMinWidth;
+        if (wide != _isWide)
+        {
+            _isWide = wide;
+            ApplyLayout();
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

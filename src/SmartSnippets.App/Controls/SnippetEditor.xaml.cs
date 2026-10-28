@@ -17,6 +17,15 @@ public sealed partial class SnippetEditor : UserControl
 {
     private SnippetEditorViewModel? _viewModel;
     private ITextSizeService? _textSize;
+    private bool _isCompact;
+
+    public event EventHandler? EscapePressed;
+
+    public bool IsCompact
+    {
+        get => _isCompact;
+        set { _isCompact = value; Bindings.Update(); }
+    }
 
     public SnippetEditor()
     {
@@ -100,6 +109,12 @@ public sealed partial class SnippetEditor : UserControl
         if (_viewModel.IsCreatingFolder)
         {
             CancelNewFolder();
+            return;
+        }
+
+        if (IsCompact)
+        {
+            EscapePressed?.Invoke(this, EventArgs.Empty);
             return;
         }
 

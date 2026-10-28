@@ -46,13 +46,18 @@ public sealed record AppSettings
 
     public void Save(ISettingsStore store)
     {
+        SaveShell(store);
+        store.Set(SettingsKeys.PopupLayout, PopupLayout.ToString());
+        store.Set(SettingsKeys.PopupSort, PopupSort.ToString());
+    }
+
+    public void SaveShell(ISettingsStore store)
+    {
         store.Set(SettingsKeys.Theme, Theme.ToString());
         store.Set(SettingsKeys.TextSizePreset, TextSizePreset.ToString());
         store.Set(SettingsKeys.TextSizeCustom, Clamp(CustomTextSize, 14).ToString("R", CultureInfo.InvariantCulture));
         store.Set(SettingsKeys.HotkeyModifiers, HotkeyModifiers.ToString(CultureInfo.InvariantCulture));
         store.Set(SettingsKeys.HotkeyKey, HotkeyKey.ToString(CultureInfo.InvariantCulture));
-        store.Set(SettingsKeys.PopupLayout, PopupLayout.ToString());
-        store.Set(SettingsKeys.PopupSort, PopupSort.ToString());
     }
 
     private static double Clamp(double value, double fallback) =>

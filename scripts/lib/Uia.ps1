@@ -1,6 +1,7 @@
 # UI Automation + Win32 helpers shared by the verification scripts (Windows PowerShell 5.1).
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
+. (Join-Path $PSScriptRoot 'Clipboard.ps1')
 
 if (-not ('Win32Verify' -as [type])) {
 Add-Type -TypeDefinition @'
@@ -25,6 +26,7 @@ public static class Win32Verify {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, string l, uint flags, uint timeout, out IntPtr result);
     [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr hMenu);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetMenuString(IntPtr hMenu, uint id, StringBuilder sb, int max, uint flags);
     [DllImport("user32.dll")] public static extern uint GetMenuItemID(IntPtr hMenu, int pos);
@@ -134,6 +136,22 @@ function Dump-Tree($Root, [int]$Max = 400) {
 }
 function Send-Chord([byte[]]$Keys) { [Win32Verify]::Chord($Keys) }
 $VK = @{ Ctrl=0x11; Shift=0x10; Alt=0x12; Space=0x20; Enter=0x0D; Esc=0x1B; Tab=0x09; Delete=0x2E; Down=0x28; Up=0x26; N=0x4E; F=0x46; S=0x53; K=0x4B; J=0x4A; A=0x41; Win=0x5B }
+
+function Get-PopupWindow([int]$ProcId) {
+    foreach ($window in (Get-AppWindows $ProcId)) {
+        if (Find-ById $window 'PopupSearch') { return $window }
+    }
+    return $null
+}
+
+function Get-NotepadText($Window) {
+    foreach ($edit in (Find-All $Window ([Windows.Automation.ControlType]::Edit))) {
+        $pattern = $null
+        if ($edit.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.Value }
+        if ($edit.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { return $pattern.DocumentRange.GetText(-1) }
+    }
+    throw 'Notepad text control does not expose ValuePattern or TextPattern'
+}
 
 function Set-Foreground($El) {
     # Brings the window that owns the UIA element to the foreground (Alt tap lifts the foreground lock).

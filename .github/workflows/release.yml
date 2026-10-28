@@ -1,0 +1,84 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Validate tag
+        id: tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          . ./scripts/release-tag.ps1
+          foreach ($bad in @('v1.0', 'v1.0.0.0', '1.0.0')) {
+            if (Test-ReleaseTag $bad) { throw "Invalid tag accepted: $bad" }
+          }
+          if (-not (Test-ReleaseTag 'v1.0.0-rc.1')) { throw 'Valid prerelease rejected' }
+          $tag = $env:GITHUB_REF_NAME
+          if (-not (Test-ReleaseTag $tag)) { throw 'Invalid release tag' }
+          $null = $tag -cmatch '^v(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$'
+          $version = $tag.Substring(1)
+          $fileVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3]).${{ github.run_number }}"
+          $prerelease = [bool]$Matches[4]
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Tag must point at main' }
+          $lookup = (gh release view $tag 2>&1 | Out-String)
+          $lookupCode = $LASTEXITCODE
+          if ($lookupCode -eq 0) { throw 'Release exists; delete it to re-run' }
+          if ($lookup -notmatch 'release not found') { throw "Release lookup failed: $lookup" }
+          $global:LASTEXITCODE = 0
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "fileversion=$fileVersion" >> $env:GITHUB_OUTPUT
+          "prerelease=$($prerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet test tests/SmartSnippets.Core.Tests -c Release
+      - run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+      - name: AOT publish + warning gate
+        shell: pwsh
+        run: |
+          ./scripts/publish-aot.ps1 -Output publish -Version '${{ steps.tag.outputs.version }}' -BuildNumber ${{ github.run_number }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check stamped version
+        shell: pwsh
+        run: |
+          $info = (Get-Item publish/SmartSnippets.App.exe).VersionInfo
+          if (($info.ProductVersion -split '\+')[0] -ne '${{ steps.tag.outputs.version }}' -or $info.FileVersion -ne '${{ steps.tag.outputs.fileversion }}') { throw 'Version stamp mismatch' }
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force stage/SmartSnippets | Out-Null
+          Copy-Item publish/* stage/SmartSnippets -Recurse
+          Get-ChildItem stage -Filter *.pdb -Recurse | Remove-Item -Force
+          $zip = "SmartSnippets-win-x64-${{ steps.tag.outputs.version }}.zip"
+          Compress-Archive stage/SmartSnippets $zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+            if (($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') }).Count -or 'SmartSnippets/SmartSnippets.App.exe' -notin $entries) { throw 'Invalid zip layout' }
+          } finally { $archive.Dispose() }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$zip.sha256", "$hash  $zip`n", [Text.UTF8Encoding]::new($false))
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "SmartSnippets-win-x64-${{ steps.tag.outputs.version }}.zip"
+          $args = @('release', 'create', $env:GITHUB_REF_NAME, $zip, "$zip.sha256", '--verify-tag', '--generate-notes', '--title', 'Smart Snippets ${{ steps.tag.outputs.version }}', '--notes-file', '.github/release-notes-header.md')
+          if ('${{ steps.tag.outputs.prerelease }}' -eq 'true') { $args += '--prerelease' }
+          & gh @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
