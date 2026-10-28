@@ -942,8 +942,9 @@ order listed.
   id). `folder` is `null` for Unfiled. `lastUsedAt` is `null` when never used. All dates are epoch ms (`DbTime.ToDb`).
 - The example above is indented for reading; the real file is **compact** (A2: no indentation, no spaces between
   tokens).
-- Written with `JsonSerializer.SerializeToUtf8Bytes(document, NativeJsonContext.Default.NativeDocument)`. If the result
-  is longer than `SnippetFileRules.MaxImportBytes` → `NativeExportResult(null, TooLarge: true, …)`, and **no file is
+- Serialized by `NativeExport.Write` (§4.3.2): compact JSON written through the bounded-buffer stream with
+  `JsonSerializer.Serialize(stream, document, NativeJsonContext.Default.NativeDocument)`. If the output would pass
+  `SnippetFileRules.MaxImportBytes` → `NativeExportResult(null, ExportRefusal.TooLarge, …)`, and **no file is
   written**. The size is measured on the exact bytes that would be written, after escaping. This guarantees every
   exported file passes the importer's cap. The context:
 
@@ -1547,7 +1548,7 @@ fails for the stated reason.
     - `Import_SubscriberThrows_CommitReturned_RowsPersisted_LaterSubscribersRan`. Three subscribers in order: a
       recorder, one that throws `InvalidOperationException`, and a second recorder. `ImportSnippets` returns its
       `ImportCommit` (no exception); both recorders saw exactly one `Imported` event; `NewStore()` has the rows;
-      `app.log` has `store_subscriber_failed kind=Imported subscriber=…`, and no exception message.
+      `app.log` has `store_subscriber_failed kind=Imported index=<i> of=<n> error=InvalidOperationException` (format pinned by §4.3.2), and no exception message.
     - `Create_SubscriberThrows_ResultReturned` (the same isolation for an existing kind, since `Raise` is shared).
   - **Store:**
     - `Import_OneTransaction_OneEvent_KindImported_IdsAreNew` (event count 1, `Id` null, `SnippetIds` = the new ids,
