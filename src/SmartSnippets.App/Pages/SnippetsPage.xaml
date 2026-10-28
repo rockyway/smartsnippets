@@ -211,18 +211,20 @@
                         <DataTemplate x:DataType="vm:SnippetRowViewModel">
                             <StackPanel Padding="0,6" Spacing="2">
                                 <TextBlock
+                                    FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                                     FontWeight="SemiBold"
                                     Text="{x:Bind Label}"
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
+                                    FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     MaxLines="1"
                                     Text="{x:Bind Preview}"
                                     TextTrimming="CharacterEllipsis"
                                     TextWrapping="NoWrap" />
                                 <TextBlock
+                                    FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind Meta}"
                                     TextTrimming="CharacterEllipsis" />
                             </StackPanel>

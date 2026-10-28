@@ -170,7 +170,7 @@ internal sealed class AppHost
             {
                 TextSize = textSize,
                 ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService(),
-                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id)),
+                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id), textSize: textSize),
             },
             PageKind.Folders => new FoldersPage
             {
@@ -220,7 +220,7 @@ internal sealed class AppHost
         
         _popupHost = new DeferredPopupHost(popup);
         _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
-            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
+            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()), textSize);
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += OnPopupVisibleChanged;

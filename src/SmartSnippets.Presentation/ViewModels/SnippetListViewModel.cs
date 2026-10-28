@@ -6,6 +6,7 @@ using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Query;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Text;
+using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
@@ -13,6 +14,7 @@ namespace SmartSnippets.Presentation.ViewModels;
 public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 {
     private readonly ISnippetStore _store;
+    private readonly ITextSizeService? _textSize;
     private IReadOnlyList<SnippetView>? _searchSource;
     private IReadOnlyList<SnippetView>? _browseSource;
     private object? _browseFolders;
@@ -47,9 +49,10 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _newFolderError = string.Empty;
 
-    public SnippetListViewModel(ISnippetStore store)
+    public SnippetListViewModel(ISnippetStore store, ITextSizeService? textSize = null)
     {
         _store = store;
+        _textSize = textSize;
         _store.Changed += OnStoreChanged;
         Rebuild();
     }
@@ -179,7 +182,7 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
             .Where(v => InScope(v, scope))
             .OrderBy(v => v.Snippet.Label, StringComparer.OrdinalIgnoreCase)
             .ThenBy(v => v.Snippet.Id)
-            .Select(SnippetRowViewModel.From)
+            .Select(view => SnippetRowViewModel.From(view, _textSize))
             .ToList();
 
         if (!rows.SequenceEqual(Items))

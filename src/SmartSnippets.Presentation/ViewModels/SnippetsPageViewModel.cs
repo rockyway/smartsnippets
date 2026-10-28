@@ -34,14 +34,15 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         IDialogService dialogs,
         IClipboardService? clipboard = null,
         TimeProvider? time = null,
-        ISnippetFileService? files = null)
+        ISnippetFileService? files = null,
+        ITextSizeService? textSize = null)
     {
         _store = store;
         _dialogs = dialogs;
         _clipboard = clipboard;
         _time = time;
         Porting = new SnippetPortingViewModel(store, dialogs, files, time);
-        List = new SnippetListViewModel(store);
+        List = new SnippetListViewModel(store, textSize);
         List.PropertyChanged += OnListPropertyChanged;
         List.Rebuilt += OnListRebuilt;
     }

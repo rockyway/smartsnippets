@@ -1,3 +1,5 @@
+using SmartSnippets.Presentation.Services;
+
 namespace SmartSnippets.Presentation.ViewModels;
 
 public enum PopupItemKind { Heading, Snippet }
@@ -5,6 +7,8 @@ public enum PopupItemKind { Heading, Snippet }
 public sealed record PopupItemViewModel(PopupItemKind Kind, long SnippetId, string Label, string Preview,
     string FolderChip, string Tag1, string Tag2, string HeadingText)
 {
+    public ITextSizeService? TextSize { get; init; }
+
     public override string ToString()
     {
         if (Kind == PopupItemKind.Heading)

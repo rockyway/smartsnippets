@@ -3,13 +3,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <StackPanel Spacing="3">
-        <TextBlock Text="{x:Bind Item.HeadingText}" FontWeight="SemiBold" Visibility="{x:Bind HasText(Item.HeadingText)}"/>
-        <TextBlock Text="{x:Bind Item.Label}" FontWeight="SemiBold" Visibility="{x:Bind HasText(Item.Label)}"/>
-        <TextBlock Text="{x:Bind Item.Preview}" TextTrimming="CharacterEllipsis" Visibility="{x:Bind HasText(Item.Preview)}"/>
+        <TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Text="{x:Bind Item.HeadingText}" FontWeight="SemiBold" Visibility="{x:Bind HasText(Item.HeadingText)}"/>
+        <TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Text="{x:Bind Item.Label}" FontWeight="SemiBold" Visibility="{x:Bind HasText(Item.Label)}"/>
+        <TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Text="{x:Bind Item.Preview}" TextTrimming="CharacterEllipsis" Visibility="{x:Bind HasText(Item.Preview)}"/>
         <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{x:Bind HasText(Item.Label)}">
-            <Border Padding="7,2" CornerRadius="10" Background="{ThemeResource FolderTintBackgroundBrush}" Visibility="{x:Bind HasText(Item.FolderChip)}"><TextBlock Text="{x:Bind Item.FolderChip}" Foreground="{ThemeResource FolderTintBrush}"/></Border>
-            <Border Padding="7,2" CornerRadius="10" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="{x:Bind HasText(Item.Tag1)}"><TextBlock Text="{x:Bind Item.Tag1}"/></Border>
-            <Border Padding="7,2" CornerRadius="10" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="{x:Bind HasText(Item.Tag2)}"><TextBlock Text="{x:Bind Item.Tag2}"/></Border>
+            <Border Padding="7,2" CornerRadius="10" Background="{ThemeResource FolderTintBackgroundBrush}" Visibility="{x:Bind HasText(Item.FolderChip)}"><TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Text="{x:Bind Item.FolderChip}" Foreground="{ThemeResource FolderTintBrush}"/></Border>
+            <Border Padding="7,2" CornerRadius="10" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="{x:Bind HasText(Item.Tag1)}"><TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Text="{x:Bind Item.Tag1}"/></Border>
+            <Border Padding="7,2" CornerRadius="10" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="{x:Bind HasText(Item.Tag2)}"><TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Text="{x:Bind Item.Tag2}"/></Border>
         </StackPanel>
     </StackPanel>
 </UserControl>

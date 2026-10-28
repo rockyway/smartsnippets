@@ -20,6 +20,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogs;
     private readonly INotifier _notices;
     private readonly Action? _requestExit;
+    private readonly ITextSizeService? _textSize;
     private SnippetSearch _search = new([]);
     private Dictionary<long, PopupItemViewModel> _cache = [];
     private long? _pendingId;
@@ -41,10 +42,10 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
 
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
         IInsertionService insertion, IClipboardService clipboard, IElevation elevation,
-        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null)
+        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null, ITextSizeService? textSize = null)
     {
         _store = store; _settings = settingsStore; _insertion = insertion; _clipboard = clipboard;
-        _elevation = elevation; _host = host; _dialogs = editorDialogs; _notices = notices; _requestExit = requestExit;
+        _elevation = elevation; _host = host; _dialogs = editorDialogs; _notices = notices; _requestExit = requestExit; _textSize = textSize;
         _layout = initial.PopupLayout; _sort = initial.PopupSort;
         RebuildSearch(); Refresh(null);
         _store.Changed += OnStoreChanged;
@@ -164,7 +165,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         _cache = _store.Snippets.ToDictionary(v => v.Snippet.Id, v => new PopupItemViewModel(PopupItemKind.Snippet,
             v.Snippet.Id, v.Snippet.Label, SnippetRowViewModel.PreviewOf(v.Snippet.Text),
             IsFolderLayout ? string.Empty : v.FolderName ?? UiText.Unfiled,
-            v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty));
+            v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty) { TextSize = _textSize });
     }
     private void Refresh(long? keep)
     {
@@ -175,7 +176,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             foreach (var group in SnippetGrouping.ByFolder(found))
             {
                 var heading = UiText.FolderHeading(group.FolderName ?? UiText.Unfiled, group.Items.Count);
-                rows.Add(new(PopupItemKind.Heading, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, heading));
+                rows.Add(new(PopupItemKind.Heading, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, heading) { TextSize = _textSize });
                 rows.AddRange(group.Items.Select(v => _cache[v.Snippet.Id]));
             }
         }

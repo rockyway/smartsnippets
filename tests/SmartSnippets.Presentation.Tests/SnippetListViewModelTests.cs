@@ -1,6 +1,8 @@
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Tests.Fakes;
+using SmartSnippets.Presentation.Services;
+using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 
@@ -9,6 +11,20 @@ namespace SmartSnippets.Presentation.Tests;
 public sealed class SnippetListViewModelTests
 {
     private readonly FakeSnippetStore _store = new();
+
+    [Fact]
+    public void RowsShareObservableTextSizeAcrossRebuilds()
+    {
+        var size = new TextSizeService();
+        _store.SeedSnippet("first");
+        using var vm = new SnippetListViewModel(_store, size);
+        var row = Assert.Single(vm.Items);
+        Assert.Same(size, row.TextSize);
+        size.Apply(TextSizePreset.Custom, 32);
+        Assert.Equal(32, row.TextSize!.FontSize);
+        _store.SeedSnippet("second");
+        Assert.All(vm.Items, item => Assert.Same(size, item.TextSize));
+    }
 
     [Fact]
     public void Search_FiltersAcrossFields()

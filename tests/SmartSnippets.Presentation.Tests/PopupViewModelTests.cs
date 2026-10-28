@@ -20,6 +20,19 @@ public sealed class PopupViewModelTests
     private static readonly InsertionTarget Target = new(1, 2, 3, "Notepad, Untitled");
     private PopupViewModel Create(AppSettings? settings = null) => new(_store, _settings, settings ?? new(), _insertion, _clipboard, _elevation, _host, _dialogs, _notices);
 
+    [Fact]
+    public void PopupRowsAndHeadingsShareObservableTextSize()
+    {
+        var size = new TextSizeService();
+        _store.SeedSnippet("one", folder: "Work");
+        using var vm = new PopupViewModel(_store, _settings, new AppSettings { PopupLayout = PopupLayout.Folder },
+            _insertion, _clipboard, _elevation, _host, _dialogs, _notices, textSize: size);
+        Assert.Equal(2, vm.Items.Count);
+        Assert.All(vm.Items, item => Assert.Same(size, item.TextSize));
+        size.Apply(TextSizePreset.Custom, 32);
+        Assert.All(vm.Items, item => Assert.Equal(32, item.TextSize!.FontSize));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
