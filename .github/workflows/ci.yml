@@ -35,24 +35,8 @@ jobs:
       - name: AOT publish + warning gate
         shell: pwsh
         run: |
-          dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish *> publish.log
-          $code = $LASTEXITCODE
-          Get-Content publish.log
-          if ($code -ne 0) { exit $code }
-          if (Select-String -Path publish.log -Pattern 'warning IL[23][0-9]{3}' -Quiet) {
-            Write-Error 'Trim/AOT warnings found in publish log'
-            exit 1
-          }
-          if (Test-Path publish/SmartSnippets.App.dll) {
-            Write-Error 'publish/SmartSnippets.App.dll exists: build is not Native AOT'
-            exit 1
-          }
-          foreach ($f in 'SmartSnippets.App.exe', 'e_sqlite3.dll') {
-            if (-not (Test-Path "publish/$f")) {
-              Write-Error "publish/$f is missing"
-              exit 1
-            }
-          }
+          ./scripts/publish-aot.ps1 -Output publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v7
         with:
           name: SmartSnippets-win-x64-aot
