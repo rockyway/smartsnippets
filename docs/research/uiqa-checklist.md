@@ -1,5 +1,9 @@
 # UI QA progress — feature/ui-qa
 
+Build slot batch: Core 426/426, Presentation 422/422, one AOT publish succeeded with `DOTNET_PROCESSOR_COUNT=4` and MSBuild `-m:4`; 0 warnings observed. No further builds without a new slot.
+
+BUILD_BATCH_DONE
+
 - [x] Core tests: 426 passed; Presentation tests: 422 passed, sequentially; 0 failed or skipped.
 - [x] Native AOT publish succeeded without observed warnings after changes.
 - [x] Launched copied published app with supervisor/watchdog, exclusive profile lease, registry journal, owned process and profile hash comparison on restoration. These runs predated the updated top-left parking/posted-input rules; navigation used UIA selection. No further desktop runs after the new rules.

@@ -3,7 +3,8 @@
 param(
     [string]$Output = 'publish',
     [string]$Version,
-    [Nullable[int]]$BuildNumber
+    [Nullable[int]]$BuildNumber,
+    [ValidateRange(1, 64)][int]$MaxCpuCount = 4
 )
 $ErrorActionPreference = 'Stop'
 function Fail([string]$Reason) {
@@ -11,7 +12,7 @@ function Fail([string]$Reason) {
     exit 1
 }
 try {
-    $arguments = @('publish', 'src/SmartSnippets.App', '-c', 'Release', '-r', 'win-x64', '-o', $Output)
+    $arguments = @('publish', 'src/SmartSnippets.App', '-c', 'Release', '-r', 'win-x64', '-o', $Output, "-m:$MaxCpuCount")
     if ($Version) {
         if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$') { Fail 'Invalid version' }
         if ($null -eq $BuildNumber -or $BuildNumber -lt 0 -or $BuildNumber -gt 65535) { Fail 'BuildNumber must be between 0 and 65535' }
