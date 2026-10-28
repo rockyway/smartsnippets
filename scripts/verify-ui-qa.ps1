@@ -25,7 +25,34 @@ function Update-HarnessProgress {
 . (Join-Path $PSScriptRoot 'lib/Safety.ps1')
 . (Join-Path $PSScriptRoot 'lib/OwnedProcesses.ps1')
 . (Join-Path $PSScriptRoot 'lib/Uia.ps1')
-Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class QaResize { [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags); [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags); [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd); }'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class QaResize {
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct MinMax { public Point Reserved, MaxSize, MaxPosition, MinTrack, MaxTrack; }
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
+    [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
+    [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
+    public static Point MinimumTrackSize(IntPtr hwnd) {
+        uint dpi = GetDpiForWindow(hwnd);
+        var m = new MinMax { MinTrack = new Point { X = GetSystemMetricsForDpi(34, dpi), Y = GetSystemMetricsForDpi(35, dpi) } };
+        var ptr = Marshal.AllocHGlobal(Marshal.SizeOf<MinMax>());
+        try {
+            Marshal.StructureToPtr(m, ptr, false);
+            IntPtr result;
+            if (SendMessageTimeout(hwnd, 0x24, IntPtr.Zero, ptr, 0x22, 2000, out result) == IntPtr.Zero)
+                throw new InvalidOperationException("Could not query minimum track size");
+            return Marshal.PtrToStructure<MinMax>(ptr).MinTrack;
+        } finally { Marshal.FreeHGlobal(ptr); }
+    }
+}
+'@
 function Assert-OnDisplay9([IntPtr]$window) {
     $rect = New-Object QaResize+Rect
     if (-not [QaResize]::GetWindowRect($window, [ref]$rect)) { throw 'Window rectangle unavailable' }
@@ -45,6 +72,14 @@ function Save-QAScreenshot([IntPtr]$window, [string]$path) {
         $bitmap.Save($path,[System.Drawing.Imaging.ImageFormat]::Png)
         Write-Host "shot $path $($bitmap.Width)x$($bitmap.Height)"
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
+function Request-QAActivation([string[]]$arguments) {
+    $before = & pwsh -NoProfile -File $probe
+    $redirect = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') $arguments $procs
+    if (-not (Wait-OwnedSecondLaunch $redirect 10000) -or $redirect.ExitCode -ne 0) { throw 'Owned activation redirect failed' }
+    Start-Sleep -Milliseconds 600
+    $after = & pwsh -NoProfile -File $probe
+    if ($before -cne $after) { throw 'Foreground changed during activation redirect' }
 }
 function ProfileHash($path) {
     if (-not (Test-Path -LiteralPath $path)) { return 'ABSENT' }
@@ -112,14 +147,18 @@ try {
     $showAfter = & pwsh -NoProfile -File $probe
     if ($showBefore -cne $showAfter) { throw 'Foreground changed during non-activating show' }
     $null = Assert-OnDisplay9 ([IntPtr]$mainHwnd)
-    foreach ($size in @(@(1280,800),@(900,600))) {
+    $minimum = [QaResize]::MinimumTrackSize([IntPtr]$mainHwnd)
+    if ($minimum.X -le 0 -or $minimum.Y -le 0 -or $minimum.X -gt 1840 -or $minimum.Y -gt 952) { throw 'Invalid or unsupported minimum track size' }
+    Write-Host "Window minimum track size: $($minimum.X)x$($minimum.Y)"
+    foreach ($size in @(@(1280,800),@(900,600),@($minimum.X,$minimum.Y))) {
         Update-HarnessProgress
         $resizeBefore = & pwsh -NoProfile -File $probe
         if (-not [QaResize]::SetWindowPos([IntPtr]$w.Current.NativeWindowHandle,[IntPtr]::Zero,-1880,1546,$size[0],$size[1],0x14)) { throw 'Resize failed' }
         $resizeAfter = & pwsh -NoProfile -File $probe
         if ($resizeBefore -cne $resizeAfter) { throw 'Foreground changed during resize' }
         Start-Sleep -Milliseconds 800
-        $null = Assert-OnDisplay9 ([IntPtr]$w.Current.NativeWindowHandle)
+        $actualRect = Assert-OnDisplay9 ([IntPtr]$w.Current.NativeWindowHandle)
+        if (($actualRect.Right - $actualRect.Left) -ne $size[0] -or ($actualRect.Bottom - $actualRect.Top) -ne $size[1]) { throw 'Requested window size was not achieved' }
         if ($CaptureOnly) {
             $fixtureRows = (& sqlite3 -batch (Join-Path $profile 'smartsnippets.db') "SELECT count(*) FROM snippets; SELECT value FROM settings WHERE key='theme'; SELECT value FROM settings WHERE key='text_size.preset'; SELECT value FROM settings WHERE key='text_size.custom';")
             if ($LASTEXITCODE -ne 0 -or $fixtureRows[0] -ne '3' -or $fixtureRows[1] -ne $Theme) { throw 'Fixture database read-back failed' }
@@ -131,7 +170,28 @@ try {
                 Write-Host "Synthetic label bounding height=$($label.Current.BoundingRectangle.Height)"
                 continue
             }
-            Save-QAScreenshot ([IntPtr]$w.Current.NativeWindowHandle) (Join-Path $out ("snippets-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
+            foreach ($targetPage in @(@('snippets','SnippetList'), @('folders','FolderList'), @('settings','TextSizeRadios'))) {
+                Request-QAActivation @('--page', $targetPage[0])
+                $shown = Wait-Until { Find-ById (Get-AppWindow $p.Id 'Smart Snippets') $targetPage[1] } 8000 100
+                if (-not $shown) { throw "Redirect did not navigate to $($targetPage[0])" }
+                Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
+            }
+            foreach ($query in @('', 'Synthetic', 'NoSuchQaResult')) {
+                $activation = @('--preview-popup')
+                if ($query) { $activation += @('--preview-popup-query', $query) }
+                Request-QAActivation $activation
+                $popup = Wait-Until { Get-PopupWindow $p.Id } 8000 100
+                if (-not $popup) { throw 'Preview popup did not appear' }
+                $search = Find-ById $popup 'PopupSearch'
+                if (-not $search -or (Get-Text $search) -cne $query) { throw 'Preview query did not match' }
+                $list = Find-ById $popup 'PopupList'
+                if (-not $list) { throw 'Popup list missing' }
+                $rows = @(Find-All $list ([Windows.Automation.ControlType]::ListItem))
+                if ($query -eq 'NoSuchQaResult' -and $rows.Count -ne 0) { throw 'Empty preview search returned rows' }
+                if ($query -ne 'NoSuchQaResult' -and $rows.Count -lt 1) { throw 'Populated preview search returned no rows' }
+                $state = if (-not $query) { 'filled' } elseif ($query -eq 'Synthetic') { 'search' } else { 'empty' }
+                Save-QAScreenshot ([IntPtr]$popup.Current.NativeWindowHandle) (Join-Path $out ("popup-$state-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
+            }
             continue
         }
         foreach ($page in ,@('FoldersItem','folders')) {
