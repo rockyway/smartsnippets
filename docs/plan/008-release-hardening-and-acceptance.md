@@ -762,6 +762,15 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
   - (U) C11 passes with the new expectation.
 - **Test that dies if this breaks:** C11.menu, C11.order.
 
+### Merged 006/007 re-baseline (T0, b85e8fd)
+
+The following names replace any illustrative names in T9–T11 and §7:
+
+- `VisibleChanged` supplies `AppHost.UpdateTrayState`; `TrayStatePolicy.Compute` prioritizes unregistered over open. `TestString` is absent. The list ID is `PopupList` (no explicit name); search ID `PopupSearch`, name `Search snippets`; toolbar IDs/names are `PopupLayoutButton` / `Toggle layout`, `PopupSortButton` / `Sort`, `PopupAddButton` / `Add snippet`, `PopupOpenMainButton` / `Open main window`. Layout tooltip is `Layout: flat` or `Layout: folder`; sort tooltips begin `Sort: ` with `last used`, `usage count`, `created date`, `updated date`. Editor overlay ID `PopupEditor`, text field name `Snippet text`, buttons `PopupEditorCancel` / `Cancel`, `PopupEditorSave` / `Save`.
+- The clipboard confirmation is an inline footer, not a dialog: `PopupFooterError` says `Some of what's on your clipboard can't be restored after pasting. Paste anyway?`; buttons `PopupPasteAnyway` / `Paste anyway` and `PopupPasteCancel` / `Cancel`. Cancel emits `popup_paste_cancelled`, not a second `insert_result=Cancelled`; the preceding insertion emitted `insert_result outcome=ClipboardNotPreserved`. A 64 MiB-plus registered HGLOBAL format is unsaveable. `CopiedForManualPaste` is the closed-target-after-confirmation outcome; `MaybePasted` is uncertain and is not a retryable failure. Target-closed wording is `Couldn't insert. <target> was closed. Nothing was pasted.` Elevation wording: `The target app is running as administrator. Smart Snippets can't insert text into it.`
+- `popup_ready_ms` measures hotkey timestamp to ready. `popup_search_ms <ms> layout=<flat|folder> results=<n>` is emitted on `CompositionTarget.Rendered` after list layout (or the next render when no layout replacement occurs), not merely after filtering. Other events: `popup_opened`, `popup_closed`, `popup_layout`, `popup_sort`, `popup_add_opened`, `popup_add_saved`, `popup_add_cancelled`, `popup_insert`, `popup_open_ignored reason=inserting`, `insert_start`, `target_check`, `target_rejected`, `foreground_gate`, `clipboard_swap`, `clipboard_restore`, `insert_result`, `manual_paste_fallback`, `usage_record_failed`. There is no successful usage-specific log; inspect SQLite. Duplicate activation uses popup insertion gating / `popup_open_ignored` and `Busy`, rather than a dedicated duplicate-guard event. A target elevation block is `target_check result=Elevated`.
+- Lone CR/LF/CRLF are normalized to CRLF during insertion, without modifying stored text. F1 must compare pasted text, not assume D1 changes persisted storage. Live propagation evidence names are `PopupViewModelListTests.WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept`, `WhileShown_SnippetAdded_AppearsInSortOrder_SelectionKept`, `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept`, and `WhileShown_FolderDeleted_RowsShowUnfiled`. F12 unit evidence includes `InsertionServiceTests.FailedDispatch_OnlyUncertainReleasesAndWaits`, `SendThrows_IsUncertain`, and `PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution`. E11/E12 and manual matrix remain required; these tests do not replace them.
+
 ### T9 — Remove popup prototype residue (C) (scope)
 - **Files:** `Popup/PopupWindow.xaml.cs` only if `TestString` or a prototype insert path survived 006/007.
 - **Verify (C):** `grep -rn "TestString\|Héllo – naïve" src` → no hits. F-section insertion uses
@@ -801,8 +810,8 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
       (006 §2), so it cannot stay open while the user works in the main window. Propagation is
       proven in two parts (review finding 8):
       - *Live update while shown:* 006's view-model unit tests raise `store.Changed` while the
-        popup view-model is shown (`StoreChanged_Rebuilds_KeepsSelectionById`,
-        `FolderRenamed_UpdatesHeadingAndChips`, names confirmed at T0). They run in A1.
+        popup view-model is shown (`WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept`,
+        `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept`). They run in A1.
       - *End to end through the real app:* E11 and E12 below.
     - E11 Master §7 #1: with the popup hidden, create a snippet and edit another snippet's label in
       the main window (UIA) → press the hotkey → the popup list (UIA) contains the new row and shows
@@ -831,7 +840,7 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
     - F9 Unsaveable clipboard → hotkey → Enter on the script's plain probe snippet (`smart-snippets-probe`) → the popup shows the "Paste anyway?"
       prompt (accessible names per T0); nothing has been pasted yet. **Cancel** → Notepad text
       unchanged, `Test-ClipboardIntact` true, `usage_count` unchanged, `insert_result` shows the
-      cancelled outcome.
+      `ClipboardNotPreserved` outcome followed by `popup_paste_cancelled`.
     - F10 Same setup → **Paste anyway** → the probe snippet is pasted once into Notepad, `usage_count` +1, and
       the clipboard ends in the state 007 specifies for this path (the unsaveable payload is not
       restored, as the prompt warned; the preserved formats are restored).
@@ -978,8 +987,8 @@ profile. It measures the user-visible path (review finding 4, user 2026-10-28).
 
   | §7 check | Evidence |
   |---|---|
-  | #1 | E11 (main-window change while the popup is hidden → reopen shows it) + 006 view-model test `StoreChanged_Rebuilds_KeepsSelectionById` (live update while shown) |
-  | #2 | E12 (folder rename/delete while hidden → reopen shows it) + 006 `FolderRenamed_UpdatesHeadingAndChips` + D folder-rename propagation |
+  | #1 | E11 (main-window change while the popup is hidden → reopen shows it) + 006 view-model test `WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept` (live update while shown) |
+  | #2 | E12 (folder rename/delete while hidden → reopen shows it) + 006 `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept` + D folder-rename propagation |
   | #3 | F4 |
   | #4 | C9 plus a restart check: C9.restart, added — after the change and an app restart, the new hotkey still opens the popup |
   | #5 | C12.free |
