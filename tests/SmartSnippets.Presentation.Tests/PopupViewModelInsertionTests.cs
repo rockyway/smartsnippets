@@ -22,7 +22,9 @@ public sealed class PopupViewModelInsertionTests
     [Fact]
     public async Task Enter_HidesBeforeInsert_PassesTargetAndId_DefaultOptions()
     {
-        var s = _store.SeedSnippet("body"); _insertion.Pending = new(); using var vm = Create();
+        var s = _store.SeedSnippet("body"); _insertion.Pending = new();
+        _insertion.OnCall = () => Assert.Equal("Hide", _host.Calls[^1]);
+        using var vm = Create();
         var task = vm.InsertSelectedAsync(); Assert.Equal("Hide", _host.Calls[0]); var call = Assert.Single(_insertion.Calls);
         Assert.Equal(Target, call.Target); Assert.Equal(s.Id, call.Id); Assert.False(call.Options.AllowClipboardLoss);
         _insertion.Pending.SetResult(new(InsertionOutcome.Inserted, "")); await task;
@@ -104,6 +106,34 @@ public sealed class PopupViewModelInsertionTests
     public async Task InsertThrows_TreatedAsFailure_Reopens()
     {
         _store.SeedSnippet("a"); _insertion.ThrowNext = true; using var vm = Create(); await vm.InsertSelectedAsync(); Assert.Equal(PopupFooterState.Error, vm.FooterState); Assert.Equal(UiText.InsertFailedGeneric, vm.FooterMessage); Assert.Contains("ShowAgain", _host.Calls);
+    }
+    [Fact]
+    public async Task PromptCancel_ClearsPrompt_StaysOpen_NoCall()
+    {
+        _store.SeedSnippet("a"); Outcome(InsertionOutcome.ClipboardNotPreserved); using var vm = Create(); await vm.InsertSelectedAsync();
+        var hides = _host.Calls.Count(c => c == "Hide"); vm.CancelPasteAnywayCommand.Execute(null);
+        Assert.Equal(PopupFooterState.None, vm.FooterState); Assert.Equal(hides, _host.Calls.Count(c => c == "Hide")); Assert.Single(_insertion.Calls);
+        Assert.Equal("Focus:Search", _host.Calls[^1]);
+    }
+    [Fact]
+    public async Task PasteAnyway_ThenInserted_StaysHidden()
+    {
+        _store.SeedSnippet("a"); Outcome(InsertionOutcome.ClipboardNotPreserved); using var vm = Create(); await vm.InsertSelectedAsync();
+        var shows = _host.Calls.Count(c => c == "ShowAgain"); await vm.PasteAnywayCommand.ExecuteAsync(null);
+        Assert.Equal(shows, _host.Calls.Count(c => c == "ShowAgain")); Assert.Equal(PopupFooterState.None, vm.FooterState);
+    }
+    [Fact]
+    public async Task ConfirmPrompt_EnterAndClick_DoNotInsert()
+    {
+        _store.SeedSnippet("a"); Outcome(InsertionOutcome.ClipboardNotPreserved); using var vm = Create(); await vm.InsertSelectedAsync();
+        await vm.InsertSelectedAsync(); await vm.ActivateAsync(vm.Items[0]); Assert.Single(_insertion.Calls); Assert.False(vm.CanCopyFailedText);
+    }
+    [Fact]
+    public async Task MaybePasted_QueryOrMove_DismissesBeforeNewSelection()
+    {
+        _store.SeedSnippet("a"); _store.SeedSnippet("b"); Outcome(InsertionOutcome.MaybePasted); using var vm = Create(); await vm.InsertSelectedAsync();
+        vm.MoveSelection(1); Assert.Equal(PopupFooterState.None, vm.FooterState); Outcome(InsertionOutcome.MaybePasted); await vm.InsertSelectedAsync();
+        vm.Query = "a"; Assert.Equal(PopupFooterState.None, vm.FooterState);
     }
     [Fact]
     public async Task ViewModel_NeverRecordsUsage()
