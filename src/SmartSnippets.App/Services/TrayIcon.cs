@@ -214,8 +214,8 @@ internal sealed unsafe class TrayIcon : IDisposable
                 DestroyCachedIcons();
                 RefreshThemeAndDpi();
                 AppLog.Info("tray_theme_changed", $"theme={(_lightTheme ? "light" : "dark")}");
-                UpdateIcon();
             }
+            UpdateIcon();
             return;
         }
 
