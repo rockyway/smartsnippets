@@ -1535,8 +1535,18 @@ any of them at approval.
 
 ## 10. Implementation notes and wiring audit
 
-*(Filled in during implementation: T0b's App-side signatures as committed, deviations, CI
-fix-forward history, and the T12 audit table.)*
+**Implementation in progress; not ready for acceptance.** The popup view-model, window, compact
+editor, target capture, interim insertion adapter and tray wiring have been added. `PopupWindow`
+uses the T0b constructor, host interface, `ShowFor`, `Prewarm`, and `VisibleChanged` signatures;
+`ForegroundActivation.TryActivate` and the tray HWND callback are present. The settings page uses
+`SaveShell`.
+
+A preliminary wiring grep confirms a single `tray.State` writer, one popup view-model construction,
+`AllowClipboardLoss: true` only on the explicit confirmation path, and the scoped preview key
+handler. Full binding/accessibility and runtime audits remain outstanding. In particular, the list
+visual design, search timing render hook, mixed-DPI retry, status logging, and all listed tests and
+manual runbook checks still require completion. Do not mark the plan complete on the basis of a
+successful compile alone.
 
 ## 11. Review response
 
