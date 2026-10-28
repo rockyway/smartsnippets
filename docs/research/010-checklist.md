@@ -308,12 +308,12 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Budget_AtLimit_Dense_CommitUnderThreshold`
 - [x] `Budget_AtLimit_FolderDense_CommitUnderThreshold`
 - [x] `Budget_TypicalAtCap_CommitUnderThreshold`
-- [ ] `Budget_Calibrate`
+- [x] `Budget_Calibrate` (local Windows Release opt-in run, 1 passed; measurements in plan §10)
 
 ## T10 — App: pickers, file I/O, dialog, buttons, wiring (AC9, AC10)
 
-- [ ] T10 implementation and task verification
-- [ ] `MaxImportEntries_IsCalibratedValue`
+- [ ] T10 implementation and task verification (App code, build and local Release budgets done; binding CI blocked by no remote branch/no push; manual runbook PENDING-USER)
+- [x] `MaxImportEntries_IsCalibratedValue` (50,000; final Core run verifies)
 
 ## T11 — Requirement and master-plan update (scope change)
 

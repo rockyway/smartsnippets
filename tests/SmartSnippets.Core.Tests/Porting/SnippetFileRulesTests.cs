@@ -5,7 +5,7 @@ namespace SmartSnippets.Core.Tests.Porting;
 public class SnippetFileRulesTests
 {
     [Fact] public void MaxImportBytes_Is32MiB() => Assert.Equal(33_554_432, SnippetFileRules.MaxImportBytes);
-    [Fact] public void MaxImportEntries_IsCalibratedValue() => Assert.Equal(100_000, SnippetFileRules.MaxImportEntries);
+    [Fact] public void MaxImportEntries_IsCalibratedValue() => Assert.Equal(50_000, SnippetFileRules.MaxImportEntries);
     [Theory]
     [InlineData("a.json", true)] [InlineData("a.JSON", true)] [InlineData("a.json.txt", false)]
     [InlineData("a.txt", false)] [InlineData("a", false)] [InlineData("json", false)]
