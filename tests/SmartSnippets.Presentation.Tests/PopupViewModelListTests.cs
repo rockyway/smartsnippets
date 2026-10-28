@@ -29,6 +29,36 @@ public sealed class PopupViewModelListTests
         using var vm = Create(); Assert.Equal(new[] { a.Id, a2.Id, b.Id }, vm.Items.Select(i => i.SnippetId));
     }
     [Fact]
+    public void EachSort_OrdersResults_AndPreservesOrderAfterFilteringAndGrouping()
+    {
+        var a = _store.SeedSnippet("common keep a", "A", "Group");
+        var b = _store.SeedSnippet("common b", "B", "Group");
+        var c = _store.SeedSnippet("common keep c", "C", "Group");
+        _store.UpdateSnippet(b.Id, new SnippetDraft("common b updated", "B", true, b.FolderId, ""));
+        _store.RecordUsage(b.Id); _store.RecordUsage(b.Id); _store.RecordUsage(a.Id); _store.RecordUsage(c.Id);
+        using var vm = Create();
+        var cases = new (SortField Sort, long[] Full, long[] Filtered)[]
+        {
+            (SortField.LastUsed, [c.Id, a.Id, b.Id], [c.Id, a.Id]),
+            (SortField.UsageCount, [b.Id, a.Id, c.Id], [a.Id, c.Id]),
+            (SortField.Created, [c.Id, b.Id, a.Id], [c.Id, a.Id]),
+            (SortField.Updated, [b.Id, c.Id, a.Id], [c.Id, a.Id]),
+        };
+        foreach (var (sort, full, filtered) in cases)
+        {
+            vm.Query = ""; vm.SetSort(sort);
+            if (vm.IsFolderLayout) vm.ToggleLayoutCommand.Execute(null);
+            Assert.Equal(full, vm.Items.Select(i => i.SnippetId));
+            vm.Query = "common keep"; Assert.Equal(filtered, vm.Items.Select(i => i.SnippetId));
+            vm.ToggleLayoutCommand.Execute(null);
+            Assert.Equal("Group (2)", vm.Items[0].HeadingText);
+            Assert.Equal(filtered, vm.Items.Where(i => i.Kind == PopupItemKind.Snippet).Select(i => i.SnippetId));
+            vm.Query = "common";
+            Assert.Equal(full, vm.Items.Where(i => i.Kind == PopupItemKind.Snippet).Select(i => i.SnippetId));
+        }
+    }
+
+    [Fact]
     public void Search_AndTerms_SubstringCaseInsensitive_AcrossLabelTextFolderTags()
     {
         var a = _store.SeedSnippet("ref body", "Policy", "Support", "billing, chat"); _store.SeedSnippet("ref", "Policy", "Other");
