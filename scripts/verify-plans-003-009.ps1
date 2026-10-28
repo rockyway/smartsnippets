@@ -491,16 +491,17 @@ if (Want 'C') {
     Check 'C6.clamp' 'custom text size is clamped to 10-32' ([double]$after -le 32 -and [double]$after -ge 10) "stored=$after"
 
     # startup toggle (HKCU Run)
-    $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-    $had = (Get-ItemProperty $runKey -Name SmartSnippets -ErrorAction SilentlyContinue)
-    $toggle = Find-ById $w 'StartupToggle'
-    $state = Get-ToggleState $toggle
-    if ($state -eq 'Off') { Toggle-El $toggle; Start-Sleep -Milliseconds 800 }
-    $val = (Get-ItemProperty $runKey -Name SmartSnippets -ErrorAction SilentlyContinue).SmartSnippets
-    Check 'C7.on' 'Start at login ON writes HKCU Run value with --background' ($val -and $val -match '--background' -and $val -match 'SmartSnippets.App.exe') $val
-    Toggle-El $toggle; Start-Sleep -Milliseconds 800
-    Check 'C7.off' 'Start at login OFF removes the Run value' (-not (Get-ItemProperty $runKey -Name SmartSnippets -ErrorAction SilentlyContinue))
-    if ($had) { Set-ItemProperty $runKey -Name SmartSnippets -Value $had.SmartSnippets }
+    $runKey = 'Software\Microsoft\Windows\CurrentVersion\Run'
+    $runOriginal=Save-HarnessRegistryOriginal $config.RegistryJournal $config.RunId $runKey 'SmartSnippets'
+    try {
+        $toggle = Find-ById $w 'StartupToggle'
+        $state = Get-ToggleState $toggle
+        if ($state -eq 'Off') { Toggle-El $toggle; Start-Sleep -Milliseconds 800 }
+        $val = (Read-HarnessRegistryValue $runKey 'SmartSnippets').Value
+        Check 'C7.on' 'Start at login ON writes HKCU Run value with --background' ($val -and $val -match '--background' -and $val -match 'SmartSnippets.App.exe') 'registry payload withheld'
+        Toggle-El $toggle; Start-Sleep -Milliseconds 800
+        Check 'C7.off' 'Start at login OFF removes the Run value' (-not (Read-HarnessRegistryValue $runKey 'SmartSnippets').Exists)
+    } finally { Restore-HarnessRegistryValue $runOriginal }
 
     # persistence over restart
     Stop-App
@@ -987,20 +988,17 @@ if (Want 'G') {
         Check 'G6' 'theme broadcast re-evaluates icon without a crash' ((Wait-Log 'tray_icon state=' $from 5000) -and -not $p.HasExited) (Tail $from)
     } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($messageData) }
     if ($FlipTaskbarTheme) {
-        $keyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-        $key = Get-Item $keyPath
-        $names = @($key.GetValueNames())
-        $existed = $names -contains 'SystemUsesLightTheme'
-        $old = $key.GetValue('SystemUsesLightTheme', 0)
+        $keyPath = 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        $themeOriginal=Save-HarnessRegistryOriginal $config.RegistryJournal $config.RunId $keyPath 'SystemUsesLightTheme'
+        $old=if ($themeOriginal.Exists) { $themeOriginal.Value } else { 0 }
         try {
             $from = (Get-LogLines).Count
-            New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $(if ($old -eq 1) { 0 } else { 1 }) -Force | Out-Null
+            Restore-HarnessRegistryValue ([pscustomobject]@{ Key=$keyPath; Name='SystemUsesLightTheme'; Exists=$true; Kind='DWord'; Value=$(if ($old -eq 1) { 0 } else { 1 }) })
             $result = [IntPtr]::Zero
             [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
             Check 'G6b' 'taskbar theme flip triggers tray_theme_changed' (Wait-Log 'tray_theme_changed' $from 5000) (Tail $from)
         } finally {
-            if ($existed) { New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $old -Force | Out-Null }
-            else { Remove-ItemProperty $keyPath -Name SystemUsesLightTheme -ErrorAction SilentlyContinue }
+            Restore-HarnessRegistryValue $themeOriginal
             $result = [IntPtr]::Zero
             [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
         }

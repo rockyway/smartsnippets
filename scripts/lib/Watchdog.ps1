@@ -1,4 +1,5 @@
-# Supervisor owns the profile lock and an independent clipboard-text backstop. It imports no UIA.
+# Supervisor owns the profile lock and user-state recovery backstops. It imports no UIA.
+. (Join-Path $PSScriptRoot 'RegistryRecovery.ps1')
 function Update-HarnessProgress {
     if ($script:HarnessProgressPath) {
         [IO.File]::WriteAllText($script:HarnessProgressPath, [guid]::NewGuid().ToString('N'))
@@ -60,11 +61,11 @@ function Invoke-ClipboardWorker([string]$Mode, [string]$BackupPath, [string]$Lea
         finally { $proc.Dispose() }
     }
 }
-function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$TimeoutSeconds = 600, [string]$LockPath = '') {
+function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$TimeoutSeconds = 600, [string]$LockPath = '', [scriptblock]$RegistryWriter = $null) {
     if (-not $LockPath) { $LockPath = Join-Path $env:LOCALAPPDATA 'SmartSnippets.verify.lock' }
     try { $lease = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
     catch { throw 'Another acceptance supervisor holds the exclusive profile lock; no side effects were started' }
-    $worker=$null; $saved=$null; $dir=$null; $aborted=$true; $retainBackup=$false
+    $worker=$null; $saved=$null; $dir=$null; $config=$null; $aborted=$true; $retainBackup=$false
     try {
         # A worker keeps its own lease until process exit, including if its supervisor is killed.
         # Probe it before even the clipboard backstop. The primary lease serializes supervisors.
@@ -76,7 +77,7 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
         $configPath=Join-Path $dir 'config.clixml'
         $progress=Join-Path $dir 'progress'
         $parent=Get-Process -Id $PID
-        $config=[pscustomobject]@{ RunId=[guid]::NewGuid().ToString('N'); Completion=(Join-Path $dir 'complete.clixml'); ParentId=$PID; ParentStartTicks=$parent.StartTime.ToUniversalTime().Ticks; Arguments=$Arguments; Script=$ScriptPath; Progress=$progress; WorkerLock=$workerLock }
+        $config=[pscustomobject]@{ RunId=[guid]::NewGuid().ToString('N'); RegistryJournal=(Join-Path $dir 'registry.clixml'); Completion=(Join-Path $dir 'complete.clixml'); ParentId=$PID; ParentStartTicks=$parent.StartTime.ToUniversalTime().Ticks; Arguments=$Arguments; Script=$ScriptPath; Progress=$progress; WorkerLock=$workerLock }
         $config | Export-Clixml -LiteralPath $configPath
         $bootstrap=Join-Path $dir 'worker.ps1'
         # Use a hashtable splat, not positional hashtable/array expansion.
@@ -115,6 +116,18 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
             }
         } finally {
             try {
+                if ($config -and (Test-Path -LiteralPath $config.RegistryJournal)) {
+                    try {
+                        Restore-HarnessRegistryJournal $config.RegistryJournal $config.RunId -Writer $RegistryWriter
+                        if ($aborted) { $retainBackup=$true; Write-Warning "Registry values restored; journal retained at $($config.RegistryJournal) for replay after closing surviving acceptance processes" }
+                    } catch {
+                        $retainBackup=$true
+                        Write-Warning "Registry recovery failed; private journal retained at $($config.RegistryJournal)"
+                        throw 'Registry recovery failed'
+                    }
+                }
+            } finally {
+            try {
                 if ($saved) {
                     try { Invoke-ClipboardWorker 'Restore' $saved $workerLock }
                     catch { $retainBackup=$true; Write-Warning "Clipboard restoration failed; encrypted recovery backup retained at $saved"; throw 'Clipboard restoration failed' }
@@ -124,6 +137,7 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
                 if ($worker) { $worker.Dispose() }
                 if ($dir -and -not $retainBackup) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
                 $lease.Dispose()
+            }
             }
         }
     }

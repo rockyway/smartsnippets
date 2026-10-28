@@ -154,7 +154,7 @@ try {
     $fakeWorker=Join-Path $dir 'fake-worker.ps1'
     $testLock=Join-Path $dir 'worker.lock'; $testReport=Join-Path $dir 'fake-report.json'
     $watchdogLibrary=(Join-Path $PSScriptRoot 'lib/Watchdog.ps1').Replace("'","''")
-    $workerPrefix='param([string[]]$Only,[string]$HarnessWorkerConfig,[string]$ReportPath) . '''+$watchdogLibrary+'''; $c=Import-Clixml -LiteralPath $HarnessWorkerConfig; '
+    $workerPrefix='param([string[]]$Only,[string]$HarnessWorkerConfig,[string]$ReportPath,[string]$FakeRegistryPath) . '''+$watchdogLibrary+'''; $c=Import-Clixml -LiteralPath $HarnessWorkerConfig; '
     [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'Complete-HarnessWorker $c 0; exit 0')
     Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -TimeoutSeconds 10 -LockPath $testLock) -eq 0) 'supervisor accepts explicit success only with fresh completion ack'
     [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'exit 7')
@@ -190,6 +190,67 @@ try {
     try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -TimeoutSeconds 2 -LockPath $testLock } catch { $timedOut=$true }
     $failedReport=Get-Content -LiteralPath $testReport -Raw | ConvertFrom-Json
     Assert ($timedOut -and $timer.Elapsed.TotalSeconds -lt 15 -and $failedReport.Status -eq 'FAIL') 'blocked CLI worker is killed promptly and cannot leave a PASS report'
+    # All registry tests use CLIXML as a fake registry. No native Registry reader/writer is called.
+    $fakeRegPath=Join-Path $dir 'fake-registry.clixml'
+    $journalPath=Join-Path $dir 'registry-journal.clixml'
+    $runAddress='Software\Microsoft\Windows\CurrentVersion\Run'
+    $themeAddress='Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+    $fakeReader={ param($key,$name) $db=Import-Clixml -LiteralPath $fakeRegPath; $db[$name] }
+    $fakeWriter={ param($record) $db=Import-Clixml -LiteralPath $fakeRegPath; $db[$record.Name]=$record; $db | Export-Clixml -LiteralPath $fakeRegPath }
+    foreach ($present in @($true,$false)) {
+        $runRecord=[pscustomobject]@{ Key=$runAddress; Name='SmartSnippets'; Exists=$present; Kind=$(if ($present) { 'ExpandString' } else { $null }); Value=$(if ($present) { '%LOCALAPPDATA%\private\original.exe' } else { $null }) }
+        $themeRecord=[pscustomobject]@{ Key=$themeAddress; Name='SystemUsesLightTheme'; Exists=$present; Kind=$(if ($present) { 'DWord' } else { $null }); Value=$(if ($present) { 1 } else { $null }) }
+        @{ SmartSnippets=$runRecord; SystemUsesLightTheme=$themeRecord } | Export-Clixml -LiteralPath $fakeRegPath
+        Remove-Item -LiteralPath $journalPath -ErrorAction SilentlyContinue
+        $null=Save-HarnessRegistryOriginal $journalPath 'fake-run' $runAddress 'SmartSnippets' -Reader $fakeReader
+        $null=Save-HarnessRegistryOriginal $journalPath 'fake-run' $themeAddress 'SystemUsesLightTheme' -Reader $fakeReader
+        $errorSeen=$false
+        try {
+            & $fakeWriter ([pscustomobject]@{ Key=$runAddress; Name='SmartSnippets'; Exists=$true; Kind='String'; Value='changed' })
+            & $fakeWriter ([pscustomobject]@{ Key=$themeAddress; Name='SystemUsesLightTheme'; Exists=$true; Kind='DWord'; Value=0 })
+            $savedAgain=Save-HarnessRegistryOriginal $journalPath 'fake-run' $runAddress 'SmartSnippets' -Reader $fakeReader
+            Assert ($savedAgain.Exists -eq $present -and $savedAgain.Value -ceq $runRecord.Value) "registry journal never overwrites original on repeated save (present=$present)"
+            throw 'ordinary fake registry error'
+        } catch { $errorSeen=$true }
+        finally { Restore-HarnessRegistryJournal $journalPath 'fake-run' -Writer $fakeWriter }
+        $restored=Import-Clixml -LiteralPath $fakeRegPath
+        Assert ($errorSeen -and $restored.SmartSnippets.Exists -eq $present -and $restored.SmartSnippets.Kind -ceq $runRecord.Kind -and $restored.SmartSnippets.Value -ceq $runRecord.Value) "ordinary finally restores Run value existence/type/unexpanded value (present=$present)"
+        Assert ($restored.SystemUsesLightTheme.Exists -eq $present -and $restored.SystemUsesLightTheme.Kind -ceq $themeRecord.Kind -and $restored.SystemUsesLightTheme.Value -eq $themeRecord.Value) "ordinary finally restores theme value existence/type/value (present=$present)"
+        # This child journals originals and mutates only the fake file, then stalls. Supervisor
+        # restoration uses the injected file writer through the actual post-kill recovery path.
+        $registryWorker=$workerPrefix+@'
+$reader={ param($key,$name) $db=Import-Clixml -LiteralPath $FakeRegistryPath; $db[$name] }
+$null=Save-HarnessRegistryOriginal $c.RegistryJournal $c.RunId 'Software\Microsoft\Windows\CurrentVersion\Run' 'SmartSnippets' -Reader $reader
+$null=Save-HarnessRegistryOriginal $c.RegistryJournal $c.RunId 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' 'SystemUsesLightTheme' -Reader $reader
+$db=Import-Clixml -LiteralPath $FakeRegistryPath
+$db.SmartSnippets=[pscustomobject]@{ Key=$db.SmartSnippets.Key; Name='SmartSnippets'; Exists=$true; Kind='String'; Value='changed' }
+$db.SystemUsesLightTheme=[pscustomobject]@{ Key=$db.SystemUsesLightTheme.Key; Name='SystemUsesLightTheme'; Exists=$true; Kind='DWord'; Value=0 }
+$db.RecoveryDirectory=[IO.Path]::GetDirectoryName($c.RegistryJournal)
+$db | Export-Clixml -LiteralPath $FakeRegistryPath
+[IO.File]::WriteAllText($c.Progress,[guid]::NewGuid().ToString('N'))
+Start-Sleep -Seconds 30
+'@
+        [IO.File]::WriteAllText($fakeWorker,$registryWorker)
+        $registryTimeout=$false
+        try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); FakeRegistryPath=$fakeRegPath; ReportPath=$testReport } -TimeoutSeconds 2 -LockPath $testLock -RegistryWriter $fakeWriter } catch { $registryTimeout=$true }
+        $restored=Import-Clixml -LiteralPath $fakeRegPath
+        Assert ($registryTimeout -and $restored.SmartSnippets.Exists -eq $present -and $restored.SmartSnippets.Kind -ceq $runRecord.Kind -and $restored.SmartSnippets.Value -ceq $runRecord.Value) "supervisor restores Run after watchdog kill (present=$present)"
+        Assert ($restored.SystemUsesLightTheme.Exists -eq $present -and $restored.SystemUsesLightTheme.Kind -ceq $themeRecord.Kind -and $restored.SystemUsesLightTheme.Value -eq $themeRecord.Value) "supervisor restores theme after watchdog kill (present=$present)"
+        Remove-Item -LiteralPath $restored.RecoveryDirectory -Recurse -Force
+    }
+    $failedRecovery=$false
+    try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); FakeRegistryPath=$fakeRegPath; ReportPath=$testReport } -TimeoutSeconds 2 -LockPath $testLock -RegistryWriter { param($record) throw 'fake registry write failure' } } catch { $failedRecovery=$true }
+    $recoverState=Import-Clixml -LiteralPath $fakeRegPath
+    $retainedJournal=Join-Path $recoverState.RecoveryDirectory 'registry.clixml'
+    Assert ($failedRecovery -and (Test-Path -LiteralPath $retainedJournal)) 'supervisor retains run-specific journal when registry restoration fails'
+    $retained=Import-Clixml -LiteralPath $retainedJournal
+    Restore-HarnessRegistryJournal $retainedJournal $retained.RunId -Writer $fakeWriter
+    $replayed=Import-Clixml -LiteralPath $fakeRegPath
+    Assert (-not $replayed.SmartSnippets.Exists -and -not $replayed.SystemUsesLightTheme.Exists) 'retained journal can replay absent originals after failed backstop'
+    Remove-Item -LiteralPath $recoverState.RecoveryDirectory -Recurse -Force
+    $wrongRun=$false
+    try { Restore-HarnessRegistryJournal $journalPath 'wrong-run' -Writer $fakeWriter } catch { $wrongRun=$true }
+    Assert $wrongRun 'registry recovery refuses a mismatched run identity'
     $protectedPath=Join-Path $dir 'clipboard-backup.clixml'
     Export-ClipboardTextBackup ([pscustomobject]@{ Valid=$true; HasText=$true; Text='PRIVATE-CLIPBOARD-ROUNDTRIP' }) $protectedPath
     $roundtrip=Import-ClipboardTextBackup $protectedPath
