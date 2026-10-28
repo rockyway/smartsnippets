@@ -23,7 +23,10 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipTests,
     [string[]]$Only = @(),
-    [string]$ReportPath = ''
+    [string]$ReportPath = '',
+    [string]$ArtifactZip = '',
+    [ValidateRange(1, 1000000)][int]$PerfLibrary = 10000,
+    [switch]$FlipTaskbarTheme
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +40,33 @@ $dbPath = Join-Path $appRoot 'smartsnippets.db'
 $logPath = Join-Path $appRoot 'logs\app.log'
 $backupRoot = "$appRoot.verify-backup"
 $SecretMarker = 'ZZ-PRIVACY-MARKER-7431'
+$artifactInfo = $null
+if ($ArtifactZip) {
+    $zipPath = (Resolve-Path -LiteralPath $ArtifactZip).Path
+    $hashPath = "$zipPath.sha256"
+    if (-not (Test-Path -LiteralPath $hashPath -PathType Leaf)) { throw "Missing checksum: $hashPath" }
+    $hashLine = (Get-Content -LiteralPath $hashPath -Raw).Trim()
+    if ($hashLine -notmatch '^([0-9a-fA-F]{64})\s+\*?([^\r\n]+)$') { throw 'Invalid SHA-256 file' }
+    $expectedHash = $Matches[1]; $expectedName = $Matches[2]
+    if ($expectedName -cne [IO.Path]::GetFileName($zipPath)) { throw 'Checksum filename does not match archive' }
+    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    if ($actualHash -ine $expectedHash) { throw 'Archive SHA-256 mismatch' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        if (@($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') -or $_ -match '(^|/)\.\.(/|$)' -or $_ -match '\.pdb$' }).Count -gt 0 -or 'SmartSnippets/SmartSnippets.App.exe' -notin $entries) { throw 'Unsafe or invalid release archive layout' }
+    } finally { $archive.Dispose() }
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ('SmartSnippets-verify-' + [guid]::NewGuid())
+    try {
+        [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $temp)
+        if (Test-Path "$root\publish") { Remove-Item "$root\publish" -Recurse -Force }
+        Move-Item (Join-Path $temp 'SmartSnippets') "$root\publish"
+    } finally { if (Test-Path $temp) { Remove-Item $temp -Recurse -Force } }
+    $version = (Get-Item $exe).VersionInfo
+    $artifactInfo = "archive=$([IO.Path]::GetFileName($zipPath)) sha256=$actualHash ProductVersion=$($version.ProductVersion) FileVersion=$($version.FileVersion)"
+    $SkipBuild = $true
+}
 
 $script:Results = New-Object System.Collections.ArrayList
 $script:Procs = @()
@@ -55,6 +85,7 @@ function Skip($Id, $Name, $Reason) { Add-Result 'SKIP' $Id $Name $Reason }
 function Warn($Id, $Name, $Detail) { Add-Result 'WARN' $Id $Name $Detail }
 function Section($Title) { Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
 function Want($Section) { ($Only.Count -eq 0) -or ($Only -contains $Section) }
+if ($artifactInfo) { Add-Result 'INFO' 'Artifact' 'Downloaded release artifact' $artifactInfo }
 
 # ----------------------------------------------------------------- app + profile helpers
 function Stop-App {
@@ -225,7 +256,7 @@ if (Want 'A') {
     Check 'A4.binding' 'no reflection {Binding} in XAML (x:Bind only)' (-not $bindings) (($bindings | Select-Object -First 3 | ForEach-Object { $_.Path | Split-Path -Leaf }) -join ',')
     $pres = Get-Content src\SmartSnippets.Presentation\SmartSnippets.Presentation.csproj -Raw
     Check 'A4.layering' 'Presentation has no WinUI/Windows target' (($pres -notmatch 'UseWinUI') -and ($pres -notmatch 'windows10'))
-    $keyevents = 'store_loaded', 'settings_loaded', 'hotkey_registered', 'hotkey_changed', 'theme_applied', 'tray_readded', 'restart_elevated_started', 'exit_unregistered', 'migration_backup', 'snippet_saved', 'snippet_deleted', 'folder_created', 'folder_renamed', 'folder_deleted'
+    $keyevents = 'store_loaded', 'settings_loaded', 'hotkey_registered', 'hotkey_changed', 'theme_applied', 'tray_readded', 'restart_elevated_started', 'exit_unregistered', 'migration_backup', 'snippet_saved', 'snippet_deleted', 'folder_created', 'folder_renamed', 'folder_deleted', 'app_started', 'tray_icon', 'tray_icon_load_failed', 'tray_theme_changed', 'popup_ready_ms', 'popup_search_ms', 'insert_result', 'clipboard_swap', 'clipboard_restore'
     $src = (Get-ChildItem src -Recurse -Filter *.cs | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Get-Content -Raw) -join "`n"
     $missing = $keyevents | Where-Object { $src -notmatch ('"' + $_ + '"') }
     Check 'A4.logevents' 'all runbook log events exist in code' (-not $missing) ($missing -join ',')
@@ -742,11 +773,45 @@ if (Want 'D') {
     $bad = @($listItems | Where-Object { $_ -match 'ViewModel' })
     Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) (($bad | Select-Object -First 2) -join ' ; ')
 
+    Check 'D-lock.incomplete' 'locked database recovery verification implemented' $false 'D-lock still needs an exclusive sqlite lock and UI save/retry test'
+
     # D15 privacy: no snippet text in the log
     $logText = (Get-LogLines) -join "`n"
     Check 'D15.privacy' 'app.log never contains snippet text or tags' (-not ($logText -match [regex]::Escape($SecretMarker)) -and -not ($logText -match 'tag test body|custom label body|mail template')) ''
 
     Stop-App
+}
+
+# Release static checks. The interactive G checks still require implementation below.
+if (Want 'G') {
+    Section 'G. Release artifact and icon structure'
+    $info = (Get-Item $exe).VersionInfo
+    if ($ArtifactZip -and [IO.Path]::GetFileName($ArtifactZip) -match '^SmartSnippets-win-x64-(.+)\.zip$') {
+        $expectedVersion = $Matches[1]
+        Check 'G1' 'ProductVersion matches release archive' ($info.ProductVersion.StartsWith($expectedVersion)) "ProductVersion=$($info.ProductVersion); FileVersion=$($info.FileVersion)"
+    } else { Skip 'G1' 'release version' 'requires -ArtifactZip named SmartSnippets-win-x64-<version>.zip' }
+    function Get-IcoFrameCount([string]$Path) {
+        if (-not (Test-Path $Path -PathType Leaf)) { return 0 }
+        $bytes = [IO.File]::ReadAllBytes($Path)
+        if ($bytes.Length -lt 6 -or $bytes[0] -ne 0 -or $bytes[1] -ne 0 -or $bytes[2] -ne 1 -or $bytes[3] -ne 0) { return 0 }
+        return [BitConverter]::ToUInt16($bytes, 4)
+    }
+    $appIcon = Join-Path $root 'publish\Assets\SmartSnippets.ico'
+    Check 'G2.frames' 'app icon has eight frames' ((Get-IcoFrameCount $appIcon) -eq 8)
+    foreach ($theme in 'Light', 'Dark') {
+        foreach ($state in 'Ready', 'PopupOpen', 'HotkeyUnavailable') {
+            $name = "Tray-$theme-$state.ico"
+            Check "G3.$theme.$state" 'tray icon has six frames' ((Get-IcoFrameCount (Join-Path "$root\publish\Assets" $name)) -eq 6)
+        }
+    }
+    . (Join-Path $PSScriptRoot 'release-tag.ps1')
+    Check 'G8.tags' 'invalid tags rejected and prerelease accepted' (-not (Test-ReleaseTag 'v1.0') -and -not (Test-ReleaseTag 'v1.0.0.0') -and -not (Test-ReleaseTag '1.0.0') -and (Test-ReleaseTag 'v1.0.0-rc.1'))
+    if ($ArtifactZip) { Check 'G9' 'archive hash and layout validated before extraction' $true $artifactInfo }
+    else { Skip 'G9' 'release archive and checksum' 'requires -ArtifactZip' }
+    Check 'G.incomplete' 'interactive release checks implemented' $false 'G2 associated icon, G4–G8 runtime and G10 privacy are not yet implemented'
+}
+foreach ($section in 'E', 'F', 'P') {
+    if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
 }
 
 }
