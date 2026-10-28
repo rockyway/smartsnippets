@@ -149,8 +149,9 @@ try {
     Update-HarnessProgress
     Assert ($firstPulse -cne [IO.File]::ReadAllText($script:HarnessProgressPath)) 'watchdog progress advances independently of log content'
     $script:HarnessProgressPath=$null
-    # Supervisor integration uses only a fake CLI worker and a TEMP lock/report. Only=A disables
-    # clipboard backstops; no app, Notepad, UIA, real profile or desktop API is involved.
+    # Fake CLI workers and TEMP lock/reports only. Only=A disables clipboard backstops, so these
+    # tests do NOT cover clipboard helper handoff/lease order/backup lifecycle or CLI descendants.
+    # No app, Notepad, UIA, real profile or desktop API is involved.
     $fakeWorker=Join-Path $dir 'fake-worker.ps1'
     $testLock=Join-Path $dir 'worker.lock'; $testReport=Join-Path $dir 'fake-report.json'
     $watchdogLibrary=(Join-Path $PSScriptRoot 'lib/Watchdog.ps1').Replace("'","''")

@@ -67,8 +67,9 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
     catch { throw 'Another acceptance supervisor holds the exclusive profile lock; no side effects were started' }
     $worker=$null; $saved=$null; $dir=$null; $config=$null; $aborted=$true; $retainBackup=$false
     try {
-        # A worker keeps its own lease until process exit, including if its supervisor is killed.
-        # Probe it before even the clipboard backstop. The primary lease serializes supervisors.
+        # PowerShell workers/helpers keep their own lease if the supervisor is killed.
+        # Native command descendants do NOT inherit it or get tree-killed; see safety guide.
+        # Probe before the clipboard backstop. The primary lease serializes supervisors.
         $workerLock=$LockPath+'.worker'
         try { $probe=[IO.File]::Open($workerLock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None); $probe.Dispose() }
         catch { throw 'An earlier acceptance worker is still alive; no new side effects were started' }
@@ -111,7 +112,7 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
                 if (-not $worker.WaitForExit(5000)) { throw 'Acceptance worker could not be stopped' }
             }
             if ($aborted -and $worker) {
-                Write-Warning 'Acceptance aborted. App/target processes may remain. The real profile backup is NOT automatically moved over a live test profile. Follow docs/guides/002-acceptance-harness-safety.md before retrying.'
+                Write-Warning 'Acceptance aborted. App/target and CLI descendant processes/output locks may remain. The real profile backup is NOT automatically moved over a live test profile. Follow docs/guides/002-acceptance-harness-safety.md before retrying.'
                 Write-HarnessSupervisorFailure $config 'HARNESS.watchdog'
             }
         } finally {
