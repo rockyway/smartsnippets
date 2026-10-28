@@ -1,6 +1,9 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
 param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'))
 $ErrorActionPreference = 'Stop'
+# Disabled until navigation is converted to posted input, with foreground probes and
+# top-left-monitor parking. The previous worker used activating UIA selection patterns.
+throw 'UI QA worker requires posted-input and foreground-probe updates before it can run safely.'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'lib/Watchdog.ps1')
 if (-not $HarnessWorkerConfig) {
