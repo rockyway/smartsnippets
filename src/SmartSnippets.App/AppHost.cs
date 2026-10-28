@@ -187,8 +187,7 @@ internal sealed class AppHost
                     startup,
                     hotkeyManager,
                     elevation,
-                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync()),
-                    dialogs: Dialogs),
+                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync())),
             },
         };
 

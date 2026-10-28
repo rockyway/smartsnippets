@@ -21,25 +21,6 @@ public sealed class SettingsViewModelTests
     private SettingsViewModel Create(AppSettings? initial = null) =>
         new(initial ?? new AppSettings(), _store, _theme, _textSize, _startup, _hotkey, _elevation, () => _exitRequests++);
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task PreviewGlobalDialog_UsesSharedConfirmationWithoutChangingSettings(bool answer)
-    {
-        var dialogs = new ScriptedDialogService();
-        dialogs.ConfirmAnswers.Enqueue(answer);
-        using var vm = new SettingsViewModel(new AppSettings(), _store, _theme, _textSize, _startup, _hotkey, _elevation, dialogs: dialogs);
-
-        await vm.PreviewGlobalDialogCommand.ExecuteAsync(null);
-
-        var call = Assert.Single(dialogs.Confirms);
-        Assert.Equal(UiText.DialogPreviewTitle, call.Title);
-        Assert.Equal(UiText.DialogPreviewBody, call.Message);
-        Assert.Equal(UiText.DialogPreviewConfirm, call.ConfirmText);
-        Assert.Equal(0, _exitRequests);
-        Assert.False(_startup.Enabled);
-    }
-
     [Fact]
     public void LoadsPersistedValues()
     {

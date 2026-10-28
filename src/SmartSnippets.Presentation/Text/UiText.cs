@@ -69,9 +69,6 @@ public static class UiText
     public const string DeleteFolderConfirm = "Delete folder";
 
     // Settings.
-    public const string DialogPreviewTitle = "Global dialog preview";
-    public const string DialogPreviewBody = "This is a preview of the shared confirmation dialog. No changes will be made.\n\nThis longer sample paragraph demonstrates how messages wrap at different window sizes and text sizes. Use either button to close the preview; neither option changes your snippets or settings.";
-    public const string DialogPreviewConfirm = "Continue";
     public const string HotkeyHint = "Press a new combination to capture it. Conflicts are explained here.";
     public static string HotkeyConflict(string attempted, string kept) =>
         $"Another app is already using {attempted}. Your hotkey is still {kept}. Try a different combination.";
