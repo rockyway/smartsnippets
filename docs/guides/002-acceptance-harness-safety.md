@@ -22,7 +22,9 @@ E/F preserve **text only**. Rich formats/images/files are not backed up. Acquisi
 
 Only `-PerfLibrary 10000` can produce P0/P1/P2 acceptance PASS evidence. Other sizes emit `Diagnostic.P*` IDs and INFO on success, explicitly marked NON-ACCEPTANCE (failures remain FAIL). A zero exit code for a diagnostic run is not AC13 sign-off.
 
-G10 scans all archived profiles for saved snippet text/labels and each disposable target's unique title token/observed titles. This detects title-only leaks and changed-title prefixes without printing titles. Diagnostics show bounded allowlisted event names and line numbers only; raw log/exception payloads are withheld. This is fixture-based evidence, not proof that every possible private string can never leak.
+The supervisor propagates the nested script's exit code; terminating exceptions fail. Exit 0 is accepted only with a fresh run-specific completion acknowledgement written after worker cleanup/report production. Report rows carry RunId; when a report is requested, the acknowledgement also hashes it and the supervisor checks current identity/content. A missing acknowledgement, early exit 0 or stale PASS report fails rather than borrowing prior evidence.
+
+G10 scans all archived profiles for saved snippet text/labels and each disposable target's unique title token/observed titles. This detects title-only leaks and changed-title prefixes without printing titles. **App-log summaries** show bounded allowlisted event names and line numbers only; the corresponding log/exception payloads are withheld. D14 accessible-name failures and C11/G7 menu diagnostics report counts, not raw names/menu text. This is not a blanket sanitization guarantee for every report detail: other UI/DB fixture values, machine metadata and artifact paths may still appear. Review reports before sharing. G10 is fixture-based app-log evidence, not proof that every possible private string can never leak from every output surface.
 
 ## Real registry values
 

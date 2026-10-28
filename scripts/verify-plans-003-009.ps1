@@ -585,7 +585,7 @@ if (Want 'C') {
         $menuItems = @()
         if ($menuWnd) { $menuItems = @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) }
         $joined = $menuItems -join ' | '
-        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Exit, no Diagnostics' (($menuItems.Count -eq 5) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -notmatch 'Diagnostics') -and ($joined -match 'Exit')) $joined
+        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Exit, no Diagnostics' (($menuItems.Count -eq 5) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -notmatch 'Diagnostics') -and ($joined -match 'Exit')) "menu items=$($menuItems.Count); menu text withheld"
         Check 'C11.order' 'order: Open, Show popup, Settings first (design) then Restart, Exit last' (($menuItems.Count -gt 0) -and ($menuItems[0] -match 'Open') -and ($menuItems[1] -match 'Show popup') -and ($menuItems[2] -match 'Settings') -and ($menuItems[-1] -match 'Exit')) ''
         Check 'C11.accel' 'Show popup row shows the live hotkey text' ($joined -match 'Show popup\tCtrl\+Shift\+Space') ''
 
@@ -851,7 +851,7 @@ if (Want 'D') {
     $w = Get-Main $p
     $listItems = @(Find-All $w ([Windows.Automation.ControlType]::ListItem) | ForEach-Object { $_.Current.Name }) | Where-Object { $_ }
     $bad = @($listItems | Where-Object { $_ -match 'ViewModel' })
-    Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) (($bad | Select-Object -First 2) -join ' ; ')
+    Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) "offending items=$($bad.Count); accessible names withheld"
 
     # Keep the sqlite process alive with its transaction open while the UI attempts a write.
     $lockMarker = Join-Path ([IO.Path]::GetTempPath()) ("ss-lock-" + [guid]::NewGuid() + '.txt')
@@ -1007,7 +1007,7 @@ if (Want 'G') {
     $menuWnd = Wait-Until { $m = [Win32Verify]::FindWindowW('#32768', $null); if ($m -ne [IntPtr]::Zero) { $m } } 3000 150
     $menuItems = if ($menuWnd) { @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) } else { @() }
     $joined = $menuItems -join ' | '
-    Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') $joined
+    Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') "menu items=$($menuItems.Count); menu text withheld"
     Send-Chord @([byte]$VK.Esc)
     Stop-App
     $gateDir = Join-Path ([IO.Path]::GetTempPath()) ('ss-fake-aot-' + [guid]::NewGuid())
