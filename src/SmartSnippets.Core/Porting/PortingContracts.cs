@@ -13,7 +13,7 @@ public enum ImportRefusal
     UnknownFormat,      // root is not an object, or no known marker/key
     UnsupportedVersion, // known format, version missing or not the supported one
     MissingEntries,     // known format and version, entries member missing or not an array
-    TooManyEntries,     // entries array longer than SnippetFileRules.MaxImportEntries (D11); checked before any entry is read
+    TooManyEntries,     // array entries exceed MaxImportEntries (native: snippets + explicit folders); checked before mapping
 }
 
 /// <summary>An entry the file holds but this app deliberately does not import.</summary>
@@ -56,7 +56,7 @@ public sealed record ParsedImport(
     IReadOnlyList<RejectedEntry> Rejected);
 
 /// <summary><see cref="FoundVersion"/>: the raw JSON of the version value (at most 32 chars), or null when absent.
-/// <see cref="EntryCount"/>: set for TooManyEntries.</summary>
+/// <see cref="EntryCount"/>: set for TooManyEntries (native: combined snippets + raw explicit-folder slots).</summary>
 public sealed record ImportFailure(ImportRefusal Refusal, ImportFormat? Format = null, string? FoundVersion = null, int? EntryCount = null);
 
 /// <summary>Exactly one of <see cref="Parsed"/> and <see cref="Failure"/> is non-null.</summary>
@@ -84,7 +84,7 @@ public sealed record ImportSummary(
 /// <summary>Exactly one of <see cref="Summary"/> and <see cref="Failure"/> is non-null.</summary>
 public sealed record ImportRunResult(ImportSummary? Summary, ImportFailure? Failure);
 
-public enum ExportRefusal { TooLarge, TooManySnippets }
+public enum ExportRefusal { TooLarge, TooManySnippets, TooManyEntries }
 
 /// <summary>Exactly one of <see cref="Utf8Json"/> (compact, ≤ MaxImportBytes) and <see cref="Refusal"/> is non-null.
 /// For TooLarge, <see cref="Bytes"/> is "more than MaxImportBytes" (the writer stops at the limit, so the exact size of

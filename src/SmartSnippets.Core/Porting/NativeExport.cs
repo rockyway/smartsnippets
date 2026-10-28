@@ -15,6 +15,8 @@ public static class NativeExport
     {
         if (snippets.Count > SnippetFileRules.MaxImportEntries)
             return new(null, ExportRefusal.TooManySnippets, 0, snippets.Count, folders.Count);
+        if ((long)snippets.Count + folders.Count > SnippetFileRules.MaxImportEntries)
+            return new(null, ExportRefusal.TooManyEntries, 0, snippets.Count, folders.Count);
         // The serializer buffers a complete escaped token before writing to the bounded sink.
         // Refuse large string payloads BEFORE it can rent those token-sized intermediate buffers.
         if (StringPayloadExceedsLimit(folders, snippets))

@@ -79,5 +79,53 @@ public class NativeExportTests(ITestOutputHelper output)
         Assert.True(allocated < 1024 * 1024, $"Combined string preflight allocated {allocated:N0} bytes.");
     }
 
+    [Fact]
+    public void Export_TooManyEmptyFolders_RefusedBeforeSerialization()
+    {
+        var result = NativeExport.Write(new UnreadableFolders(SnippetFileRules.MaxImportEntries + 1), [], Fixture.Now);
+        Assert.Equal(ExportRefusal.TooManyEntries, result.Refusal);
+        Assert.Null(result.Utf8Json);
+        Assert.Equal(0, result.SnippetCount);
+        Assert.Equal(SnippetFileRules.MaxImportEntries + 1, result.FolderCount);
+    }
+    [Fact]
+    public void Export_CombinedLimitPlusOne_Refused()
+    {
+        Folder[] folders = [new(1, "Empty", Fixture.Now, Fixture.Now)];
+        var result = NativeExport.Write(folders, new UnreadableList(SnippetFileRules.MaxImportEntries), Fixture.Now);
+        Assert.Equal(ExportRefusal.TooManyEntries, result.Refusal);
+        Assert.Null(result.Utf8Json);
+    }
+    [Fact]
+    public void Export_EmptyFoldersAtLimit_ExportsAndImports()
+    {
+        var folders = Enumerable.Range(0, SnippetFileRules.MaxImportEntries).Select(i => new Folder(i + 1, "f" + i, Fixture.Now, Fixture.Now)).ToArray();
+        var result = NativeExport.Write(folders, [], Fixture.Now);
+        Assert.Null(result.Refusal);
+        var parsed = ImportParser.Parse(result.Utf8Json!, Fixture.Now);
+        Assert.Null(parsed.Failure);
+        Assert.Empty(parsed.Parsed!.Batch.Candidates);
+        Assert.Equal(SnippetFileRules.MaxImportEntries, parsed.Parsed.Batch.FolderNames.Count);
+    }
+    [Fact]
+    public void Export_CombinedEntryLimit_ExportsAndImports()
+    {
+        Folder[] folders = [new(1, "Empty", Fixture.Now, Fixture.Now)];
+        var snippets = Enumerable.Repeat(View("x"), SnippetFileRules.MaxImportEntries - 1).ToArray();
+        var result = NativeExport.Write(folders, snippets, Fixture.Now);
+        Assert.Null(result.Refusal);
+        var parsed = ImportParser.Parse(result.Utf8Json!, Fixture.Now);
+        Assert.Null(parsed.Failure);
+        Assert.Equal(SnippetFileRules.MaxImportEntries - 1, parsed.Parsed!.EntryCount);
+        Assert.Equal("Empty", Assert.Single(parsed.Parsed.Batch.FolderNames));
+    }
+    private sealed class UnreadableFolders(int count) : IReadOnlyList<Folder>
+    {
+        public int Count => count;
+        public Folder this[int index] => throw new InvalidOperationException("Must refuse before mapping or serialization");
+        public IEnumerator<Folder> GetEnumerator() => throw new InvalidOperationException("Must refuse before mapping or serialization");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private sealed class UnreadableList(int count) : IReadOnlyList<SnippetView> { public int Count => count; public SnippetView this[int index] => throw new InvalidOperationException("Must refuse before enumeration"); public IEnumerator<SnippetView> GetEnumerator() => throw new InvalidOperationException("Must refuse before enumeration"); System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator(); }
 }

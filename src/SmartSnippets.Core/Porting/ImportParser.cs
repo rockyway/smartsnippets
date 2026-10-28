@@ -29,8 +29,13 @@ public static class ImportParser
             if (!supported) return ImportParseResult.Fail(new(ImportRefusal.UnsupportedVersion, format, JsonFields.VersionText(root, version)));
             if (!root.TryGetProperty(entries, out var array) || array.ValueKind != JsonValueKind.Array)
                 return ImportParseResult.Fail(new(ImportRefusal.MissingEntries, format));
-            int count = array.GetArrayLength();
-            if (count > SnippetFileRules.MaxImportEntries) return ImportParseResult.Fail(new(ImportRefusal.TooManyEntries, format, EntryCount: count));
+            long count = array.GetArrayLength();
+            // Native empty folders also create synchronous store/subscriber work. Count raw array slots
+            // before mapping, including malformed / duplicate folder entries; no accumulation can bypass D11.
+            if (format == ImportFormat.Native && root.TryGetProperty("folders", out var folders) && folders.ValueKind == JsonValueKind.Array)
+                count += folders.GetArrayLength();
+            if (count > SnippetFileRules.MaxImportEntries)
+                return ImportParseResult.Fail(new(ImportRefusal.TooManyEntries, format, EntryCount: (int)Math.Min(count, int.MaxValue)));
             return format switch
             {
                 ImportFormat.Native => NativeFormat.Read(root, now),

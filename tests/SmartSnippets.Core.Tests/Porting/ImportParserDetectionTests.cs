@@ -38,6 +38,40 @@ public class ImportParserDetectionTests
     [Fact] public void Entries_LimitPlusOne_TooManyEntries_WithCount() { var r = Parse(Entries(SnippetFileRules.MaxImportEntries + 1)); Assert.Null(r.Parsed); Assert.Equal(ImportRefusal.TooManyEntries, r.Failure!.Refusal); Assert.Equal(SnippetFileRules.MaxImportEntries + 1, r.Failure.EntryCount); }
     [Fact] public void Entries_OverLimit_RefusedBeforeAnyEntryRead() => Refuse(Entries(SnippetFileRules.MaxImportEntries + 1), ImportRefusal.TooManyEntries);
     [Fact] public void Entries_OverLimit_AfterVersionCheck() => Version(Entries(SnippetFileRules.MaxImportEntries + 1, 2), "2");
+    private static string NativeFolders(int folders, int snippets = 0, bool malformedFolders = false, int version = 1) =>
+        "{\"format\":\"smart-snippets\",\"version\":" + version + ",\"snippets\":[" +
+        string.Join(',', Enumerable.Repeat("{\"text\":\"snippet\"}", snippets)) + "],\"folders\":[" +
+        string.Join(',', Enumerable.Range(0, folders).Select(i => malformedFolders ? "42" : "{\"name\":\"f" + i + "\"}")) + "]}";
+
+    [Fact]
+    public void NativeFolders_ZeroSnippets_OverLimit_Refused_WithCombinedCount()
+    {
+        var result = Parse(NativeFolders(SnippetFileRules.MaxImportEntries + 1));
+        Assert.Null(result.Parsed);
+        Assert.Equal(ImportRefusal.TooManyEntries, result.Failure!.Refusal);
+        Assert.Equal(SnippetFileRules.MaxImportEntries + 1, result.Failure.EntryCount);
+    }
+    [Theory] [InlineData(0)] [InlineData(1)]
+    public void NativeFolders_AtCombinedLimit_Accepted(int snippets)
+    {
+        var result = Parse(NativeFolders(SnippetFileRules.MaxImportEntries - snippets, snippets));
+        Assert.Null(result.Failure);
+        Assert.Equal(snippets, result.Parsed!.EntryCount); // Summary balance counts snippet outcomes, not folders.
+        Assert.Equal(SnippetFileRules.MaxImportEntries - snippets, result.Parsed.Batch.FolderNames.Count);
+    }
+    [Fact]
+    public void NativeFolders_CombinedLimitPlusOne_Refused()
+    {
+        var result = Parse(NativeFolders(SnippetFileRules.MaxImportEntries, 1));
+        Assert.Null(result.Parsed);
+        Assert.Equal(ImportRefusal.TooManyEntries, result.Failure!.Refusal);
+        Assert.Equal(SnippetFileRules.MaxImportEntries + 1, result.Failure.EntryCount);
+    }
+    [Fact] public void NativeFolders_MalformedElementsCountTowardLimit() =>
+        Refuse(NativeFolders(SnippetFileRules.MaxImportEntries + 1, malformedFolders: true), ImportRefusal.TooManyEntries);
+    [Fact] public void NativeFolders_VersionCheckedBeforeCombinedLimit() =>
+        Version(NativeFolders(SnippetFileRules.MaxImportEntries + 1, version: 2), "2");
+
     [Fact] public void InvalidJson_Syntax() => Refuse("{", ImportRefusal.InvalidJson);
     [Fact] public void InvalidJson_TrailingComma() => Refuse("{\"version\":1,\"snippets\":[],}", ImportRefusal.InvalidJson);
     [Fact] public void InvalidJson_Comment() => Refuse("/*comment*/{}", ImportRefusal.InvalidJson);

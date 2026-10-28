@@ -105,8 +105,15 @@ public sealed partial class SnippetPortingViewModel : ObservableObject
             var result = await _workers.ExportAsync(folders, snippets, _time.GetUtcNow());
             if (result.Refusal is { } refusal)
             {
-                AppLog.Info("export_refused", $"reason={refusal} snippets={result.SnippetCount}");
-                await _dialogs.ShowErrorAsync(UiText.ExportFailedTitle, refusal == ExportRefusal.TooLarge ? UiText.ExportTooLarge : UiText.ExportTooManySnippets(result.SnippetCount)); return false;
+                AppLog.Info("export_refused", $"reason={refusal} snippets={result.SnippetCount} folders={result.FolderCount}");
+                var message = refusal switch
+                {
+                    ExportRefusal.TooLarge => UiText.ExportTooLarge,
+                    ExportRefusal.TooManySnippets => UiText.ExportTooManySnippets(result.SnippetCount),
+                    ExportRefusal.TooManyEntries => UiText.ExportTooManyEntries(result.SnippetCount, result.FolderCount),
+                    _ => throw new ArgumentOutOfRangeException(nameof(refusal))
+                };
+                await _dialogs.ShowErrorAsync(UiText.ExportFailedTitle, message); return false;
             }
             stage = "in_write";
             await _files.WriteAtomicallyAsync(path, result.Utf8Json!);

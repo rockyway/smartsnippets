@@ -82,6 +82,27 @@ public class SnippetPortingViewModelTests : IDisposable
     [Fact] public async Task Export_Success_WritesNativeBytes_ShowsCountsAndFileName() { _store.SeedSnippet("body", folder: "Folder"); Assert.True(await Vm().ExportAsync()); var write = Assert.Single(_files.Writes); Assert.Equal(ImportFormat.Native, ImportParser.Parse(write.Bytes, DateTimeOffset.UtcNow).Parsed!.Format); Assert.Equal(UiText.ExportComplete(1, 1, "output.json"), Assert.Single(_dialogs.Infos).Message); }
     [Fact] public async Task Export_WriteThrows_ShowsWriteFailed() { _files.WriteException = new IOException("private"); Assert.False(await Vm().ExportAsync()); Assert.Equal(UiText.ExportWriteFailed("output.json"), Assert.Single(_dialogs.Errors).Message); }
     private async Task ExportRefused(ExportRefusal refusal) { var workers = PortingWorkers.Default with { ExportAsync = (_, _, _) => Task.FromResult(new NativeExportResult(null, refusal, 0, SnippetFileRules.MaxImportEntries + 1, 0)) }; Assert.False(await Vm(workers).ExportAsync()); Assert.Empty(_files.Writes); Assert.Equal(refusal == ExportRefusal.TooLarge ? UiText.ExportTooLarge : UiText.ExportTooManySnippets(SnippetFileRules.MaxImportEntries + 1), Assert.Single(_dialogs.Errors).Message); }
+    [Fact]
+    public async Task Export_TooManyEmptyFolders_Refused_NoWriteCall()
+    {
+        int count = SnippetFileRules.MaxImportEntries + 1;
+        var workers = PortingWorkers.Default with
+        {
+            ExportAsync = (_, _, _) => Task.FromResult(new NativeExportResult(null, ExportRefusal.TooManyEntries, 0, 0, count))
+        };
+        Assert.False(await Vm(workers).ExportAsync());
+        Assert.Empty(_files.Writes);
+        Assert.Empty(_dialogs.Infos);
+        Assert.Equal($"Your library has 0 snippets and {count:N0} folders. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0} entries (snippets and folders), so that it can be imported again. No file was written.", Assert.Single(_dialogs.Errors).Message);
+    }
+    [Fact]
+    public async Task Import_TooManyEmptyFolders_Refused_MessageNamesCombinedCount()
+    {
+        int count = SnippetFileRules.MaxImportEntries;
+        _files.Bytes = Encoding.UTF8.GetBytes("{\"format\":\"smart-snippets\",\"version\":1,\"snippets\":[{\"text\":\"x\"}],\"folders\":[" + string.Join(',', Enumerable.Repeat("{\"name\":\"Empty\"}", count)) + "]}");
+        await Refused(ImportRefusal.TooManyEntries);
+        Assert.Equal($"This Smart Snippets file has {count + 1:N0} entries. Smart Snippets can import up to {count:N0} entries from one file. Nothing was imported.", _dialogs.Errors[0].Message);
+    }
     [Fact] public Task Export_TooLarge_Refused_NoWriteCall() => ExportRefused(ExportRefusal.TooLarge);
     [Fact] public Task Export_TooManySnippets_Refused_NoWriteCall() => ExportRefused(ExportRefusal.TooManySnippets);
     [Fact] public async Task Export_UnexpectedSerializeException_BeforeWrite_NoFileWrittenMessage() { var w = PortingWorkers.Default with { ExportAsync = (_, _, _) => Task.FromException<NativeExportResult>(new InvalidOperationException()) }; Assert.False(await Vm(w).ExportAsync()); Assert.Equal(UiText.ExportUnexpectedFailure, Assert.Single(_dialogs.Errors).Message); Assert.Empty(_files.Writes); }

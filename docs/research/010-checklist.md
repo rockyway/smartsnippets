@@ -64,6 +64,11 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Entries_LimitPlusOne_TooManyEntries_WithCount`
 - [x] `Entries_OverLimit_RefusedBeforeAnyEntryRead`
 - [x] `Entries_OverLimit_AfterVersionCheck`
+- [x] `NativeFolders_ZeroSnippets_OverLimit_Refused_WithCombinedCount`
+- [x] `NativeFolders_AtCombinedLimit_Accepted` (2 cases)
+- [x] `NativeFolders_CombinedLimitPlusOne_Refused`
+- [x] `NativeFolders_MalformedElementsCountTowardLimit`
+- [x] `NativeFolders_VersionCheckedBeforeCombinedLimit`
 - [x] `InvalidJson_Syntax`
 - [x] `InvalidJson_TrailingComma`
 - [x] `InvalidJson_Comment`
@@ -236,6 +241,10 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Export_PreflightSumsStringPayloads`
 - [x] `Export_TooManySnippets_RefusedWithoutSerializing`
 - [x] `Export_AtEntryLimit_Exports`
+- [x] `Export_TooManyEmptyFolders_RefusedBeforeSerialization`
+- [x] `Export_CombinedLimitPlusOne_Refused`
+- [x] `Export_EmptyFoldersAtLimit_ExportsAndImports`
+- [x] `Export_CombinedEntryLimit_ExportsAndImports`
 - [x] `ExportImport_EscapingNearCap_ImportsBack`
 
 ## T8 — Porting messages (AC2, AC8, AC9)
@@ -294,6 +303,8 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Export_WriteThrows_ShowsWriteFailed`
 - [x] `Export_TooLarge_Refused_NoWriteCall`
 - [x] `Export_TooManySnippets_Refused_NoWriteCall`
+- [x] `Export_TooManyEmptyFolders_Refused_NoWriteCall`
+- [x] `Import_TooManyEmptyFolders_Refused_MessageNamesCombinedCount`
 - [x] `Export_UnexpectedSerializeException_BeforeWrite_NoFileWrittenMessage`
 - [x] `Export_NonIoWriteException_InWrite_OutcomeUnknownMessage`
 - [x] `Export_SuccessDialogThrows_AfterWrite_NoErrorDialog_Logged`
@@ -311,6 +322,7 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Budget_AtLimit_Dense_CommitUnderThreshold`
 - [x] `Budget_AtLimit_FolderDense_CommitUnderThreshold`
 - [x] `Budget_TypicalAtCap_CommitUnderThreshold`
+- [x] `Budget_AtLimit_EmptyNativeFolders_CommitUnderThreshold` (local Release 339.15 ms)
 - [x] `Budget_Calibrate` (local Windows Release opt-in run, 1 passed; measurements in plan §10)
 
 ## T10 — App: pickers, file I/O, dialog, buttons, wiring (AC9, AC10)

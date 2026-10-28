@@ -21,6 +21,7 @@ public class SnippetPortingBudgetTests(ITestOutputHelper output)
 #endif
     private static string Entry(int i, string kind) => kind switch
     {
+        "empty-folders" => $"{{\"name\":\"F{i:D7}\"}}",
         "folders" => $"{{\"text\":\"s{i:D7}\",\"folder\":\"F{i:D7}\"}}",
         "typical" => $"{{\"text\":\"s{i:D7}{new string('x', 1024)}\",\"folder\":\"F{i % 100:D3}\",\"tags\":[\"one\",\"two\"]}}",
         _ => $"{{\"text\":\"s{i:D7}\"}}"
@@ -48,16 +49,24 @@ public class SnippetPortingBudgetTests(ITestOutputHelper output)
             }
             else
             {
-                var json = "{\"version\":1,\"snippets\":[" + string.Join(',', Enumerable.Range(0, count).Select(i => Entry(i, kind))) + "]}";
+                var prefix = kind == "empty-folders" ? "{\"format\":\"smart-snippets\",\"version\":1,\"snippets\":[],\"folders\":[" : "{\"version\":1,\"snippets\":[";
+                var json = prefix + string.Join(',', Enumerable.Range(0, count).Select(i => Entry(i, kind))) + "]}";
                 var bytes = Encoding.UTF8.GetBytes(json); Assert.True(bytes.Length <= SnippetFileRules.MaxImportBytes);
                 var result = ImportParser.Parse(bytes, DateTimeOffset.UtcNow); Assert.Null(result.Failure); parsed = result.Parsed!;
             }
             var parseMs = parseWatch.Elapsed.TotalMilliseconds;
             var watch = Stopwatch.StartNew(); var summary = SnippetImport.Commit(parsed, store); watch.Stop();
-            Assert.Equal(count, summary.Imported); Assert.True(summary.IsBalanced);
-            var fresh = new SnippetStore(factory, TimeProvider.System); fresh.Load(); Assert.Equal(20000 + count, fresh.Snippets.Count);
-            list.Query = $"s{count - 1:D7}"; Assert.Single(list.Items);
-            if (kind == "folders") Assert.Equal(count + 1, folders.Rows.Count);
+            int imported = kind == "empty-folders" ? 0 : count;
+            Assert.Equal(imported, summary.Imported); Assert.True(summary.IsBalanced);
+            var fresh = new SnippetStore(factory, TimeProvider.System); fresh.Load(); Assert.Equal(20000 + imported, fresh.Snippets.Count);
+            if (kind == "empty-folders")
+            {
+                Assert.Equal(count, summary.FoldersCreated);
+                Assert.Equal(count, fresh.Folders.Count);
+                Assert.Equal(0, folders.Rows.Single(r => r.Name == $"F{count - 1:D7}").SnippetCount);
+            }
+            else { list.Query = $"s{count - 1:D7}"; Assert.Single(list.Items); }
+            if (kind is "folders" or "empty-folders") Assert.Equal(count + 1, folders.Rows.Count);
             Assert.DoesNotContain("store_subscriber_failed", File.ReadAllText(Path.Combine(directory, "app.log")));
             output.WriteLine($"BUDGET kind={kind} entries={count} parse_ms={parseMs:F2} commit_ms={watch.Elapsed.TotalMilliseconds:F2}");
             return watch.Elapsed.TotalMilliseconds;
@@ -67,6 +76,7 @@ public class SnippetPortingBudgetTests(ITestOutputHelper output)
     [Fact] [Trait("Category", "Budget")] public void Budget_AtLimit_Dense_CommitUnderThreshold() => Assert.True(Measure(Math.Min(SnippetFileRules.MaxImportEntries, Fits("dense")), "dense", false) <= Threshold);
     [Fact] [Trait("Category", "Budget")] public void Budget_AtLimit_FolderDense_CommitUnderThreshold() => Assert.True(Measure(Math.Min(SnippetFileRules.MaxImportEntries, Fits("folders")), "folders", false) <= Threshold);
     [Fact] [Trait("Category", "Budget")] public void Budget_TypicalAtCap_CommitUnderThreshold() => Assert.True(Measure(Math.Min(SnippetFileRules.MaxImportEntries, Fits("typical")), "typical", false) <= Threshold);
+    [Fact] [Trait("Category", "Budget")] public void Budget_AtLimit_EmptyNativeFolders_CommitUnderThreshold() => Assert.True(Measure(SnippetFileRules.MaxImportEntries, "empty-folders", false) <= Threshold);
     [Fact] [Trait("Category", "Calibration")] public void Budget_Calibrate()
     {
         if (Environment.GetEnvironmentVariable("SMARTSNIPPETS_CALIBRATE") != "1") return;

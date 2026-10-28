@@ -184,6 +184,7 @@ public static class UiText
     }
     public static string ImportStoreFailed(string storeMessage) => $"Couldn't save the imported snippets: {storeMessage} Nothing was imported.";
     public static string ExportTooManySnippets(int count) => $"Your library has {count:N0} snippets. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0}, so that it can be imported again. No file was written.";
+    public static string ExportTooManyEntries(int snippets, int folders) => $"Your library has {snippets:N0} snippets and {folders:N0} folders. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0} entries (snippets and folders), so that it can be imported again. No file was written.";
     public static string ExportOutcomeUnknown(string fileName) => $"Couldn't finish the export. Check {fileName} before relying on it.";
     public static string ExportComplete(int snippets, int folders, string fileName) => $"Exported {snippets} {(snippets == 1 ? "snippet" : "snippets")} and {folders} {(folders == 1 ? "folder" : "folders")} to {fileName}.";
     public static string ExportWriteFailed(string fileName) => $"Couldn't write {fileName}. Choose another folder and try again. Any existing file was left unchanged.";
