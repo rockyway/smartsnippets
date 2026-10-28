@@ -148,6 +148,11 @@ try {
     try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock } catch { $overlapRefused=$true }
     finally { $held.Dispose() }
     Assert $overlapRefused 'exclusive lease refuses a concurrent supervisor before launch'
+    $orphanLease=[IO.File]::Open(($testLock+'.worker'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    $orphanRefused=$false
+    try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock } catch { $orphanRefused=$true }
+    finally { $orphanLease.Dispose() }
+    Assert $orphanRefused 'surviving worker lease blocks restart after supervisor termination'
     [IO.File]::WriteAllText($fakeWorker, 'param([string[]]$Only,[string]$HarnessWorkerConfig,[string]$ReportPath) ''{"Status":"PASS"}'' | Set-Content -LiteralPath $ReportPath; Start-Sleep -Seconds 30')
     $timedOut=$false; $timer=[Diagnostics.Stopwatch]::StartNew()
     try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -TimeoutSeconds 2 -LockPath $testLock } catch { $timedOut=$true }

@@ -62,6 +62,8 @@ if (-not $HarnessWorkerConfig) {
 $config = Import-Clixml -LiteralPath $HarnessWorkerConfig
 $supervisor = Get-Process -Id $config.ParentId -ErrorAction Stop
 if ($supervisor.StartTime.ToUniversalTime().Ticks -ne $config.ParentStartTicks) { throw 'Invalid acceptance supervisor identity' }
+# Keep this handle until process exit. An orphaned worker still excludes every new supervisor.
+$script:WorkerLease=[IO.File]::Open($config.WorkerLock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 $script:HarnessProgressPath = $config.Progress
 Update-HarnessProgress
 . (Join-Path $PSScriptRoot 'lib\Safety.ps1')

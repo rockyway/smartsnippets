@@ -4,10 +4,10 @@ function Update-HarnessProgress {
         [IO.File]::WriteAllText($script:HarnessProgressPath, [guid]::NewGuid().ToString('N'))
     }
 }
-function Invoke-ClipboardWorker([string]$Mode, [string]$BackupPath) {
+function Invoke-ClipboardWorker([string]$Mode, [string]$BackupPath, [string]$LeasePath) {
     $shell=(Get-Process -Id $PID).Path
     $helper=Join-Path $PSScriptRoot '../clipboard-worker.ps1'
-    $proc=Start-Process -FilePath $shell -ArgumentList ('-NoProfile -STA -ExecutionPolicy Bypass -File "'+$helper+'" -Mode '+$Mode+' -BackupPath "'+$BackupPath+'"') -NoNewWindow -PassThru
+    $proc=Start-Process -FilePath $shell -ArgumentList ('-NoProfile -STA -ExecutionPolicy Bypass -File "'+$helper+'" -Mode '+$Mode+' -BackupPath "'+$BackupPath+'" -LeasePath "'+$LeasePath+'"') -NoNewWindow -PassThru
     $null=$proc.Handle
     try {
         if (-not $proc.WaitForExit(15000)) {
@@ -27,19 +27,24 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
     catch { throw 'Another acceptance supervisor holds the exclusive profile lock; no side effects were started' }
     $worker=$null; $saved=$null; $dir=$null; $aborted=$true; $retainBackup=$false
     try {
+        # A worker keeps its own lease until process exit, including if its supervisor is killed.
+        # Probe it before even the clipboard backstop. The primary lease serializes supervisors.
+        $workerLock=$LockPath+'.worker'
+        try { $probe=[IO.File]::Open($workerLock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None); $probe.Dispose() }
+        catch { throw 'An earlier acceptance worker is still alive; no new side effects were started' }
         $dir=Join-Path ([IO.Path]::GetTempPath()) ('ss-worker-' + [guid]::NewGuid().ToString('N'))
         $null=New-Item -ItemType Directory -Path $dir
         $configPath=Join-Path $dir 'config.clixml'
         $progress=Join-Path $dir 'progress'
         $parent=Get-Process -Id $PID
-        [pscustomobject]@{ ParentId=$PID; ParentStartTicks=$parent.StartTime.ToUniversalTime().Ticks; Arguments=$Arguments; Script=$ScriptPath; Progress=$progress } | Export-Clixml -LiteralPath $configPath
+        [pscustomobject]@{ ParentId=$PID; ParentStartTicks=$parent.StartTime.ToUniversalTime().Ticks; Arguments=$Arguments; Script=$ScriptPath; Progress=$progress; WorkerLock=$workerLock } | Export-Clixml -LiteralPath $configPath
         $bootstrap=Join-Path $dir 'worker.ps1'
         # Use a hashtable splat, not positional hashtable/array expansion.
         [IO.File]::WriteAllText($bootstrap, '$c=Import-Clixml -LiteralPath $args[0]; $a=$c.Arguments; & $c.Script @a -HarnessWorkerConfig $args[0]')
         $needsClipboard = -not $Arguments.ContainsKey('Only') -or @($Arguments.Only).Count -eq 0 -or 'E' -in $Arguments.Only -or 'F' -in $Arguments.Only
         if ($needsClipboard) {
             $backupPath=Join-Path $dir 'clipboard.clixml'
-            Invoke-ClipboardWorker 'Save' $backupPath # Acquisition failure refuses launch.
+            Invoke-ClipboardWorker 'Save' $backupPath $workerLock # Acquisition failure refuses launch.
             $saved=$backupPath # Text is DPAPI-encrypted for this Windows user, never plaintext on disk.
         }
         $shell=(Get-Process -Id $PID).Path
@@ -77,7 +82,7 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
         } finally {
             try {
                 if ($saved) {
-                    try { Invoke-ClipboardWorker 'Restore' $saved }
+                    try { Invoke-ClipboardWorker 'Restore' $saved $workerLock }
                     catch { $retainBackup=$true; Write-Warning "Clipboard restoration failed; encrypted recovery backup retained at $saved"; throw 'Clipboard restoration failed' }
                 }
             }
