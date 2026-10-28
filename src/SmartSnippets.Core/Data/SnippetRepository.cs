@@ -58,22 +58,31 @@ public sealed class SnippetRepository
         bool isLabelCustom,
         long? folderId,
         IReadOnlyList<string> tags,
-        DateTimeOffset now)
+        DateTimeOffset now) => InsertImported(connection, transaction, text, label, isLabelCustom, folderId, tags, now, now, null, 0);
+
+    public Snippet InsertImported(
+        SqliteConnection connection, SqliteTransaction transaction,
+        string text, string label, bool isLabelCustom, long? folderId, IReadOnlyList<string> tags,
+        DateTimeOffset createdAt, DateTimeOffset updatedAt, DateTimeOffset? lastUsedAt, int usageCount)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
             "INSERT INTO snippets (text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count) " +
-            "VALUES ($text, $label, $custom, $folder, $tags, $now, $now, NULL, 0); SELECT last_insert_rowid();";
+            "VALUES ($text, $label, $custom, $folder, $tags, $created, $updated, $used, $usage); SELECT last_insert_rowid();";
         command.Parameters.AddWithValue("$text", text);
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
         command.Parameters.AddWithValue("$folder", folderId is null ? DBNull.Value : folderId.Value);
         command.Parameters.AddWithValue("$tags", TagList.ToStorage(tags));
-        command.Parameters.AddWithValue("$now", DbTime.ToDb(now));
+        command.Parameters.AddWithValue("$created", DbTime.ToDb(createdAt));
+        command.Parameters.AddWithValue("$updated", DbTime.ToDb(updatedAt));
+        command.Parameters.AddWithValue("$used", lastUsedAt is { } used ? DbTime.ToDb(used) : DBNull.Value);
+        command.Parameters.AddWithValue("$usage", usageCount);
         var id = (long)command.ExecuteScalar()!;
-        var stored = DbTime.FromDb(DbTime.ToDb(now));
-        return new Snippet(id, text, label, isLabelCustom, folderId, TagList.FromStorage(TagList.ToStorage(tags)), stored, stored, null, 0);
+        return new Snippet(id, text, label, isLabelCustom, folderId, TagList.FromStorage(TagList.ToStorage(tags)),
+            DbTime.FromDb(DbTime.ToDb(createdAt)), DbTime.FromDb(DbTime.ToDb(updatedAt)),
+            lastUsedAt is { } value ? DbTime.FromDb(DbTime.ToDb(value)) : null, usageCount);
     }
 
     /// <summary>Sets updated_at; never touches created_at, usage_count or last_used_at. False when not found.</summary>
@@ -117,7 +126,7 @@ public sealed class SnippetRepository
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "UPDATE snippets SET usage_count = usage_count + 1, last_used_at = $now WHERE id = $id;";
+        command.CommandText = "UPDATE snippets SET usage_count = MIN(usage_count + 1, 2147483647), last_used_at = $now WHERE id = $id;";
         command.Parameters.AddWithValue("$now", DbTime.ToDb(now));
         command.Parameters.AddWithValue("$id", id);
         return command.ExecuteNonQuery() > 0;
@@ -133,5 +142,5 @@ public sealed class SnippetRepository
         DbTime.FromDb(reader.GetInt64(6)),
         DbTime.FromDb(reader.GetInt64(7)),
         reader.IsDBNull(8) ? null : DbTime.FromDb(reader.GetInt64(8)),
-        (int)reader.GetInt64(9));
+        (int)Math.Clamp(reader.GetInt64(9), 0, int.MaxValue));
 }

@@ -1,5 +1,6 @@
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Query;
+using SmartSnippets.Core.Porting;
 
 namespace SmartSnippets.Core.Store;
 
@@ -21,6 +22,10 @@ public interface ISnippetStore
 
     /// <summary>Full reload from the database (startup); raises Changed(Reloaded).</summary>
     void Load();
+
+    /// <summary>Adds one batch atomically; dedupes against this call's snapshot. Raises one Imported event only
+    /// when something was written. Database failure leaves snapshots unchanged. Subscriber failures are isolated.</summary>
+    ImportCommit ImportSnippets(ImportBatch batch);
 
     StoreResult<Snippet> CreateSnippet(SnippetDraft draft);
 

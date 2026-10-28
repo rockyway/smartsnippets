@@ -3,6 +3,7 @@ using SmartSnippets.Core.Data;
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Query;
+using SmartSnippets.Core.Porting;
 
 namespace SmartSnippets.Core.Store;
 
@@ -49,6 +50,40 @@ public sealed class SnippetStore : ISnippetStore
         Publish(folders, snippets);
         AppLog.Info("store_loaded", $"count={snippets.Count}");
         Raise(StoreChangeKind.Reloaded, null, []);
+    }
+
+    public ImportCommit ImportSnippets(ImportBatch batch)
+    {
+        AssertOwnerThread();
+        var plan = ImportPlanner.Plan(batch, _snippets, _folders);
+        if (plan.Snippets.Count == 0 && plan.NewFolderNames.Count == 0)
+            return new([], 0, plan.SkippedDuplicates, plan.Rejected);
+        var now = Stored(_time.GetUtcNow());
+        var (newFolders, newSnippets) = Write("import_snippets", (c, tx) =>
+        {
+            var ids = new Dictionary<string, long>(plan.ExistingFolderIds, StringComparer.Ordinal);
+            var folders = new List<Folder>();
+            foreach (var name in plan.NewFolderNames)
+            {
+                var key = FolderNameRules.Key(name);
+                var folder = _folderRepository.Insert(c, tx, name, key, now);
+                folders.Add(folder);
+                ids.Add(key, folder.Id);
+            }
+            var snippets = new List<Snippet>(plan.Snippets.Count);
+            foreach (var snippet in plan.Snippets)
+            {
+                var stats = snippet.Stats ?? new ImportStats(now, now, null, 0);
+                snippets.Add(_snippetRepository.InsertImported(c, tx, snippet.Text, snippet.Label, snippet.IsLabelCustom,
+                    snippet.FolderKey is { } key ? ids[key] : null, snippet.Tags,
+                    stats.CreatedAt, stats.UpdatedAt, stats.LastUsedAt, stats.UsageCount));
+            }
+            return (folders, snippets);
+        });
+        Publish([.. _folders, .. newFolders], [.. _snippets, .. newSnippets]);
+        var newIds = newSnippets.Select(s => s.Id).ToArray();
+        Raise(StoreChangeKind.Imported, null, newIds);
+        return new(newIds, newFolders.Count, plan.SkippedDuplicates, plan.Rejected);
     }
 
     public StoreResult<Snippet> CreateSnippet(SnippetDraft draft)
@@ -252,7 +287,7 @@ public sealed class SnippetStore : ISnippetStore
             return StoreResult.Fail(ValidationError.SnippetNotFound);
         }
 
-        Publish(_folders, ReplaceSnippet(existing with { LastUsedAt = now, UsageCount = existing.UsageCount + 1 }));
+        Publish(_folders, ReplaceSnippet(existing with { LastUsedAt = now, UsageCount = existing.UsageCount == int.MaxValue ? int.MaxValue : existing.UsageCount + 1 }));
         Raise(StoreChangeKind.UsageRecorded, id, [id]);
         return StoreResult.Ok();
     }
@@ -288,8 +323,9 @@ public sealed class SnippetStore : ISnippetStore
         }
         catch (Exception ex) when (ex is SqliteException or IOException)
         {
-            // Only the operation name is logged: never text, labels, tags or folder names.
-            AppLog.Error("store_write_failed", ex, $"op={op}");
+            // Never pass the exception: SQLite trigger and I/O messages can contain private data.
+            AppLog.Error("store_write_failed", null,
+                $"op={op} error={ex.GetType().Name} sqlite={(ex as SqliteException)?.SqliteErrorCode} hresult=0x{ex.HResult:X8}");
             throw ToStoreException(ex);
         }
     }
@@ -364,6 +400,19 @@ public sealed class SnippetStore : ISnippetStore
         _views = Array.AsReadOnly(views);
     }
 
-    private void Raise(StoreChangeKind kind, long? id, IReadOnlyList<long> snippetIds) =>
-        Changed?.Invoke(this, new StoreChangedEventArgs(kind, id, snippetIds));
+    private void Raise(StoreChangeKind kind, long? id, IReadOnlyList<long> snippetIds)
+    {
+        var handlers = Changed?.GetInvocationList();
+        if (handlers is null) return;
+        var args = new StoreChangedEventArgs(kind, id, snippetIds);
+        for (int i = 0; i < handlers.Length; i++)
+        {
+            try { ((EventHandler<StoreChangedEventArgs>)handlers[i])(this, args); }
+            catch (Exception ex)
+            {
+                AppLog.Error("store_subscriber_failed", null,
+                    $"kind={kind} index={i} of={handlers.Length} error={ex.GetType().Name}");
+            }
+        }
+    }
 }

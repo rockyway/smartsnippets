@@ -185,30 +185,30 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T6 — Store bulk import (AC4, AC5, AC6, AC3)
 
-- [ ] T6 implementation and task verification
-- [ ] `InsertImported_PersistsAllStats_Reload`
-- [ ] `Insert_StillFreshStats`
-- [ ] `RecordUsage_AtIntMax_Saturates`
-- [ ] `Read_UsageAboveIntMax_ClampedToIntMax`
-- [ ] `UsageImported_Paste_Sort_Reopen`
-- [ ] `UsageAtIntMax_Paste_Saturates_Reopen`
+- [x] T6 implementation and task verification (Core 387; Presentation 335; Import filter 115 pass; export-half box belongs to T7)
+- [x] `InsertImported_PersistsAllStats_Reload`
+- [x] `Insert_StillFreshStats`
+- [x] `RecordUsage_AtIntMax_Saturates`
+- [x] `Read_UsageAboveIntMax_ClampedToIntMax`
+- [x] `UsageImported_Paste_Sort_Reopen`
+- [x] `UsageAtIntMax_Paste_Saturates_Reopen`
 - [ ] `UsageChain_Export_Reimport_Exact`
-- [ ] `Import_SubscriberThrows_CommitReturned_RowsPersisted_LaterSubscribersRan`
-- [ ] `Create_SubscriberThrows_ResultReturned`
-- [ ] `Import_OneTransaction_OneEvent_KindImported_IdsAreNew`
-- [ ] `Import_SnapshotsReplacedOnce_ContainNewRows`
-- [ ] `Import_PersistsStats_ReloadEqualsCache`
-- [ ] `Import_FoldersCreatedInSameTransaction`
-- [ ] `Import_AllDuplicates_NoWrite_NoEvent`
-- [ ] `Import_OnlyEmptyNativeFolder_WritesFolder_OneEvent`
-- [ ] `Import_EditorRules_SameAsCreate`
-- [ ] `Import_FullRowBatch_KeepsSameTextRowsWithDifferentMetadata`
-- [ ] `Import_InjectedFailure_RollsBack_NoRows_NoFolders_NoEvent_SnapshotsSame`
-- [ ] `Import_InjectedFailure_LogHasEventButNoMessage`
-- [ ] `CreateSnippet_InjectedFailure_LogHasNoMessage`
-- [ ] `Pipeline_EachFixture_CountsMatchIndependentTable_AndBalanced`
-- [ ] `Pipeline_SameFileTwice_SecondImportsZero_NoEvent`
-- [ ] `FakeSnippetStore_Import_MatchesRealStoreCounts`
+- [x] `Import_SubscriberThrows_CommitReturned_RowsPersisted_LaterSubscribersRan`
+- [x] `Create_SubscriberThrows_ResultReturned`
+- [x] `Import_OneTransaction_OneEvent_KindImported_IdsAreNew`
+- [x] `Import_SnapshotsReplacedOnce_ContainNewRows`
+- [x] `Import_PersistsStats_ReloadEqualsCache`
+- [x] `Import_FoldersCreatedInSameTransaction`
+- [x] `Import_AllDuplicates_NoWrite_NoEvent`
+- [x] `Import_OnlyEmptyNativeFolder_WritesFolder_OneEvent`
+- [x] `Import_EditorRules_SameAsCreate`
+- [x] `Import_FullRowBatch_KeepsSameTextRowsWithDifferentMetadata`
+- [x] `Import_InjectedFailure_RollsBack_NoRows_NoFolders_NoEvent_SnapshotsSame`
+- [x] `Import_InjectedFailure_LogHasEventButNoMessage`
+- [x] `CreateSnippet_InjectedFailure_LogHasNoMessage`
+- [x] `Pipeline_EachFixture_CountsMatchIndependentTable_AndBalanced`
+- [x] `Pipeline_SameFileTwice_SecondImportsZero_NoEvent`
+- [x] `FakeSnippetStore_Import_MatchesRealStoreCounts`
 
 ## T7 — Native export (AC7)
 
