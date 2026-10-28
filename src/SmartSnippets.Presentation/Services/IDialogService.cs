@@ -15,4 +15,7 @@ public interface IDialogService
     Task<SaveChoice> AskSaveDiscardCancelAsync(string title, string message);
 
     Task ShowErrorAsync(string title, string message);
+
+    /// <summary>Informational dialog with one OK button; body uses snippet text size.</summary>
+    Task ShowInfoAsync(string title, string message);
 }

@@ -61,6 +61,17 @@ internal sealed class DialogService : IDialogService
         });
     }
 
+    public async Task ShowInfoAsync(string title, string message)
+    {
+        await ShowAsync(new ContentDialog
+        {
+            Title = title,
+            Content = Body(message),
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+        });
+    }
+
     private static TextBlock Body(string message) => new() { Text = message, TextWrapping = TextWrapping.Wrap };
 
     private async Task<ContentDialogResult> ShowAsync(ContentDialog dialog)

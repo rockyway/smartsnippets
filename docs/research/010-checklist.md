@@ -249,65 +249,65 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T9 — View-model, dialog contract, page wiring (AC2, AC3, AC8, AC9 enabler)
 
-- [ ] T9 implementation and task verification
-- [ ] `Import_Cancelled_NoRead_NoStoreCall_NoDialog_LogsCancelled`
-- [ ] `Import_NotJsonPath_Refused_NoOpen`
-- [ ] `Import_OpenThrowsIOException_Unreadable`
-- [ ] `Import_OpenThrowsUnauthorized_Unreadable`
-- [ ] `Import_ReadThrowsOnFirstRead_Unreadable`
-- [ ] `Import_ReadThrowsAfterSomeBytes_Unreadable`
-- [ ] `Import_TooLarge_Refused`
-- [ ] `Import_NotUtf8_Refused`
-- [ ] `Import_InvalidJson_Refused`
-- [ ] `Import_UnknownFormat_Refused`
-- [ ] `Import_UnsupportedVersion_Refused_MessageNamesVersion`
-- [ ] `Import_MissingEntries_Refused`
-- [ ] `Import_TooManyEntries_Refused_MessageNamesCountAndLimit`
-- [ ] `Import_Success_ShowsInfoWithSummary_TitleComplete`
-- [ ] `Import_ZeroImported_TitleNothingImported`
-- [ ] `Import_StoreException_ShowsStoreFailed_NoInfo`
-- [ ] `Import_UnexpectedReadException_BeforeCommit_NothingImportedMessage`
-- [ ] `ReadThrowsInvalidData_Propagates`
-- [ ] `Import_ParseWorkerThrows_BeforeCommit_NothingImportedMessage`
-- [ ] `Import_StoreThrowsNonStoreException_InCommit_OutcomeUnknownMessage_NeverNothingImported`
-- [ ] `Import_SummaryDialogThrows_AfterCommit_NoErrorDialog_Logged`
-- [ ] `Import_SubscriberThrows_SummaryStillShown`
-- [ ] `Import_Busy_DuringSummaryDialog`
-- [ ] `Import_Busy_DuringRefusalDialog`
-- [ ] `Import_Busy_DuringUnexpectedErrorDialog`
-- [ ] `Import_Busy_DuringStoreFailureDialog`
-- [ ] `Export_Busy_DuringUnexpectedErrorDialog`
-- [ ] `Export_Busy_DuringSuccessDialog`
-- [ ] `Import_MatchingSnippetCreatedDuringParse_IsSkippedAsDuplicate`
-- [ ] `Import_MatchingSnippetDeletedDuringParse_IsImported`
-- [ ] `Import_FolderRenamedDuringParse_ResolvesToCurrentFolder`
-- [ ] `Import_FolderCreatedDuringParse_Reused`
-- [ ] `Import_WhileEditorDirty_EditorKeepsEdits_NewFolderInChoices`
-- [ ] `Page_FilesNull_CommandsDisabled`
-- [ ] `Page_PortingSharesStoreAndDialogs`
-- [ ] `Export_Cancelled_NoWrite`
-- [ ] `Export_NotJson_Refused_NoWrite`
-- [ ] `Export_Success_WritesNativeBytes_ShowsCountsAndFileName`
-- [ ] `Export_WriteThrows_ShowsWriteFailed`
-- [ ] `Export_TooLarge_Refused_NoWriteCall`
-- [ ] `Export_TooManySnippets_Refused_NoWriteCall`
-- [ ] `Export_UnexpectedSerializeException_BeforeWrite_NoFileWrittenMessage`
-- [ ] `Export_NonIoWriteException_InWrite_OutcomeUnknownMessage`
-- [ ] `Export_SuccessDialogThrows_AfterWrite_NoErrorDialog_Logged`
-- [ ] `Export_SuggestedBaseName_HasDateNoExtension`
-- [ ] `Logs_SuccessAndFailure_NoPathNoFileNameNoText`
-- [ ] `Import_StoreCallAndChanged_OnOwnerThread_AfterSuspendedReadAndHeldParse`
-- [ ] `Import_ParseCompletesOnWorker_StillCommitsOnOwner`
-- [ ] `Export_SerializeHeld_WriteAndDialogOnOwner`
-- [ ] `PortingWorkers_Create_RunsOffCallerThread`
-- [ ] `Integration_ImportTermFlow_ListFindsImportedTextFolderAndTag`
-- [ ] `Integration_ImportTermFlow_PopupSearchAndSortsReflectImport`
-- [ ] `Integration_ImportNative_FoldersPageShowsNewFolderWithCount`
-- [ ] `Integration_InjectedFailure_NoInfoDialog_LibraryUnchanged`
-- [ ] `Integration_ThrowingSubscriber_RowsAcknowledged_OtherViewsRefreshed`
-- [ ] `Budget_AtLimit_Dense_CommitUnderThreshold`
-- [ ] `Budget_AtLimit_FolderDense_CommitUnderThreshold`
-- [ ] `Budget_TypicalAtCap_CommitUnderThreshold`
+- [x] T9 implementation and task verification (78 filtered cases pass; calibration executes in T10)
+- [x] `Import_Cancelled_NoRead_NoStoreCall_NoDialog_LogsCancelled`
+- [x] `Import_NotJsonPath_Refused_NoOpen`
+- [x] `Import_OpenThrowsIOException_Unreadable`
+- [x] `Import_OpenThrowsUnauthorized_Unreadable`
+- [x] `Import_ReadThrowsOnFirstRead_Unreadable`
+- [x] `Import_ReadThrowsAfterSomeBytes_Unreadable`
+- [x] `Import_TooLarge_Refused`
+- [x] `Import_NotUtf8_Refused`
+- [x] `Import_InvalidJson_Refused`
+- [x] `Import_UnknownFormat_Refused`
+- [x] `Import_UnsupportedVersion_Refused_MessageNamesVersion`
+- [x] `Import_MissingEntries_Refused`
+- [x] `Import_TooManyEntries_Refused_MessageNamesCountAndLimit`
+- [x] `Import_Success_ShowsInfoWithSummary_TitleComplete`
+- [x] `Import_ZeroImported_TitleNothingImported`
+- [x] `Import_StoreException_ShowsStoreFailed_NoInfo`
+- [x] `Import_UnexpectedReadException_BeforeCommit_NothingImportedMessage`
+- [x] `ReadThrowsInvalidData_Propagates` (Core T1 test)
+- [x] `Import_ParseWorkerThrows_BeforeCommit_NothingImportedMessage`
+- [x] `Import_StoreThrowsNonStoreException_InCommit_OutcomeUnknownMessage_NeverNothingImported`
+- [x] `Import_SummaryDialogThrows_AfterCommit_NoErrorDialog_Logged`
+- [x] `Import_SubscriberThrows_SummaryStillShown`
+- [x] `Import_Busy_DuringSummaryDialog`
+- [x] `Import_Busy_DuringRefusalDialog`
+- [x] `Import_Busy_DuringUnexpectedErrorDialog`
+- [x] `Import_Busy_DuringStoreFailureDialog`
+- [x] `Export_Busy_DuringUnexpectedErrorDialog`
+- [x] `Export_Busy_DuringSuccessDialog`
+- [x] `Import_MatchingSnippetCreatedDuringParse_IsSkippedAsDuplicate`
+- [x] `Import_MatchingSnippetDeletedDuringParse_IsImported`
+- [x] `Import_FolderRenamedDuringParse_ResolvesToCurrentFolder`
+- [x] `Import_FolderCreatedDuringParse_Reused`
+- [x] `Import_WhileEditorDirty_EditorKeepsEdits_NewFolderInChoices`
+- [x] `Page_FilesNull_CommandsDisabled`
+- [x] `Page_PortingSharesStoreAndDialogs`
+- [x] `Export_Cancelled_NoWrite`
+- [x] `Export_NotJson_Refused_NoWrite`
+- [x] `Export_Success_WritesNativeBytes_ShowsCountsAndFileName`
+- [x] `Export_WriteThrows_ShowsWriteFailed`
+- [x] `Export_TooLarge_Refused_NoWriteCall`
+- [x] `Export_TooManySnippets_Refused_NoWriteCall`
+- [x] `Export_UnexpectedSerializeException_BeforeWrite_NoFileWrittenMessage`
+- [x] `Export_NonIoWriteException_InWrite_OutcomeUnknownMessage`
+- [x] `Export_SuccessDialogThrows_AfterWrite_NoErrorDialog_Logged`
+- [x] `Export_SuggestedBaseName_HasDateNoExtension`
+- [x] `Logs_SuccessAndFailure_NoPathNoFileNameNoText`
+- [x] `Import_StoreCallAndChanged_OnOwnerThread_AfterSuspendedReadAndHeldParse`
+- [x] `Import_ParseCompletesOnWorker_StillCommitsOnOwner`
+- [x] `Export_SerializeHeld_WriteAndDialogOnOwner`
+- [x] `PortingWorkers_Create_RunsOffCallerThread`
+- [x] `Integration_ImportTermFlow_ListFindsImportedTextFolderAndTag`
+- [x] `Integration_ImportTermFlow_PopupSearchAndSortsReflectImport`
+- [x] `Integration_ImportNative_FoldersPageShowsNewFolderWithCount`
+- [x] `Integration_InjectedFailure_NoInfoDialog_LibraryUnchanged`
+- [x] `Integration_ThrowingSubscriber_RowsAcknowledged_OtherViewsRefreshed`
+- [x] `Budget_AtLimit_Dense_CommitUnderThreshold`
+- [x] `Budget_AtLimit_FolderDense_CommitUnderThreshold`
+- [x] `Budget_TypicalAtCap_CommitUnderThreshold`
 - [ ] `Budget_Calibrate`
 
 ## T10 — App: pickers, file I/O, dialog, buttons, wiring (AC9, AC10)

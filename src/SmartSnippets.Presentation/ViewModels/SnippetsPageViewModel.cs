@@ -33,18 +33,22 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         ISnippetStore store,
         IDialogService dialogs,
         IClipboardService? clipboard = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        ISnippetFileService? files = null)
     {
         _store = store;
         _dialogs = dialogs;
         _clipboard = clipboard;
         _time = time;
+        Porting = new SnippetPortingViewModel(store, dialogs, files, time);
         List = new SnippetListViewModel(store);
         List.PropertyChanged += OnListPropertyChanged;
         List.Rebuilt += OnListRebuilt;
     }
 
     public SnippetListViewModel List { get; }
+
+    public SnippetPortingViewModel Porting { get; }
 
     public bool HasEditor => Editor is not null;
 
