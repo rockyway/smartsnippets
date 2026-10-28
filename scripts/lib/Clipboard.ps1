@@ -9,7 +9,16 @@ using System.Security.Cryptography;
 using System.Text;
 
 public static class VerifyClipboard {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateWindowEx(uint ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("user32.dll", SetLastError=true)] static extern bool DestroyWindow(IntPtr window);
     [DllImport("user32.dll", SetLastError=true)] static extern bool OpenClipboard(IntPtr owner);
+    // A message-only STATIC window is owned by this thread. All payloads are eager HGLOBALs,
+    // so the owner can be destroyed after CloseClipboard (no delayed-rendering lifetime).
+    static IntPtr NewOwner() {
+        var owner = CreateWindowEx(0, "STATIC", "SmartSnippets acceptance clipboard", 0, 0, 0, 0, 0, new IntPtr(-3), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        Require(owner != IntPtr.Zero, "Create clipboard owner");
+        return owner;
+    }
     [DllImport("user32.dll", SetLastError=true)] static extern bool CloseClipboard();
     [DllImport("user32.dll", SetLastError=true)] static extern bool EmptyClipboard();
     [DllImport("user32.dll", SetLastError=true)] static extern uint EnumClipboardFormats(uint format);
@@ -35,12 +44,15 @@ public static class VerifyClipboard {
     public static void Install(string sentinel) {
         uint format = RegisterClipboardFormat("SmartSnippets.Acceptance.Unsaveable");
         Require(format != 0, "RegisterClipboardFormat");
-        Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
+        var owner = NewOwner();
         try {
-            Require(EmptyClipboard(), "EmptyClipboard");
-            Put(13, Encoding.Unicode.GetBytes(sentinel + "\0"), Encoding.Unicode.GetByteCount(sentinel + "\0"));
-            Put(format, Encoding.ASCII.GetBytes("SmartSnippets oversized test payload"), 64 * 1024 * 1024 + 4096);
-        } finally { CloseClipboard(); }
+            Require(OpenClipboard(owner), "OpenClipboard");
+            try {
+                Require(EmptyClipboard(), "EmptyClipboard");
+                Put(13, Encoding.Unicode.GetBytes(sentinel + "\0"), Encoding.Unicode.GetByteCount(sentinel + "\0"));
+                Put(format, Encoding.ASCII.GetBytes("SmartSnippets oversized test payload"), 64 * 1024 * 1024 + 4096);
+            } finally { CloseClipboard(); }
+        } finally { DestroyWindow(owner); }
     }
     static List<string> ReadEntries() {
         var entries = new List<string>();
@@ -66,8 +78,11 @@ public static class VerifyClipboard {
     }
     public static string OrderedFingerprint() { return String.Join("|", ReadEntries().ToArray()); }
     public static void Clear() {
-        Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
-        try { Require(EmptyClipboard(), "EmptyClipboard"); } finally { CloseClipboard(); }
+        var owner = NewOwner();
+        try {
+            Require(OpenClipboard(owner), "OpenClipboard");
+            try { Require(EmptyClipboard(), "EmptyClipboard"); } finally { CloseClipboard(); }
+        } finally { DestroyWindow(owner); }
     }
 }
 '@
