@@ -1,3 +1,5 @@
+using SmartSnippets.Presentation.Services;
+
 namespace SmartSnippets.Presentation.Text;
 
 /// <summary>
@@ -70,6 +72,9 @@ public static class UiText
         $"Another app is already using {attempted}. Your hotkey is still {kept}. Try a different combination.";
     public static string TextSizeHint(double size) => $"{size:0.#} units. Custom accepts 10 to 32.";
     public const string StartAtLoginHint = "Starts in the background without opening the main window.";
+
+    // Insertion (007). Placeholder; design wording is added in T4.
+    public static string InsertionMessage(InsertionOutcome outcome, string displayName, bool restoreNotice) => outcome == InsertionOutcome.Inserted ? "" : outcome.ToString();
 
     // Tray.
     public const string TrayOpen = "Open Smart Snippets";
