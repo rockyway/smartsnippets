@@ -2,6 +2,7 @@
 $savedClipboard = Save-ClipboardText
 $sentinel = 'SMART-SNIPPETS-CLIPBOARD-SENTINEL'
 function Get-TargetEditor($Target) {
+    Assert-OwnedTarget $Target
     foreach ($el in @(@(Find-All $Target ([Windows.Automation.ControlType]::Edit)) + @(Find-All $Target ([Windows.Automation.ControlType]::Document)))) {
         $pattern = $null
         if ($el.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { return $el }
@@ -11,7 +12,8 @@ function Get-TargetEditor($Target) {
 function Set-TargetText($Target, [string]$Text) {
     $saved = Save-ClipboardText
     try {
-        $null = Set-Foreground $Target
+        Assert-OwnedTarget $Target
+        if (-not (Set-Foreground $Target)) { throw 'Cannot foreground owned target for fixture input' }
         (Get-TargetEditor $Target).SetFocus()
         Send-Chord @([byte]$VK.Ctrl,[byte]$VK.A)
         if ($Text) { Set-Clipboard -Value $Text; Send-Chord @([byte]$VK.Ctrl,[byte]0x56) }

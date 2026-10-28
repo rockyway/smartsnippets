@@ -32,13 +32,16 @@ param(
     [string]$ReportPath = '',
     [string]$ArtifactZip = '',
     [ValidateRange(10, 1000000)][int]$PerfLibrary = 10000,
-    [switch]$FlipTaskbarTheme
+    [switch]$FlipTaskbarTheme,
+    [string]$TargetExe = "$env:WINDIR\System32\notepad.exe"
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
+. (Join-Path $PSScriptRoot 'lib\Safety.ps1')
 . (Join-Path $PSScriptRoot 'lib\Uia.ps1')
+. (Join-Path $PSScriptRoot 'lib\Targets.ps1')
 . (Join-Path $PSScriptRoot 'lib\Perf.ps1')
 . (Join-Path $PSScriptRoot 'lib\PopupHarness.ps1')
 . (Join-Path $PSScriptRoot 'lib\LogAudit.ps1')
@@ -126,10 +129,20 @@ function Want($Section) { ($Only.Count -eq 0) -or ($Only -contains $Section) }
 if ($artifactInfo) { Add-Result 'INFO' 'Artifact' 'Downloaded release artifact' $artifactInfo }
 
 # ----------------------------------------------------------------- app + profile helpers
+function Assert-NoForeignApp {
+    $ownedIds = @($script:Procs | Where-Object { -not $_.HasExited } | ForEach-Object { $_.Id })
+    if (@(Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $ownedIds }).Count) {
+        throw 'An unowned Smart Snippets process is running. Exit it yourself; no profile mutation or blanket process termination is permitted.'
+    }
+}
 function Stop-App {
-    Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    $null = Wait-Until { -not (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue) } 5000
-    Start-Sleep -Milliseconds 300
+    foreach ($proc in $script:Procs) {
+        if (-not $proc.HasExited) {
+            $proc.Kill()
+            if (-not $proc.WaitForExit(5000)) { throw 'Owned Smart Snippets did not exit; profile mutation refused' }
+        }
+    }
+    Assert-NoForeignApp
 }
 function Reset-Profile([scriptblock]$Seed = $null) {
     Stop-App
@@ -151,6 +164,7 @@ function Wait-Log([string]$Pattern, [int]$From = 0, [int]$TimeoutMs = 8000) {
 function Start-App([string[]]$AppArgs = @(), [switch]$NoWait) {
     $from = (Get-LogLines).Count
     $p = if ($AppArgs.Count) { Start-Process $exe -ArgumentList $AppArgs -PassThru } else { Start-Process $exe -PassThru }
+    $null = $p.Handle # Pin process identity before a short-lived redirect process can exit.
     $script:Procs += $p
     if (-not $NoWait) { $null = Wait-Log 'tray_added|second_instance_redirect|hotkey_startup_failed' $from 15000 }
     Start-Sleep -Milliseconds 600
@@ -231,21 +245,6 @@ function Create-Snippet($Proc, [string]$Text, [string]$Tags = '', [string]$Label
 }
 function Press-Hotkey([byte[]]$Keys) {
     [Win32Verify]::Chord($Keys)
-}
-function Start-Target {
-    $np = Start-Process notepad.exe -PassThru
-    Start-Sleep -Milliseconds 1800
-    $el = Wait-Until {
-        $c = New-Object Windows.Automation.PropertyCondition($script:AE::ClassNameProperty, 'Notepad')
-        $script:AE::RootElement.FindFirst($script:TS::Children, $c)
-    } 6000 200
-    if ($el) { $null = Set-Foreground $el }
-    Start-Sleep -Milliseconds 500
-    return $el
-}
-function Stop-Target {
-    Get-Process -Name notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    if (-not (Wait-Until { -not (Get-Process -Name notepad -ErrorAction SilentlyContinue) } 5000 50)) { throw 'Notepad did not exit' }
 }
 function Confirm-Dialog($Proc, [string]$ButtonName) {
     $b = Wait-Until { Btn (Get-Main $Proc) $ButtonName } 3000 150

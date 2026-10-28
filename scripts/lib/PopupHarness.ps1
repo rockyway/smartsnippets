@@ -1,5 +1,6 @@
 # Dot-sourced by the acceptance harness; depends on its Sql/Check/Wait-Log helpers.
 function Open-TestPopup($Proc, $Target) {
+    Assert-OwnedTarget $Target
     if (-not (Set-Foreground $Target)) { throw 'Could not foreground insertion target' }
     $from = @(Get-LogLines).Count
     Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)

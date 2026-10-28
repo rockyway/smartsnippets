@@ -1,10 +1,25 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/lib/Perf.ps1"
 . "$PSScriptRoot/lib/LogAudit.ps1"
+. "$PSScriptRoot/lib/Safety.ps1"
 function Assert($Condition, $Message) { if (-not $Condition) { throw $Message }; Write-Host "PASS $Message" }
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
 New-Item -ItemType Directory $dir | Out-Null
 try {
+    $expectedTarget = [pscustomobject]@{ Id=12; StartTicks=100; Path='C:\Windows\notepad.exe'; Token='SS-owned-123' }
+    $actualTarget = [pscustomobject]@{ Id=12; StartTicks=100; Path='C:\Windows\notepad.exe' }
+    $targetWindow = [pscustomobject]@{ ProcessId=12; ClassName='Notepad'; HasClassicEdit=$true; Title='SS-owned-123.txt - Notepad' }
+    Assert (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow)) 'classic single-document target identity accepted'
+    Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @())) 'missing target window refused'
+    Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow,$targetWindow))) 'multiple windows refused'
+    $actualTarget.StartTicks=101
+    Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'reused target PID refused'
+    $actualTarget.StartTicks=100; $targetWindow.HasClassicEdit=$false
+    Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'tabbed or packaged Notepad refused'
+    $targetWindow.HasClassicEdit=$true; $targetWindow.Title='user document - Notepad'
+    Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'replaced user document refused'
+    $targetWindow.Title='SS-owned-123.txt - Notepad'; $actualTarget.Path='C:\other\notepad.exe'
+    Assert (-not (Test-DisposableTargetIdentity $expectedTarget $actualTarget @($targetWindow))) 'launcher executable mismatch refused'
     $sql = @(New-PerfLibrarySql -Count 10000 -Seed 42)
     $sql2 = @(New-PerfLibrarySql -Count 10000 -Seed 42)
     Assert (($sql -join "`n") -ceq ($sql2 -join "`n")) 'seed 42 produces identical 10k SQL'
