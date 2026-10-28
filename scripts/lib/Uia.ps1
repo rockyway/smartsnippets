@@ -1,6 +1,7 @@
 # UI Automation + Win32 helpers shared by the verification scripts (Windows PowerShell 5.1).
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
+. (Join-Path $PSScriptRoot 'Clipboard.ps1')
 
 if (-not ('Win32Verify' -as [type])) {
 Add-Type -TypeDefinition @'
