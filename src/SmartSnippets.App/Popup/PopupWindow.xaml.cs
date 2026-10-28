@@ -64,6 +64,23 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal Func<bool>? CanShow { get; set; }
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
+    private string SearchPlaceholder => UiText.PopupSearchPlaceholder;
+    private string SearchName => UiText.PopupSearchName;
+    private string ToggleLayoutName => UiText.ToggleLayout;
+    private string SortName => UiText.SortButton;
+    private string LastUsedText => UiText.SortName(SortField.LastUsed);
+    private string UsageCountText => UiText.SortName(SortField.UsageCount);
+    private string CreatedText => UiText.SortName(SortField.Created);
+    private string UpdatedText => UiText.SortName(SortField.Updated);
+    private string AddText => UiText.AddSnippet;
+    private string MainWindowText => UiText.OpenMainWindow;
+    private string CopyText => UiText.CopyText;
+    private string RestartText => UiText.RestartAsAdministrator;
+    private string PasteAnywayText => UiText.PasteAnyway;
+    private string CancelText => UiText.Cancel;
+    private string DismissText => UiText.Dismiss;
+    private string SaveText => UiText.Save;
+    private string EditorHint => UiText.CtrlEnterSaves;
     private Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     private InfoBarSeverity FooterSeverity(PopupFooterState state) => state switch
     {
