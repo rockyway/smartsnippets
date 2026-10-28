@@ -254,8 +254,27 @@ public sealed class InsertionServiceTests
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var service = new InsertionService(_store, _probe, _dispatcher, delay: (t, _) => t.TotalMilliseconds == 250 ? gate.Task : Task.CompletedTask);
         var first = service.InsertAsync(Target, _id);
-        Assert.Equal(InsertionOutcome.Busy, (await service.InsertAsync(Target, _id)).Outcome);
+        var callsBefore = _calls.ToArray();
+        var checksBefore = _probe.CheckedTargets.ToArray();
+        var gatesBefore = _probe.ForegroundTargets.ToArray();
+        var focusBefore = _dispatcher.FocusTargets.ToArray();
+        var clipboardBefore = _dispatcher.Clipboard.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray());
+        var pendingBefore = _dispatcher.Pending;
+        var usageBefore = Usage;
+        Assert.Equal(InsertionOutcome.Busy, (await service.InsertAsync(new(888, 777, 666, "other"), _id)).Outcome);
+        Assert.Equal(callsBefore, _calls);
+        Assert.Equal(checksBefore, _probe.CheckedTargets);
+        Assert.Equal(gatesBefore, _probe.ForegroundTargets);
+        Assert.Equal(focusBefore, _dispatcher.FocusTargets);
+        Assert.Equal(usageBefore, Usage);
+        Assert.Same(pendingBefore, _dispatcher.Pending);
+        Assert.Equal(clipboardBefore.Keys, _dispatcher.Clipboard.Keys);
+        foreach (var (key, value) in clipboardBefore) Assert.Equal(value, _dispatcher.Clipboard[key]);
+        Assert.Equal(1, _calls.Count(call => call == "send"));
         gate.SetResult(); Assert.Equal(InsertionOutcome.Inserted, (await first).Outcome);
+        Assert.Equal(1, Usage);
         Assert.Equal(InsertionOutcome.Inserted, (await service.InsertAsync(Target, _id)).Outcome);
+        Assert.Equal(2, _calls.Count(call => call == "send"));
+        Assert.Equal(2, Usage);
     }
 }
