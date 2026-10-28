@@ -45,6 +45,31 @@ public sealed class PopupViewModelInsertionTests
     {
         _store.SeedSnippet("a"); using var vm = Create(); await vm.InsertSelectedAsync(); Assert.Empty(_notices.Calls); Assert.DoesNotContain("ShowAgain", _host.Calls); Assert.Equal(PopupFooterState.None, vm.FooterState);
     }
+    [Theory]
+    [InlineData(InsertionOutcome.FocusFailed)]
+    [InlineData(InsertionOutcome.TargetElevated)]
+    [InlineData(InsertionOutcome.MaybePasted)]
+    [InlineData(InsertionOutcome.CopiedForManualPaste)]
+    [InlineData(InsertionOutcome.ClipboardNotPreserved)]
+    public async Task Recovery_PreservesNonFirstSelectionAndPromptedId(InsertionOutcome outcome)
+    {
+        _store.SeedSnippet("match alpha", "Alpha");
+        _store.SeedSnippet("match beta", "Beta");
+        var third = _store.SeedSnippet("match gamma", "Gamma");
+        Outcome(outcome); using var vm = Create(); vm.Query = "match"; vm.MoveSelection(1); vm.MoveSelection(1);
+        Assert.Equal(third.Id, vm.Items[vm.SelectedIndex].SnippetId);
+        await vm.InsertSelectedAsync();
+        Assert.Contains("ShowAgain", _host.Calls); Assert.Equal(Target, vm.Target); Assert.Equal("match", vm.Query);
+        Assert.Equal(third.Id, vm.Items[vm.SelectedIndex].SnippetId);
+        Assert.Equal(third.Id, Assert.Single(_insertion.Calls).Id);
+        if (outcome == InsertionOutcome.ClipboardNotPreserved)
+        {
+            await vm.PasteAnywayCommand.ExecuteAsync(null);
+            var retry = _insertion.Calls[1];
+            Assert.Equal(third.Id, retry.Id); Assert.Equal(Target, retry.Target); Assert.True(retry.Options.AllowClipboardLoss);
+        }
+    }
+
     [Fact]
     public async Task Failure_ShowsAgain_SameTargetQuerySelection_ShowsMessage()
     {
