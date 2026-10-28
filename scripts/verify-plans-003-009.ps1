@@ -831,6 +831,7 @@ if (Want 'D') {
 # Release static checks. The interactive G checks still require implementation below.
 if (Want 'G') {
     Section 'G. Release artifact and icon structure'
+    $priorLogText = (Get-LogLines) -join "`n"
     $info = (Get-Item $exe).VersionInfo
     if ($ArtifactZip -and [IO.Path]::GetFileName($ArtifactZip) -match '^SmartSnippets-win-x64-(.+)\.zip$') {
         $expectedVersion = $Matches[1]
@@ -878,8 +879,80 @@ if (Want 'G') {
     Check 'G8.tags' 'invalid tags rejected and prerelease accepted' (-not (Test-ReleaseTag 'v1.0') -and -not (Test-ReleaseTag 'v1.0.0.0') -and -not (Test-ReleaseTag '1.0.0') -and (Test-ReleaseTag 'v1.0.0-rc.1'))
     if ($ArtifactZip) { Check 'G9' 'archive hash and layout validated before extraction' $true $artifactInfo }
     else { Skip 'G9' 'release archive and checksum' 'requires -ArtifactZip' }
-    Check 'G10' 'whole log excludes known acceptance snippet text' (-not ((Get-LogLines) -join "`n" -match 'smart-snippets-probe|locked-save-probe|ZZ-PRIVACY-MARKER-7431'))
-    Check 'G.incomplete' 'interactive release checks implemented' $false 'G4–G8 runtime checks are not yet implemented'
+    Reset-Profile
+    $p = Start-App
+    $null = Wait-Main $p
+    Check 'G4.ready' 'tray starts Ready' (Log-Has 'tray_icon state=Ready')
+    $target = Start-Target
+    if (-not $target) { throw 'G4 requires Notepad target' }
+    $null = Set-Foreground $target
+    $from = (Get-LogLines).Count
+    Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
+    Check 'G4.open' 'popup changes tray state to PopupOpen' (Wait-Log 'tray_icon state=PopupOpen' $from 5000) (Tail $from)
+    $from = (Get-LogLines).Count
+    Send-Chord @([byte]$VK.Esc)
+    Check 'G4.close' 'closing popup returns tray to Ready' (Wait-Log 'tray_icon state=Ready' $from 5000) (Tail $from)
+    Stop-Target
+    Stop-App
+    Reset-Profile
+    $held = [Win32Verify]::RegisterHotKey([IntPtr]::Zero, 9210, 0x4006, 0x20)
+    if (-not $held) { throw 'G5 could not reserve the default hotkey' }
+    try {
+        $p = Start-App
+        $null = Wait-Main $p
+        Check 'G5.unavailable' 'held hotkey produces unavailable tray state' (Wait-Log 'tray_icon state=HotkeyUnavailable' 0 5000)
+    } finally { [void][Win32Verify]::UnregisterHotKey([IntPtr]::Zero, 9210) }
+    Nav $p 'SettingsItem'
+    $from = (Get-LogLines).Count
+    Press (Get-Main $p) 'Restore default shortcut'
+    Check 'G5.ready' 're-applying freed hotkey restores Ready state' (Wait-Log 'tray_icon state=Ready' $from 5000) (Tail $from)
+    $hwndMsg = [Win32Verify]::FindWindowW('SmartSnippets.MessageWindow', $null)
+    if ($hwndMsg -eq [IntPtr]::Zero) { throw 'G6 message window not found' }
+    $messageData = [Runtime.InteropServices.Marshal]::StringToHGlobalUni('ImmersiveColorSet')
+    try {
+        $from = (Get-LogLines).Count
+        [void][Win32Verify]::SendMessage($hwndMsg, 0x001A, [IntPtr]::Zero, $messageData)
+        Check 'G6' 'theme broadcast re-evaluates icon without a crash' ((Wait-Log 'tray_icon state=' $from 5000) -and -not $p.HasExited) (Tail $from)
+    } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($messageData) }
+    if ($FlipTaskbarTheme) {
+        $keyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        $key = Get-Item $keyPath
+        $names = @($key.GetValueNames())
+        $existed = $names -contains 'SystemUsesLightTheme'
+        $old = $key.GetValue('SystemUsesLightTheme', 0)
+        try {
+            $from = (Get-LogLines).Count
+            New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $(if ($old -eq 1) { 0 } else { 1 }) -Force | Out-Null
+            $result = [IntPtr]::Zero
+            [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
+            Check 'G6b' 'taskbar theme flip triggers tray_theme_changed' (Wait-Log 'tray_theme_changed' $from 5000) (Tail $from)
+        } finally {
+            if ($existed) { New-ItemProperty $keyPath -Name SystemUsesLightTheme -PropertyType DWord -Value $old -Force | Out-Null }
+            else { Remove-ItemProperty $keyPath -Name SystemUsesLightTheme -ErrorAction SilentlyContinue }
+            $result = [IntPtr]::Zero
+            [void][Win32Verify]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result)
+        }
+    } else { Skip 'G6b' 'taskbar theme flip' 'opt in with -FlipTaskbarTheme' }
+    [void][Win32Verify]::PostMessage($hwndMsg, 0x8001, [IntPtr]::Zero, [IntPtr]0x0205)
+    $menuWnd = Wait-Until { $m = [Win32Verify]::FindWindowW('#32768', $null); if ($m -ne [IntPtr]::Zero) { $m } } 3000 150
+    $menuItems = if ($menuWnd) { @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) } else { @() }
+    $joined = $menuItems -join ' | '
+    Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') $joined
+    Send-Chord @([byte]$VK.Esc)
+    Stop-App
+    $allLogText = $priorLogText + "`n" + ((Get-LogLines) -join "`n")
+    Check 'G10' 'log excludes known acceptance snippet text' (-not ($allLogText -match 'smart-snippets-probe|locked-save-probe|ZZ-PRIVACY-MARKER-7431'))
+    $gateDir = Join-Path ([IO.Path]::GetTempPath()) ('ss-fake-aot-' + [guid]::NewGuid())
+    try {
+        New-Item -ItemType Directory -Path $gateDir | Out-Null
+        [IO.File]::WriteAllText((Join-Path $gateDir 'SmartSnippets.App.dll'), 'not a real assembly')
+        $shell = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
+        $gateOutput = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output $gateDir 2>&1 | Out-String
+        Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') $gateOutput
+    } finally {
+        Remove-Item $gateDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item "$gateDir.log" -Force -ErrorAction SilentlyContinue
+    }
 }
 if (Want 'P') {
     Section 'P. Performance diagnostic'
