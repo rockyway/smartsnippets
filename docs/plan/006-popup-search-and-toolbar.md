@@ -7,6 +7,9 @@
 **Depends on:** 003, 004, 005, 009 (all complete, CI green on `main`), plus the **007 insertion contract** (§4.3.1), which the coordinator writes in T0 before any track starts
 **Design reference:** [docs/design/001-smart-snippets-design.html](../design/001-smart-snippets-design.html), section "Global popup" and its `<script>` (`row()`, `render()`, key handling, add-snippet dialog)
 **Requirement brief confirmed:** 2026-10-28 (G1, 006–008 brief)
+**Revised:** 2026-10-28 after the external review
+[docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md)
+and the user's decisions on it (§11)
 
 > **API check (2026-10-28, against `main` at `4861b0e`).** The placeholder assumed several APIs.
 > The merged code matches them, with five differences that this plan handles:
@@ -38,13 +41,17 @@ When you press Ctrl+Shift+Space (or choose **Show popup** from the tray), the re
   losing your target, or jump to the main window.
 - If an insertion fails, the popup comes back with the reason, a **Copy text** button and, for
   elevated targets, **Restart as administrator**.
+- If pasting would lose part of your clipboard, the popup comes back and asks **Paste anyway?**
+  first. If the paste may already have happened, it says so as a caution and never invites a
+  blind retry.
 
 This replaces the 002 prototype popup, which inserts a fixed test string.
 
 ## 2. Requirement slice (as confirmed at G1, 2026-10-28)
 
 Pasted from the confirmed 006 slice of the 006–008 brief. Nothing below goes beyond it, except
-where §9 lists a design call for approval.
+where §9 lists a design call for approval or a bullet is marked as a user decision of 2026-10-28
+(review response, §11).
 
 - **Replace the 002 prototype popup.**
   - Capture the target before showing.
@@ -83,7 +90,8 @@ where §9 lists a design call for approval.
   - Tab/Shift+Tab move through the controls.
   - A mouse click on a row is the same as Enter.
 - **Clicking outside (deactivation)** closes the popup, except while the add-snippet editor is
-  open or an insertion is in progress.
+  open or an insertion is in progress. *(Kept after review finding 8; store-change propagation is
+  tested without keeping the popup open across a main-window edit, §7.)*
 - **Add snippet:**
   - An editor overlay over the popup, titled "Add snippet", with the subline "Insertion target
     kept: <DisplayName>".
@@ -96,13 +104,35 @@ where §9 lists a design call for approval.
   popup.
 - **Tray "Show popup"** uses the same capture path. `TrayState.PopupOpen` is set while the popup
   is visible; the glyph comes in 008.
+  - *(User decision, 2026-10-28, review finding 7.)* **`HotkeyUnavailable` wins over
+    `PopupOpen`**: the tray shows red whenever the hotkey is not registered, even while the popup
+    is open.
 - **Insertion failure** (007 decides the message):
   - The popup re-opens with the same target and the same selection.
   - The message shows in the footer, with a **Copy text** button (`IClipboardService`).
   - **Restart as administrator** (`IElevation`) also shows when the outcome is `TargetElevated`.
   - On success the popup stays hidden.
+- *(User decisions, 2026-10-28, review findings 1–2; 007 implements the engine side.)* **Further
+  insertion outcomes the popup handles:**
+  - **`ClipboardNotPreserved`** (nothing changed): the popup re-opens (same target, same
+    selection) with the footer prompt "Some of what's on your clipboard can't be restored after
+    pasting. Paste anyway?" and the buttons **Paste anyway** / **Cancel** (Esc = Cancel).
+    **Paste anyway** hides the popup and calls `InsertAsync` again for the same snippet and target
+    with `new InsertionOptions(AllowClipboardLoss: true)`.
+  - **`CopiedForManualPaste`**: the popup re-opens showing the message (the snippet is on the
+    clipboard; paste it yourself). No Copy text (already copied) and no retry button.
+  - **`MaybePasted`**: the popup re-opens showing the message as a **caution**, not a retryable
+    error (no "try again" wording; Copy text is still offered). Enter must not instantly
+    re-insert.
+  - **`Inserted` with a non-empty `Message`** (for example, the clipboard was not fully
+    restored): the popup stays hidden and the message is shown as a tray notice through
+    `INotifier`.
 - **Performance:** popup ready ≤ 300 ms after the hotkey on the user's PC. Keep the
   `popup_ready_ms` log and the prewarm.
+  - *(Review finding 4.)* The popup also logs **end-to-end search time**, from the search text
+    change to the rendered results, in both layouts: `popup_search_ms <int> layout=<flat|folder>
+    results=<n>`. 008 uses it for the ≤ 150 ms at 10k acceptance; the Core benchmark stays a
+    diagnostic.
 - **Contract with 007:** 006 consumes `IInsertionService` (§4.3.1, verbatim) and does not
   implement it. Until 007 lands, a thin adapter over `ClipboardPasteInserter` keeps 006 runnable.
 - **Out of scope:**
@@ -181,6 +211,9 @@ where §9 lists a design call for approval.
 - `src/SmartSnippets.App/Services/ClipboardPasteInserter.cs`:
   - `:27-32`: logs `insert_result <outcome>`.
   - `:36`: the elevation probe.
+  - `:79-82`: `SendInputFailed` is returned when `SendInput` sends fewer events than asked, so
+    part of Ctrl+V may already have reached the target (review finding 2).
+  - `:86`: success returns the message "Inserted." (non-empty).
   - `:95-125`: focus restore, direct first and then `AttachThreadInput`.
   - It records no usage.
 
@@ -230,6 +263,8 @@ where §9 lists a design call for approval.
 
 **Presentation services and text (reused):**
 - `Presentation/Services/IClipboardService.cs:4-7` (UI thread only).
+- `Presentation/Services/INotifier.cs:4-7`: `Notify(title, message)` (tray balloon). `AppHost`
+  builds it as `Notices = new Notifier(tray)` (`AppHost.cs:57,201`).
 - `IElevation.cs:3-18`: `IsElevated`, `RestartAsAdministrator()` → `Started`, `Cancelled` or
   `Failed`.
 - `SettingsViewModel.cs:23-24,81-91,208-213` shows the existing `IElevation` + `requestExit`
@@ -308,6 +343,13 @@ replaced only when the computed list differs (`SequenceEqual`).
   a sort change (design: `st.sel=0`).
 - On `store.Changed` the selection is kept **by ID** if that snippet is still visible; otherwise
   it moves to the first snippet.
+- **Store-change propagation (review finding 8).** The view-model subscribes to `store.Changed`
+  for its whole life, visible or hidden, so the next open always shows current data. Because
+  deactivation closes the popup, a main-window edit can't happen while the popup is on screen;
+  the realistic paths are (a) a change while the popup is hidden, then re-open, and (b) a change
+  raised while it is shown (the add-snippet save, usage recorded after an insert). Both are
+  covered by view-model tests that raise `Changed` from the fake store while the popup is shown
+  and while it is hidden (T1), plus runbook step 23.
 
 **Pipeline and caching** (AC13: popup ≤ 300 ms, search ≤ 150 ms at 10k).
 1. On a store change or a sort change: `sorted = SnippetSort.Apply(store.Snippets, Sort)`, then
@@ -318,6 +360,33 @@ replaced only when the computed list differs (`SequenceEqual`).
    rebuilt when the snapshot or the layout changes, so a keystroke allocates only the list.
 
 The view-model is built at start-up after `store.Load()`, so the first popup open does no work.
+
+**End-to-end search timing (review finding 4).** The Core benchmark times only `SnippetSearch`.
+The user waits for filter + grouping + row mapping + `x:Bind` update + `ListView` layout +
+the composed frame, so `PopupWindow` (T7) measures that whole path in both layouts:
+1. **Start:** the search `TextBox.TextChanged` handler in code-behind stores
+   `Stopwatch.GetTimestamp()` as the pending start. The two-way `x:Bind` (with
+   `UpdateSourceTrigger=PropertyChanged`) pushes `Query` to the view-model synchronously during
+   the same input turn, and the pipeline (§4.1) runs synchronously in the setter, so `Items` is
+   already replaced when control returns to the dispatcher.
+2. **Results applied:** the window listens to `ViewModel.PropertyChanged` for `Items`. When it
+   fires with a pending start, the window sets `awaitingLayout`. If the result was identical
+   (`SequenceEqual`, no `Items` change), the window goes straight to step 4.
+3. **Laid out:** the first `PopupList.LayoutUpdated` after `awaitingLayout` (the `ListView` has
+   measured and arranged the realized containers for the new `ItemsSource`) sets
+   `awaitingFrame`.
+4. **Rendered (stop):** the first `Microsoft.UI.Xaml.Media.CompositionTarget.Rendered` after
+   `awaitingFrame` stops the clock, logs `popup_search_ms <int> layout=<flat|folder>
+   results=<n>` (`n` = snippet rows, not headings) and unsubscribes `Rendered`, which is attached
+   only while a measurement is pending so it costs nothing at rest.
+- A new `TextChanged` before the stop **replaces** the pending start, so each log line measures
+  the latest edit to its rendered result. Superseded edits are not logged. 008's acceptance
+  therefore sets the query in **one edit** (UIA `ValuePattern.SetValue` or a paste) and waits
+  for the log line, rather than typing at machine speed.
+- The query text is never logged. The line is built by the pure
+  `PopupLogFormat.SearchMs(int ms, PopupLayout layout, int results)` in Presentation so its
+  format is unit-tested (T1) and stays stable for 008's verify script.
+- `popup_ready_ms` is unchanged.
 
 **Toolbar.**
 - **Layout:** a `ToggleButton`. `IsChecked` = folder layout, which exposes the state to UIA.
@@ -339,9 +408,27 @@ The view-model is built at start-up after `store.Load()`, so the first popup ope
 - Left: the hint "↑↓ move · Enter insert · Esc close", or a transient status ("Snippet added and
   ready to insert", from the design). The status is cleared by the next query change or move.
 - Right: "N of M snippets".
-- When `HasFooterError` is set, the footer switches to the danger style. It shows the message,
-  **Copy text**, and, when the outcome is `TargetElevated` and the app isn't elevated, **Restart
-  as administrator**. The message is announced with `LiveSetting=Assertive`.
+- **Footer message states** (`PopupFooterState`, one at a time; the message is announced with
+  `LiveSetting=Assertive` in every state except `None`):
+
+  | State | Set by | Style | Message | Buttons | Enter / click on a row | Esc |
+  |---|---|---|---|---|---|---|
+  | `None` | fresh open, Cancel, Dismiss | hint or status | — | — | inserts | closes |
+  | `Error` | `TargetClosed`, `TargetElevated`, `FocusFailed`, `ClipboardBusy`, `PasteFailed`, `SnippetMissing`, exception | danger (red) | `result.Message` (exception: `UiText.InsertFailedGeneric`) | **Copy text** (not for `SnippetMissing`); **Restart as administrator** for `TargetElevated` when not elevated | inserts again (nothing was pasted) | closes |
+  | `ConfirmClipboardLoss` | `ClipboardNotPreserved` | caution | `UiText.ClipboardLossPrompt` (popup-owned) | **Paste anyway** (focused), **Cancel** | ignored (the prompt owns the answer) | = **Cancel** |
+  | `ManualPaste` | `CopiedForManualPaste` | info (neutral) | `result.Message` (blank → `UiText.CopiedForManualPasteFallback`) | none (no Copy text: already copied; no retry) | inserts (nothing was pasted) | closes |
+  | `MaybePasted` | `MaybePasted` | caution (amber, not danger) | `result.Message` (blank → `UiText.MaybePastedFallback`); no "try again" wording | **Copy text**, **Dismiss** | the **first** one only dismisses the caution; inserting needs a second, deliberate Enter or click | closes |
+
+  - In `ConfirmClipboardLoss` and `MaybePasted` the hint line reads `UiText.ConfirmHint`
+    ("Enter choose · Esc cancel") or `UiText.DismissHint` ("Enter dismiss · Esc close").
+  - **Cancel** (or Esc) in `ConfirmClipboardLoss` clears the prompt and keeps the popup open with
+    the same query and selection, so you can pick another snippet; a second Esc closes the popup.
+  - A query change or `MoveSelection` clears `ConfirmClipboardLoss` (treated as Cancel) and
+    `MaybePasted` (treated as Dismiss), so the prompt never applies to a different snippet.
+  - `Error` and `ManualPaste` are cleared by the next insertion attempt or the next fresh open.
+  - Footer buttons are `IsTabStop` and follow the list in Tab order. `ConfirmClipboardLoss` moves
+    focus to **Paste anyway** (`host.Focus(PopupFocusTarget.Footer)`), so Enter/Space answers it
+    explicitly; the other states keep focus in the search box.
 - The design draws an empty-state icon; we use the `SearchOff`-style glyph `&#xE721;` with the
   two design strings.
 
@@ -360,9 +447,33 @@ The view-model is built at start-up after `store.Load()`, so the first popup ope
   - It routes Esc to a new `EscapePressed` event instead of `ConfirmDiscardAsync`. Esc in the
     inline new-folder row still only cancels the row.
   - The Snippets page doesn't set `IsCompact`, so it is unchanged.
-- **Ctrl+Enter** is handled in the overlay's `PreviewKeyDown`, which tunnels, so the multi-line
-  Text box can't turn it into a newline (R7). Ctrl+S keeps working through the control's
-  accelerator.
+- **Ctrl+Enter (review finding 5)** must save even when the caret is in the multi-line Text box
+  (`AcceptsReturn="True"`), whose own `KeyDown` handling turns Enter into a newline and marks the
+  event handled, so a bubbling `KeyDown` on the overlay never sees it. The WinUI 3 approach, in
+  order (R7):
+  1. **Primary: `UIElement.PreviewKeyDown` on the overlay root.** This is the WinUI 3 /
+     Windows App SDK event `Microsoft.UI.Xaml.UIElement.PreviewKeyDown` (tunnelling, raised from
+     the root down to the focused element *before* `KeyDown`), not a WPF borrowing. The handler
+     acts only when `e.Key == VirtualKey.Enter`, Ctrl is down and Shift/Alt are up (read with
+     `InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)` and the same for
+     Shift/Menu). It sets `e.Handled = true` **before** the Text box sees the key, so no newline
+     is inserted, and calls `ViewModel.SaveEditorAsync()`. Plain Enter and Shift+Enter are not
+     touched and still make newlines.
+  2. **Fallback A, if runbook step 12a shows a newline or no save:** a
+     `KeyboardAccelerator Key="Enter" Modifiers="Control"` on the overlay root
+     (`ScopeOwner` = overlay, `KeyboardAcceleratorPlacementMode="Hidden"`), whose `Invoked` sets
+     `args.Handled = true` and saves. Runbook step 12a is repeated to check that the
+     `AcceptsReturn` Text box neither swallows the chord nor adds a newline before the
+     accelerator runs.
+  3. **Fallback B, if neither works on the user's PC:** ship with **Ctrl+S** (already a working
+     accelerator on `SnippetEditor`, `:7-10`) and the Save button, change the overlay footer hint
+     to "Ctrl+S saves", and record the deviation in §10 for the user to accept. This changes the
+     design's shortcut, so it needs the user's sign-off before 006 is marked Complete.
+  - A `UIElement.AddHandler(UIElement.KeyDownEvent, handler, handledEventsToo: true)` handler is
+    **not** used for this: it would see Ctrl+Enter only after the Text box has already inserted
+    the newline.
+  - Ctrl+S keeps working through the control's accelerator in every case. `SaveEditorAsync` is
+    guarded by `Editor.IsSaving` and by the editor closing, so a double route can't save twice.
 - **The editor's dialogs** (inline-folder `StoreException`, the Esc discard question) use a
   **popup-scoped `DialogService`** whose root is `popup.Content.XamlRoot`. It is a no-op if
   that is null and never shows the main window. A `ContentDialog` lives inside the popup window,
@@ -388,23 +499,41 @@ The view-model is built at start-up after `store.Load()`, so the first popup ope
 - **The title may contain user content** (document names, mail subjects), so **`DisplayName` and
   titles are never logged.** Logs carry only `pid`.
 
-**Insertion and failure.**
-- `InsertSelectedAsync`:
-  1. Guard on `IsInserting`.
-  2. `host.Hide()`.
-  3. `IInsertionService.InsertAsync(Target, id)`.
-- **Success:** the popup stays hidden.
-- **`Busy`:** logged and otherwise ignored. Another insertion owns the outcome, and the
-  view-model's own guard makes this unreachable from the popup.
-- **Any other outcome, or an exception** (treated as `PasteFailed` with
-  `UiText.InsertFailedGeneric`):
-  - Sets the footer error, then calls `host.ShowAgain()`.
-  - That shows the window for the **same** target. It does not call `Open`, so the query,
+**Insertion and outcomes.**
+- `InsertSelectedAsync` (Enter; `ActivateAsync(item)` for a click selects the item first):
+  1. If `FooterState == MaybePasted`: dismiss the caution (`FooterState = None`) and **return
+     without inserting**. If `FooterState == ConfirmClipboardLoss`: return (the prompt owns the
+     answer).
+  2. Guard on `IsInserting` and on a selected snippet.
+  3. Clear the footer, `host.Hide()`.
+  4. `IInsertionService.InsertAsync(Target, id, default)`.
+- `PasteAnywayAsync` (the **Paste anyway** button): takes the snippet ID stored when the prompt
+  was raised (`PendingId`, never the current selection), clears the footer, `host.Hide()`, then
+  `InsertAsync(Target, PendingId, new InsertionOptions(AllowClipboardLoss: true))`. The result is
+  handled by the same table below, so it can end as `Inserted`, `CopiedForManualPaste`,
+  `MaybePasted` or an `Error`.
+- **Outcome handling** (every branch sets `IsInserting = false` first):
+
+  | Outcome | Popup | Footer state | Other |
+  |---|---|---|---|
+  | `Inserted`, `Message` empty | stays hidden | — | — |
+  | `Inserted`, `Message` non-empty | stays hidden | — | `notices.Notify(UiText.InsertNoticeTitle, result.Message)` (tray balloon via AppHost's `INotifier`) |
+  | `Busy` | stays hidden | — | logged only; unreachable from the popup's own guard (§9 Q7) |
+  | `ClipboardNotPreserved` | `host.ShowAgain()` | `ConfirmClipboardLoss`, `PendingId = id` | `host.Focus(Footer)` after the re-show |
+  | `CopiedForManualPaste` | `host.ShowAgain()` | `ManualPaste` | — |
+  | `MaybePasted` | `host.ShowAgain()` | `MaybePasted` | Copy text allowed |
+  | `TargetClosed`, `TargetElevated`, `FocusFailed`, `ClipboardBusy`, `PasteFailed`, `SnippetMissing` | `host.ShowAgain()` | `Error` | Copy text unless `SnippetMissing`; Restart for `TargetElevated` when not elevated |
+  | exception from `InsertAsync` | `host.ShowAgain()` | `Error`, message `UiText.InsertFailedGeneric` | treated as `PasteFailed` |
+
+  - `ShowAgain` shows the window for the **same** target. It does not call `Open`, so the query,
     layout, sort and selection are kept.
-- **Copy text** puts the failed snippet's text (looked up from `store.Snippets` by ID) on the
-  clipboard. It is hidden for `SnippetMissing`.
+  - **Usage is never recorded by the popup.** The service records it only for `Inserted`.
+- **Copy text** puts the snippet's text (looked up from `store.Snippets` by the stored ID) on
+  the clipboard. It is shown for `Error` (except `SnippetMissing`) and `MaybePasted`, and hidden
+  for `ManualPaste` (the text is already there) and `ConfirmClipboardLoss`.
 - **Restart as administrator** follows the `SettingsViewModel` pattern. `Started` →
-  `requestExit()`. `Cancelled` or `Failed` → its message replaces the footer error.
+  `requestExit()`. `Cancelled` or `Failed` → its message replaces the footer message (state
+  stays `Error`).
 
 **Re-showing without the hotkey's foreground rights (R1).**
 - `PopupWindow.ShowAgain` re-centres the popup on `Target.MonitorHandle`, falling back to the
@@ -429,21 +558,40 @@ The view-model is built at start-up after `store.Load()`, so the first popup ope
 - If the popup itself is foreground, capture returns null (own process). The hotkey is then
   ignored, as today.
 
-**Tray state.** `AppHost.UpdateTrayState()` becomes the **only** writer:
-`popupVisible ? PopupOpen : hotkey registered ? Ready : HotkeyUnavailable`. It is called from
-`PopupWindow.VisibleChanged` and from `IHotkeyManager.StatusChanged`.
+**Tray state (review finding 7; user decision: red wins).**
+- `AppHost.UpdateTrayState()` becomes the **only** writer of `tray.State`. It assigns
+  `TrayStatePolicy.Compute(hotkeyRegistered, popupVisible)` and is called from
+  `PopupWindow.VisibleChanged` and from `IHotkeyManager.StatusChanged`.
+- `TrayStatePolicy.Compute` is a pure function in Presentation (unit-tested on Linux):
+  **`HotkeyUnavailable` if the hotkey is not registered**, else `PopupOpen` if the popup is
+  visible, else `Ready`. Red wins because it is a fault the user must act on; the open popup is
+  already visible on screen.
+- `TrayState` moves from `App/Services/TrayIcon.cs:12-17` to
+  `Presentation/Services/TrayStatePolicy.cs` next to the policy (same members); `TrayIcon` uses
+  it from there.
+- This is the same rule and shape as 008 §4.1(f). 006 lands first, so **008 T0 adopts 006's
+  `TrayStatePolicy`** and adds only the glyphs and the `tray_icon` log.
 
 **Interim insertion (until 007).** `App/Services/InterimInsertionService : IInsertionService`
 does the following:
+- Implements the §4.3.1 signature exactly, including `InsertionOptions options = default`. It
+  ignores `options` (the 002 inserter has no clipboard-preservation check), so it **never returns
+  `ClipboardNotPreserved` or `CopiedForManualPaste`**. That is accepted until 007.
 - Looks up the text from `store.Snippets`; if the snippet is gone → `SnippetMissing`.
 - Maps the target to `ForegroundTargetInfo` and calls the existing `ClipboardPasteInserter`.
-- Maps outcomes: `Success` → `Inserted`, `SendInputFailed` → `PasteFailed`, the others by name.
-- On success, calls `store.RecordUsage(id)`. A `StoreException` there is logged and the result
-  is still `Inserted`.
+- Maps outcomes:
+  - `Success` → `Inserted` with an **empty** `Message` (the 002 "Inserted." text is dropped, so
+    a plain success raises no tray notice).
+  - `SendInputFailed` → **`MaybePasted`** with `UiText.MaybePastedFallback`, and no usage: a
+    partial `SendInput` may already have pasted (review finding 2), so the popup must not offer
+    it as a retryable error.
+  - The others by name (`TargetClosed`, `TargetElevated`, `FocusFailed`, `ClipboardBusy`).
+- On `Inserted` only, calls `store.RecordUsage(id)`. A `StoreException` there is logged and the
+  result is still `Inserted`.
 - Is single-flight: a second call returns `Busy`.
-- **Passes the 002 messages through unchanged.** 007 replaces this class and owns the wording,
-  CRLF normalization and the clipboard-history exclusion. Swapping it is a one-line change in
-  `AppHost`.
+- **Otherwise passes the 002 messages through unchanged.** 007 replaces this class and owns the
+  wording, CRLF normalization, clipboard preservation and the clipboard-history exclusion.
+  Swapping it is a one-line change in `AppHost`.
 
 ### 4.2 Alternatives considered
 
@@ -464,6 +612,19 @@ does the following:
 | | Window → `IInserter` with text (prototype) | Rejected. It can't be tested on Linux and pushes usage recording into the UI. |
 | Layout/sort persistence | **Per-key `ISettingsStore.Set` from the popup; Settings page writes only its own keys** | **Chosen.** Fixes the stale-snapshot overwrite at its source (T5). |
 | | Keep `AppSettings.Save` everywhere and share one mutable `AppSettings` | Rejected. `AppSettings` is an immutable record; sharing a mutable holder across two view-models adds coupling for two keys. |
+| Ctrl+Enter in the multi-line Text box | **`UIElement.PreviewKeyDown` (WinUI 3, tunnelling) on the overlay root, with an accelerator fallback** | **Chosen.** It runs before the Text box's own `KeyDown`, so the chord never becomes a newline. Fallbacks and the runbook check are in §4.1. |
+| | `AddHandler(KeyDownEvent, …, handledEventsToo: true)` | Rejected as the primary route. It runs after the Text box has inserted the newline. |
+| | `KeyboardAccelerator` only | Kept as fallback A. Whether an `AcceptsReturn` Text box lets the chord reach a scoped accelerator first is not documented, so it is verified on the runbook rather than assumed. |
+| `MaybePasted` and Enter | **First Enter (or row click) only dismisses the caution; a second one inserts** | **Chosen.** No instant duplicate paste, yet no extra dialog. Testable in the view-model. |
+| | Disable insertion until a Dismiss button is clicked | Rejected. Keyboard users would need Tab to reach Dismiss; the first-Enter rule gives the same protection. |
+| | Treat it like any failure (Enter re-inserts) | Rejected. Risks a duplicate paste (review finding 2). |
+| `ClipboardNotPreserved` Cancel | **Clears the prompt; the popup stays open** | **Chosen.** You can pick another snippet without the hotkey again; a second Esc closes. |
+| | Cancel closes the popup | Rejected. Loses the query and selection for no benefit. |
+| Search timing hook | **`TextChanged` → `Items` changed → `PopupList.LayoutUpdated` → first `CompositionTarget.Rendered`** | **Chosen.** Ends on a composed frame, so it includes binding, layout and render, in both layouts. |
+| | Time only the view-model's `Query` setter | Rejected. Same blind spot as the Core benchmark (review finding 4). |
+| | Stop at `LayoutUpdated` | Rejected as the end point. Layout can finish before the frame is composed; it is used only as the step before `Rendered`. |
+| Tray precedence | **`HotkeyUnavailable` > `PopupOpen` > `Ready`, in `TrayStatePolicy`** | **Chosen** by the user (2026-10-28). Same rule as 008. |
+| | `PopupOpen` > `HotkeyUnavailable` (earlier draft) | Rejected. It hides a persistent fault while the popup is open. |
 | DisplayName timing | **Computed at capture, friendly name cached per image path** | **Chosen.** The `InsertionTarget` record is immutable and complete when the popup shows. The cache keeps capture cheap. |
 | | Computed lazily when the editor opens | Rejected. The target would need to be mutable, or a second lookup could run after the target window has changed. |
 
@@ -479,26 +640,46 @@ keys. `Save` becomes `SaveShell` plus the popup keys, so its existing behaviour 
 #### 4.3.1 Shared contract with plan 007 (T0, written by the coordinator; 006 consumes, 007 implements)
 
 ```csharp
-// SmartSnippets.Presentation.Services
+// src/SmartSnippets.Presentation/Services/InsertionContracts.cs (coordinator, T0)
 public sealed record InsertionTarget(nint WindowHandle, uint ProcessId, nint MonitorHandle, string DisplayName);
-public enum InsertionOutcome { Inserted, TargetClosed, TargetElevated, FocusFailed, ClipboardBusy, PasteFailed, Busy, SnippetMissing }
+public enum InsertionOutcome
+{
+    Inserted,              // dispatched; usage counted; Message empty, or a notice (e.g. clipboard not fully restored)
+    TargetClosed, TargetElevated, FocusFailed, ClipboardBusy, PasteFailed, Busy, SnippetMissing, // not dispatched; nothing changed
+    ClipboardNotPreserved, // not dispatched; clipboard untouched; caller may retry with AllowClipboardLoss
+    MaybePasted,           // uncertain dispatch; no usage; do not offer retry
+    CopiedForManualPaste,  // AllowClipboardLoss path could not re-target; snippet left on clipboard; no usage
+}
 public sealed record InsertionResult(InsertionOutcome Outcome, string Message) { public bool Succeeded => Outcome == InsertionOutcome.Inserted; }
+public readonly record struct InsertionOptions(bool AllowClipboardLoss);
 public interface IInsertionService
 {
-    // Resolves the snippet text from the store, normalizes line endings, dispatches the paste, and records usage only on success.
-    // Single-flight: a second call while one is running returns Busy without side effects.
-    Task<InsertionResult> InsertAsync(InsertionTarget target, long snippetId, CancellationToken ct = default);
+    // Resolves the snippet text from the store, normalizes line endings to CRLF, dispatches the paste,
+    // and records usage only when Outcome == Inserted. Single-flight: a concurrent call returns Busy with no side effects.
+    Task<InsertionResult> InsertAsync(InsertionTarget target, long snippetId, InsertionOptions options = default, CancellationToken ct = default);
 }
 ```
 
-File: `src/SmartSnippets.Presentation/Services/InsertionContracts.cs`. Neither 006 nor 007 may
-change it without updating both plans.
+- **One file, one owner:** `src/SmartSnippets.Presentation/Services/InsertionContracts.cs`,
+  written by the coordinator in T0 (this plan's T0a) before any 006 or 007 track starts. 007 uses
+  the same file name (review finding 7). Neither plan may change it without updating both plans.
+- **How 006 uses it:** §4.1 "Insertion and outcomes". 006 passes `default` options on a normal
+  insert and `new InsertionOptions(AllowClipboardLoss: true)` only from **Paste anyway**.
 
 #### 4.3.2 006's own contracts (T0b)
 
 ```csharp
 // SmartSnippets.Presentation.Services
-public enum PopupFocusTarget { Search, Editor }
+public enum PopupFocusTarget { Search, Editor, Footer }   // Footer = the footer's primary button (Paste anyway)
+public enum TrayState { Ready, PopupOpen, HotkeyUnavailable }   // moved from App/Services/TrayIcon.cs
+public static class TrayStatePolicy
+{
+    public static TrayState Compute(bool hotkeyRegistered, bool popupOpen);   // HotkeyUnavailable > PopupOpen > Ready
+}
+public static class PopupLogFormat
+{
+    public static string SearchMs(int ms, PopupLayout layout, int results);   // "<ms> layout=flat|folder results=<n>" for event popup_search_ms
+}
 public interface IPopupHost
 {
     void Hide();                                  // hide without inserting; idempotent
@@ -512,12 +693,13 @@ public enum PopupItemKind { Heading, Snippet }
 public sealed record PopupItemViewModel(PopupItemKind Kind, long SnippetId, string Label, string Preview,
     string FolderChip, string Tag1, string Tag2, string HeadingText);   // ToString() = UIA name
 public enum PopupOpenMode { Fresh, Resumed, Ignored }
+public enum PopupFooterState { None, Error, ConfirmClipboardLoss, ManualPaste, MaybePasted }
 
 public sealed partial class PopupViewModel : ObservableObject, IDisposable
 {
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
         IInsertionService insertion, IClipboardService clipboard, IElevation elevation,
-        IPopupHost host, IDialogService editorDialogs, Action? requestExit = null);
+        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null);
 
     public InsertionTarget? Target { get; }
     public PopupOpenMode Open(InsertionTarget target);
@@ -531,13 +713,17 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public void SetSort(SortField sort);
     public string HintText { get; }  public string CountText { get; }  public string StatusText { get; }
     public bool IsEmpty { get; }  public string EmptyTitle { get; }  public string EmptyBody { get; }
-    public bool HasFooterError { get; }  public string FooterError { get; }
+    public PopupFooterState FooterState { get; }  public string FooterMessage { get; }
+    public bool HasFooterMessage { get; }  public bool IsFooterError { get; }  public bool IsFooterCaution { get; }   // Caution = ConfirmClipboardLoss | MaybePasted
+    public bool IsConfirmingClipboardLoss { get; }  public bool CanDismissFooter { get; }   // Dismiss shown for MaybePasted
     public bool CanCopyFailedText { get; }  public bool CanRestartAsAdmin { get; }
     public IRelayCommand CopyFailedTextCommand { get; }  public IRelayCommand RestartAsAdminCommand { get; }
+    public IAsyncRelayCommand PasteAnywayCommand { get; }  public IRelayCommand CancelPasteAnywayCommand { get; }
+    public IRelayCommand DismissFooterCommand { get; }
     public bool IsInserting { get; }
-    public Task InsertSelectedAsync();
+    public Task InsertSelectedAsync();                  // MaybePasted: first call only dismisses; ConfirmClipboardLoss: no-op
     public Task ActivateAsync(PopupItemViewModel item);  // mouse click == Enter
-    public void Close();                                // Esc
+    public void Close();                                // Esc: cancels ConfirmClipboardLoss if shown, otherwise hides
     public void OnDeactivated();                        // ignored while IsEditorOpen or IsInserting
     public IRelayCommand OpenMainWindowCommand { get; }
     public SnippetEditorViewModel? Editor { get; }  public bool IsEditorOpen { get; }  public bool IsEditorClosed { get; }
@@ -582,16 +768,39 @@ behaviour):
 - `RestartAsAdministrator` = "Restart as administrator".
 - `InsertFailedGeneric` = "Couldn't insert the snippet. Nothing was pasted." (fallback for
   exceptions only; 007 owns the per-outcome wording).
+- Added by the review decisions (the popup owns these; 007 owns `result.Message` for each
+  outcome):
+  - `ClipboardLossPrompt` = "Some of what's on your clipboard can't be restored after pasting.
+    Paste anyway?"
+  - `PasteAnyway` = "Paste anyway" (the prompt's **Cancel** reuses `Cancel`).
+  - `ConfirmHint` = "Enter choose · Esc cancel".
+  - `Dismiss` = "Dismiss".
+  - `DismissHint` = "Enter dismiss · Esc close".
+  - `MaybePastedFallback` = "The snippet may already have been pasted. Check the target app before
+    inserting it again." (used when `Message` is blank, and by the interim adapter).
+  - `CopiedForManualPasteFallback` = "The snippet is on your clipboard. Click in the target app
+    and press Ctrl+V." (used when `Message` is blank).
+  - `InsertNoticeTitle` = "Snippet inserted" (tray notice title for `Inserted` with a message).
+- If 007 adds strings with the same meaning to its `// Insertion (007)` section, the coordinator
+  keeps one copy at merge; the names above are the ones the popup binds to.
 
 **Automation IDs** (stable handles for 008's verify sections):
 - Window title: **"Smart Snippets popup"**. It must not equal "Smart Snippets"; see R12.
 - Control IDs: `PopupSearch`, `PopupLayoutButton`, `PopupSortButton`, `PopupAddButton`,
   `PopupOpenMainButton`, `PopupList`, `PopupCount`, `PopupFooterError`, `PopupCopyText`,
-  `PopupRestartAdmin`, `PopupEditor`, `PopupEditorSave`, `PopupEditorCancel`.
+  `PopupRestartAdmin`, `PopupPasteAnyway`, `PopupPasteCancel`, `PopupDismiss`, `PopupEditor`,
+  `PopupEditorSave`, `PopupEditorCancel`.
+- `PopupFooterError` keeps its name for 008 but holds the footer message in **every**
+  `PopupFooterState` (error, caution or info); the state is exposed through its
+  `AutomationProperties.ItemStatus` (`Error`, `ConfirmClipboardLoss`, `ManualPaste`,
+  `MaybePasted`).
 
 **Log events.** These are IDs, enums and numbers only. Never text, labels, tags, queries, titles
 or `DisplayName`.
 - Kept as is: `popup_ready_ms <n>`.
+- `popup_search_ms <int> layout=<flat|folder> results=<n>` (§4.1; never the query).
+- `popup_paste_anyway id=…`, `popup_paste_cancelled id=…`, `popup_caution_dismissed id=…`.
+- `popup_notice outcome=Inserted` (a tray notice was raised; the message is not logged).
 - `popup_opened mode=Fresh|Resumed pid=…`, `popup_open_ignored reason=inserting`.
 - `popup_closed reason=esc|deactivated|insert|main_window`.
 - `popup_layout value=…`, `popup_sort value=…`.
@@ -615,7 +824,9 @@ WM_HOTKEY → HotkeyService.HotkeyPressed(ts) → AppHost.OnHotkeyPressed(ts)
                └─ Fresh    → Target = target; Query = ""; footer/status cleared; select first snippet
           → WindowPlacement.CenterOn(AppWindow, target.MonitorHandle, 640, 480)   (work area, clamped, DPI)
           → AppWindow.Show → Activate → SetForegroundWindow (hotkey grants the right) → Focus(Search)
-          → VisibleChanged(true) → AppHost.UpdateTrayState() → TrayState.PopupOpen
+          → VisibleChanged(true) → AppHost.UpdateTrayState()
+               → tray.State = TrayStatePolicy.Compute(hotkeyRegistered, popupOpen: true)
+                  = PopupOpen, or HotkeyUnavailable if the hotkey is not registered (red wins)
           → Activated / LayoutUpdated → log popup_ready_ms <n>
 
 Tray "Show popup" → TrayIcon.ShowMenu → PreviousAppWindow(prevForeground) = hwnd (shell/own skipped)
@@ -629,29 +840,61 @@ Parallel paths checked:
   from `AppHost`'s two entry points.
 - The wiring audit (T12) re-greps this.
 
-**Enter or click → insert → success or failure → re-open:**
+**Search text → rendered results (timing, §4.1):**
+```
+SearchBox TextChanged → start = Stopwatch.GetTimestamp()   (a newer TextChanged replaces a pending start)
+  → x:Bind TwoWay → PopupViewModel.Query = text → Filter → (Folder: ByFolder) → map rows
+       ├─ Items replaced → PropertyChanged(Items) → awaitingLayout
+       │     → PopupList.LayoutUpdated (first after awaitingLayout) → awaitingFrame
+       └─ same result (SequenceEqual) → awaitingFrame
+  → CompositionTarget.Rendered (first after awaitingFrame; subscribed only while pending)
+  → log popup_search_ms <ms> layout=<flat|folder> results=<n>  (PopupLogFormat.SearchMs; no query) → unsubscribe
+```
+
+**Enter or click → insert → outcome → re-open, prompt or notice:**
 ```
 SearchBox KeyDown(Enter) | ListView ItemClick → PopupViewModel.InsertSelectedAsync / ActivateAsync(item)
+  → FooterState == MaybePasted        → FooterState = None (dismiss only); log popup_caution_dismissed → return
+  → FooterState == ConfirmClipboardLoss → return (focus is on Paste anyway / Cancel)
   → guard: IsInserting or no snippet selected → return (no second call)
-  → IsInserting = true; FooterError cleared
-  → host.Hide()            → Deactivated → OnDeactivated() ignored (IsInserting) → VisibleChanged(false) → tray Ready
-  → IInsertionService.InsertAsync(Target, id)
-       006: InterimInsertionService → ClipboardPasteInserter (focus restore, paste) → RecordUsage on success
+  → IsInserting = true; footer cleared
+  → host.Hide()            → Deactivated → OnDeactivated() ignored (IsInserting) → VisibleChanged(false) → UpdateTrayState()
+  → IInsertionService.InsertAsync(Target, id, options: default)
+       006: InterimInsertionService → ClipboardPasteInserter (focus restore, paste) → RecordUsage on Inserted
        007: production engine (same contract)
-  ├─ Inserted → IsInserting=false; log popup_insert outcome=Inserted; popup stays hidden
-  ├─ Busy     → IsInserting=false; log only (unreachable from the popup's guard)
-  └─ other outcome, or exception → PasteFailed + UiText.InsertFailedGeneric
-       → FooterError = result.Message; FailedSnippetId = id
-         CanCopyFailedText = outcome != SnippetMissing
-         CanRestartAsAdmin = outcome == TargetElevated && !elevation.IsElevated
-       → IsInserting = false → host.ShowAgain()        (no Open(): Query, Layout, Sort, SelectedIndex kept)
+  (IsInserting = false before every branch below; log popup_insert id=… outcome=…)
+  ├─ Inserted, Message ""        → popup stays hidden
+  ├─ Inserted, Message non-empty → popup stays hidden → notices.Notify(InsertNoticeTitle, Message)
+  │                                 (AppHost's INotifier → tray balloon); log popup_notice
+  ├─ Busy                        → log only (unreachable from the popup's guard)
+  ├─ ClipboardNotPreserved       → FooterState = ConfirmClipboardLoss, FooterMessage = ClipboardLossPrompt,
+  │                                 PendingId = id → ReShow → host.Focus(Footer)  (Paste anyway focused)
+  ├─ CopiedForManualPaste        → FooterState = ManualPaste, FooterMessage = Message (or fallback);
+  │                                 no Copy text, no retry → ReShow
+  ├─ MaybePasted                 → FooterState = MaybePasted, FooterMessage = Message (or fallback);
+  │                                 Copy text + Dismiss → ReShow   (next Enter/click only dismisses)
+  └─ TargetClosed | TargetElevated | FocusFailed | ClipboardBusy | PasteFailed | SnippetMissing,
+     or exception (→ PasteFailed + UiText.InsertFailedGeneric)
+                                 → FooterState = Error, FooterMessage = Message; FailedSnippetId = id
+                                   CanCopyFailedText = outcome != SnippetMissing
+                                   CanRestartAsAdmin = outcome == TargetElevated && !elevation.IsElevated
+                                 → ReShow
+  ReShow = host.ShowAgain()  (no Open(): Query, Layout, Sort, SelectedIndex kept)
             → CenterOn(Target.MonitorHandle) → ForegroundActivation.TryActivate(popup)
-                ├─ direct | attach → Focus(Search); log popup_reopened focus=…
-                └─ failed → visible, topmost, unfocused + INotifier balloon(message); log focus=failed
-  Copy text                → clipboard.SetText(store text of FailedSnippetId); log popup_copy_text id=…
+                ├─ direct | attach → Focus(Search) (or Footer for the prompt); log popup_reopened outcome=… focus=…
+                └─ failed → visible, topmost, unfocused + INotifier balloon(FooterMessage); log focus=failed
+
+  Paste anyway (button, Enter/Space on it) → PasteAnywayCommand
+       → footer cleared; IsInserting = true; host.Hide(); log popup_paste_anyway id=PendingId
+       → InsertAsync(Target, PendingId, new InsertionOptions(AllowClipboardLoss: true))
+       → same outcome branches as above
+  Cancel (button) | Esc | query change | MoveSelection while ConfirmClipboardLoss
+       → FooterState = None; popup stays open, same query and selection; Focus(Search); log popup_paste_cancelled
+  Dismiss (button) while MaybePasted → FooterState = None; Focus(Search); log popup_caution_dismissed
+  Copy text (Error except SnippetMissing, MaybePasted) → clipboard.SetText(store text of FailedSnippetId); log popup_copy_text id=…
   Restart as administrator → elevation.RestartAsAdministrator()
                                ├─ Started → requestExit() (AppHost ShutDown, as in Settings)
-                               └─ Cancelled|Failed → FooterError = result.Message
+                               └─ Cancelled|Failed → FooterMessage = result.Message (state stays Error)
 ```
 Parallel paths checked: the prototype's `InvokeAsync` and `MessageBox` (`PopupWindow.xaml.cs:148-188`)
 are deleted. After 006, `IInserter` is referenced only by `InterimInsertionService` and
@@ -663,7 +906,8 @@ Add button → AddSnippetCommand → snapshot (Query, SelectedId)
   → Editor = new SnippetEditorViewModel(store, editorDialogs /*popup XamlRoot*/, null, clipboard)
   → Editor.Saved += OnEditorSaved; IsEditorOpen = true (base content disabled; deactivation ignored)
   → host.Focus(Editor) → SnippetEditor.FocusText()
-Ctrl+Enter (overlay PreviewKeyDown) | Save | Ctrl+S → SaveEditorAsync → Editor.SaveAsync()
+Ctrl+Enter (overlay UIElement.PreviewKeyDown, Handled before the Text box; fallback: scoped
+KeyboardAccelerator) | Save | Ctrl+S → SaveEditorAsync → Editor.SaveAsync()
   → store.CreateSnippet(draft)
      ├─ validation fail / StoreException → inline errors / save-failure InfoBar; overlay stays open
      └─ ok → store.Changed → PopupViewModel.OnStoreChanged → re-sort, re-filter (keeps selection by id)
@@ -684,13 +928,23 @@ Parallel paths checked:
 - The main window's `SnippetListViewModel` updates from the same `Changed` event (master §7
   check 1).
 
+**Store change from elsewhere (main window, usage update) → popup:**
+```
+Main window edit (popup hidden, because deactivation closed it) | RecordUsage after Inserted
+  → ISnippetStore raises Changed → PopupViewModel.OnStoreChanged (subscribed while hidden too)
+  → re-sort, rebuild row cache, re-filter current Query; selection kept by id, else first snippet
+  → next ShowFor/Open(Fresh) shows current data (labels, folder headings and chips, order)
+```
+
 ### 4.5 Surface list
 
 | Surface | Change | Task |
 |---|---|---|
 | `Presentation/Services/InsertionContracts.cs` | new (shared 006/007 contract, verbatim) | T0a |
 | `Presentation/Services/IPopupHost.cs`, `Presentation/ViewModels/PopupItemViewModel.cs`, `PopupViewModel.cs` (surface stub), `Presentation/Text/UiText.cs` (popup strings) | new / change | T0b |
-| `tests/.../Fakes/FakeInsertionService.cs`, `FakePopupHost.cs` | new | T0b |
+| `Presentation/Services/TrayStatePolicy.cs` (`TrayState` moved here + `Compute`), `Presentation/Services/PopupLogFormat.cs` | new | T0b (surface), T1 (`PopupLogFormat`), T11 (`TrayStatePolicy`) |
+| `tests/.../Fakes/FakeInsertionService.cs`, `FakePopupHost.cs`, `RecordingNotifier.cs` | new | T0b |
+| `tests/.../TrayStatePolicyTests.cs` | new | T11 |
 | `Presentation/ViewModels/PopupViewModel.cs` + `PopupViewModel*Tests.cs` | implement | T1–T4 |
 | `Core/Settings/AppSettings.cs` (`SaveShell`), `Presentation/ViewModels/SettingsViewModel.cs` (`Persist`) + tests | change (defect fix) | T5 |
 | `App/Popup/PopupWindow.xaml(.cs)` | rewrite (replaces 002 prototype) | T6, T7, T8 |
@@ -698,8 +952,8 @@ Parallel paths checked:
 | `Presentation/Text/TargetDisplayName.cs` + `TargetDisplayNameTests.cs` | new | T9 |
 | `App/Services/TargetCapture.cs`, `ForegroundActivation.cs` | new | T9 |
 | `App/Services/InterimInsertionService.cs` | new (deleted by 007) | T10 |
-| `App/Services/TrayIcon.cs` (`onShowPopup(HWND)`, no `SetForegroundWindow(target)`) | change | T11 |
-| `App/AppHost.cs` (capture, popup and view-model composition, popup `DialogService`, `UpdateTrayState`, interim insertion) | change | T11 |
+| `App/Services/TrayIcon.cs` (`onShowPopup(HWND)`, no `SetForegroundWindow(target)`, `TrayState` enum removed and imported from Presentation) | change | T11 |
+| `App/AppHost.cs` (capture, popup and view-model composition, popup `DialogService`, `UpdateTrayState` via `TrayStatePolicy`, `Notices` passed to the view-model, interim insertion) | change | T11 |
 | `App/Services/IInserter.cs`, `ClipboardPasteInserter.cs`, `ForegroundTarget.cs` | unchanged (consumed) | — |
 | Plan 001 progress row, plan 006 §10 notes | docs | T12 |
 
@@ -708,12 +962,12 @@ Parallel paths checked:
 | Question | Answer |
 |---|---|
 | State management: what survives a crash mid-operation? | Layout and sort are written immediately on change. A crash loses the popup's query and an unsaved add-snippet draft. The PRD asks for no drafts; same as 005. An interrupted insertion is 007's concern (clipboard restore). |
-| Data consistency: orphans, races, double-apply? | Snippets are created only through the store, so no new write path exists. Double Enter or a double click is blocked twice: by `IsInserting` in the view-model and by the contract's single-flight `Busy`. The Settings page no longer overwrites popup keys (T5). A folder created inline is kept even if the add is cancelled (005 decision). |
+| Data consistency: orphans, races, double-apply? | Snippets are created only through the store, so no new write path exists. Double Enter or a double click is blocked twice: by `IsInserting` in the view-model and by the contract's single-flight `Busy`. After `MaybePasted` the first Enter/click only dismisses the caution, so an uncertain paste is never repeated by reflex. **Paste anyway** re-uses the prompted snippet ID, never the current selection. The popup never records usage; the service does, only for `Inserted`. The Settings page no longer overwrites popup keys (T5). A folder created inline is kept even if the add is cancelled (005 decision). |
 | User experience: root problem or symptom; any surprise? | Root: the prototype inserts a test string. Possible surprises: the query resets on every fresh open (design); Esc in a dirty add form asks first (§9 Q1); the popup stays up when you click away while the editor is open (by requirement). |
 | Backward compatibility | Existing `popup.layout`/`popup.sort` values are read as before; invalid values fall back to the defaults and log `settings_invalid`. No schema change. The main-window editor behaves the same (`IsCompact` defaults to false). |
-| Error recovery | Insert failures re-open the popup with the message, Copy text and, when relevant, Restart as administrator. Editor save failures use the existing inline InfoBar with Try again and Copy text. If re-activation is blocked, a tray balloon carries the message (R1). |
+| Error recovery | Insert failures re-open the popup with the message, Copy text and, when relevant, Restart as administrator. `ClipboardNotPreserved` asks before any clipboard loss; `MaybePasted` and `CopiedForManualPaste` explain what happened without inviting a blind retry; a successful insert with a notice goes to the tray. Editor save failures use the existing inline InfoBar with Try again and Copy text. If re-activation is blocked, a tray balloon carries the message (R1). |
 | Logging & debugging | §4.3.2 events cover open, close, insert, re-open and add. The `focus=` field on `popup_reopened` diagnoses the foreground lock. No titles or user text (privacy rule, master §4). |
-| Edge cases | Covered: empty library (empty state, Add still works); query with no match; 10k snippets; folder layout with only Unfiled; a folder renamed or deleted, or a snippet deleted, while the popup is open (rebuild, keep by ID); hotkey while the editor is open or while inserting; a target closed before Enter; an elevated target; a target on a second monitor with different DPI; text size 32; high contrast; the selected snippet deleted from the main window while the popup shows a failure (Copy text hidden: `SnippetMissing` lookup gives null). |
+| Edge cases | Covered: empty library (empty state, Add still works); query with no match; 10k snippets; folder layout with only Unfiled; a folder renamed or deleted, or a snippet deleted, while the popup is open (rebuild, keep by ID); hotkey while the editor is open or while inserting; a target closed before Enter; an elevated target; a target on a second monitor with different DPI; text size 32; high contrast; the selected snippet deleted from the main window while the popup shows a failure (Copy text hidden: `SnippetMissing` lookup gives null); the prompted snippet deleted before **Paste anyway** (the service returns `SnippetMissing` → `Error`); deactivation while the clipboard prompt is shown (popup closes, prompt dropped, nothing pasted); the hotkey unregistered while the popup is open (tray red). |
 
 **Risks:**
 - **R1 — Foreground lock on re-show.** After a failed insertion, our process may no longer be
@@ -738,8 +992,12 @@ Parallel paths checked:
   - The pipeline is cached (§4.1), the `ListView` is virtualized, and `Items` is replaced only on
     change.
   - Item templates use `x:Phase` for the preview and chips.
-  - Checks: `popup_ready_ms` on runbook step 21; filtering cost is already measured by 003's
-    benchmark (< 15 ms).
+  - Checks: `popup_ready_ms` and the end-to-end `popup_search_ms` (both layouts) on runbook step
+    21. 003's Core benchmark (< 15 ms filtering) stays a diagnostic only; it does not cover
+    binding, layout or render (review finding 4).
+  - Measurement accuracy: the `Rendered` stop is the first composed frame after layout, so the
+    figure can over-read by up to one frame (~16 ms at 60 Hz). That errs on the safe side of the
+    150 ms target.
 - **R5 — XAML that compiles only on Windows CI** (first compile on `main`). Known traps are
   avoided by design:
   - `List<T>` sources, enforced by the test `Items_IsConcreteList`.
@@ -751,8 +1009,10 @@ Parallel paths checked:
   Expect fix-forward PRs anyway (§8).
 - **R6 — Stale settings overwrite.** Confirmed in code (§3). Fixed in T5, with a regression test
   in Presentation and one in Core.
-- **R7 — Ctrl+Enter swallowed** by the multi-line Text box. Handled in the overlay's tunnelling
-  `PreviewKeyDown`. Runbook step 12.
+- **R7 — Ctrl+Enter swallowed** by the multi-line Text box (review finding 5). Primary route:
+  WinUI 3 `UIElement.PreviewKeyDown` on the overlay root, handled before the Text box. Fallback
+  A: a scoped `KeyboardAccelerator` (Ctrl+Enter). Fallback B: Ctrl+S only, with the user's
+  sign-off (§4.1). Runbook step 12a decides which one ships; the result goes in §10.
 - **R8 — Text size 32 in a 640 × 480 popup.** Rows get taller, so fewer are visible. The editor
   overlay scrolls (the `SnippetEditor` field area is already a `ScrollViewer`, `:18`), and the
   overlay footer (Cancel/Save) stays pinned. Runbook step 20.
@@ -778,7 +1038,14 @@ Parallel paths checked:
     `verify-plans-006-008.ps1`.
 - **R13 — Interim adapter differs from 007.** It uses the 002 message wording and doesn't
   normalize lone-CR line endings (research 002, WARN D1.eol), so multi-line snippets may paste
-  with CR-only breaks until 007. This is accepted and noted on the runbook.
+  with CR-only breaks until 007. It also never returns `ClipboardNotPreserved` or
+  `CopiedForManualPaste`, so those footer states are verified by view-model tests in 006 and on
+  screen only by 007's runbook. This is accepted and noted on the runbook.
+- **R14 — Duplicate paste after an uncertain dispatch.** Mitigated by the `MaybePasted` footer
+  state (caution wording, first Enter/click only dismisses, no retry button) and by the interim
+  adapter mapping `SendInputFailed` to `MaybePasted`. Tests in T4.
+- **R15 — Clipboard prompt answered for the wrong snippet.** **Paste anyway** uses `PendingId`;
+  any query change or selection move cancels the prompt first. Tests in T4.
 
 **Rollback:** revert the 006 merge commit(s). This restores the 002 prototype popup and its
 `AppHost` wiring. No data migrates; popup keys that were already written remain valid.
@@ -797,8 +1064,10 @@ Tracks B and C compile only on Windows CI, so they code against the T0b signatur
 coordinator cross-checks every `x:Bind` path against the view-model surface before the merge.
 
 ### T0a — Shared insertion contract (coordinator; shared with 007) (AC9/AC10 hand-off)
-- **Files:** `src/SmartSnippets.Presentation/Services/InsertionContracts.cs`.
-- **Change:** §4.3.1, verbatim.
+- **Files:** `src/SmartSnippets.Presentation/Services/InsertionContracts.cs` (the one shared
+  file; 007's T0 is the same step, done once).
+- **Change:** §4.3.1, verbatim (outcomes incl. `ClipboardNotPreserved`, `MaybePasted`,
+  `CopiedForManualPaste`; `InsertionOptions(AllowClipboardLoss)`).
 - **Verify:** `dotnet build src/SmartSnippets.Presentation` has 0 warnings, and the existing
   Presentation tests pass.
 - **Test that dies if this breaks:** `FakeInsertionService` (T0b) implements the interface. Any
@@ -811,10 +1080,14 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
   - `Presentation/ViewModels/PopupViewModel.cs`: the public surface from §4.3.2, with bodies that
     throw `NotImplementedException`.
   - `Presentation/Text/UiText.cs`: the popup strings.
-  - `tests/.../Fakes/FakeInsertionService.cs`: scripted results, a recorded call log, an optional
-    `TaskCompletionSource` to hold a call open, and a `ThrowNext` switch.
+  - `Presentation/Services/TrayStatePolicy.cs` (`TrayState` + `Compute` stub) and
+    `Presentation/Services/PopupLogFormat.cs` (stub).
+  - `tests/.../Fakes/FakeInsertionService.cs`: scripted results, a recorded call log **including
+    the `InsertionOptions` of each call**, an optional `TaskCompletionSource` to hold a call open,
+    and a `ThrowNext` switch.
   - `tests/.../Fakes/FakePopupHost.cs`: records `Hide`, `ShowAgain`, `OpenMainWindow` and
     `Focus` in order.
+  - `tests/.../Fakes/RecordingNotifier.cs`: records `Notify(title, message)` calls.
 - **Change:** the App-side signatures listed in §4.3.2 go into this plan's §10 as the binding
   contract for Tracks B and C.
 - **Verify:**
@@ -828,8 +1101,10 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
   - Headings "Folder (n)".
   - Count and empty state.
   - Tooltips; `ToggleLayoutCommand` and `SetSort` persist per key.
-  - Rebuild on `store.Changed`, keeping the selection by ID.
-- **Verify:** `dotnet test tests/SmartSnippets.Presentation.Tests --filter PopupViewModelList`.
+  - Rebuild on `store.Changed`, keeping the selection by ID, whether the popup is shown or
+    hidden (§4.1 store-change propagation).
+  - `PopupLogFormat.SearchMs`.
+- **Verify:** `dotnet test tests/SmartSnippets.Presentation.Tests --filter "PopupViewModelList|PopupLogFormat"`.
 - **Tests that die if a hop breaks:**
   - `Open_DefaultSort_LastUsed_NeverUsedLast`, `Sort_TiesByLabelThenId`.
   - `Search_AndTerms_SubstringCaseInsensitive_AcrossLabelTextFolderTags`.
@@ -841,6 +1116,19 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
   - `CountText_NOfM`.
   - `Empty_ShowsNoSnippetsMatch_AndBody`.
   - `StoreChanged_Rebuilds_KeepsSelectionById`, `FolderRenamed_UpdatesHeadingAndChips`.
+  - **Store-change propagation (review finding 8).** The fake store raises `Changed` while the
+    popup is shown (after `Open`, before `Close`):
+    - `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept`.
+    - `WhileShown_SelectedSnippetEdited_RowUpdates_SelectionKept`.
+    - `WhileShown_SelectedSnippetDeleted_SelectsFirstSnippet`.
+    - `WhileShown_SnippetAdded_AppearsInSortOrder_SelectionKept`.
+    - `WhileShown_FolderDeleted_RowsShowUnfiled`.
+    - `WhileShown_QueryKept_ResultRefiltered` (an edit that makes the selected row stop matching
+      moves the selection to the first match).
+    - And while hidden: `WhileHidden_StoreChanged_NextOpenShowsCurrentData` (change after
+      `Close`, then `Open` again: label, heading and order are the new ones).
+  - `SearchMs_Format_LayoutAndResults_NoQueryText` (`PopupLogFormat`): `"42 layout=folder
+    results=7"`; the query is not a parameter, so it can't leak.
   - `SameResult_DoesNotReplaceItems`.
   - `Items_IsConcreteList`: guards the E_INVALIDARG class.
   - `Dispose_Unsubscribes` (`ChangedSubscriberCount` returns to its prior value).
@@ -884,22 +1172,43 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
     `AddThenInsert_RealStore_SelectsAndInsertsSavedId` and
     `LayoutAndSort_SurviveAppSettingsReload`.
 
-### T4 — Insertion, failure footer, re-open (Track A) (AC5; AC9/AC10 hand-off)
+### T4 — Insertion, footer states, re-open (Track A) (AC5; AC9/AC10 hand-off)
 - **Files:** `PopupViewModel.cs`, `tests/.../PopupViewModelInsertionTests.cs`.
-- **Change:** `InsertSelectedAsync`, `ActivateAsync`, the outcome handling from §4.4, Copy text,
-  and Restart as administrator.
+- **Change:** `InsertSelectedAsync`, `ActivateAsync`, the outcome table and footer states from
+  §4.1 and §4.4, Copy text, Restart as administrator, Paste anyway / Cancel, Dismiss, and the
+  `INotifier` notice for `Inserted` with a message.
 - **Verify:** `dotnet test ... --filter PopupViewModelInsertion`.
 - **Tests that die if a hop breaks:**
   - `Enter_HidesBeforeInsert_PassesTargetAndId`: checks the host call order against the fake
     call log.
   - `Click_EqualsEnter`, `Enter_NoSelection_NoCall`, `DoubleEnter_SingleCall`.
-  - `Success_StaysHidden_NoFooterError`.
-  - `Failure_ShowsAgain_SameTargetQuerySelection_ShowsMessage`.
+  - `Enter_PassesDefaultOptions` (`AllowClipboardLoss == false`).
+  - `Success_StaysHidden_NoFooterMessage`.
+  - `Inserted_EmptyMessage_NoNotice`, `Inserted_WithMessage_StaysHidden_NotifiesOnce`
+    (`RecordingNotifier` gets `InsertNoticeTitle` + the message; no `ShowAgain`).
+  - `Failure_ShowsAgain_SameTargetQuerySelection_ShowsMessage` (state `Error`).
+  - Clipboard prompt (`ClipboardNotPreserved`):
+    - `ClipboardNotPreserved_ShowsAgain_PromptState_FocusFooter_SameSelection`.
+    - `PasteAnyway_HidesThenInserts_SameIdAndTarget_AllowClipboardLossTrue`.
+    - `PasteAnyway_UsesPendingId_NotCurrentSelection`.
+    - `PasteAnyway_ThenInserted_StaysHidden`, `PasteAnyway_ThenMaybePasted_ShowsCaution`.
+    - `PromptCancel_ClearsPrompt_StaysOpen_NoCall`, `PromptEsc_EqualsCancel_DoesNotHide`.
+    - `Prompt_QueryChangeOrMove_CancelsPrompt`, `Prompt_Enter_DoesNotInsert`.
+    - `Prompt_HidesCopyText`.
+  - Manual paste (`CopiedForManualPaste`):
+    - `CopiedForManualPaste_ShowsAgain_InfoState_NoCopyText_NoRestart`.
+    - `ManualPaste_NextEnter_InsertsNormally`.
+  - Uncertain dispatch (`MaybePasted`):
+    - `MaybePasted_ShowsAgain_CautionState_CopyTextShown_NoRestart`.
+    - `MaybePasted_FirstEnter_OnlyDismisses_NoCall`, `MaybePasted_SecondEnter_Inserts`.
+    - `MaybePasted_FirstClick_OnlyDismisses_NoCall`.
+    - `MaybePasted_DismissButton_Clears_NextEnterInserts`.
+    - `MaybePasted_Esc_Closes`.
   - `Failure_CopyText_CopiesStoreText`, `SnippetMissing_HidesCopyText`.
   - `TargetElevated_ShowsRestart_WhenNotElevated`, `TargetElevated_NoRestart_WhenElevated`.
   - `Restart_Started_RequestsExit`, `Restart_Cancelled_ShowsMessage`.
   - `Busy_NoReopen`, `InsertThrows_TreatedAsFailure_Reopens`.
-  - `NextFreshOpen_ClearsFooterError`.
+  - `NextFreshOpen_ClearsFooterState` (each non-`None` state).
   - `ViewModel_NeverRecordsUsage`: the fake store's `RecordUsage` count stays 0, because usage is
     the service's job.
 
@@ -939,30 +1248,42 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
     converters; `FontSize` from `ITextSizeService`; heading containers disabled in
     `ContainerContentChanging`; `ItemClick` → `ActivateAsync`; scroll into view and a UIA
     notification on selection.
-  - **Footer:** hint or status, count, error with Copy text and Restart.
+  - **Footer:** hint or status, count, and the message area for every `PopupFooterState`
+    (danger, caution or info style from the existing tokens; high-contrast safe) with Copy text,
+    Restart, Paste anyway / Cancel and Dismiss, each shown by its view-model flag through an
+    instance `Visibility` helper.
+  - **Search timing:** the §4.1 `TextChanged` → `Items` → `LayoutUpdated` →
+    `CompositionTarget.Rendered` measurement, logging `popup_search_ms` via
+    `PopupLogFormat.SearchMs`. `Rendered` is subscribed only while a measurement is pending.
   - **Empty state.**
   - **Keys on the root `KeyDown`:**
     - Up/Down → `MoveSelection`.
     - Enter → `InsertSelectedAsync`.
-    - Esc → `Close`. The flyout consumes its own Esc, and the handler does nothing while the
-      editor is open.
+    - Esc → `Close` (which cancels the clipboard prompt first, if shown). The flyout consumes its
+      own Esc, and the handler does nothing while the editor is open.
   - **Tab order:** search → 4 buttons → list (`TabNavigation=Once`) → footer buttons.
+  - `IPopupHost.Focus(Footer)` focuses **Paste anyway**.
   - Automation IDs from §4.3.2.
-- **Verify:** CI compile. Runbook steps 5–11, 19, 20.
+- **Verify:** CI compile. Runbook steps 5–11, 19, 20, 21 (`popup_search_ms` lines in both
+  layouts).
 
 ### T8 — Add-snippet overlay and SnippetEditor compact mode (Track B) (AC8)
 - **Files:** `PopupWindow.xaml(.cs)`, `src/SmartSnippets.App/Controls/SnippetEditor.xaml(.cs)`.
 - **Change:**
   - **Overlay:** scrim, title, target line, `SnippetEditor` (`IsCompact=true`,
-    `ViewModel=ViewModel.Editor`, `TextSize`), Ctrl+Enter in `PreviewKeyDown`, Cancel/Save.
+    `ViewModel=ViewModel.Editor`, `TextSize`), Cancel/Save.
+  - **Ctrl+Enter:** the WinUI 3 `UIElement.PreviewKeyDown` handler on the overlay root (§4.1:
+    Enter + Ctrl only, `e.Handled = true`, `SaveEditorAsync`). If runbook step 12a fails, switch
+    to fallback A (scoped `KeyboardAccelerator`), then fallback B (Ctrl+S with the user's
+    sign-off), and record which one shipped in §10.
   - Base content `IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}"`.
   - **`SnippetEditor`:**
     - `IsCompact` (plain property, calls `Bindings.Update()`).
     - Wrappers hiding the stats card, Delete and the unsaved bar.
     - `EscapePressed` raised from `OnDiscardAccelerator` when compact (`:90-108`); the new-folder
       Esc behaviour is unchanged.
-- **Verify:** CI compile. Runbook steps 12–15. Snippets-page regression (009 runbook 3, 5, 6)
-  unchanged.
+- **Verify:** CI compile. Runbook steps 12, 12a, 13–15. Snippets-page regression (009 runbook 3,
+  5, 6) unchanged.
 
 ### T9 — Target capture and DisplayName (Track C) (AC4)
 - **Files:**
@@ -985,27 +1306,42 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
 
 ### T10 — Interim insertion adapter (Track C) (keeps 006 runnable; replaced by 007)
 - **Files:** `src/SmartSnippets.App/Services/InterimInsertionService.cs`.
-- **Change:** §4.1 interim insertion. A header comment states "Deleted by plan 007."
+- **Change:** §4.1 interim insertion, against the §4.3.1 signature (with `InsertionOptions`).
+  Plain success returns an empty `Message`; `SendInputFailed` maps to `MaybePasted` without
+  usage. A header comment states "Deleted by plan 007."
 - **Verify:** CI compile. Runbook steps 6, 16, 17. `insert_result` and `popup_insert` appear in
-  the log, and usage increments after a success (Last used sort, main-window row meta).
+  the log, usage increments after a success (Last used sort, main-window row meta), and no tray
+  notice appears after a plain success.
 
-### T11 — AppHost and tray wiring (Track C) (AC4, AC7)
-- **Files:** `src/SmartSnippets.App/AppHost.cs`, `src/SmartSnippets.App/Services/TrayIcon.cs`.
+### T11 — AppHost and tray wiring (Track C) (AC4, AC7; tray state from §2)
+- **Files:** `src/SmartSnippets.App/AppHost.cs`, `src/SmartSnippets.App/Services/TrayIcon.cs`,
+  `src/SmartSnippets.Presentation/Services/TrayStatePolicy.cs` (body) and
+  `tests/.../TrayStatePolicyTests.cs`. The policy and its tests are pure Presentation code; Track
+  C owns them so that the one writer and its rule change together.
 - **Change:**
   - **Compose:** `popup = new PopupWindow(textSize, openMain)` → popup-scoped `DialogService` →
-    `InterimInsertionService` → `new PopupViewModel(...)` → `popup.ViewModel = vm` →
-    `Prewarm` → `theme.Register(popup)`.
+    `InterimInsertionService` → `new PopupViewModel(..., notices: Notices, ...)` →
+    `popup.ViewModel = vm` → `Prewarm` → `theme.Register(popup)`. `Notices` must be built before
+    the view-model (today it is built after the tray at `:201`, so the popup composition moves
+    after it).
   - **Hotkey:** `OnHotkeyPressed` → `TargetCapture.CaptureForeground()` → `ShowFor`.
   - **Tray:** `onShowPopup: hwnd => Post(() => ShowPopupFromTray(hwnd))`. Remove the tray's
     `SetForegroundWindow(target)` (`TrayIcon.cs:253-257`) and update the comment at `:280-284`.
-  - **Tray state:** `UpdateTrayState()` replaces the writers at `:197-199`, and
-    `popup.VisibleChanged` triggers it.
+  - **Tray state:** `UpdateTrayState()` = `tray.State = TrayStatePolicy.Compute(hotkeyManager
+    .Status.IsRegistered, popupVisible)`. It replaces the writers at `:197-199`, and both
+    `popup.VisibleChanged` and `StatusChanged` trigger it. `TrayIcon.cs` drops its own `TrayState`
+    enum and imports the Presentation one.
   - **Restart:** `requestExit` reuses `RestartAsAdministrator`'s `ShutDown` path.
   - **Balloon:** the `ShowAgain` balloon fallback goes through `Notices`.
   - **Exit:** `_popupViewModel.Dispose()` in `ReleaseResources`.
-- **Verify:** CI compile. Runbook steps 1, 2, 9, 16–18, 22.
-- **Test that dies if the view-model link breaks:** `Ctor_ReadsLayoutAndSortFromSettings`. App
-  wiring itself is verified by T12's log lines.
+- **Verify:** `dotnet test ... --filter TrayStatePolicy`; CI compile. Runbook steps 1, 2, 9,
+  16–18, 22, 24.
+- **Tests that die if this breaks:**
+  - `TrayStatePolicyTests`: `Unregistered_Wins_OverPopupOpen`, `Unregistered_PopupHidden_IsUnavailable`,
+    `PopupOpen_WhenRegistered`, `Ready_WhenRegisteredAndHidden` (including the two names 008 lists, so 008
+    T0 adopts them unchanged).
+  - `Ctor_ReadsLayoutAndSortFromSettings` (the view-model link). App wiring itself is verified by
+    T12's greps and log lines.
 
 ### T12 — Wiring audit and docs (coordinator) (L)
 - **Trace each new entity:**
@@ -1015,20 +1351,26 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
   - `IPopupHost`: implemented by `PopupWindow`, passed to the view-model.
   - `PopupViewModel`: constructed once, disposed on exit.
   - `store.Changed` subscribers: list, editor, folders, popup.
-  - `VisibleChanged` → `UpdateTrayState`.
+  - `VisibleChanged` → `UpdateTrayState` → `TrayStatePolicy.Compute`.
+  - `INotifier` (`Notices`) → `PopupViewModel` (notice for `Inserted` with a message) and the
+    `ShowAgain` balloon fallback.
+  - `InsertionOptions(AllowClipboardLoss: true)`: constructed only in `PasteAnywayAsync`.
   - `SnippetEditor.IsCompact`: set only by the popup.
   - `EscapePressed`: subscribed only by the popup.
   - `SaveShell`: called by `SettingsViewModel`.
 - **Greps:**
   - `ShowFor` and `ForegroundTarget.Capture` call sites (§4.4).
-  - No `tray.State =` outside `UpdateTrayState`.
+  - No `tray.State =` outside `UpdateTrayState`, and no `enum TrayState` left in App.
+  - `AllowClipboardLoss: true` appears only in `PopupViewModel.PasteAnywayAsync`.
+  - No `PreviewKeyDown` handler besides the overlay's Ctrl+Enter one (or the shipped fallback).
   - No `AppLog` argument containing `DisplayName|Title|Query|Label|Text`.
   - No `IReadOnlyList` property bound as `ItemsSource` in `PopupWindow.xaml`.
   - Every `x:Bind` path in `PopupWindow.xaml` exists on `PopupViewModel`, `PopupItemViewModel` or
     an instance helper.
 - **Docs:** update master 001's progress row and this plan's §10 (implementation notes,
   deviations).
-- **Verify:** on the runbook run, the log contains `popup_ready_ms`, `popup_opened`,
+- **Verify:** on the runbook run, the log contains `popup_ready_ms`, `popup_search_ms` (both
+  `layout=` values), `popup_opened`,
   `popup_layout`, `popup_sort`, `popup_insert`, `popup_reopened`, `popup_add_saved`,
   `popup_add_cancelled`, `popup_copy_text` and `popup_closed`.
 
@@ -1038,45 +1380,57 @@ coordinator cross-checks every `x:Bind` path against the view-model surface befo
 |---|---|---|
 | AC3 (layout/sort persist) | T1, T5 | `ToggleLayout_PersistsKey…`, `ThemeChange_AfterPopupLayoutChange_KeepsPopupLayout`, `LayoutAndSort_SurviveAppSettingsReload`; runbook 10 |
 | AC4 (open, centre, clamp, focus) | T2, T6, T9, T11 | `Open_Fresh_…`, `TargetDisplayName*`; runbook 1–4, 22 |
-| AC5 (keyboard and mouse) | T2, T4, T7 | `Move*`, `Click_EqualsEnter`, `DoubleEnter_SingleCall`; runbook 5–8, 19 |
-| AC6 (search UI) | T1, T7 | `Search_*`, `Empty_*`; runbook 5, 7 |
-| AC7 (layouts, sorts, toolbar) | T1, T7, T11 | `FolderLayout_*`, `Sort_*`, tooltips; runbook 8–11 |
-| AC8 (add snippet) | T3, T8, T9 | `AddSnippet_*`, `Save_*`, `Cancel_*`, integration; runbook 12–15 |
-| AC13 (popup ≤ 300 ms, indicative) | T1, T6 | `popup_ready_ms`; runbook 21 |
-| AC9/AC10 hand-off | T0a, T4, T10 | contract, `Failure_*`, `TargetElevated_*`; runbook 16–18 (full acceptance in 007) |
+| AC5 (keyboard and mouse) | T2, T4, T7 | `Move*`, `Click_EqualsEnter`, `DoubleEnter_SingleCall`, `MaybePasted_FirstEnter_OnlyDismisses_NoCall`, `PromptEsc_EqualsCancel_DoesNotHide`; runbook 5–8, 19 |
+| AC6 (search UI) | T1, T7 | `Search_*`, `Empty_*`, `WhileShown_*`, `WhileHidden_StoreChanged_NextOpenShowsCurrentData`; runbook 5, 7, 23 |
+| AC7 (layouts, sorts, toolbar) | T1, T7, T11 | `FolderLayout_*`, `Sort_*`, tooltips, `WhileShown_FolderRenamed_*`; runbook 8–11, 23 |
+| AC8 (add snippet) | T3, T8, T9 | `AddSnippet_*`, `Save_*`, `Cancel_*`, integration; runbook 12, 12a (Ctrl+Enter), 13–15 |
+| AC13 (popup ≤ 300 ms; search ≤ 150 ms at 10k, indicative here, accepted in 008) | T1, T6, T7 | `popup_ready_ms`; end-to-end `popup_search_ms` in both layouts, `SearchMs_Format_*`; runbook 21 |
+| AC9/AC10 hand-off | T0a, T4, T10 | contract, `Failure_*`, `TargetElevated_*`, `ClipboardNotPreserved_*`, `PasteAnyway_*`, `CopiedForManualPaste_*`, `MaybePasted_*`, `Inserted_WithMessage_*`; runbook 16–18 (full acceptance in 007) |
+| Tray state (§2; red wins) | T11 | `TrayStatePolicyTests`; runbook 1, 22, 24 |
 
 | Task | ACs |
 |---|---|
 | T0a | AC9/AC10 hand-off |
 | T0b | AC4–AC8 (contracts) |
-| T1 | AC3, AC6, AC7, AC13 |
+| T1 | AC3, AC6, AC7, AC13 (log format) |
 | T2 | AC4, AC5 |
 | T3 | AC8 |
 | T4 | AC5, AC9/AC10 hand-off |
 | T5 | AC3 |
 | T6 | AC4, AC13 |
-| T7 | AC5, AC6, AC7 |
+| T7 | AC5, AC6, AC7, AC13 (search timing) |
 | T8 | AC8 |
 | T9 | AC4, AC8 (target line) |
 | T10 | AC9 hand-off (interim) |
-| T11 | AC4, AC7 |
+| T11 | AC4, AC7, tray state |
 | T12 | all of the above (audit) |
 
 ## 7. Test strategy
 
 **Unit tests (Linux and Windows CI).**
-- About 75 new Presentation tests:
-  - `PopupViewModelListTests`, `…NavigationTests`, `…EditorTests` and `…InsertionTests`.
-  - `TargetDisplayNameTests`.
+- About 110 new Presentation tests:
+  - `PopupViewModelListTests` (including the `WhileShown_*` / `WhileHidden_*` store-change
+    propagation tests), `…NavigationTests`, `…EditorTests` and `…InsertionTests` (including
+    every footer state: `Error`, `ConfirmClipboardLoss`, `ManualPaste`, `MaybePasted`, and the
+    `Inserted` notice).
+  - `TargetDisplayNameTests`, `TrayStatePolicyTests`, `PopupLogFormatTests`.
   - The `SettingsViewModel` regression.
   - The `AccessibleNameTests` addition.
 - One new Core test (`SaveShell`).
 - **Fakes:** `FakeSnippetStore` (real rules), `MemorySettingsStore`, `ScriptedDialogService` (as
-  the popup-scoped dialogs), `FakeClipboardService`, `FakeInsertionService`, `FakePopupHost`,
-  and a fake `IElevation` (`IsElevated`, scripted `RestartAsAdministrator`).
+  the popup-scoped dialogs), `FakeClipboardService`, `FakeInsertionService` (records options),
+  `FakePopupHost`, `RecordingNotifier`, and a fake `IElevation` (`IsElevated`, scripted
+  `RestartAsAdministrator`).
+- **Store-change propagation (review finding 8)** is tested at the view-model level: the fake
+  store raises `Changed` while the popup view-model is shown (folder renamed, selected snippet
+  edited or deleted, snippet added, folder deleted) and while it is hidden (then re-opened).
+  Keeping the popup open while editing in the main window is not possible by design
+  (deactivation closes it), so **008's E11–E12 must use this approach**: these view-model tests
+  plus runbook step 23 (change in the main window while the popup is hidden, then re-open), not
+  "edit in the main window with the popup open".
 - **Deliberately not unit-tested:** XAML layout, Win32 capture, placement and foreground
-  activation, and the interim adapter. These are App-only and covered by CI compile plus the
-  runbook.
+  activation, the Ctrl+Enter key routing, the search-timing hooks, and the interim adapter. These
+  are App-only and covered by CI compile plus the runbook (12a, 21).
 
 **Integration (`PopupViewModelIntegrationTests`).** The real `SnippetStore` on a temp SQLite
 database, with `FakeInsertionService` and `FakePopupHost`:
@@ -1088,7 +1442,8 @@ database, with `FakeInsertionService` and `FakePopupHost`:
 `scripts/verify-plans-003-009.ps1` sections C3, C4 and C9 must still pass, because the log
 format, Esc behaviour and the "Smart Snippets" main title are all kept. **Adding popup sections
 to the script belongs to 008** (R12). They will use the window title and the automation IDs from
-§4.3.2.
+§4.3.2, and read `popup_search_ms <int> layout=<flat|folder> results=<n>` for the ≤ 150 ms at
+10k acceptance (the Core benchmark stays a diagnostic).
 
 **Manual runbook** (your PC, on the AOT build from CI after the merge to `main`). Unchecked steps
 block marking 006 Complete.
@@ -1107,6 +1462,7 @@ block marking 006 Complete.
 | 10 | Open Sort → Usage count; close the popup; Exit from the tray; restart; press the hotkey | Usage count and the folder layout are still selected; changing the Theme in Settings in between does not reset them |
 | 11 | Open Sort, press Esc, press Esc again | The first Esc closes only the menu; the second closes the popup; the popup did not close when the menu opened |
 | 12 | Add snippet | The overlay "Add snippet" shows "Insertion target kept: Notepad, Untitled"; focus is in Text; no Delete, stats or unsaved bar |
+| 12a | **Ctrl+Enter routing (R7).** In the overlay's Text box type `line one`, Enter, `line two`, Shift+Enter, `line three`; put the caret in the middle of `line two`; press Ctrl+Enter | Enter and Shift+Enter made newlines; Ctrl+Enter saved at once and added **no** newline (open the snippet in the main window: exactly three lines). **If it fails:** switch to fallback A (scoped `KeyboardAccelerator`, §4.1), rebuild and repeat; if that also fails, fallback B (Ctrl+S, user sign-off). Record the shipped route in §10 |
 | 13 | With the query `ref`, add text "Thanks!" with tag "chat", use the folder **New** → "Quick" (open the Folder dropdown too), press Ctrl+Enter | The dropdown did not close the popup; the snippet is saved, the query is cleared (it would have hidden it), the new row is selected, and the footer says "Snippet added and ready to insert"; Enter inserts "Thanks!" into Notepad |
 | 14 | Add snippet, type something, click into another app, come back with Alt+Tab or the hotkey | The popup and editor are still there with the same target |
 | 15 | Add snippet, type, press Esc → Keep editing; Esc → Discard. Then Add, and Cancel at once | Discard returns to the earlier query and selection; Cancel closes without asking |
@@ -1115,11 +1471,16 @@ block marking 006 Complete.
 | 18 | Check the log after 16–17 | `popup_reopened outcome=… focus=direct` or `attach`; if `failed`, a tray balloon showed the message |
 | 19 | Keyboard only, with Narrator on: Tab and Shift+Tab around the popup | Search → Layout → Sort → Add → Open main → list → footer buttons; each is announced with its name and tooltip; moving the selection is announced; headings are announced as "Folder, n snippets" and can't be selected |
 | 20 | Settings → text size Custom 32, open the popup and Add snippet | Rows are larger and nothing is clipped; the editor scrolls and Cancel/Save stay visible; check light, dark and high contrast |
-| 21 | Seed 10,000 snippets with the app closed: `sqlite3 "%LOCALAPPDATA%\SmartSnippets\smartsnippets.db" "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10000) INSERT INTO snippets(text,label,tags,created_at,updated_at) SELECT 'Body '||i,'Snippet '||i,'',1761600000000+i,1761600000000+i FROM n;"`, start the app, press the hotkey 5 times | Every `popup_ready_ms` ≤ 300; typing stays smooth; folder layout toggles without a visible stall. Restore your profile afterwards |
+| 21 | Seed 10,000 snippets with the app closed: `sqlite3 "%LOCALAPPDATA%\SmartSnippets\smartsnippets.db" "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10000) INSERT INTO snippets(text,label,tags,created_at,updated_at) SELECT 'Body '||i,'Snippet '||i,'',1761600000000+i,1761600000000+i FROM n;"`, start the app, press the hotkey 5 times. Then, in the flat layout, paste `Snippet 99` into the search box, wait, clear it; toggle to the folder layout and repeat | Every `popup_ready_ms` ≤ 300; typing stays smooth; folder layout toggles without a visible stall. The log has one `popup_search_ms <int> layout=flat results=<n>` and one `layout=folder` line per paste or clear, with no query text; record the values (indicative here, ≤ 150 ms accepted in 008). Restore your profile afterwards |
 | 22 | Open main window button | The main window opens on Snippets and is in front; the popup is gone; the tray state is back to Ready |
+| 23 | **Store-change propagation (review finding 8).** With the popup closed, in the main window: rename a folder, edit the label of a snippet, delete another snippet, add a new one. Press the hotkey; check flat and folder layouts | The popup shows the renamed heading and chips, the new label, no deleted row, and the new snippet in its sort position. (The popup cannot stay open while you edit in the main window, because clicking away closes it; this is by design.) |
+| 24 | **Tray precedence.** Start a helper that holds Ctrl+Shift+Space (or start a second hotkey owner), start Smart Snippets so the hotkey is unavailable, then open the popup from the tray's **Show popup** | The tray tooltip/state stays **HotkeyUnavailable** while the popup is open (red wins) and is still HotkeyUnavailable after the popup closes |
 
 Known interim limitation (R13): until 007, multi-line snippets typed in the editor may paste with
-CR-only line breaks, and the failure messages use the 002 wording.
+CR-only line breaks, and the failure messages use the 002 wording. The interim adapter never
+returns `ClipboardNotPreserved` or `CopiedForManualPaste`, and `MaybePasted` only on a partial
+`SendInput`, which can't be provoked by hand. Those footer states are covered by T4's view-model
+tests here and checked on screen by 007's runbook once the production engine is wired.
 
 ## 8. Rollout / phasing
 
@@ -1139,7 +1500,9 @@ CR-only line breaks, and the failure messages use the 002 wording.
   `InterimInsertionService` with one line in `AppHost` plus deleting the file, so 006 is not
   reworked.
 - **008** later adds the popup sections to the verify script and the tray glyphs for
-  `TrayState.PopupOpen`.
+  `TrayState.PopupOpen`. It adopts 006's `TrayStatePolicy` (same rule: red wins), reads
+  `popup_search_ms` for the search acceptance, and runs E11–E12 as view-model tests plus a
+  hidden-then-reopen check (§7), not with the popup open during a main-window edit.
 
 ## 9. Open questions
 
@@ -1160,16 +1523,41 @@ any of them at approval.
    variant is deferred because the brief gives one text.
 7. **The `Busy` outcome is ignored** (no re-open), because the in-flight insertion reports its
    own result.
+8. **`ClipboardNotPreserved` → Cancel keeps the popup open** (prompt cleared, same query and
+   selection); a second Esc closes it. **Paste anyway** has initial focus, so Enter answers the
+   prompt explicitly; Enter in the search box does not.
+9. **`MaybePasted`: the first Enter or row click only dismisses the caution**; a second one
+   inserts. A **Dismiss** button does the same for the mouse. Esc closes the popup as usual.
+10. **`CopiedForManualPaste` shows no Copy text** (the snippet is already on the clipboard) and no
+    retry button; Enter afterwards inserts normally (nothing was pasted).
+11. **The interim adapter maps `SendInputFailed` to `MaybePasted`** rather than `PasteFailed`,
+    because a partial `SendInput` may already have pasted.
 
 ## 10. Implementation notes and wiring audit
 
 *(Filled in during implementation: T0b's App-side signatures as committed, deviations, CI
 fix-forward history, and the T12 audit table.)*
 
-## 11. Approval log
+## 11. Review response
+
+Review: [docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md).
+User decisions recorded 2026-10-28. Findings 3 and 6 are owned by 007 and 008 and need no 006
+change; the engine side of findings 1–2 is 007's.
+
+| Finding | Decision | Change in this plan |
+|---|---|---|
+| 1 — Clipboard restoration can silently lose data (UI side) | The engine aborts before touching the clipboard when it can't preserve it (`ClipboardNotPreserved`); the user may then accept the loss. An `Inserted` that could not fully restore the clipboard carries a notice. | Contract §4.3.1 replaced (new outcomes, `InsertionOptions(AllowClipboardLoss)`). Footer state `ConfirmClipboardLoss` with "Paste anyway?" / Cancel, Esc = Cancel; **Paste anyway** re-inserts the pending snippet with `AllowClipboardLoss: true` (§4.1, §4.4). `CopiedForManualPaste` → info footer, no Copy text, no retry. `Inserted` with a message → popup stays hidden, tray notice via `INotifier`. New `UiText` strings, automation IDs, logs; tests in T4; R15. |
+| 2 — A failed dispatch can already have pasted (UI side) | Uncertain dispatch is its own outcome, `MaybePasted`, with no usage and no retry offer. | Footer state `MaybePasted` (caution, Copy text, Dismiss); the first Enter/click only dismisses (§4.1, §4.2, §9 Q9). Interim adapter maps `SendInputFailed` → `MaybePasted`. Tests in T4; R14. |
+| 4 — Search performance measures the wrong path | End-to-end timing in the popup; the Core benchmark stays a diagnostic. | §4.1 "End-to-end search timing": `TextChanged` → `Items` changed → `PopupList.LayoutUpdated` → first `CompositionTarget.Rendered`; logs `popup_search_ms <int> layout=<flat|folder> results=<n>` (no query). `PopupLogFormat` + test; T7; runbook 21; 008 uses it for ≤ 150 ms at 10k. `popup_ready_ms` kept. |
+| 5 — Ctrl+Enter needs a WinUI-specific solution | Use a specified WinUI 3 route with a tested fallback. | §4.1 / R7 / T8: `Microsoft.UI.Xaml.UIElement.PreviewKeyDown` (exists in Windows App SDK) on the overlay root, handled before the `AcceptsReturn` Text box; fallback A scoped `KeyboardAccelerator` (Ctrl+Enter); fallback B Ctrl+S with sign-off. `handledEventsToo` rejected (runs after the newline). Runbook 12a with "if it fails" steps. |
+| 7 — Contract file and tray precedence disagree | One file `src/SmartSnippets.Presentation/Services/InsertionContracts.cs`, written by the coordinator in T0. **`HotkeyUnavailable` wins over `PopupOpen`.** | §4.3.1 names the one file and owner. `TrayStatePolicy.Compute` (Presentation, unit-tested) used by the single writer `AppHost.UpdateTrayState`; `TrayState` moves to Presentation; 008 T0 adopts it. T11 tests, runbook 24. |
+| 8 — Integration scenarios conflict with deactivation | Keep "deactivation closes the popup". | Store-change propagation tested by view-model tests that raise `Changed` while shown and while hidden (T1), plus runbook 23 (edit in the main window while the popup is hidden, re-open). §7 states that 008's E11–E12 must use this approach. |
+
+## 12. Approval log
 
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-27 | Placeholder reserved | master plan 001 |
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Draft written | Awaiting approval (G2), including the §9 design calls |
+| 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 4, 5, 7, 8 + UI for 1–2 addressed; user decisions recorded |
