@@ -20,6 +20,8 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
 
     [LibraryImport("user32.dll")]
     private static partial uint GetClipboardSequenceNumber();
+    [LibraryImport("user32.dll", EntryPoint = "EnumClipboardFormats", SetLastError = true)]
+    private static partial uint EnumerateClipboardFormats(uint format);
     [LibraryImport("gdi32.dll")]
     private static unsafe partial uint GetEnhMetaFileBits(nint metafile, uint size, byte* buffer);
     [LibraryImport("gdi32.dll")]
@@ -150,32 +152,37 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
     private static unsafe Snapshot TakeSnapshot()
     {
         var result = new Snapshot();
-        uint format = 0;
-        while ((format = PInvoke.EnumClipboardFormats(format)) != 0)
+        var complete = ClipboardSafety.EnumerateFormats(
+            previous =>
+            {
+                var format = EnumerateClipboardFormats(previous);
+                return (format, format == 0 ? Marshal.GetLastPInvokeError() : 0);
+            },
+            format =>
         {
-            if (Skipped(format)) { result.SkippedByDesignCount++; continue; }
-            if (result.CapExceeded) { result.UnsavedCount++; continue; }
+            if (Skipped(format)) { result.SkippedByDesignCount++; return; }
+            if (result.CapExceeded) { result.UnsavedCount++; return; }
             var handle = PInvoke.GetClipboardData(format);
-            if (handle.IsNull) { result.UnsavedCount++; continue; }
+            if (handle.IsNull) { result.UnsavedCount++; return; }
             if (format == EnhancedMetafile)
             {
                 var size = GetEnhMetaFileBits((nint)handle.Value, 0, null);
-                if (size == 0) { result.UnsavedCount++; continue; }
-                if (result.ByteCount + size > SnapshotLimit) { result.UnsavedCount++; result.CapExceeded = true; continue; }
+                if (size == 0) { result.UnsavedCount++; return; }
+                if (result.ByteCount + size > SnapshotLimit) { result.UnsavedCount++; result.CapExceeded = true; return; }
                 var bytes = new byte[size];
                 fixed (byte* p = bytes)
                 {
-                    if (GetEnhMetaFileBits((nint)handle.Value, size, p) != size) { result.UnsavedCount++; continue; }
+                    if (GetEnhMetaFileBits((nint)handle.Value, size, p) != size) { result.UnsavedCount++; return; }
                 }
                 result.Entries.Add(new(format, bytes)); result.ByteCount += size;
-                continue;
+                return;
             }
             var global = new HGLOBAL(handle.Value);
             var length = PInvoke.GlobalSize(global);
-            if (length == 0) { result.UnsavedCount++; continue; }
-            if (length > (nuint)SnapshotLimit || result.ByteCount + (long)length > SnapshotLimit) { result.UnsavedCount++; result.CapExceeded = true; continue; }
+            if (length == 0) { result.UnsavedCount++; return; }
+            if (length > (nuint)SnapshotLimit || result.ByteCount + (long)length > SnapshotLimit) { result.UnsavedCount++; result.CapExceeded = true; return; }
             var source = PInvoke.GlobalLock(global);
-            if (source is null) { result.UnsavedCount++; continue; }
+            if (source is null) { result.UnsavedCount++; return; }
             try
             {
                 var data = new byte[(int)length];
@@ -183,6 +190,11 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
                 result.Entries.Add(new(format, data)); result.ByteCount += data.Length;
             }
             finally { PInvoke.GlobalUnlock(global); }
+        });
+        if (!complete)
+        {
+            result.UnsavedCount++;
+            AppLog.Info("clipboard_enumeration_failed");
         }
         return result;
     }
