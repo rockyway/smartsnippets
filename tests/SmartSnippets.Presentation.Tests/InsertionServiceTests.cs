@@ -212,12 +212,13 @@ public sealed class InsertionServiceTests
         Assert.Equal(0, Usage);
     }
     [Fact]
-    public async Task RestoreFailed_AfterMaybePasted_MessageUnchanged()
+    public async Task RestoreFailed_AfterMaybePasted_MessageIncludesRestoreNotice()
     {
         _dispatcher.Dispatch = DispatchState.Uncertain; _dispatcher.Restores.Enqueue(RestoreStatus.Failed);
         var result = await Insert();
-        Assert.Contains("Check it before trying again", result.Message);
-        Assert.DoesNotContain(SmartSnippets.Presentation.Text.UiText.RestoreNotice, result.Message);
+        Assert.Equal(InsertionOutcome.MaybePasted, result.Outcome);
+        Assert.Equal("Smart Snippets may have pasted into Notepad. Check it before trying again. Your previous clipboard couldn't be fully restored.", result.Message);
+        Assert.Equal(0, Usage);
     }
     [Fact]
     public async Task RecordUsage_Exception_StillInserted()

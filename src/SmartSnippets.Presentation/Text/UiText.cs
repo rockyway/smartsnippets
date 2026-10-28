@@ -129,7 +129,7 @@ public static class UiText
             InsertionOutcome.CopiedForManualPaste => $"Couldn't paste into {app}. The snippet is on your clipboard. Paste it yourself with Ctrl+V.",
             _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
         };
-        if (!restoreNotice || outcome == InsertionOutcome.MaybePasted) return message;
+        if (!restoreNotice) return message;
         return outcome == InsertionOutcome.Inserted ? InsertedRestoreNotice : $"{message} {RestoreNotice}";
     }
 
