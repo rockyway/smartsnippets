@@ -26,6 +26,9 @@ public sealed partial class MainWindow : Window
     {
         _pageFactory = pageFactory;
         InitializeComponent();
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "SmartSnippets.ico");
+        if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
+        else AppLog.Info("window_icon_missing", "name=SmartSnippets.ico");
         Title = "Smart Snippets";
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
