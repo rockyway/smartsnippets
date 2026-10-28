@@ -217,8 +217,9 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
     private static bool SetText(string text)
     {
         // Never publish the text unless all privacy markers were installed first.
-        if (!SetMarkers(out _)) return false;
-        return SetData((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0"));
+        return ClipboardSafety.PublishProtectedText(
+            () => SetMarkers(out _),
+            () => SetData((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0")));
     }
 
     private static bool SetMarkers(out HashSet<uint> formats)

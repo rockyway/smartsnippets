@@ -30,6 +30,9 @@ public static class ClipboardSafety
         return success;
     }
 
+    /// <summary>Never publishes text unless all privacy markers were successfully installed.</summary>
+    public static bool PublishProtectedText(Func<bool> markers, Func<bool> text) => markers() && text();
+
     /// <summary>Retries only clipboard contention, without blocking the UI thread.</summary>
     public static async Task<(RestoreStatus Status, int Attempts)> RetryRestoreAsync(
         Func<RestoreStatus> attempt, int attempts, TimeSpan retryDelay, Func<TimeSpan, Task> delay)

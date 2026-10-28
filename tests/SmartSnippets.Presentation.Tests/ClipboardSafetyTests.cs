@@ -38,6 +38,19 @@ public sealed class ClipboardSafetyTests
         Assert.Equal(!registrationFailure, writes.Contains(1u));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MarkerFailure_PreventsTextPublication(bool registrationFailure)
+    {
+        var textWritten = false;
+        var success = ClipboardSafety.PublishProtectedText(
+            () => ClipboardSafety.InstallMarkers(["marker"], _ => registrationFailure ? 0u : 1u, _ => false, new HashSet<uint>()),
+            () => { textWritten = true; return true; });
+        Assert.False(success);
+        Assert.False(textWritten);
+    }
+
     [Fact]
     public void MarkerSuccess_RegistersAndWritesAll()
     {
