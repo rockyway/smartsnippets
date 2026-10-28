@@ -122,6 +122,16 @@ try {
     # the desktop clipboard. Clipboard.ps1 skips Add-Type when this test double is present.
     Add-Type 'public static class VerifyClipboard { public static string Value; public static int Reads; public static int Writes; public static bool FailRead; public static string Text; public static string ReadText() { Reads++; if (FailRead) throw new System.Exception("PRIVATE"); return Text; } public static void WriteText(string s) { Writes++; Text=s; } public static void Clear() { Writes++; Text=null; } public static void Install(string s) { Value="13:40:TEXT|49152:67112960:BIG"; } public static string Fingerprint() { return Value; } public static string OrderedFingerprint() { return Value; } }'
     . "$PSScriptRoot/lib/Clipboard.ps1"
+    $protectedPath=Join-Path $dir 'clipboard-backup.clixml'
+    Export-ClipboardTextBackup ([pscustomobject]@{ Valid=$true; HasText=$true; Text='PRIVATE-CLIPBOARD-ROUNDTRIP' }) $protectedPath
+    $roundtrip=Import-ClipboardTextBackup $protectedPath
+    Assert ($roundtrip.HasText -and $roundtrip.Text -ceq 'PRIVATE-CLIPBOARD-ROUNDTRIP') 'DPAPI clipboard recovery file roundtrips without native clipboard access'
+    Assert ([IO.File]::ReadAllText($protectedPath).IndexOf('PRIVATE-CLIPBOARD-ROUNDTRIP',[StringComparison]::Ordinal) -lt 0) 'recovery file does not contain plaintext clipboard text'
+    Export-ClipboardTextBackup ([pscustomobject]@{ Valid=$true; HasText=$true; Text='' }) $protectedPath
+    $roundtrip=Import-ClipboardTextBackup $protectedPath
+    Assert ($roundtrip.HasText -and $roundtrip.Text -ceq '') 'protected empty text remains a text snapshot'
+    Export-ClipboardTextBackup ([pscustomobject]@{ Valid=$true; HasText=$false; Text=$null }) $protectedPath
+    Assert (-not (Import-ClipboardTextBackup $protectedPath).HasText) 'protected no-text snapshot stays distinct'
     [VerifyClipboard]::Text='original'
     $savedText=Save-ClipboardText
     Set-ClipboardText 'fixture'

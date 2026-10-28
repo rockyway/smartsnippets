@@ -39,12 +39,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ([IntPtr]::Size -ne 8) { throw 'Acceptance requires 64-bit PowerShell' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
 . (Join-Path $PSScriptRoot 'lib\Watchdog.ps1')
 $script:HarnessProgressPath = $null
 if (-not $HarnessWorkerConfig) {
-    $code = Invoke-HarnessWorker -ScriptPath $PSCommandPath -Arguments $PSBoundParameters -TimeoutSeconds $WatchdogTimeoutSeconds
+    try { $code = Invoke-HarnessWorker -ScriptPath $PSCommandPath -Arguments $PSBoundParameters -TimeoutSeconds $WatchdogTimeoutSeconds }
+    catch {
+        Write-Warning 'Acceptance supervisor failed; no acceptance success is claimed. Follow the safety/recovery guide before retrying.'
+        if ($ReportPath) { @([pscustomobject]@{ Status='FAIL'; Id='HARNESS.supervisor'; Name='supervisor failed'; Detail='No acceptance verdict; inspect safety/recovery warnings (exception payload withheld)' }) | ConvertTo-Json | Set-Content -LiteralPath $ReportPath -Encoding UTF8 }
+        $code=1
+    }
     exit $code
 }
 $config = Import-Clixml -LiteralPath $HarnessWorkerConfig

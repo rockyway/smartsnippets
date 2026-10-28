@@ -4,11 +4,28 @@ function Update-HarnessProgress {
         [IO.File]::WriteAllText($script:HarnessProgressPath, [guid]::NewGuid().ToString('N'))
     }
 }
+function Invoke-ClipboardWorker([string]$Mode, [string]$BackupPath) {
+    $shell=(Get-Process -Id $PID).Path
+    $helper=Join-Path $PSScriptRoot '../clipboard-worker.ps1'
+    $proc=Start-Process -FilePath $shell -ArgumentList ('-NoProfile -STA -ExecutionPolicy Bypass -File "'+$helper+'" -Mode '+$Mode+' -BackupPath "'+$BackupPath+'"') -NoNewWindow -PassThru
+    $null=$proc.Handle
+    try {
+        if (-not $proc.WaitForExit(15000)) {
+            $proc.Kill()
+            if (-not $proc.WaitForExit(5000)) { throw 'Clipboard helper could not be stopped' }
+            throw 'Clipboard helper timed out; no clipboard preservation success is claimed'
+        }
+        if ($proc.ExitCode -ne 0) { throw 'Clipboard helper failed; no clipboard preservation success is claimed' }
+    } finally {
+        try { if (-not $proc.HasExited) { $proc.Kill(); $null=$proc.WaitForExit(5000) } }
+        finally { $proc.Dispose() }
+    }
+}
 function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$TimeoutSeconds = 600) {
     $lockPath = Join-Path $env:LOCALAPPDATA 'SmartSnippets.verify.lock'
     try { $lease = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
     catch { throw 'Another acceptance supervisor holds the exclusive profile lock; no side effects were started' }
-    $worker=$null; $saved=$null; $dir=$null; $aborted=$true
+    $worker=$null; $saved=$null; $dir=$null; $aborted=$true; $retainBackup=$false
     try {
         $dir=Join-Path ([IO.Path]::GetTempPath()) ('ss-worker-' + [guid]::NewGuid().ToString('N'))
         $null=New-Item -ItemType Directory -Path $dir
@@ -21,8 +38,9 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
         [IO.File]::WriteAllText($bootstrap, '$c=Import-Clixml -LiteralPath $args[0]; $a=$c.Arguments; & $c.Script @a -HarnessWorkerConfig $args[0]')
         $needsClipboard = -not $Arguments.ContainsKey('Only') -or @($Arguments.Only).Count -eq 0 -or 'E' -in $Arguments.Only -or 'F' -in $Arguments.Only
         if ($needsClipboard) {
-            . (Join-Path $PSScriptRoot 'Clipboard.ps1')
-            $saved=Save-ClipboardText # Acquisition failure refuses launch; never serialize user's text.
+            $backupPath=Join-Path $dir 'clipboard.clixml'
+            Invoke-ClipboardWorker 'Save' $backupPath # Acquisition failure refuses launch.
+            $saved=$backupPath # Text is DPAPI-encrypted for this Windows user, never plaintext on disk.
         }
         $shell=(Get-Process -Id $PID).Path
         $worker=Start-Process -FilePath $shell -ArgumentList ('-NoProfile -STA -ExecutionPolicy Bypass -File "' + $bootstrap + '" "' + $configPath + '"') -NoNewWindow -PassThru
@@ -50,10 +68,15 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
                 }
             }
         } finally {
-            try { if ($saved) { Restore-ClipboardText $saved } }
+            try {
+                if ($saved) {
+                    try { Invoke-ClipboardWorker 'Restore' $saved }
+                    catch { $retainBackup=$true; Write-Warning "Clipboard restoration failed; encrypted recovery backup retained at $saved"; throw 'Clipboard restoration failed' }
+                }
+            }
             finally {
                 if ($worker) { $worker.Dispose() }
-                if ($dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+                if ($dir -and -not $retainBackup) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
                 $lease.Dispose()
             }
         }

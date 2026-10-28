@@ -114,6 +114,25 @@ public static class VerifyClipboard {
 }
 '@
 }
+function Export-ClipboardTextBackup($Saved, [string]$Path) {
+    if (-not (Test-ValidClipboardBackup $Saved)) { throw 'Invalid clipboard backup cannot be serialized' }
+    $cipher=$null
+    if ($Saved.HasText -and $Saved.Text.Length -gt 0) { $cipher=ConvertTo-SecureString -String $Saved.Text -AsPlainText -Force }
+    [pscustomobject]@{ Valid=$true; HasText=$Saved.HasText; NonEmpty=($Saved.HasText -and $Saved.Text.Length -gt 0); Cipher=$cipher } | Export-Clixml -LiteralPath $Path
+}
+function Import-ClipboardTextBackup([string]$Path) {
+    $protected=Import-Clixml -LiteralPath $Path
+    if ($protected.Valid -cne $true -or $protected.HasText -isnot [bool] -or $protected.NonEmpty -isnot [bool]) { throw 'Invalid protected clipboard backup' }
+    $text=$null
+    if ($protected.HasText) {
+        $text=''
+        if ($protected.NonEmpty) {
+            if ($protected.Cipher -isnot [Security.SecureString]) { throw 'Invalid protected clipboard text' }
+            $text=([Net.NetworkCredential]::new('', $protected.Cipher)).Password
+        }
+    }
+    [pscustomobject]@{ Valid=$true; HasText=$protected.HasText; Text=$text }
+}
 function Read-ClipboardText { Invoke-ClipboardRetry { [VerifyClipboard]::ReadText() } }
 function Set-ClipboardText([AllowEmptyString()][string]$Text) { Invoke-ClipboardRetry { [VerifyClipboard]::WriteText($Text) } }
 function Save-ClipboardText {
