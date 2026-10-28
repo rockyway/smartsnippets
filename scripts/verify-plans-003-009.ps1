@@ -210,7 +210,8 @@ if (Want 'A') {
 
     if (-not $SkipBuild) {
         if (Test-Path publish) { Remove-Item publish -Recurse -Force }
-        $log = & dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish 2>&1 | Out-String
+        & (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output publish
+        $log = Get-Content publish.log -Raw
         $ok = ($LASTEXITCODE -eq 0)
         Check 'A3.build' 'AOT publish succeeds' $ok
         Check 'A3.warnings' 'zero IL2xxx/IL3xxx warnings' (-not ($log -match 'warning IL[23][0-9]{3}'))

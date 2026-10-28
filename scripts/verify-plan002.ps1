@@ -1,3 +1,5 @@
+# Historical prototype harness; superseded by verify-plans-003-009.ps1.
+# Its prototype popup insertion check no longer applies to the production popup.
 # Automated Verification Harness for Plan 002 (Technical Validation Prototype)
 $ErrorActionPreference = "Stop"
 
