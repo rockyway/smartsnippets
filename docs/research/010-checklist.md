@@ -140,48 +140,48 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T5 — Import planner (AC3, AC5)
 
-- [ ] T5 implementation and task verification
-- [ ] `Duplicate_OfLibrary_Skipped`
-- [ ] `Duplicate_WithinBatch_FirstWins`
-- [ ] `Duplicate_LineEndingsOnly_Skipped`
-- [ ] `NotDuplicate_CaseDiffers`
-- [ ] `NotDuplicate_TrailingSpaceDiffers`
-- [ ] `NotDuplicate_TabVersusSpaces`
-- [ ] `FullRow_SameTextDifferentFolder_BothPlanned`
-- [ ] `FullRow_SameTextDifferentLabel_BothPlanned`
-- [ ] `FullRow_SameTextDifferentTags_BothPlanned`
-- [ ] `FullRow_SameTextDifferentTagOrder_BothPlanned`
-- [ ] `FullRow_SameEverything_DifferentStats_SecondIsDuplicate`
-- [ ] `FullRow_CrVsLf_SameMetadata_Duplicate`
-- [ ] `FullRow_CrVsLf_DifferentLabel_BothPlanned`
-- [ ] `FullRow_MatchesLibraryRow_BuiltFromStoredFolderAndTags`
-- [ ] `FullRow_AutoLabelKeyUsesSuggestion`
-- [ ] `FullRow_FolderCaseDiffers_SameKey_Duplicate`
-- [ ] `TextOnly_SameTextDifferentFolder_SecondIsDuplicate`
-- [ ] `FullRow_SeparatorInText_VersusSeparatorInLabel_NotDuplicate`
-- [ ] `FullRow_SeparatorInsideTag_VersusTwoTags_NotDuplicate`
-- [ ] `FullRow_NulAndControlCharsInComponents_NotDuplicate`
-- [ ] `FullRow_EmptyTagsVersusOneTag_NotDuplicate`
-- [ ] `FullRow_TagBoundaryShift_NotDuplicate`
-- [ ] `FullRow_SeparatelyAllocatedEqualTags_Duplicate`
-- [ ] `DuplicateCandidate_WithUnseenFolder_CreatesNoFolder`
-- [ ] `RejectedCandidate_WithUnseenFolder_CreatesNoFolder`
-- [ ] `AllDuplicates_WithNovelFolderNames_NoNewFolders`
-- [ ] `NativeFolderNames_StillCreatedWhenNoCandidateUsesThem`
-- [ ] `Folder_MatchesExistingCaseInsensitive_UsesExistingId`
-- [ ] `Folder_NewTwiceDifferentCase_OneNewFolder_FirstSpelling`
-- [ ] `Folder_Blank_Unfiled`
-- [ ] `Folder_Whitespace_Unfiled`
-- [ ] `Folder_Trimmed`
-- [ ] `FolderNames_ProcessedFirst_SpellingWins`
-- [ ] `FolderNames_ExistingNotRecreated`
-- [ ] `Label_Given_KeptExactlyAsCustom`
-- [ ] `Label_Missing_Suggested_FromFirstTag`
-- [ ] `Label_Missing_Suggested_FromFirstLine`
-- [ ] `Tags_CommaSplit_CaseDeduped`
-- [ ] `Validation_Failure_CountedRejected`
-- [ ] `Plan_DoesNotMutateInputs`
-- [ ] `Counts_DuplicatesPlusPlannedPlusRejected_EqualCandidates`
+- [x] T5 implementation and task verification (47 cases pass; 43 red against stub)
+- [x] `Duplicate_OfLibrary_Skipped`
+- [x] `Duplicate_WithinBatch_FirstWins`
+- [x] `Duplicate_LineEndingsOnly_Skipped`
+- [x] `NotDuplicate_CaseDiffers`
+- [x] `NotDuplicate_TrailingSpaceDiffers`
+- [x] `NotDuplicate_TabVersusSpaces`
+- [x] `FullRow_SameTextDifferentFolder_BothPlanned`
+- [x] `FullRow_SameTextDifferentLabel_BothPlanned`
+- [x] `FullRow_SameTextDifferentTags_BothPlanned`
+- [x] `FullRow_SameTextDifferentTagOrder_BothPlanned`
+- [x] `FullRow_SameEverything_DifferentStats_SecondIsDuplicate`
+- [x] `FullRow_CrVsLf_SameMetadata_Duplicate`
+- [x] `FullRow_CrVsLf_DifferentLabel_BothPlanned`
+- [x] `FullRow_MatchesLibraryRow_BuiltFromStoredFolderAndTags`
+- [x] `FullRow_AutoLabelKeyUsesSuggestion`
+- [x] `FullRow_FolderCaseDiffers_SameKey_Duplicate`
+- [x] `TextOnly_SameTextDifferentFolder_SecondIsDuplicate`
+- [x] `FullRow_SeparatorInText_VersusSeparatorInLabel_NotDuplicate`
+- [x] `FullRow_SeparatorInsideTag_VersusTwoTags_NotDuplicate`
+- [x] `FullRow_NulAndControlCharsInComponents_NotDuplicate`
+- [x] `FullRow_EmptyTagsVersusOneTag_NotDuplicate`
+- [x] `FullRow_TagBoundaryShift_NotDuplicate`
+- [x] `FullRow_SeparatelyAllocatedEqualTags_Duplicate`
+- [x] `DuplicateCandidate_WithUnseenFolder_CreatesNoFolder`
+- [x] `RejectedCandidate_WithUnseenFolder_CreatesNoFolder`
+- [x] `AllDuplicates_WithNovelFolderNames_NoNewFolders`
+- [x] `NativeFolderNames_StillCreatedWhenNoCandidateUsesThem`
+- [x] `Folder_MatchesExistingCaseInsensitive_UsesExistingId`
+- [x] `Folder_NewTwiceDifferentCase_OneNewFolder_FirstSpelling`
+- [x] `Folder_Blank_Unfiled`
+- [x] `Folder_Whitespace_Unfiled`
+- [x] `Folder_Trimmed`
+- [x] `FolderNames_ProcessedFirst_SpellingWins`
+- [x] `FolderNames_ExistingNotRecreated`
+- [x] `Label_Given_KeptExactlyAsCustom`
+- [x] `Label_Missing_Suggested_FromFirstTag`
+- [x] `Label_Missing_Suggested_FromFirstLine`
+- [x] `Tags_CommaSplit_CaseDeduped`
+- [x] `Validation_Failure_CountedRejected`
+- [x] `Plan_DoesNotMutateInputs`
+- [x] `Counts_DuplicatesPlusPlannedPlusRejected_EqualCandidates`
 
 ## T6 — Store bulk import (AC4, AC5, AC6, AC3)
 
