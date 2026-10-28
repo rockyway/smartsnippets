@@ -185,6 +185,7 @@
                     automation:AutomationProperties.LiveSetting="Assertive" />
 
                 <!-- Read-only stats card, visually separate from the editable fields -->
+                <Grid Visibility="{x:Bind Hide(IsCompact)}">
                 <Border
                     Padding="12,10"
                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -229,6 +230,7 @@
                         </StackPanel>
                     </Grid>
                 </Border>
+                </Grid>
             </StackPanel>
         </ScrollViewer>
 
@@ -251,6 +253,7 @@
                 </StackPanel>
             </InfoBar>
 
+            <Grid Visibility="{x:Bind Hide(IsCompact)}">
             <Grid
                 Padding="0,12,0,0"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
@@ -290,6 +293,7 @@
                         ToolTipService.ToolTip="Save (Ctrl+S)"
                         automation:AutomationProperties.Name="Save snippet" />
                 </StackPanel>
+            </Grid>
             </Grid>
         </StackPanel>
     </Grid>
