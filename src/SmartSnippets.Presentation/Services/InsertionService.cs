@@ -80,7 +80,6 @@ public sealed class InsertionService(
                             // Keep the final foreground gate and SendPaste adjacent: no await or other call.
                             if (!probe.IsTargetForeground(target))
                             {
-                                AppLog.Info("foreground_gate", "ok=False");
                                 if (options.AllowClipboardLoss)
                                 {
                                     if (snapshot is not null) dispatcher.DiscardClipboardSnapshot(snapshot);
@@ -99,7 +98,6 @@ public sealed class InsertionService(
                                     AppLog.Info("paste_exception", $"kind={ex.GetType().Name}");
                                     dispatch = DispatchState.Uncertain;
                                 }
-                                AppLog.Info("foreground_gate", "ok=True");
                                 if (dispatch == DispatchState.Uncertain)
                                 {
                                     waitBeforeRestore = true;
@@ -117,7 +115,7 @@ public sealed class InsertionService(
                                         var usage = store.RecordUsage(snippetId);
                                         if (!usage.Success) AppLog.Info("usage_record_failed", $"id={snippetId} kind={usage.Error}");
                                     }
-                                    catch (Exception ex) { AppLog.Info("usage_record_failed", $"id={snippetId} kind={ex.GetType().Name}"); }
+                                    catch (Exception ex) { AppLog.Info("usage_record_failed", $"id={snippetId} kind={(ex is StoreException storeException ? storeException.Failure.ToString() : ex.GetType().Name)}"); }
                                 }
                             }
                         }

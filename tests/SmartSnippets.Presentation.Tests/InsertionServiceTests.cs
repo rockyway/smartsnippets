@@ -58,6 +58,15 @@ public sealed class InsertionServiceTests
     public async Task IncompleteSnapshot_DoesNotEmpty() { _dispatcher.Unsaved = 1; Assert.Equal(InsertionOutcome.ClipboardNotPreserved, (await Insert()).Outcome); Assert.False(_dispatcher.Emptied); Assert.False(_dispatcher.AllowIncomplete); Assert.DoesNotContain("send", _calls); }
 
     [Fact]
+    public async Task OverCap_NotPreserved_NoEmptyClipboard()
+    {
+        _dispatcher.Unsaved = 1; _dispatcher.CapExceeded = true;
+        Assert.Equal(InsertionOutcome.ClipboardNotPreserved, (await Insert()).Outcome);
+        Assert.False(_dispatcher.Emptied);
+        Assert.DoesNotContain("send", _calls);
+    }
+
+    [Fact]
     public async Task AllowLoss_IncompleteSnapshot_PastesAndRestores() { _dispatcher.Unsaved = 1; Assert.Equal(InsertionOutcome.Inserted, (await Insert(true)).Outcome); Assert.True(_dispatcher.AllowIncomplete); Assert.Contains("restore", _calls); Assert.Equal(1, Usage); }
 
     [Theory]
@@ -88,12 +97,99 @@ public sealed class InsertionServiceTests
     public async Task ExceptionAtGate_RestoresAndClearsFlag() { _probe.OnGate = () => throw new InvalidOperationException(); Assert.Equal(InsertionOutcome.PasteFailed, (await Insert()).Outcome); Assert.Contains("restore", _calls); _probe.OnGate = null; Assert.Equal(InsertionOutcome.Inserted, (await Insert()).Outcome); }
     [Fact]
     public async Task RestoreChanged_NoNotice() { _dispatcher.Restores.Enqueue(RestoreStatus.ClipboardChanged); Assert.Equal(InsertionOutcome.Inserted, (await Insert()).Outcome); }
+    [Theory]
+    [InlineData(RestoreStatus.Partial)]
+    [InlineData(RestoreStatus.Failed)]
+    [InlineData(RestoreStatus.Busy)]
+    public async Task RestoreFailed_AfterPaste_InsertedWithNotice(RestoreStatus status)
+    {
+        for (var i = 0; i < 10; i++) _dispatcher.Restores.Enqueue(status);
+        var result = await Insert();
+        Assert.Equal(InsertionOutcome.Inserted, result.Outcome);
+        Assert.Equal(SmartSnippets.Presentation.Text.UiText.InsertedRestoreNotice, result.Message);
+        Assert.Equal(1, Usage);
+    }
+    [Fact]
+    public async Task RestoreFailed_AfterNotDispatchedFailure_MessageHasNotice()
+    {
+        _dispatcher.Dispatch = DispatchState.NotDispatched; _dispatcher.Restores.Enqueue(RestoreStatus.Failed);
+        Assert.Contains(SmartSnippets.Presentation.Text.UiText.RestoreNotice, (await Insert()).Message);
+        Assert.Equal(0, Usage);
+    }
+    [Fact]
+    public async Task RestoreFailed_AfterMaybePasted_MessageUnchanged()
+    {
+        _dispatcher.Dispatch = DispatchState.Uncertain; _dispatcher.Restores.Enqueue(RestoreStatus.Failed);
+        var result = await Insert();
+        Assert.Contains("Check it before trying again", result.Message);
+        Assert.DoesNotContain(SmartSnippets.Presentation.Text.UiText.RestoreNotice, result.Message);
+    }
+    [Fact]
+    public async Task RecordUsage_Exception_StillInserted()
+    {
+        _store.Failure = new SmartSnippets.Core.Store.StoreException(SmartSnippets.Core.Store.StoreFailure.DatabaseBusy, "busy");
+        Assert.Equal(InsertionOutcome.Inserted, (await Insert()).Outcome);
+        Assert.Equal(0, Usage);
+    }
+    [Fact]
+    public async Task RecordUsage_RunsOnCallerSynchronizationContext()
+    {
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            using var queue = new System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback Callback, object? State)>();
+            var context = new QueueContext(queue);
+            SynchronizationContext.SetSynchronizationContext(context);
+            var owner = Environment.CurrentManagedThreadId;
+            var recordedThread = 0;
+            _store.OnRecordUsage = _ => recordedThread = Environment.CurrentManagedThreadId;
+            _dispatcher.FocusOverride = async () => { await Task.Delay(10).ConfigureAwait(false); return FocusPath.Direct; };
+            var task = Insert();
+            task.ContinueWith(_ => queue.CompleteAdding(), TaskScheduler.Default);
+            foreach (var work in queue.GetConsumingEnumerable()) work.Callback(work.State);
+            try { Assert.Equal(InsertionOutcome.Inserted, task.GetAwaiter().GetResult().Outcome); Assert.Equal(owner, recordedThread); finished.SetResult(); }
+            catch (Exception ex) { finished.SetException(ex); }
+        });
+        thread.Start();
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        thread.Join();
+    }
+
+    private sealed class QueueContext(System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback Callback, object? State)> queue) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state) => queue.Add((callback, state));
+    }
+
+    [Fact]
+    public async Task RecordUsage_DeletedDuringSend_StillInserted()
+    {
+        _dispatcher.OnSend = () => _store.DeleteSnippet(_id);
+        Assert.Equal(InsertionOutcome.Inserted, (await Insert()).Outcome);
+        Assert.Empty(_store.Snippets);
+    }
     [Fact]
     public async Task CancelledBeforeCheck_NoEffects() { using var cts = new CancellationTokenSource(); cts.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Insert(ct: cts.Token)); Assert.Empty(_calls); }
     [Fact]
     public async Task CancelledAfterSwap_Restores() { using var cts = new CancellationTokenSource(); _dispatcher.OnSwap = cts.Cancel; await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Insert(ct: cts.Token)); Assert.Contains("restore", _calls); Assert.Equal(0, Usage); }
     [Fact]
     public async Task CancelledAfterPaste_Ignored() { using var cts = new CancellationTokenSource(); _dispatcher.OnSend = cts.Cancel; Assert.Equal(InsertionOutcome.Inserted, (await Insert(ct: cts.Token)).Outcome); Assert.Contains("restore", _calls); Assert.Equal(1, Usage); }
+    [Fact]
+    public async Task Logs_ContainIdAndOutcomeButNotTextOrDisplayName()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ss-insert-log-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            SmartSnippets.Core.Logging.AppLog.Initialize(directory);
+            var secretId = _store.SeedSnippet("secret snippet sentinel").Id;
+            var result = await _service.InsertAsync(new(1, 42, 0, "secret window title"), secretId);
+            Assert.Equal(InsertionOutcome.Inserted, result.Outcome);
+            var log = File.ReadAllText(Path.Combine(directory, "app.log"));
+            Assert.Contains($"outcome=Inserted id={secretId}", log);
+            Assert.DoesNotContain("secret snippet sentinel", log);
+            Assert.DoesNotContain("secret window title", log);
+        }
+        finally { SmartSnippets.Core.Logging.AppLog.Shutdown(); Directory.Delete(directory, true); }
+    }
     [Fact]
     public async Task SingleFlight_BusyThenNextRuns()
     {

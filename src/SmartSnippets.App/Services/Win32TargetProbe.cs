@@ -1,3 +1,4 @@
+using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Services;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -18,6 +19,8 @@ internal sealed class Win32TargetProbe : ITargetProbe
     public bool IsTargetForeground(InsertionTarget target)
     {
         var hwnd = PInvoke.GetForegroundWindow();
-        return hwnd == new HWND(target.WindowHandle) && PInvoke.GetWindowThreadProcessId(hwnd, out var pid) != 0 && pid == target.ProcessId;
+        var matches = hwnd == new HWND(target.WindowHandle) && PInvoke.GetWindowThreadProcessId(hwnd, out var pid) != 0 && pid == target.ProcessId;
+        AppLog.Info("foreground_gate", $"ok={matches}");
+        return matches;
     }
 }

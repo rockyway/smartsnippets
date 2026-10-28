@@ -30,6 +30,8 @@ internal sealed class FakeSnippetStore : ISnippetStore
     /// <summary>Runs at the start of <see cref="CreateSnippet"/>/<see cref="UpdateSnippet"/> (re-entrancy tests).</summary>
     public Action? OnSaveCalled { get; set; }
 
+    public Action<long>? OnRecordUsage { get; set; }
+
     public List<SnippetDraft> CreatedDrafts { get; } = [];
 
     public List<(long Id, SnippetDraft Draft)> UpdatedDrafts { get; } = [];
@@ -188,6 +190,7 @@ internal sealed class FakeSnippetStore : ISnippetStore
 
     public StoreResult RecordUsage(long id)
     {
+        OnRecordUsage?.Invoke(id);
         ThrowIfFailing();
         var index = _snippets.FindIndex(s => s.Id == id);
         if (index < 0)
