@@ -61,6 +61,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         }
     }
     internal Action<string>? NotifyReopenFailure { get; set; }
+    internal Func<bool>? CanShow { get; set; }
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
     private Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
@@ -77,6 +78,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     internal void ShowFor(InsertionTarget target, long hotkeyTimestamp)
     {
+        if (CanShow?.Invoke() == false) return;
         var mode = ViewModel.Open(target);
         if (mode == PopupOpenMode.Ignored) { AppLog.Info("popup_open_ignored", "reason=inserting"); return; }
         _hotkeyTimestamp = hotkeyTimestamp; _readyPending = true;
@@ -99,6 +101,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     public void ShowAgain()
     {
+        if (CanShow?.Invoke() == false) return;
         Center(); AppWindow.Show(); SetVisible(true);
         var focused = ForegroundActivation.TryActivate(_hwnd, out var path);
         AppLog.Info("popup_reopened", $"outcome={ViewModel.LastInsertionOutcome} focus={path}");

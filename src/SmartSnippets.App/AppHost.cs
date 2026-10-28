@@ -35,6 +35,7 @@ internal sealed class AppHost
     private ThemeService? _theme;
     private MessageWindow? _messageWindow;
     private ClipboardPasteDispatcher? _pasteDispatcher;
+    private InsertionShutdownCoordinator? _insertionCoordinator;
     private HotkeyService? _hotkeyService;
     private HotkeyManager? _hotkeyManager;
     private PopupWindow? _popup;
@@ -140,7 +141,8 @@ internal sealed class AppHost
         _messageWindow = messageWindow;
         var pasteDispatcher = new ClipboardPasteDispatcher(messageWindow.Handle);
         _pasteDispatcher = pasteDispatcher;
-        Insertion = new InsertionService(Store, new Win32TargetProbe(), pasteDispatcher);
+        _insertionCoordinator = new InsertionShutdownCoordinator(new InsertionService(Store, new Win32TargetProbe(), pasteDispatcher));
+        Insertion = _insertionCoordinator;
         AppLog.Info("insertion_ready");
         var hotkeyService = new HotkeyService(messageWindow);
         _hotkeyService = hotkeyService;
@@ -156,6 +158,7 @@ internal sealed class AppHost
         // Step 7: popup, then the main window (created hidden).
         var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
         _popup = popup;
+        popup.CanShow = () => !_exiting;
 
         UIElement CreatePage(PageKind kind) => kind switch
         {
@@ -231,6 +234,7 @@ internal sealed class AppHost
 
     private void OnHotkeyPressed(long timestamp)
     {
+        if (_exiting) return;
         var target = TargetCapture.CaptureForeground();
         if (target is null)
         {
@@ -243,6 +247,7 @@ internal sealed class AppHost
 
     private void ShowPopupFromTray(HWND hwnd)
     {
+        if (_exiting) return;
         var target = TargetCapture.CaptureFrom(hwnd);
         if (target is not null) _popup?.ShowFor(target, System.Diagnostics.Stopwatch.GetTimestamp());
     }
@@ -307,38 +312,57 @@ internal sealed class AppHost
     /// <summary>Tray Exit: asks the current page whether leaving is fine (unsaved changes), then shuts down.</summary>
     private async Task ExitAsync()
     {
+        if (!BeginShutdown()) return;
         try
         {
-            if (_exiting)
-            {
-                return;
-            }
-
             if (_mainWindow is { } window && !await window.CanExitAsync())
             {
+                CancelShutdown();
                 return;
             }
 
-            await ShutDownAsync();
+            await FinishShutdownAsync();
         }
         catch (Exception ex)
         {
+            CancelShutdown();
             AppLog.Error("exit_failed", ex);
         }
     }
 
+    private bool BeginShutdown()
+    {
+        if (_exiting || (_insertionCoordinator is { } coordinator && !coordinator.TryBeginShutdown())) return false;
+        _exiting = true;
+        try { _popup?.Hide(); }
+        catch { CancelShutdown(); throw; }
+        return true;
+    }
+
+    private void CancelShutdown()
+    {
+        _insertionCoordinator?.ResumeAdmission();
+        _exiting = false;
+    }
+
     private async Task ShutDownAsync()
     {
-        if (_exiting) return;
-        _exiting = true;
+        if (!BeginShutdown()) return;
+        await FinishShutdownAsync();
+    }
+
+    private async Task FinishShutdownAsync()
+    {
         try
         {
+            if (_insertionCoordinator is { } coordinator)
+                await coordinator.WaitForIdleAsync();
             if (_pasteDispatcher is { } dispatcher)
             {
                 var status = await dispatcher.RestorePendingAsync();
                 if (status == RestoreStatus.Busy)
                 {
-                    _exiting = false;
+                    CancelShutdown();
                     Notices?.Notify("Clipboard in use", "Smart Snippets could not restore your clipboard. Close the app using it and try Exit again.");
                     return;
                 }
@@ -351,7 +375,7 @@ internal sealed class AppHost
         }
         catch (Exception ex)
         {
-            _exiting = false;
+            CancelShutdown();
             AppLog.Error("exit_failed", ex);
         }
     }
