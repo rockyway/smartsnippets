@@ -1,5 +1,6 @@
 using System.Drawing;
 using SmartSnippets.Core.Logging;
+using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Text;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -7,14 +8,6 @@ using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace SmartSnippets.App.Services;
-
-/// <summary>Tray status; plan 008 swaps the glyph per state.</summary>
-internal enum TrayState
-{
-    Ready,
-    PopupOpen,
-    HotkeyUnavailable,
-}
 
 internal sealed unsafe class TrayIcon : IDisposable
 {
