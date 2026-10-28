@@ -22,6 +22,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly IHotkeyManager _hotkey;
     private readonly IElevation _elevation;
     private readonly Action? _requestExit;
+    private readonly IDialogService? _dialogs;
 
     private AppSettings _settings;
     private bool _suppressStartupToggle;
@@ -79,7 +80,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IStartupRegistration startup,
         IHotkeyManager hotkey,
         IElevation elevation,
-        Action? requestExit = null)
+        Action? requestExit = null,
+        IDialogService? dialogs = null)
     {
         _settings = initial;
         _settingsStore = settingsStore;
@@ -89,6 +91,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _hotkey = hotkey;
         _elevation = elevation;
         _requestExit = requestExit;
+        _dialogs = dialogs;
 
         _selectedTheme = initial.Theme;
         _selectedTextSizePreset = initial.TextSizePreset;
@@ -198,6 +201,13 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         StartAtLogin = !value;
         _suppressStartupToggle = false;
         SetStatus(result.Message, StatusSeverity.Error);
+    }
+
+    [RelayCommand]
+    private async Task PreviewGlobalDialogAsync()
+    {
+        if (_dialogs is not null)
+            await _dialogs.ConfirmAsync(UiText.DialogPreviewTitle, UiText.DialogPreviewBody, UiText.DialogPreviewConfirm);
     }
 
     [RelayCommand]
