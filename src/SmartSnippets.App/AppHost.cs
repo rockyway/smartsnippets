@@ -205,7 +205,7 @@ internal sealed class AppHost
             showRestartAdmin: !elevation.IsElevated,
             hotkeyDisplay: () => hotkeyManager.Status.IsRegistered ? hotkeyManager.Status.Gesture.ToDisplayString() : null);
         _tray = tray;
-        hotkeyManager.StatusChanged += (_, _) => _ui!.Post(UpdateTrayState);
+        hotkeyManager.StatusChanged += OnHotkeyStatusChanged;
         tray.Add();
         Notices = new Notifier(tray);
         UpdateTrayState();
@@ -216,7 +216,7 @@ internal sealed class AppHost
             _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
-        popup.VisibleChanged += (_, visible) => { _popupVisible = visible; UpdateTrayState(); };
+        popup.VisibleChanged += OnPopupVisibleChanged;
         popup.Prewarm();
         theme.Register(popup);
 
@@ -252,6 +252,14 @@ internal sealed class AppHost
         if (_exiting) return;
         var target = TargetCapture.CaptureFrom(hwnd);
         if (target is not null) _popup?.ShowFor(target, System.Diagnostics.Stopwatch.GetTimestamp());
+    }
+
+    private void OnHotkeyStatusChanged(object? sender, EventArgs e) => _ui?.Post(UpdateTrayState);
+
+    private void OnPopupVisibleChanged(object? sender, bool visible)
+    {
+        _popupVisible = visible;
+        UpdateTrayState();
     }
 
     private void UpdateTrayState()
@@ -370,6 +378,8 @@ internal sealed class AppHost
     {
         try
         {
+            if (_hotkeyManager is not null) _hotkeyManager.StatusChanged -= OnHotkeyStatusChanged;
+            if (_popup is not null) _popup.VisibleChanged -= OnPopupVisibleChanged;
             _hotkeyManager?.UnregisterAll();
             AppLog.Info("exit_unregistered");
             _tray?.Dispose();
