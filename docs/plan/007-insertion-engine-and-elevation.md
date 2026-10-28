@@ -1,7 +1,7 @@
 # 007 — Insertion engine and elevation handling
 
 **Date:** 2026-10-28 (revised 2026-10-28 after review [006-008-implementation-readiness](../review/006-008-implementation-readiness.md))
-**Status:** Draft — awaiting approval
+**Status:** Approved 2026-10-28 (G2)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/Services/`, `src/SmartSnippets.Presentation/Text/UiText.cs`,
 `src/SmartSnippets.Core/Domain/`, `src/SmartSnippets.App/Services/` (insertion, elevation probe),
@@ -1151,4 +1151,4 @@ Review: [docs/review/006-008-implementation-readiness.md](../review/006-008-impl
 |---|---|---|
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 1–3, 7 addressed; user decisions recorded |
-| | Plan approved (G2) | |
+| 2026-10-28 | Plan approved (G2) | User: "approve" |

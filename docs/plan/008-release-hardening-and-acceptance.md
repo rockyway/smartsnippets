@@ -1,7 +1,7 @@
 # 008 — Release hardening and acceptance
 
 **Date:** 2026-10-28
-**Status:** Draft — awaiting approval
+**Status:** Approved 2026-10-28 (G2)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `.github/workflows/`, `scripts/`, `assets/icons/` (new), `src/SmartSnippets.App/` (csproj, `Assets/`, `Services/TrayIcon.cs`, `AppHost.cs`, `MainWindow.xaml.cs`, `Diagnostics/` removed), `src/SmartSnippets.Core/Data/ProbeRepository.cs` (removed), `src/SmartSnippets.Presentation/` (tray-state policy), `tests/`, `docs/research/`, `docs/guides/` (new)
 **Depends on:** 003, 004, 005, 006, 007 complete, and 009 complete

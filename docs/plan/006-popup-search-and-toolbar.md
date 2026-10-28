@@ -1,7 +1,7 @@
 # 006 — Popup: search, layouts, sorts, toolbar and add snippet
 
 **Date:** 2026-10-28
-**Status:** Draft — awaiting approval
+**Status:** Approved 2026-10-28 (G2)
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/` (popup view-model, contracts, `UiText`), `src/SmartSnippets.App/Popup/`, `src/SmartSnippets.App/Controls/SnippetEditor.xaml(.cs)`, `src/SmartSnippets.App/Services/` (target capture, tray, interim insertion adapter), `src/SmartSnippets.App/AppHost.cs`, `tests/SmartSnippets.Presentation.Tests/`, one small Core settings change
 **Depends on:** 003, 004, 005, 009 (all complete, CI green on `main`), plus the **007 insertion contract** (§4.3.1), which the coordinator writes in T0 before any track starts
