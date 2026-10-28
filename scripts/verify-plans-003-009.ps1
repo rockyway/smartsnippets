@@ -473,8 +473,8 @@ if (Want 'C') {
         $menuItems = @()
         if ($menuWnd) { $menuItems = @([Win32Verify]::MenuItems([IntPtr]$menuWnd) | Where-Object { $_ }) }
         $joined = $menuItems -join ' | '
-        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Diagnostics / Exit' (($menuItems.Count -eq 6) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -match 'Diagnostics') -and ($joined -match 'Exit')) $joined
-        Check 'C11.order' 'order: Open, Show popup, Settings first (design) then Restart, Diagnostics, Exit last' (($menuItems.Count -gt 0) -and ($menuItems[0] -match 'Open') -and ($menuItems[1] -match 'Show popup') -and ($menuItems[2] -match 'Settings') -and ($menuItems[-1] -match 'Exit')) ''
+        Check 'C11.menu' 'tray menu has Open / Show popup / Settings / Restart as administrator / Exit, no Diagnostics' (($menuItems.Count -eq 5) -and ($joined -match 'Open Smart Snippets') -and ($joined -match 'Show popup') -and ($joined -match 'Settings') -and ($joined -match 'Restart as administrator') -and ($joined -notmatch 'Diagnostics') -and ($joined -match 'Exit')) $joined
+        Check 'C11.order' 'order: Open, Show popup, Settings first (design) then Restart, Exit last' (($menuItems.Count -gt 0) -and ($menuItems[0] -match 'Open') -and ($menuItems[1] -match 'Show popup') -and ($menuItems[2] -match 'Settings') -and ($menuItems[-1] -match 'Exit')) ''
         Check 'C11.accel' 'Show popup row shows the live hotkey text' ($joined -match 'Show popup\tCtrl\+Shift\+Space') ''
 
         # pick Exit (last item): Up wraps from nothing to the last item, Enter activates it

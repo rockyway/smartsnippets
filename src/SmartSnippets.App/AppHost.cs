@@ -2,7 +2,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.AppLifecycle;
-using SmartSnippets.App.Diagnostics;
 using SmartSnippets.App.Pages;
 using SmartSnippets.App.Popup;
 using SmartSnippets.App.Services;
@@ -45,7 +44,6 @@ internal sealed class AppHost
     private TrayIcon? _tray;
     private SnippetsPageViewModel? _snippetsViewModel;
     private FoldersPageViewModel? _foldersViewModel;
-    private DiagnosticsWindow? _diagnostics;
     private bool _exiting;
 
     /// <summary>Created once at start-up; plan 005 view-models take it through their constructors.</summary>
@@ -200,7 +198,6 @@ internal sealed class AppHost
             onShowPopup: hwnd => _ui!.Post(() => ShowPopupFromTray(hwnd)),
             onSettings: () => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Settings)),
             onRestartAdmin: () => _ui!.Post(() => RestartAsAdministrator(elevation)),
-            onDiagnostics: () => _ui!.Post(ShowDiagnostics),
             onExit: () => _ui!.Post(() => _ = ExitAsync()),
             showRestartAdmin: !elevation.IsElevated,
             hotkeyDisplay: () => hotkeyManager.Status.IsRegistered ? hotkeyManager.Status.Gesture.ToDisplayString() : null);
@@ -291,25 +288,6 @@ internal sealed class AppHost
         Notices.Notify("Restart as administrator", result.Message);
     }
 
-    private void ShowDiagnostics()
-    {
-        if (_diagnostics is null)
-        {
-            var window = new DiagnosticsWindow();
-            window.Closed += (_, _) => _diagnostics = null;
-            window.ProbePanel.Children.Add(new TextBlock
-            {
-                Text = _hotkeyManager?.Status.Message ?? string.Empty,
-                TextWrapping = TextWrapping.Wrap,
-            });
-            _theme?.Register(window);
-            _diagnostics = window;
-        }
-
-        _diagnostics.AppWindow.Show();
-        _diagnostics.Activate();
-    }
-
     /// <summary>Tray Exit: asks the current page whether leaving is fine (unsaved changes), then shuts down.</summary>
     private async Task ExitAsync()
     {
@@ -390,7 +368,6 @@ internal sealed class AppHost
             _tray?.Dispose();
             _popupViewModel?.Dispose();
             _popup?.Close();
-            _diagnostics?.Close();
             _mainWindow?.CloseForExit();
             _snippetsViewModel?.Dispose();
             _foldersViewModel?.Dispose();

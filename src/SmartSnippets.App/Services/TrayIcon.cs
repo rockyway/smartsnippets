@@ -16,7 +16,6 @@ internal sealed unsafe class TrayIcon : IDisposable
     private const nuint CommandOpen = 1;
     private const nuint CommandSettings = 2;
     private const nuint CommandRestartAdmin = 3;
-    private const nuint CommandDiagnostics = 4;
     private const nuint CommandExit = 5;
     private const nuint CommandShowPopup = 6;
     private const string Tooltip = "Smart Snippets — running in background";
@@ -27,7 +26,6 @@ internal sealed unsafe class TrayIcon : IDisposable
     private readonly Action<HWND> _onShowPopup;
     private readonly Action _onSettings;
     private readonly Action _onRestartAdmin;
-    private readonly Action _onDiagnostics;
     private readonly Action _onExit;
     private readonly bool _showRestartAdmin;
     private readonly Func<string?> _hotkeyDisplay;
@@ -41,7 +39,6 @@ internal sealed unsafe class TrayIcon : IDisposable
         Action<HWND> onShowPopup,
         Action onSettings,
         Action onRestartAdmin,
-        Action onDiagnostics,
         Action onExit,
         bool showRestartAdmin,
         Func<string?> hotkeyDisplay)
@@ -51,7 +48,6 @@ internal sealed unsafe class TrayIcon : IDisposable
         _onShowPopup = onShowPopup;
         _onSettings = onSettings;
         _onRestartAdmin = onRestartAdmin;
-        _onDiagnostics = onDiagnostics;
         _onExit = onExit;
         _showRestartAdmin = showRestartAdmin;
         _hotkeyDisplay = hotkeyDisplay;
@@ -210,7 +206,6 @@ internal sealed unsafe class TrayIcon : IDisposable
             fixed (char* showPopup = showPopupText)
             fixed (char* settings = UiText.TraySettings)
             fixed (char* restart = "Restart as administrator")
-            fixed (char* diagnostics = "Diagnostics")
             fixed (char* exit = UiText.TrayExit)
             {
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandOpen, open);
@@ -220,10 +215,8 @@ internal sealed unsafe class TrayIcon : IDisposable
                 if (_showRestartAdmin)
                 {
                     PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandRestartAdmin, restart);
+                    PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
                 }
-
-                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandDiagnostics, diagnostics);
-                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CommandExit, exit);
             }
 
@@ -249,9 +242,6 @@ internal sealed unsafe class TrayIcon : IDisposable
                     break;
                 case CommandRestartAdmin:
                     _onRestartAdmin();
-                    break;
-                case CommandDiagnostics:
-                    _onDiagnostics();
                     break;
                 case CommandExit:
                     _onExit();
