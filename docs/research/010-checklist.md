@@ -119,24 +119,24 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T4 — Rephlo and InkSpoke mappers (AC1, AC3)
 
-- [ ] T4 implementation and task verification
-- [ ] `Rephlo_Fixture_PerEntryOutcomes`
-- [ ] `Rephlo_FixedContentAppend_NeverAppended`
-- [ ] `Rephlo_Archived_SkippedBeforeTextCheck`
-- [ ] `Rephlo_StatsNull_Fresh`
-- [ ] `InkSpoke_Fixture_PerEntryOutcomes`
-- [ ] `InkSpoke_SecretInParams_Skipped`
-- [ ] `InkSpoke_SecretOnMapping_Skipped`
-- [ ] `InkSpoke_LowercaseTextKey_Imported`
-- [ ] `InkSpoke_UpperTextWinsOverLower`
-- [ ] `InkSpoke_EmptyParams_Unparsable`
-- [ ] `InkSpoke_ParamsArray_Unparsable`
-- [ ] `InkSpoke_ParameterizedCheckedBeforeParams`
-- [ ] `InkSpoke_MissingGroupId_Unfiled`
-- [ ] `InkSpoke_UnknownGroupId_Unfiled`
-- [ ] `InkSpoke_GroupsAbsent_AllUnfiled`
-- [ ] `InkSpoke_FavoritesVocabularyIgnored`
-- [ ] `InkSpoke_ActionTypeMissing_Rejected`
+- [x] T4 implementation and task verification (20 cases pass; 18 red against stubs)
+- [x] `Rephlo_Fixture_PerEntryOutcomes`
+- [x] `Rephlo_FixedContentAppend_NeverAppended`
+- [x] `Rephlo_Archived_SkippedBeforeTextCheck`
+- [x] `Rephlo_StatsNull_Fresh`
+- [x] `InkSpoke_Fixture_PerEntryOutcomes`
+- [x] `InkSpoke_SecretInParams_Skipped`
+- [x] `InkSpoke_SecretOnMapping_Skipped`
+- [x] `InkSpoke_LowercaseTextKey_Imported`
+- [x] `InkSpoke_UpperTextWinsOverLower`
+- [x] `InkSpoke_EmptyParams_Unparsable`
+- [x] `InkSpoke_ParamsArray_Unparsable`
+- [x] `InkSpoke_ParameterizedCheckedBeforeParams`
+- [x] `InkSpoke_MissingGroupId_Unfiled`
+- [x] `InkSpoke_UnknownGroupId_Unfiled`
+- [x] `InkSpoke_GroupsAbsent_AllUnfiled`
+- [x] `InkSpoke_FavoritesVocabularyIgnored`
+- [x] `InkSpoke_ActionTypeMissing_Rejected`
 
 ## T5 — Import planner (AC3, AC5)
 

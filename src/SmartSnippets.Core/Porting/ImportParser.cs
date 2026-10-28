@@ -35,7 +35,8 @@ public static class ImportParser
             {
                 ImportFormat.Native => NativeFormat.Read(root, now),
                 ImportFormat.TermFlow => TermFlowFormat.Read(root, now),
-                _ => ImportParseResult.Ok(new(format, count, new([], [], DedupeMode.TextOnly), [], []))
+                ImportFormat.Rephlo => RephloFormat.Read(root),
+                _ => InkSpokeFormat.Read(root)
             };
         }
         catch (JsonException) { return ImportParseResult.Fail(new(ImportRefusal.InvalidJson)); }

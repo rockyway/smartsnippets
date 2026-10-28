@@ -1,0 +1,8 @@
+{"version":"1.3","exportedAt":"2023-11-14T22:13:20Z","commands":[
+{"name":"Refactor","instruction":"Refactor the code.\r\nKeep tests.\nDone.","groupName":"Developing","fixedContentAppend":"APPEND-SENTINEL","executionMode":"Template","isDefault":false,"hideFromContextMenu":false,"linkedSpaceNames":[],"isArchived":false},
+{"name":"Review","instruction":"Review this.","isArchived":false},
+{"name":"Old","isArchived":true},
+{"name":"Broken","isArchived":false},
+{"name":"","instruction":"Explain.","groupName":"developing"},
+{"name":"Refactor copy","instruction":"Refactor the code.\nKeep tests.\r\nDone."}
+]}
