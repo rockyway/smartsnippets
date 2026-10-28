@@ -237,15 +237,15 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T8 — Porting messages (AC2, AC8, AC9)
 
-- [ ] T8 implementation and task verification
-- [ ] `EveryRefusal_HasMessage_EndingNothingWasImported`
-- [ ] `RefusalMessages_PairwiseDistinct`
-- [ ] `UnsupportedVersion_NamesFormatFoundAndSupported`
-- [ ] `MissingEntries_NamesListPerFormat`
-- [ ] `Summary_FourLines_Pluralization`
-- [ ] `Summary_FormatNames`
-- [ ] `ExportComplete_Pluralization`
-- [ ] `ButtonNames_AreDistinctFromNewSnippet`
+- [x] T8 implementation and task verification (18 cases pass; 17 red against message stubs)
+- [x] `EveryRefusal_HasMessage_EndingNothingWasImported`
+- [x] `RefusalMessages_PairwiseDistinct`
+- [x] `UnsupportedVersion_NamesFormatFoundAndSupported`
+- [x] `MissingEntries_NamesListPerFormat`
+- [x] `Summary_FourLines_Pluralization`
+- [x] `Summary_FormatNames`
+- [x] `ExportComplete_Pluralization`
+- [x] `ButtonNames_AreDistinctFromNewSnippet`
 
 ## T9 — View-model, dialog contract, page wiring (AC2, AC3, AC8, AC9 enabler)
 
