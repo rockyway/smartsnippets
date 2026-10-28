@@ -64,7 +64,9 @@ internal sealed class AppHost
 
     public void Start(bool startInBackground)
     {
-        AppLog.Info("app_started", $"version={typeof(AppHost).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false).OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unknown"}");
+        var executable = Environment.ProcessPath;
+        var version = executable is null ? null : System.Diagnostics.FileVersionInfo.GetVersionInfo(executable).ProductVersion;
+        AppLog.Info("app_started", $"version={version ?? "unknown"}");
         _queue = DispatcherQueue.GetForCurrentThread();
         _ui = new UiDispatcher(_queue);
 
