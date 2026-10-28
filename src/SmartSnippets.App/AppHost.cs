@@ -34,6 +34,7 @@ internal sealed class AppHost
     private ISettingsStore? _settingsStore;
     private ThemeService? _theme;
     private MessageWindow? _messageWindow;
+    private ClipboardPasteDispatcher? _pasteDispatcher;
     private HotkeyService? _hotkeyService;
     private HotkeyManager? _hotkeyManager;
     private PopupWindow? _popup;
@@ -57,6 +58,8 @@ internal sealed class AppHost
     internal INotifier Notices { get; private set; } = null!;
 
     internal IUiDispatcher Dispatcher => _ui!;
+
+    internal IInsertionService Insertion { get; private set; } = null!;
 
     public void Start(bool startInBackground)
     {
@@ -133,6 +136,10 @@ internal sealed class AppHost
         // Step 6: Win32 services and the saved hotkey.
         var messageWindow = new MessageWindow();
         _messageWindow = messageWindow;
+        var pasteDispatcher = new ClipboardPasteDispatcher(messageWindow.Handle);
+        _pasteDispatcher = pasteDispatcher;
+        Insertion = new InsertionService(Store, new Win32TargetProbe(), pasteDispatcher);
+        AppLog.Info("insertion_ready");
         var hotkeyService = new HotkeyService(messageWindow);
         _hotkeyService = hotkeyService;
         hotkeyService.HotkeyPressed += OnHotkeyPressed;
@@ -321,6 +328,7 @@ internal sealed class AppHost
     {
         try
         {
+            _pasteDispatcher?.RestorePendingNow();
             _hotkeyManager?.UnregisterAll();
             AppLog.Info("exit_unregistered");
             _tray?.Dispose();
