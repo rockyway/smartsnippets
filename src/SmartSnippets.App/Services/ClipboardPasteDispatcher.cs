@@ -69,7 +69,8 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         inputs.AddRange(held.Select(key => KeyInput(key, true)));
         if (inputs.Count == 0) return true;
         var batch = inputs.ToArray();
-        if (Send(batch) == batch.Length) return true;
+        try { if (Send(batch) == batch.Length) return true; }
+        catch (Exception ex) { AppLog.Info("modifier_send_exception", $"kind={ex.GetType().Name}"); }
         // Only key-ups are safe to retry after a partially injected batch.
         var cleanup = new List<INPUT> { KeyInput((VIRTUAL_KEY)0xE8, true) };
         cleanup.AddRange(held.Select(key => KeyInput(key, true)));
@@ -124,7 +125,10 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
     private static bool SendKeyUps(INPUT[] inputs)
     {
         for (var attempt = 0; attempt < 3; attempt++)
-            if (Send(inputs) == inputs.Length) return true;
+        {
+            try { if (Send(inputs) == inputs.Length) return true; }
+            catch (Exception ex) { AppLog.Info("key_up_send_exception", $"kind={ex.GetType().Name}"); }
+        }
         return false;
     }
 

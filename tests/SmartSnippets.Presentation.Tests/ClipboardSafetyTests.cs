@@ -70,6 +70,18 @@ public sealed class ClipboardSafetyTests
     }
 
     [Fact]
+    public async Task ShutdownRestore_CompletionByNormalPathStopsRetries()
+    {
+        var pending = true;
+        var calls = 0;
+        var result = await ClipboardSafety.RetryRestoreAsync(
+            () => { calls++; return pending ? RestoreStatus.Busy : RestoreStatus.Restored; },
+            10, TimeSpan.Zero, _ => { pending = false; return Task.CompletedTask; });
+        Assert.Equal((RestoreStatus.Restored, 2), result);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public async Task ShutdownRestore_BusyIsBounded()
     {
         var calls = 0;
