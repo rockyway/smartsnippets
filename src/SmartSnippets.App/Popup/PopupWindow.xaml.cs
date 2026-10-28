@@ -4,6 +4,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using SmartSnippets.App.Services;
@@ -113,8 +114,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         if (ViewModel.IsEditorOpen) return;
         if (e.Key == VirtualKey.Escape) { e.Handled = true; ViewModel.Close(); }
-        else if (e.Key == VirtualKey.Up || e.Key == VirtualKey.Down) { e.Handled = true; ViewModel.MoveSelection(e.Key == VirtualKey.Up ? -1 : 1); }
-        else if (e.Key == VirtualKey.Enter && !ViewModel.IsConfirmingClipboardLoss) { e.Handled = true; _ = ViewModel.InsertSelectedAsync(); }
+        else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && (e.Key == VirtualKey.Up || e.Key == VirtualKey.Down)) { e.Handled = true; ViewModel.MoveSelection(e.Key == VirtualKey.Up ? -1 : 1); }
+        else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && e.Key == VirtualKey.Enter && !ViewModel.IsConfirmingClipboardLoss) { e.Handled = true; _ = ViewModel.InsertSelectedAsync(); }
     }
     private void OnItemClick(object sender, ItemClickEventArgs e) { if (e.ClickedItem is PopupItemViewModel item) _ = ViewModel.ActivateAsync(item); }
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
@@ -143,11 +144,17 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         if (e.PropertyName == nameof(PopupViewModel.Items) && _searchStarted != 0) _awaitingLayout = true;
         if (e.PropertyName == nameof(PopupViewModel.SelectedIndex) && ViewModel.SelectedIndex >= 0 && ViewModel.SelectedIndex < ViewModel.Items.Count)
-            PopupList.ScrollIntoView(ViewModel.Items[ViewModel.SelectedIndex]);
+        {
+            var item = ViewModel.Items[ViewModel.SelectedIndex];
+            PopupList.ScrollIntoView(item);
+            var peer = FrameworkElementAutomationPeer.FromElement(SearchBox) ?? FrameworkElementAutomationPeer.CreatePeerForElement(SearchBox);
+            peer?.RaiseNotificationEvent(AutomationNotificationKind.Other, AutomationNotificationProcessing.MostRecent, item.ToString(), "PopupSelection");
+        }
     }
     private void OnSearchChanged(object sender, TextChangedEventArgs e)
     {
         if (ViewModel is null || !_visible) return;
+        CompositionTarget.Rendering -= OnRendering;
         _searchStarted = Stopwatch.GetTimestamp(); _awaitingLayout = false; _awaitingFrame = false;
         DispatcherQueue.TryEnqueue(() => { if (!_awaitingLayout) AwaitFrame(); });
     }

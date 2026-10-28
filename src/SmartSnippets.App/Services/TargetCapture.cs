@@ -4,6 +4,7 @@ using SmartSnippets.Presentation.Text;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.System.Threading;
 
 namespace SmartSnippets.App.Services;
 
@@ -33,21 +34,27 @@ internal static class TargetCapture
         var title = new string(chars, 0, Math.Max(0, length));
         var exe = string.Empty;
         var friendly = string.Empty;
-        try
+        var process = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, info.ProcessId);
+        if (!process.IsNull)
         {
-            using var process = Process.GetProcessById((int)info.ProcessId);
-            exe = process.ProcessName;
-            var path = process.MainModule?.FileName;
-            if (!string.IsNullOrEmpty(path))
+            try
             {
-                if (!Names.TryGetValue(path, out friendly!))
+                var buffer = stackalloc char[32768];
+                uint size = 32768;
+                if (PInvoke.QueryFullProcessImageName(process, 0, buffer, &size))
                 {
-                    friendly = FileVersionInfo.GetVersionInfo(path).FileDescription ?? string.Empty;
-                    Names[path] = friendly;
+                    var path = new string(buffer, 0, (int)size);
+                    exe = Path.GetFileNameWithoutExtension(path);
+                    if (!Names.TryGetValue(path, out friendly!))
+                    {
+                        try { friendly = FileVersionInfo.GetVersionInfo(path).FileDescription ?? string.Empty; }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { friendly = string.Empty; }
+                        Names[path] = friendly;
+                    }
                 }
             }
+            finally { PInvoke.CloseHandle(process); }
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ArgumentException) { }
         return new InsertionTarget((nint)info.Hwnd.Value, info.ProcessId, (nint)info.Monitor.Value, TargetDisplayName.Format(friendly, exe, title));
     }
 }

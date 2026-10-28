@@ -113,6 +113,58 @@ public sealed class PopupViewModelTests
         Assert.DoesNotContain("ShowAgain", _host.Calls);
     }
 
+    [Theory]
+    [InlineData(InsertionOutcome.TargetClosed, PopupFooterState.Error, true)]
+    [InlineData(InsertionOutcome.TargetElevated, PopupFooterState.Error, true)]
+    [InlineData(InsertionOutcome.FocusFailed, PopupFooterState.Error, true)]
+    [InlineData(InsertionOutcome.ClipboardBusy, PopupFooterState.Error, true)]
+    [InlineData(InsertionOutcome.PasteFailed, PopupFooterState.Error, true)]
+    [InlineData(InsertionOutcome.SnippetMissing, PopupFooterState.Error, false)]
+    [InlineData(InsertionOutcome.MaybePasted, PopupFooterState.MaybePasted, true)]
+    [InlineData(InsertionOutcome.CopiedForManualPaste, PopupFooterState.ManualPaste, false)]
+    [InlineData(InsertionOutcome.ClipboardNotPreserved, PopupFooterState.ConfirmClipboardLoss, false)]
+    public async Task Outcomes_ReopenWithAppropriateState(InsertionOutcome outcome, PopupFooterState state, bool canCopy)
+    {
+        _store.SeedSnippet("body"); _insertion.Results.Enqueue(new(outcome, "message"));
+        using var vm = Create(); vm.Open(Target); await vm.InsertSelectedAsync();
+        Assert.Equal(state, vm.FooterState); Assert.Equal(canCopy, vm.CanCopyFailedText);
+        Assert.Contains("ShowAgain", _host.Calls);
+        vm.Open(Target); Assert.Equal(PopupFooterState.None, vm.FooterState);
+    }
+
+    [Fact]
+    public async Task InFlight_InsertionBlocksOpenAndDeactivation()
+    {
+        _store.SeedSnippet("body"); _insertion.Pending = new();
+        using var vm = Create(); vm.Open(Target);
+        var task = vm.InsertSelectedAsync();
+        Assert.True(vm.IsInserting); Assert.Equal(PopupOpenMode.Ignored, vm.Open(new(4, 5, 6, "other")));
+        vm.OnDeactivated(); await vm.InsertSelectedAsync(); Assert.Single(_insertion.Calls);
+        _insertion.Pending.SetResult(new(InsertionOutcome.Inserted, "")); await task;
+        Assert.False(vm.IsInserting); Assert.Equal(Target, vm.Target);
+    }
+
+    [Fact]
+    public async Task PromptEsc_CancelsWithoutHiding()
+    {
+        _store.SeedSnippet("body"); _insertion.Results.Enqueue(new(InsertionOutcome.ClipboardNotPreserved, ""));
+        using var vm = Create(); vm.Open(Target); await vm.InsertSelectedAsync();
+        var hides = _host.Calls.Count(c => c == "Hide"); vm.Close();
+        Assert.Equal(PopupFooterState.None, vm.FooterState); Assert.Equal(hides, _host.Calls.Count(c => c == "Hide"));
+        vm.Close(); Assert.Equal(hides + 1, _host.Calls.Count(c => c == "Hide"));
+    }
+
+    [Fact]
+    public async Task Elevated_CopyAndRestart()
+    {
+        _store.SeedSnippet("body"); _insertion.Results.Enqueue(new(InsertionOutcome.TargetElevated, "elevated"));
+        using var vm = Create(); vm.Open(Target); await vm.InsertSelectedAsync();
+        Assert.True(vm.CanRestartAsAdmin); vm.CopyFailedTextCommand.Execute(null);
+        Assert.Equal("body", Assert.Single(_clipboard.Texts));
+        _elevation.NextResult = new(ElevationOutcome.Cancelled, "cancelled");
+        vm.RestartAsAdminCommand.Execute(null); Assert.Equal("cancelled", vm.FooterMessage);
+    }
+
     [Fact]
     public async Task EditorDeactivationAndDirtyCancel()
     {
