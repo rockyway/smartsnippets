@@ -10,6 +10,7 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
         public int SkippedByDesignCount => 0;
         public long ByteCount => 3;
     }
+    public List<InsertionTarget> FocusTargets { get; } = [];
     public FocusPath? Focus { get; set; } = FocusPath.Direct;
     public Func<Task<FocusPath?>>? FocusOverride { get; set; }
     public DispatchState Dispatch { get; set; } = DispatchState.Dispatched;
@@ -25,7 +26,7 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
     public Action? OnSend { get; set; }
     public bool ThrowSend { get; set; }
     public bool FailAfterEmpty { get; set; }
-    public Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct) { calls.Add("focus"); return FocusOverride?.Invoke() ?? Task.FromResult(Focus); }
+    public Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct) { calls.Add("focus"); FocusTargets.Add(target); return FocusOverride?.Invoke() ?? Task.FromResult(Focus); }
     public bool ModifiersReleased { get; set; } = true;
     public bool PasteKeysReleased { get; set; } = true;
     public bool ReleaseHeldModifiers() { calls.Add("modifiers"); return ModifiersReleased; }

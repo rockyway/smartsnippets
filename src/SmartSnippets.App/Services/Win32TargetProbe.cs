@@ -6,18 +6,18 @@ namespace SmartSnippets.App.Services;
 
 internal sealed class Win32TargetProbe : ITargetProbe
 {
-    public TargetCheck Check(InsertionTarget target)
-    {
-        var hwnd = new HWND(target.WindowHandle);
-        if (!PInvoke.IsWindow(hwnd) || PInvoke.GetWindowThreadProcessId(hwnd, out var pid) == 0 || pid != target.ProcessId)
-            return TargetCheck.Closed;
-        if (pid == PInvoke.GetCurrentProcessId()) return TargetCheck.OwnProcess;
-        return ElevationProbe.IsBlocked(pid) ? TargetCheck.Elevated : TargetCheck.Ok;
-    }
+    private readonly TargetIdentityProbe _probe = new(
+        handle => PInvoke.IsWindow(new HWND(handle)),
+        GetProcessId,
+        GetForeground,
+        PInvoke.GetCurrentProcessId,
+        ElevationProbe.IsBlocked);
 
-    public bool IsTargetForeground(InsertionTarget target)
-    {
-        var hwnd = PInvoke.GetForegroundWindow();
-        return hwnd == new HWND(target.WindowHandle) && PInvoke.GetWindowThreadProcessId(hwnd, out var pid) != 0 && pid == target.ProcessId;
-    }
+    public TargetCheck Check(InsertionTarget target) => _probe.Check(target);
+    public bool IsTargetForeground(InsertionTarget target) => _probe.IsTargetForeground(target);
+
+    private static uint GetProcessId(nint handle) =>
+        PInvoke.GetWindowThreadProcessId(new HWND(handle), out var pid) == 0 ? 0 : pid;
+
+    private static unsafe nint GetForeground() => (nint)PInvoke.GetForegroundWindow().Value;
 }

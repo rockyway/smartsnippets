@@ -35,6 +35,18 @@ public sealed class InsertionServiceTests
         Assert.Equal(1, Usage);
     }
 
+    [Theory]
+    [InlineData(101, 400, 7, "first")]
+    [InlineData(999, 800, 17, "second")]
+    public async Task CapturedTarget_IsPassedUnchangedToEveryHop(int hwnd, uint pid, int monitor, string name)
+    {
+        var target = new InsertionTarget(hwnd, pid, monitor, name);
+        Assert.Equal(InsertionOutcome.Inserted, (await _service.InsertAsync(target, _id)).Outcome);
+        Assert.Equal(target, Assert.Single(_probe.CheckedTargets));
+        Assert.Equal(target, Assert.Single(_dispatcher.FocusTargets));
+        Assert.Equal(target, Assert.Single(_probe.ForegroundTargets));
+    }
+
     [Fact]
     public async Task SnippetMissing_NoWin32Calls() { Assert.Equal(InsertionOutcome.SnippetMissing, (await _service.InsertAsync(Target, -1)).Outcome); Assert.Empty(_calls); Assert.Equal(0, Usage); }
 
