@@ -1,7 +1,7 @@
 # 008 — Release hardening and acceptance
 
 **Date:** 2026-10-28
-**Status:** Approved 2026-10-28 (G2)
+**Status:** Code implemented 2026-10-28; verify-script sections E, F, P0-P2, G10 and exhaustive T0/T15 passes still open (script reports them FAIL); user-run acceptance (T11, T12, R1-R14, T14, release tag) pending
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `.github/workflows/`, `scripts/`, `assets/icons/` (new), `src/SmartSnippets.App/` (csproj, `Assets/`, `Services/TrayIcon.cs`, `AppHost.cs`, `MainWindow.xaml.cs`, `Diagnostics/` removed), `src/SmartSnippets.Core/Data/ProbeRepository.cs` (removed), `src/SmartSnippets.Presentation/` (tray-state policy), `tests/`, `docs/research/`, `docs/guides/` (new)
 **Depends on:** 003, 004, 005, 006, 007 complete, and 009 complete
