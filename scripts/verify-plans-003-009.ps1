@@ -468,6 +468,17 @@ if (Want 'C') {
         Start-Sleep -Milliseconds 1200
         Check 'C9.oldkey' 'old Ctrl+Shift+Space no longer opens the popup' (-not (Log-Has 'popup_ready_ms' $from))
     }
+    Stop-App
+    $p = Start-App
+    $null = Wait-Main $p
+    if ($target) {
+        $null = Set-Foreground $target
+        $from = (Get-LogLines).Count
+        Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Alt, [byte]$VK.K)
+        Check 'C9.restart' 'changed shortcut still opens the popup after restart' (Wait-Log 'popup_ready_ms' $from 4000) (Tail $from)
+        Send-Chord @([byte]$VK.Esc)
+    } else { Check 'C9.restart' 'changed shortcut after restart' $false 'Notepad target unavailable' }
+    Nav $p 'SettingsItem'
     # A conflicting shortcut cannot be driven from outside: a combination owned by another RegisterHotKey
     # client never reaches the recorder (the OS swallows the key press), so the in-page conflict sentence is
     # only reachable with hook-based owners. Startup conflict (C13) and the view-model tests cover the logic.
