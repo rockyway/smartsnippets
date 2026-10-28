@@ -6,6 +6,17 @@ function Assert($Condition, $Message) { if (-not $Condition) { throw $Message };
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
 New-Item -ItemType Directory $dir | Out-Null
 try {
+    Assert (-not (Test-HarnessLogPattern @() 'paste_sent')) 'empty logs cannot satisfy a positive oracle'
+    Assert (Test-HarnessLogPattern @('INFO paste_sent state=Dispatched') 'paste_sent') 'singleton log stays a whole line'
+    Assert (-not (Test-HarnessLogPattern @('INFO paste_sent') 'paste_sent' 1)) 'log offset beyond singleton is empty'
+    Assert (Test-HarnessLogPattern @('old','INFO paste_sent') 'paste_sent' 1) 'multi-line log offsets preserved'
+    $privateLine='2026-10-28T00:00:00.000Z INFO insert_result outcome=Inserted PRIVATE-SNIPPET-TITLE'
+    $safeSummary=Get-SafeLogSummary @($privateLine,'PRIVATE-SNIPPET-TITLE')
+    Assert ($safeSummary -ceq 'line=1 event=insert_result; line=2 event=unrecognized') 'log summary emits only allowlisted event names and line numbers'
+    Assert ($safeSummary -notmatch 'PRIVATE|outcome=') 'raw log payloads cannot escape summaries'
+    Assert ((Get-SafeLogSummary @('2026-10-28T00:00:00.000Z INFO private_event PRIVATE')) -ceq 'line=1 event=unrecognized') 'unknown event names withheld too'
+    Assert ((Get-SafeLogSummary @() 0) -ceq '(no new log lines)') 'empty log summary explicit'
+    Assert ((Get-SafeLogSummary @('a','b','c') 0 1) -ceq 'line=3 event=unrecognized') 'log summary bounded to requested tail'
     $enterMessages=@(Get-PopupDuplicateMessages 'EnterTwice' 10 0 0 0)
     Assert ($enterMessages.Count -eq 4 -and @($enterMessages | Where-Object { $_.Window -ne 10 }).Count -eq 0 -and ($enterMessages.Message -join ',') -eq '256,257,256,257') 'double Enter queues only explicit popup keyboard messages'
     $clickMessages=@(Get-PopupDuplicateMessages 'EnterAndClick' 10 11 20 30)

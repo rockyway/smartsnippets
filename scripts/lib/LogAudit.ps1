@@ -1,4 +1,21 @@
 # Source-level emission-to-consumption audit; safe without an interactive desktop.
+function Test-HarnessLogPattern([string[]]$Lines, [string]$Pattern, [int]$From = 0) {
+    $tail=@($Lines | Select-Object -Skip ([Math]::Max(0,$From)))
+    return @($tail | Where-Object { $_ -match $Pattern }).Count -gt 0
+}
+function Get-SafeLogSummary([string[]]$Lines, [int]$From = 0, [ValidateRange(1,20)][int]$Limit = 4) {
+    $all=@($Lines); $start=[Math]::Max([Math]::Max(0,$From),$all.Count-$Limit)
+    $safe=@()
+    $allowed=@(Get-HarnessLogEvents)
+    for ($i=$start; $i -lt $all.Count; $i++) {
+        $event='unrecognized'
+        $m=[regex]::Match($all[$i], '\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z (?:INFO|ERROR) ([a-z][a-z0-9_]+)(?: |$)')
+        if ($m.Success -and $m.Groups[1].Value -cin $allowed) { $event=$m.Groups[1].Value }
+        $safe += 'line={0} event={1}' -f ($i+1),$event
+    }
+    if (-not $safe.Count) { return '(no new log lines)' }
+    return $safe -join '; '
+}
 function Get-HarnessLogEvents {
     @(
         'store_loaded','settings_loaded','hotkey_registered','hotkey_changed','hotkey_startup_failed',

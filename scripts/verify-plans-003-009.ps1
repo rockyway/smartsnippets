@@ -72,7 +72,7 @@ function Archive-Logs {
     # Save-Snippet/Create-Snippet separately register text before it can subsequently be deleted.
     if (Test-Path $dbPath) {
         $hasSnippets = & sqlite3 -batch $dbPath "select count(*) from sqlite_master where type='table' and name='snippets';" 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Cannot collect privacy fixture: $hasSnippets" }
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot collect privacy fixture (SQLite failed; output withheld)'  }
         if ($hasSnippets -eq '1') {
             foreach ($hex in (Sql 'select hex(text) from snippets union select hex(label) from snippets;')) {
                 $bytes = New-Object byte[] ($hex.Length / 2)
@@ -167,11 +167,9 @@ function Reset-Profile([scriptblock]$Seed = $null) {
 }
 function Get-LogLines { if (Test-Path $logPath) { @(Get-Content $logPath) } else { @() } }
 function Log-Has([string]$Pattern, [int]$From = 0) {
-    $lines = Get-LogLines
-    if ($lines.Count -le $From) { return $false }
-    [bool]($lines[$From..($lines.Count - 1)] | Where-Object { $_ -match $Pattern })
+    Test-HarnessLogPattern @(Get-LogLines) $Pattern $From
 }
-function Tail([int]$From = 0) { $l = Get-LogLines; if ($l.Count -le $From) { return "(no new log lines)" }; ($l[$From..($l.Count - 1)] | Select-Object -Last 4 | ForEach-Object { ($_ -split " ", 2)[1] }) -join " ; " }
+function Tail([int]$From = 0) { Get-SafeLogSummary @(Get-LogLines) $From }
 function Wait-Log([string]$Pattern, [int]$From = 0, [int]$TimeoutMs = 8000) {
     [bool](Wait-Until { Log-Has $Pattern $From } $TimeoutMs 150)
 }
@@ -188,7 +186,7 @@ function Get-Main($Proc) { Get-AppWindow $Proc.Id 'Smart Snippets' }
 function Wait-Main($Proc, [int]$TimeoutMs = 8000) { Wait-Until { Get-Main $Proc } $TimeoutMs 200 }
 function Sql([string]$Query) {
     $out = & sqlite3 -batch $dbPath $Query 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "sqlite3 failed: $out" }
+    if ($LASTEXITCODE -ne 0) { throw 'SQLite operation failed (output withheld)' }
     @($out)
 }
 function HexOf([string]$Text) { -join ([Text.Encoding]::UTF8.GetBytes($Text) | ForEach-Object { $_.ToString('X2') }) }
@@ -203,7 +201,7 @@ function Restore-Profile {
 function CrashInfo($Proc) {
     $Proc.Refresh()
     $ev = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -eq 'Application Error' -and $_.Message -match 'SmartSnippets' } | Select-Object -First 1
-    $mod = if ($ev) { ($ev.Message -split "`n" | Where-Object { $_ -match 'Faulting module name|Exception code' } | ForEach-Object { $_.Trim() }) -join ' ' } else { 'no WER event' }
+    $mod = if ($ev) { "WER event id=$($ev.Id) (message withheld)" } else { 'no WER event' }
     "exited=$($Proc.HasExited); $mod; log: $(Tail ([Math]::Max(0, (Get-LogLines).Count - 3)))"
 }
 function Nav($Proc, [string]$ItemId) {
@@ -396,8 +394,9 @@ if (Want 'C') {
         Stop-App
     }
 }
-if ((Want 'C') -and ((Get-Process -Name SmartSnippets.App -ErrorAction SilentlyContinue))) {
-    $p = Get-Process -Name SmartSnippets.App | Select-Object -First 1
+if ((Want 'C') -and @($script:Procs | Where-Object { -not $_.HasExited }).Count) {
+    Assert-NoForeignApp
+    $p = $script:Procs | Where-Object { -not $_.HasExited } | Select-Object -First 1
 
     # hotkey -> popup (needs a foreign foreground window)
     $target = Start-Target
@@ -405,10 +404,10 @@ if ((Want 'C') -and ((Get-Process -Name SmartSnippets.App -ErrorAction SilentlyC
         $from = (Get-LogLines).Count
         Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
         $ok = Wait-Log 'popup_ready_ms' $from 4000
-        $ms = ''
-        if ($ok) { $ms = ((Get-LogLines)[$from..((Get-LogLines).Count - 1)] | Where-Object { $_ -match 'popup_ready_ms (\d+)' } | Select-Object -First 1) -replace '.*popup_ready_ms ', '' }
+        $ms = $null
+        if ($ok) { $ms = ConvertFrom-PopupReadyLog @(Get-LogLines | Select-Object -Skip $from) }
         Check 'C3.popup' 'Ctrl+Shift+Space opens the popup over another app' $ok "popup_ready_ms=$ms"
-        if ($ms) { Check 'C3.latency' 'popup ready within 300 ms (AC13)' ([int]$ms -le 300) "$ms ms" }
+        if ($null -ne $ms) { Check 'C3.latency' 'popup ready within 300 ms (AC13)' ([int]$ms -le 300) "$ms ms" }
         Send-Chord @([byte]$VK.Esc)
         Start-Sleep -Milliseconds 400
     }
@@ -1006,7 +1005,7 @@ if (Want 'G') {
         [IO.File]::WriteAllText((Join-Path $gateDir 'SmartSnippets.App.dll'), 'not a real assembly')
         $shell = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
         $gateOutput = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output $gateDir 2>&1 | Out-String
-        Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') $gateOutput
+        Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') "exit=$LASTEXITCODE; gate output withheld"
     } finally {
         Remove-Item $gateDir -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item "$gateDir.log" -Force -ErrorAction SilentlyContinue
@@ -1015,7 +1014,7 @@ if (Want 'G') {
 if (Want 'P') { . (Join-Path $PSScriptRoot 'lib\PerformanceSection.ps1') }
 
 }
-catch { Add-Result 'FAIL' 'HARNESS' 'acceptance aborted; remaining checks not executed' $_.Exception.Message }
+catch { Add-Result 'FAIL' 'HARNESS' 'acceptance aborted; remaining checks not executed' "error type=$($_.Exception.GetType().Name); exception payload withheld" }
 finally {
     foreach ($id in $script:HotkeyIds) { [void][Win32Verify]::UnregisterHotKey([IntPtr]::Zero, $id) }
     try {
@@ -1023,7 +1022,7 @@ finally {
         Stop-App
         Archive-Logs
         if (Want 'G') { Check 'G10' 'whole-run logs across profile resets exclude acceptance snippet text' ($script:ArchivedLogs.Count -gt 0 -and (Test-LogPrivacy $script:ArchivedLogs.ToArray() $script:PrivacySecrets.ToArray())) "archived lines=$($script:ArchivedLogs.Count) secrets=$($script:PrivacySecrets.Count)" }
-    } catch { Add-Result 'FAIL' 'HARNESS.cleanup' 'final evidence collection failed' $_.Exception.Message }
+    } catch { Add-Result 'FAIL' 'HARNESS.cleanup' 'final evidence collection failed' "error type=$($_.Exception.GetType().Name); exception payload withheld" }
     finally { Restore-Profile }
 }
 

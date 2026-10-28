@@ -7,7 +7,7 @@ function New-PerfLibrary([int]$Count, [int]$Seed) {
     try {
         [IO.File]::WriteAllLines($fixture, [string[]]@(New-PerfLibrarySql -Count $Count -Seed $Seed), (New-Object Text.UTF8Encoding $false))
         $import = & sqlite3 -batch $dbPath ".read '$($fixture.Replace('\','/'))'" 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Perf import failed: $import" }
+        if ($LASTEXITCODE -ne 0) { throw 'Perf import failed (SQLite output withheld)' }
     } finally { Remove-Item $fixture -Force -ErrorAction SilentlyContinue }
 }
 New-PerfLibrary -Count $PerfLibrary -Seed 42
@@ -60,7 +60,7 @@ for ($attempt = 1; $attempt -le 2; $attempt++) {
                 } catch { $ok = $false }
                 if ($query.Id -eq 'Q3') { $ok = $ok -and [bool](Find-ByName (Get-PopupWindow $p.Id) 'No snippets match') }
                 $valid[$key] = $valid[$key] -and $ok
-                if (-not $ok) { Check "P2.$key.sample$round.attempt$attempt" 'one rendered sample with expected layout/count/empty state' $false ($lines -join '; ') }
+                if (-not $ok) { Check "P2.$key.sample$round.attempt$attempt" 'one rendered sample with expected layout/count/empty state' $false (Get-SafeLogSummary @(Get-LogLines) $from) }
             }
         }
     }
