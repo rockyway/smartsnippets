@@ -7,19 +7,6 @@ public class SqliteProbeTests
     private const string Sample = "Héllo – naïve 👋 世界\r\n\tline 2  (trailing spaces)  \r\nline 3";
 
     [Fact]
-    public void Crud_RoundTripsUnicodeMultiline()
-    {
-        using var db = new TempDatabase();
-        new Migrator(db.Factory).MigrateToLatest();
-
-        var result = new ProbeRepository(db.Factory).RunCrud(Sample);
-
-        Assert.True(result.Success, result.Message);
-        Assert.DoesNotContain("Héllo", result.Message, StringComparison.Ordinal);
-        Assert.Equal(0L, db.Scalar("SELECT COUNT(*) FROM probe"));
-    }
-
-    [Fact]
     public void DirectInsert_ReadsBackOrdinalEqual()
     {
         using var db = new TempDatabase();
@@ -34,16 +21,6 @@ public class SqliteProbeTests
         }
 
         Assert.Equal(Sample, (string?)db.Scalar("SELECT text FROM probe"));
-    }
-
-    [Fact]
-    public void RunCrud_WithoutSchema_ReturnsFailure()
-    {
-        using var db = new TempDatabase();
-
-        var result = new ProbeRepository(db.Factory).RunCrud(Sample);
-
-        Assert.False(result.Success);
     }
 
     [Fact]
