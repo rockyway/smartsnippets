@@ -4,7 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:automation="using:Microsoft.UI.Xaml.Automation"
     xmlns:controls="using:SmartSnippets.App.Controls"
-    xmlns:converters="using:SmartSnippets.App.Converters"
     xmlns:vm="using:SmartSnippets.Presentation.ViewModels"
     Title="Smart Snippets popup">
     <Grid x:Name="RootGrid" Padding="12" KeyDown="OnKeyDown">
@@ -23,10 +22,10 @@
                 <Button Grid.Column="4" automation:AutomationProperties.AutomationId="PopupOpenMainButton" automation:AutomationProperties.Name="Open main window" ToolTipService.ToolTip="Open main window" Command="{x:Bind ViewModel.OpenMainWindowCommand, Mode=OneWay}"><FontIcon Glyph="&#xE8A7;" /></Button>
             </Grid>
             <Grid Grid.Row="1">
-                <ListView x:Name="PopupList" automation:AutomationProperties.AutomationId="PopupList" ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}" IsItemClickEnabled="True" ItemClick="OnItemClick" SelectionChanged="OnSelectionChanged" ContainerContentChanging="OnContainerContentChanging">
+                <ListView x:Name="PopupList" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay}" TabFocusNavigation="Once" automation:AutomationProperties.AutomationId="PopupList" ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}" IsItemClickEnabled="True" ItemClick="OnItemClick" SelectionChanged="OnSelectionChanged" ContainerContentChanging="OnContainerContentChanging">
                     <ListView.ItemTemplate><DataTemplate x:DataType="vm:PopupItemViewModel"><controls:PopupRow Item="{x:Bind}"/></DataTemplate></ListView.ItemTemplate>
                 </ListView>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind Show(ViewModel.IsEmpty), Mode=OneWay}"><TextBlock Text="{x:Bind ViewModel.EmptyTitle}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EmptyBody}" TextWrapping="Wrap"/></StackPanel>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind Show(ViewModel.IsEmpty), Mode=OneWay}"><FontIcon Glyph="&#xE721;"/><TextBlock Text="{x:Bind ViewModel.EmptyTitle}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EmptyBody}" TextWrapping="Wrap"/></StackPanel>
             </Grid>
             <StackPanel Grid.Row="2" Spacing="4">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{x:Bind ViewModel.HintText, Mode=OneWay}"/><TextBlock Grid.Column="1" automation:AutomationProperties.AutomationId="PopupCount" Text="{x:Bind ViewModel.CountText, Mode=OneWay}"/></Grid>

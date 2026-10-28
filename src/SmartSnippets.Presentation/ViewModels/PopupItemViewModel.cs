@@ -11,7 +11,7 @@ public sealed record PopupItemViewModel(PopupItemKind Kind, long SnippetId, stri
         {
             var index = HeadingText.LastIndexOf(" (", StringComparison.Ordinal);
             return index >= 0 && HeadingText.EndsWith(')')
-                ? $"{HeadingText[..index]}, {HeadingText[(index + 2)..^1]} snippets"
+                ? $"{HeadingText[..index]}, {HeadingText[(index + 2)..^1]} {(HeadingText[(index + 2)..^1] == "1" ? "snippet" : "snippets")}"
                 : HeadingText;
         }
 
