@@ -1,4 +1,7 @@
 Section 'E. Popup acceptance'
+$savedPopupClipboard = Save-ClipboardText
+try {
+Set-Clipboard -Value 'SMART-SNIPPETS-POPUP-CLIPBOARD-SENTINEL'
 Reset-Profile
 $p = Start-App
 if (-not (Wait-Main $p)) { throw 'E requires main window' }
@@ -141,6 +144,10 @@ Close-TestPopup $p
 $samples = @(Measure-PopupOpens $p $target 20)
 $null = Test-TimingBudget 'E10' $samples 300
 # Main-window edits while hidden, followed by reopening the real popup (not SQL mutations).
+# This instance started --background for E10; explicitly show its main window via the popup.
+$null = Open-TestPopup $p $target
+Invoke-El (Find-ById (Get-PopupWindow $p.Id) 'PopupOpenMainButton')
+if (-not (Wait-Main $p)) { throw 'E11 main window did not open' }
 $null = Set-Foreground (Get-Main $p)
 $null = Create-Snippet $p 'E11 unique propagation term' '' 'E11 new label'
 Nav $p 'SnippetsItem'
@@ -179,5 +186,6 @@ foreach ($row in $rows) {
 }
 Check 'E12' 'renamed heading replaces old name; deleted-folder snippet under Unfiled' ($text -match 'E Renamed \(1\)' -and $text -notmatch 'E Rename \(' -and $text -notmatch 'E Delete \(' -and $moved)
 Close-TestPopup $p
-Stop-Target
-Stop-App
+} finally {
+    try { Stop-Target } finally { try { Stop-App } finally { Restore-ClipboardText $savedPopupClipboard } }
+}

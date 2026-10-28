@@ -1,7 +1,7 @@
 # 008 — Release hardening and acceptance
 
 **Date:** 2026-10-28
-**Status:** Code implemented 2026-10-28; verify-script sections E, F, P0-P2, G10 and exhaustive T0/T15 passes still open (script reports them FAIL); user-run acceptance (T11, T12, R1-R14, T14, release tag) pending
+**Status:** Implementation complete 2026-10-28, including E/F/P0–P2/G10 harness and static T0/T15 audits; local build/test/AOT evidence in docs/research/008-harness-audit.md. User-run rc acceptance (T10–T13, T16 sign-off), compatibility matrix, R1–R14, independent T14 and release tags remain pending.
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `.github/workflows/`, `scripts/`, `assets/icons/` (new), `src/SmartSnippets.App/` (csproj, `Assets/`, `Services/TrayIcon.cs`, `AppHost.cs`, `MainWindow.xaml.cs`, `Diagnostics/` removed), `src/SmartSnippets.Core/Data/ProbeRepository.cs` (removed), `src/SmartSnippets.Presentation/` (tray-state policy), `tests/`, `docs/research/`, `docs/guides/` (new)
 **Depends on:** 003, 004, 005, 006, 007 complete, and 009 complete
@@ -383,7 +383,7 @@ time or at runtime.
     CopyToPublishDirectory="PreserveNewest" />`.
 
 **(f) Tray glyph selection.**
-- **Taskbar theme:** `TaskbarTheme.Read()` reads `HKCU\Software\Microsoft\Windows\CurrentVersion\
+- **Taskbar theme:** `TaskbarTheme.IsLight()` reads `HKCU\Software\Microsoft\Windows\CurrentVersion\
   Themes\Personalize\SystemUsesLightTheme` (DWORD). `1` means light. `0` or missing means dark: the
   value is missing on Windows 10 1809, whose taskbar is always dark.
 - **Theme changes:** `TrayIcon.OnMessage` handles `WM_SETTINGCHANGE` whose `lParam` string is
@@ -520,7 +520,7 @@ Popup shown / hidden (006) ──┼→ AppHost.UpdateTrayState()
                              │         → Shell_NotifyIcon(NIM_MODIFY, NIF_ICON|NIF_TIP)
                              │         → AppLog "tray_icon state=… theme=…"
 WM_SETTINGCHANGE("ImmersiveColorSet") → MessageWindow.WndProc → TrayIcon.OnMessage
-                             │     theme' = TaskbarTheme.Read(); if theme' != theme:
+                             │     theme' = TaskbarTheme.IsLight(); if theme' != theme:
                              │         DestroyIcon(cache); theme = theme'; UpdateIcon(); log tray_theme_changed
 TaskbarCreated ──────────────┘     theme = Read(); dpi = GetDpiForSystem(); reload cache; Add()
 Parallel paths checked: TrayIcon.Add (initial icon, TrayIcon.cs:95-105) must use the same selection;
@@ -729,19 +729,17 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
   - (U) Visual: Explorer, taskbar button, Alt+Tab and the pinned taskbar show the mark (runbook R5).
 
 ### T7 — Tray glyph per theme and state (C; U visual) (design, AC12 tray)
-- **Files:** `Services/TrayIcon.cs`, `Services/TaskbarTheme.cs` (new), `NativeMethods.txt` (`LoadImage`,
-  `DestroyIcon`, `GetSystemMetricsForDpi`, `GetDpiForSystem`, `WM_SETTINGCHANGE`, `IMAGE_TYPE`,
-  `IMAGE_FLAGS`, `SYSTEM_METRICS_INDEX`), `Presentation/Shell/TrayStatePolicy.cs` (+ `TrayState`),
+- **Files:** `Services/TrayIcon.cs`, `Services/TaskbarTheme.cs`, `Services/TrayIconNative.cs`
+  (`LibraryImport` for `LoadImageW`, `DestroyIcon`, `GetSystemMetricsForDpi`, `GetDpiForSystem`;
+  numeric Win32 constants for theme/icon interop), `Presentation/Services/TrayStatePolicy.cs` (+ `TrayState`),
   `AppHost.cs` (006's `UpdateTrayState()` stays the single writer and now calls
   `TrayStatePolicy.Compute`; the result is unchanged because 006 already applies red-over-blue),
   `tests/SmartSnippets.Presentation.Tests/TrayStatePolicyTests.cs`.
 - **Change:** §4.1(e)(f).
 - **Verify:**
   - (C) Unit tests:
-    - `Unregistered_Wins_OverPopupOpen`
-    - `PopupOpen_WhenRegistered`
-    - `Ready_WhenRegisteredAndClosed`
-    - `PopupClose_ReturnsToUnavailable_WhenHotkeyLost`
+    - `TrayStatePolicyTests.Compute_PrioritizesHotkeyFault` (four theory cases: unregistered
+      open/closed → unavailable, registered/open → popup, registered/closed → ready).
   - (C) CI compile with 0 IL warnings.
   - (U) G3–G6 (§7) and runbook R6–R9.
 - **Test that dies if this breaks:** `TrayStatePolicyTests`; G4 `tray_icon state=PopupOpen` after
@@ -846,7 +844,7 @@ The following names replace any illustrative names in T9–T11 and §7:
       the clipboard ends in the state 007 specifies for this path (the unsaveable payload is not
       restored, as the prompt warned; the preserved formats are restored).
     - F11 Same setup → prompt shown → the script closes Notepad → **Paste anyway** → the popup shows
-      007's target-closed message, nothing is pasted anywhere, the snippet text is left on the
+      007's `CopiedForManualPaste` message (`Couldn't paste into <target>. The snippet is on your clipboard. Paste it yourself with Ctrl+V.`), nothing is pasted anywhere, the snippet text is left on the
       clipboard (`Get-Clipboard` equals the probe text) so the user can paste it manually, `usage_count`
       unchanged.
     - F12 `MaybePasted` (dispatch outcome unknown: partial `SendInput` or an exception after
@@ -1012,7 +1010,8 @@ profile. It measures the user-visible path (review finding 4, user 2026-10-28).
   - Tag → `Version`/`FileVersion` → exe → G1 / release check.
   - `assets/icons` → generator → `Assets/*.ico` → csproj `Content` → publish folder →
     `TrayIcon`/`MainWindow` loaders → `tray_icon` log.
-  - `TaskbarTheme.Read` ← `Add`, `TaskbarCreated`, `WM_SETTINGCHANGE`.
+  - `TaskbarTheme.IsLight` ← `RefreshThemeAndDpi` at construction and `TaskbarCreated`, and
+    directly from `WM_SETTINGCHANGE`; `Add` uses the refreshed theme/DPI.
   - `TrayStatePolicy` ← both `AppHost` handlers. 006's popup events have a subscriber, and the
     subscriber unsubscribes on exit.
   - New log events present in A4.
@@ -1184,8 +1183,11 @@ None blocking approval. The defaults below apply unless the user says otherwise.
 
 ## 10. Implementation notes and wiring audit
 
-*(Filled during implementation: T0 revisions, deviations, CI runs, release runs, link to
-`docs/research/003-release-acceptance-v1.md`.)*
+Harness implementation checklist: [008-harness-checklist.md](../research/008-harness-checklist.md).
+Exhaustive static T0/T15 trace and local validation: [008-harness-audit.md](../research/008-harness-audit.md).
+T13/T16 acceptance record: [003-release-acceptance-v1.md](../research/003-release-acceptance-v1.md).
+No interactive checks, CI dispatches, releases, pushes or merges were performed in this worktree.
+T13 end-to-end results and T16 user sign-off remain pending the downloaded-rc run.
 
 ## 11. Review response
 
@@ -1207,6 +1209,7 @@ Decisions by the user on 2026-10-28. Finding 5 (Ctrl+Enter in WinUI) is owned by
 
 | Date | Event | Notes |
 |---|---|---|
+| 2026-10-28 | Final T0/T15 harness re-baseline | Every T9–T11/§7 reference audited against merged source; see research/008-harness-audit.md. Fixed nonexistent `hotkey_register_failed` consumer to `hotkey_startup_failed`; Busy returns without an insert_result log (F5 consumes the real popup gate event instead). F11 expects CopiedForManualPaste wording, not TargetClosed wording. Corrected TaskbarTheme.IsLight, Services/TrayStatePolicy and actual theory name. Implementation only, not user acceptance. |
 | 2026-10-28 | T0 re-baseline at f809e62 | Popup `VisibleChanged` feeds `UpdateTrayState`; `Presentation/Services/TrayStatePolicy.cs` already implements red-over-blue. `InsertionContracts.cs` defines Inserted, TargetClosed, TargetElevated, FocusFailed, ClipboardBusy, PasteFailed, Busy, SnippetMissing, ClipboardNotPreserved, MaybePasted and CopiedForManualPaste. Prompt is an inline footer: `Some of what's on your clipboard can't be restored after pasting. Paste anyway?`, buttons `Paste anyway` / `Cancel`, automation IDs PopupFooterError, PopupPasteAnyway, PopupPasteCancel. Search ID PopupSearch, name Search snippets; toolbar IDs PopupLayoutButton, PopupSortButton, PopupAddButton, PopupOpenMainButton; editor text name Snippet text. `popup_search_ms` ends at CompositionTarget.Rendered after list layout; `popup_ready_ms` reports popup readiness. `insert_result` logs outcome/id/notice/ms; clipboard events include clipboard_restore and clipboard_restore_formats. A registered private clipboard format exceeding 64 MiB triggers the unsaveable path. Insertion normalizes lone CR, LF and CRLF to CRLF. No popup TestString remains. Actual live folder test is `WhileShown_FolderRenamed_HeadingAndChipsUpdate_SelectionKept`; see PopupViewModelListTests for store-change evidence. |
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Draft written | Before 006/007 are detailed; T0 re-baselines the popup/insertion acceptance steps once 006/007 are complete |

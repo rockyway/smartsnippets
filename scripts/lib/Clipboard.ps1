@@ -42,7 +42,7 @@ public static class VerifyClipboard {
             Put(format, Encoding.ASCII.GetBytes("SmartSnippets oversized test payload"), 64 * 1024 * 1024 + 4096);
         } finally { CloseClipboard(); }
     }
-    public static string Fingerprint() {
+    static List<string> ReadEntries() {
         var entries = new List<string>();
         Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
         try {
@@ -58,9 +58,13 @@ public static class VerifyClipboard {
                 } finally { GlobalUnlock(h); }
             }
         } finally { CloseClipboard(); }
-        entries.Sort(StringComparer.Ordinal);
+        return entries;
+    }
+    public static string Fingerprint() {
+        var entries = ReadEntries(); entries.Sort(StringComparer.Ordinal);
         return String.Join("|", entries.ToArray());
     }
+    public static string OrderedFingerprint() { return String.Join("|", ReadEntries().ToArray()); }
     public static void Clear() {
         Require(OpenClipboard(IntPtr.Zero), "OpenClipboard");
         try { Require(EmptyClipboard(), "EmptyClipboard"); } finally { CloseClipboard(); }
@@ -82,13 +86,24 @@ function Set-UnsaveableClipboard([string]$Sentinel = 'SMART-SNIPPETS-CLIPBOARD-S
     $script:SavedUnicodeFingerprint = @($entries | Where-Object { $_ -match '^13:' })[0]
     $script:OversizedFormatId = @($entries | Where-Object { [long](($_ -split ':')[1]) -gt 64MB } | ForEach-Object { ($_ -split ':')[0] })[0]
     if (-not $script:SavedUnicodeFingerprint -or -not $script:OversizedFormatId) { throw 'Unsaveable clipboard fixture did not contain expected formats' }
+    # Follow TakeSnapshot's enumeration order and cap. This payload contains HGLOBAL text and
+    # private formats only (no skipped GDI formats). Save every entry before the cap is reached,
+    # not just Unicode, in case Windows enumerates synthesized text ahead of the private format.
+    $script:ExpectedPreservedFormats = @()
+    $bytes = 0L
+    foreach ($entry in ([VerifyClipboard]::OrderedFingerprint() -split '\|')) {
+        $size = [long](($entry -split ':')[1])
+        if ($bytes + $size -gt 64MB) { break }
+        $script:ExpectedPreservedFormats += $entry
+        $bytes += $size
+    }
 }
 function Test-UnsaveableClipboardRestored {
-    # Install orders Unicode before the oversized private format. TakeSnapshot saves Unicode,
-    # then reaches the cap; synthesized legacy text formats after that are not preserved entries.
     # Restoration may legitimately add clipboard-history privacy markers and synthesize text.
     $entries = [VerifyClipboard]::Fingerprint() -split '\|'
-    return $script:SavedUnicodeFingerprint -cin $entries -and -not [bool]@($entries | Where-Object { ($_ -split ':')[0] -eq $script:OversizedFormatId }).Count
+    if (@($entries | Where-Object { ($_ -split ':')[0] -eq $script:OversizedFormatId }).Count) { return $false }
+    foreach ($entry in $script:ExpectedPreservedFormats) { if ($entry -cnotin $entries) { return $false } }
+    return $script:ExpectedPreservedFormats.Count -gt 0
 }
 function Test-ClipboardIntact {
     if (-not $script:UnsaveableClipboardFingerprint) { throw 'Call Set-UnsaveableClipboard first' }

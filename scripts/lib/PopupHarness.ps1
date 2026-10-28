@@ -29,6 +29,9 @@ function Set-PopupLayout($Proc, [string]$Layout) {
     }
 }
 function Set-PopupSort($Proc, [string]$Sort) {
+    # The default LastUsed is not stored until changed; selecting it while already active is
+    # intentionally a no-op in SetSort. Move away first so E5 actually exercises persistence.
+    if ($Sort -eq 'LastUsed' -and -not (Setting 'popup.sort')) { Set-PopupSort $Proc 'Created' }
     $names = @{ LastUsed='Last used'; UsageCount='Usage count'; Created='Created date'; Updated='Updated date' }
     Invoke-El (Find-ById (Get-PopupWindow $Proc.Id) 'PopupSortButton')
     $item = Wait-Until { Find-ByName (Get-PopupWindow $Proc.Id) $names[$Sort] } 3000 50
@@ -58,9 +61,7 @@ function Click-Element($Element) {
     [Win32Verify]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
 }
 function Get-ReadySample([int]$From) {
-    $lines = @(Get-LogLines | Select-Object -Skip $From | Where-Object { $_ -match 'popup_ready_ms \d+' })
-    if ($lines.Count -ne 1 -or $lines[0] -notmatch 'popup_ready_ms (\d+)') { throw "Expected one ready sample, got $($lines.Count)" }
-    [int]$Matches[1]
+    ConvertFrom-PopupReadyLog @(Get-LogLines | Select-Object -Skip $From)
 }
 function Measure-PopupOpens($Proc, $Target, [int]$Count, [switch]$BothLayouts) {
     $samples = @()

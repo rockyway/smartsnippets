@@ -1,4 +1,4 @@
-Section 'F. Insertion acceptance'
+﻿Section 'F. Insertion acceptance'
 $savedClipboard = Save-ClipboardText
 $sentinel = 'SMART-SNIPPETS-CLIPBOARD-SENTINEL'
 function Get-TargetEditor($Target) {
@@ -91,21 +91,33 @@ try {
     $from = @(Get-LogLines).Count
     Send-Chord @([byte]$VK.Enter)
     Check 'F2' 'selected word replaced, surrounding text unchanged' ((Wait-Log 'insert_result outcome=Inserted' $from) -and [bool](Wait-Until { (Get-NotepadText $target) -ceq 'prefix smart-snippets-probe suffix' }))
-    Set-TargetText $target ''
-    $beforeUsage = Get-ProbeUsage
-    Open-ProbePopup $p $target
-    $from = @(Get-LogLines).Count
-    Send-Chord @([byte]$VK.Enter)
-    Send-Chord @([byte]$VK.Enter)
-    # Exercise the popup's insertion gate while restoration is pending as well as the fast double Enter.
-    Press-Hotkey @([byte]$VK.Ctrl,[byte]$VK.Shift,[byte]$VK.Space)
-    $done = Wait-Log 'insert_result outcome=Inserted' $from
-    $guard = Wait-Log 'popup_open_ignored reason=inserting|insert_result outcome=Busy' $from 3000
-    $text = Get-NotepadText $target
-    $occurrences = [regex]::Matches($text,[regex]::Escape('smart-snippets-probe')).Count
-    $successful = @(Get-LogLines | Select-Object -Skip $from | Where-Object { $_ -match 'insert_result outcome=Inserted' }).Count
-    Check 'F5' 'double activation inserts once, increments once, guard logged' ($done -and $guard -and $occurrences -eq 1 -and $successful -eq 1 -and [int](Get-ProbeUsage) -eq ([int]$beforeUsage + 1)) (Tail $from)
-    Close-TestPopup $p
+    foreach ($activation in @('EnterTwice','EnterAndClick')) {
+        Set-TargetText $target ''
+        $beforeUsage = Get-ProbeUsage
+        Open-ProbePopup $p $target
+        $rectangle = (Get-SelectedPopupRow $p).Current.BoundingRectangle
+        if ($rectangle.IsEmpty) { throw 'F5 row has no clickable rectangle' }
+        $from = @(Get-LogLines).Count
+        Send-Chord @([byte]$VK.Enter)
+        # The UI suppresses repeated insertion commands silently. Exercise its logged hotkey
+        # gate during restoration too; do this before a click can foreground an underlying app.
+        Press-Hotkey @([byte]$VK.Ctrl,[byte]$VK.Shift,[byte]$VK.Space)
+        if ($activation -eq 'EnterTwice') { Send-Chord @([byte]$VK.Enter) }
+        else {
+            # Cached coordinates let a real fast click race the popup hide without dereferencing
+            # an element that has already disappeared. No fixed sleep between input events.
+            [void][Win32Verify]::SetCursorPos([int]($rectangle.X+$rectangle.Width/2),[int]($rectangle.Y+$rectangle.Height/2))
+            [Win32Verify]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+            [Win32Verify]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+        }
+        $done = Wait-Log 'insert_result outcome=Inserted' $from
+        $guard = Wait-Log 'popup_open_ignored reason=inserting' $from 3000
+        $text = Get-NotepadText $target
+        $occurrences = [regex]::Matches($text,[regex]::Escape('smart-snippets-probe')).Count
+        $successful = @(Get-LogLines | Select-Object -Skip $from | Where-Object { $_ -match 'insert_result outcome=Inserted' }).Count
+        Check "F5.$activation" 'double activation inserts once, increments once, guard logged' ($done -and $guard -and $occurrences -eq 1 -and $successful -eq 1 -and [int](Get-ProbeUsage) -eq ([int]$beforeUsage + 1)) (Tail $from)
+        Close-TestPopup $p
+    }
     Set-TargetText $target ''
     Open-ProbePopup $p $target
     $beforeUsage = Get-ProbeUsage
@@ -166,8 +178,6 @@ try {
     }
     Add-Result 'INFO' 'F12' 'N/A — uncertain dispatch is unit-tested' 'InsertionServiceTests.FailedDispatch_OnlyUncertainReleasesAndWaits and SendThrows_IsUncertain; PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution'
 } finally {
-    Clear-UnsaveableClipboard
-    Stop-Target
-    Stop-App
-    Restore-ClipboardText $savedClipboard
+    try { Clear-UnsaveableClipboard; Stop-Target }
+    finally { try { Stop-App } finally { Restore-ClipboardText $savedClipboard } }
 }

@@ -1,4 +1,4 @@
-# Pure helpers: no UI, profile or clipboard side effects when dot-sourced.
+﻿# Pure helpers: no UI, profile or clipboard side effects when dot-sourced.
 function Get-TimingStatistics([double[]]$Samples) {
     if (-not $Samples.Count) { throw 'No timing samples' }
     $sorted = @($Samples | Sort-Object)
@@ -73,6 +73,20 @@ function Get-PerfSearchCountsSql {
 WITH hay AS (SELECT lower(s.text || ' ' || s.label || ' ' || s.tags || ' ' || coalesce(f.name,'')) AS h FROM snippets s LEFT JOIN folders f ON f.id=s.folder_id)
 SELECT count(*),sum(instr(h,'alpha')>0),sum(instr(h,'bravo')>0),sum(instr(h,'alpha')>0 AND instr(h,'bravo')>0),sum(instr(h,'zzqxv')>0) FROM hay;
 '@
+}
+function ConvertFrom-PopupSearchLog([string[]]$Lines, [string]$Layout, [int]$ExpectedCount) {
+    $samples = @($Lines | Where-Object { $_ -match '\bpopup_search_ms ' })
+    if ($samples.Count -ne 1) { throw "Expected exactly one search render sample, got $($samples.Count)" }
+    $match = [regex]::Match($samples[0], '\bpopup_search_ms (\d+) layout=(flat|folder) results=(\d+)\s*$')
+    if (-not $match.Success -or $match.Groups[2].Value -ine $Layout -or [int]$match.Groups[3].Value -ne $ExpectedCount) { throw 'Search sample has incorrect syntax, layout or result count' }
+    [int]$match.Groups[1].Value
+}
+function ConvertFrom-PopupReadyLog([string[]]$Lines) {
+    $samples = @($Lines | Where-Object { $_ -match '\bpopup_ready_ms ' })
+    if ($samples.Count -ne 1) { throw "Expected exactly one ready sample, got $($samples.Count)" }
+    $match = [regex]::Match($samples[0], '\bpopup_ready_ms (\d+)\s*$')
+    if (-not $match.Success) { throw 'Malformed popup ready sample' }
+    [int]$match.Groups[1].Value
 }
 function Test-LogPrivacy([string[]]$Lines, [string[]]$Secrets) {
     $text = $Lines -join "`n"

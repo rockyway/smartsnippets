@@ -1,13 +1,16 @@
 Section 'P. End-to-end performance acceptance'
-Reset-Profile
-$p = Start-App @('--background')
-Stop-App
-$fixture = Join-Path $appRoot 'perf-library.sql'
-try {
-    [IO.File]::WriteAllLines($fixture, [string[]]@(New-PerfLibrarySql -Count $PerfLibrary -Seed 42), (New-Object Text.UTF8Encoding $false))
-    $import = & sqlite3 -batch $dbPath ".read '$($fixture.Replace('\','/'))'" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Perf import failed: $import" }
-} finally { Remove-Item $fixture -Force -ErrorAction SilentlyContinue }
+function New-PerfLibrary([int]$Count, [int]$Seed) {
+    Reset-Profile
+    $null = Start-App @('--background')
+    Stop-App
+    $fixture = Join-Path $appRoot 'perf-library.sql'
+    try {
+        [IO.File]::WriteAllLines($fixture, [string[]]@(New-PerfLibrarySql -Count $Count -Seed $Seed), (New-Object Text.UTF8Encoding $false))
+        $import = & sqlite3 -batch $dbPath ".read '$($fixture.Replace('\','/'))'" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "Perf import failed: $import" }
+    } finally { Remove-Item $fixture -Force -ErrorAction SilentlyContinue }
+}
+New-PerfLibrary -Count $PerfLibrary -Seed 42
 $common = [int][Math]::Floor($PerfLibrary * .1)
 $both = [int][Math]::Floor($PerfLibrary * .01)
 $counts = (Sql (Get-PerfSearchCountsSql)) -join ''
@@ -50,12 +53,11 @@ for ($attempt = 1; $attempt -le 2; $attempt++) {
                 $lines = @(Get-LogLines | Select-Object -Skip $from | Where-Object { $_ -match 'popup_search_ms ' })
                 $key = "$($query.Id).$layout"
                 if (-not $cells.ContainsKey($key)) { $cells[$key] = @(); $valid[$key] = $true }
-                $ok = $lines.Count -eq 1 -and $lines[0] -match 'popup_search_ms (\d+) layout=(flat|folder) results=(\d+)'
-                if ($ok) {
-                    $ms = [int]$Matches[1]; $loggedLayout = $Matches[2]; $results = [int]$Matches[3]
-                    $ok = $loggedLayout -ieq $layout -and $results -eq $query.Expected
+                $ok = $true
+                try {
+                    $ms = ConvertFrom-PopupSearchLog $lines $layout $query.Expected
                     $cells[$key] += $ms
-                }
+                } catch { $ok = $false }
                 if ($query.Id -eq 'Q3') { $ok = $ok -and [bool](Find-ByName (Get-PopupWindow $p.Id) 'No snippets match') }
                 $valid[$key] = $valid[$key] -and $ok
                 if (-not $ok) { Check "P2.$key.sample$round.attempt$attempt" 'one rendered sample with expected layout/count/empty state' $false ($lines -join '; ') }
