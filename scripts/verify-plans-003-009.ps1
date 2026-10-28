@@ -25,7 +25,7 @@ param(
     [string[]]$Only = @(),
     [string]$ReportPath = '',
     [string]$ArtifactZip = '',
-    [ValidateRange(1, 1000000)][int]$PerfLibrary = 10000,
+    [ValidateRange(10, 1000000)][int]$PerfLibrary = 10000,
     [switch]$FlipTaskbarTheme
 )
 
@@ -34,6 +34,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
 . (Join-Path $PSScriptRoot 'lib\Uia.ps1')
 . (Join-Path $PSScriptRoot 'lib\Perf.ps1')
+. (Join-Path $PSScriptRoot 'lib\PopupHarness.ps1')
 $script:ArchivedLogs = New-Object System.Collections.Generic.List[string]
 $script:PrivacySecrets = New-Object System.Collections.Generic.List[string]
 foreach ($secret in @('smart-snippets-probe','locked-save-probe','ZZ-PRIVACY-MARKER-7431')) { $script:PrivacySecrets.Add($secret) }
@@ -1036,14 +1037,8 @@ if (Want 'G') {
         Remove-Item "$gateDir.log" -Force -ErrorAction SilentlyContinue
     }
 }
-if (Want 'P') {
-    Section 'P. Performance diagnostic'
-    if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-        $benchmark = & dotnet test tests/SmartSnippets.Core.Tests -c Release --filter 'Category=Benchmark' --logger 'console;verbosity=detailed' 2>&1 | Out-String
-        Add-Result 'INFO' 'P3' 'Core benchmark (diagnostic only; does not decide AC13)' $benchmark
-    } else { Add-Result 'INFO' 'P3' 'Core benchmark' 'SDK unavailable; diagnostic not run' }
-}
-foreach ($section in 'E', 'F', 'P') {
+if (Want 'P') { . (Join-Path $PSScriptRoot 'lib\PerformanceSection.ps1') }
+foreach ($section in 'E', 'F') {
     if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
 }
 

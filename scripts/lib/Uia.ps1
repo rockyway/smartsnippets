@@ -16,6 +16,15 @@ public static class Win32Verify {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+    [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr h, ref MonitorInfo info);
+    public static Rect WorkArea(IntPtr window) {
+        var info = new MonitorInfo(); info.Size = Marshal.SizeOf(typeof(MonitorInfo));
+        if (!GetMonitorInfo(MonitorFromWindow(window, 2), ref info)) throw new InvalidOperationException("GetMonitorInfo failed");
+        return info.Work;
+    }
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
@@ -23,6 +32,7 @@ public static class Win32Verify {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
@@ -139,7 +149,7 @@ $VK = @{ Ctrl=0x11; Shift=0x10; Alt=0x12; Space=0x20; Enter=0x0D; Esc=0x1B; Tab=
 
 function Get-PopupWindow([int]$ProcId) {
     foreach ($window in (Get-AppWindows $ProcId)) {
-        if (Find-ById $window 'PopupSearch') { return $window }
+        if ([Win32Verify]::IsWindowVisible([IntPtr]$window.Current.NativeWindowHandle) -and (Find-ById $window 'PopupSearch')) { return $window }
     }
     return $null
 }
