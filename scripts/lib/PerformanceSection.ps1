@@ -1,4 +1,7 @@
 Section 'P. End-to-end performance acceptance'
+if ($PerfLibrary -ne 10000) {
+    Add-Result 'INFO' 'Diagnostic.P.scope' 'NON-ACCEPTANCE dataset; AC13 requires exactly 10000 snippets' "fixture=$PerfLibrary; all P0/P1/P2 successes are INFO, not acceptance PASS"
+} else { Add-Result 'INFO' 'P.scope' '10k acceptance dataset; verdict requires all P0/P1/P2 checks' 'fixture=10000' }
 function New-PerfLibrary([int]$Count, [int]$Seed) {
     Reset-Profile
     $null = Start-App @('--background')

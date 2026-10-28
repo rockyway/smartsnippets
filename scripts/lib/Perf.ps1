@@ -1,4 +1,12 @@
 ﻿# Pure helpers: no UI, profile or clipboard side effects when dot-sourced.
+function Get-PerfEvidenceClassification([string]$Id, [int]$LibraryCount, [bool]$Ok) {
+    $diagnostic=$LibraryCount -ne 10000 -and $Id -match '^P[012](?:\.|$)'
+    [pscustomobject]@{
+        Id=$(if ($diagnostic) { 'Diagnostic.'+$Id } else { $Id })
+        Status=$(if (-not $Ok) { 'FAIL' } elseif ($diagnostic) { 'INFO' } else { 'PASS' })
+        Prefix=$(if ($diagnostic) { 'NON-ACCEPTANCE (not 10k): ' } else { '' })
+    }
+}
 function Get-TimingStatistics([double[]]$Samples) {
     if (-not $Samples.Count) { throw 'No timing samples' }
     $sorted = @($Samples | Sort-Object)

@@ -135,7 +135,10 @@ function Add-Result($Status, $Id, $Name, $Detail) {
     if ($Detail) { $line += "  -- $Detail" }
     Write-Host $line -ForegroundColor $color
 }
-function Check($Id, $Name, $Ok, $Detail = '') { Add-Result $(if ($Ok) { 'PASS' } else { 'FAIL' }) $Id $Name $Detail }
+function Check($Id, $Name, $Ok, $Detail = '') {
+    $classification=Get-PerfEvidenceClassification $Id $PerfLibrary ([bool]$Ok)
+    Add-Result $classification.Status $classification.Id ($classification.Prefix+$Name) $Detail
+}
 function Skip($Id, $Name, $Reason) { Add-Result 'SKIP' $Id $Name $Reason }
 function Warn($Id, $Name, $Detail) { Add-Result 'WARN' $Id $Name $Detail }
 function Section($Title) { Update-HarnessProgress; Write-Host "`n=== $Title ===" -ForegroundColor Cyan }
@@ -273,12 +276,14 @@ Write-Host ' Verification: plans 003 / 004 / 005 / 009' -ForegroundColor Cyan
 Write-Host '====================================================' -ForegroundColor Cyan
 
 if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) { throw 'sqlite3.exe is required on PATH' }
-if (Test-Path $backupRoot) { throw "Leftover profile backup at $backupRoot from an earlier aborted run. Restore it manually (move it back to $appRoot) and re-run." }
+if (Test-Path $backupRoot) { throw 'Leftover original profile backup. Do not merge it into an existing test profile; follow docs/guides/002-acceptance-harness-safety.md before rerunning.' }
 
 Stop-App
-if (Test-Path $appRoot) { Move-Item $appRoot $backupRoot -Force }
-
+$profileIsolated=$false
+$hadOriginalProfile=Test-Path -LiteralPath $appRoot
 try {
+if ($hadOriginalProfile) { Move-Item -LiteralPath $appRoot -Destination $backupRoot -ErrorAction Stop }
+$profileIsolated=$true
 
 # ================================================================= A. build + static
 if (Want 'A') {
@@ -1018,12 +1023,18 @@ catch { Add-Result 'FAIL' 'HARNESS' 'acceptance aborted; remaining checks not ex
 finally {
     foreach ($id in $script:HotkeyIds) { [void][Win32Verify]::UnregisterHotKey([IntPtr]::Zero, $id) }
     try {
+        if ($profileIsolated) {
         Stop-Target
         Stop-App
         Archive-Logs
-        if (Want 'G') { Check 'G10' 'whole-run logs across profile resets exclude acceptance snippet text' ($script:ArchivedLogs.Count -gt 0 -and (Test-LogPrivacy $script:ArchivedLogs.ToArray() $script:PrivacySecrets.ToArray())) "archived lines=$($script:ArchivedLogs.Count) secrets=$($script:PrivacySecrets.Count)" }
+        if (Want 'G') { Check 'G10' 'whole-run logs exclude acceptance snippet text and disposable target titles' ($script:ArchivedLogs.Count -gt 0 -and (Test-LogPrivacy $script:ArchivedLogs.ToArray() $script:PrivacySecrets.ToArray())) "archived lines=$($script:ArchivedLogs.Count) secrets=$($script:PrivacySecrets.Count)" }
+        }
     } catch { Add-Result 'FAIL' 'HARNESS.cleanup' 'final evidence collection failed' "error type=$($_.Exception.GetType().Name); exception payload withheld" }
-    finally { Restore-Profile }
+    finally {
+        $action=Get-ProfileCleanupAction $profileIsolated $hadOriginalProfile (Test-Path -LiteralPath $backupRoot) (Test-Path -LiteralPath $appRoot)
+        if ($action -eq 'RestoreIsolated') { Restore-Profile }
+        elseif ($action -eq 'MoveBackupBackOnly') { Move-Item -LiteralPath $backupRoot -Destination $appRoot -ErrorAction Stop }
+    }
 }
 
 # ================================================================= summary

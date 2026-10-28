@@ -15,6 +15,10 @@ function Get-OwnedTargetWindow {
     if (-not (Test-DisposableTargetIdentity $owned.Identity $actual $records)) {
         throw 'Target isolation cannot be proved. Only classic single-document Notepad is supported; no input or termination is permitted.'
     }
+    # Register both the unique title token and observed title: modified-title prefixes/localized
+    # suffixes must not evade privacy detection. Neither value is printed in diagnostics.
+    Register-PrivacyText $owned.Identity.Token
+    foreach ($record in $records) { Register-PrivacyText $record.Title }
     return $windows[0]
 }
 function Assert-OwnedTarget($Window) {

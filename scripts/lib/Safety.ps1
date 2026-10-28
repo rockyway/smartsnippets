@@ -13,6 +13,11 @@ function Invoke-ClipboardRetry([scriptblock]$Operation, [int]$Attempts = 50, [in
 function Test-ValidClipboardBackup($Saved) {
     return $null -ne $Saved -and $Saved.Valid -ceq $true -and $Saved.HasText -is [bool] -and (-not $Saved.HasText -or $Saved.Text -is [string])
 }
+function Get-ProfileCleanupAction([bool]$Isolated, [bool]$HadOriginal, [bool]$BackupExists, [bool]$ActiveExists) {
+    if ($Isolated) { return 'RestoreIsolated' }
+    if ($HadOriginal -and $BackupExists -and -not $ActiveExists) { return 'MoveBackupBackOnly' }
+    return 'LeaveUntouched'
+}
 function Get-PopupDuplicateMessages([string]$Mode, [long]$KeyboardWindow, [long]$MouseWindow, [int]$X, [int]$Y) {
     if ($KeyboardWindow -eq 0 -or $Mode -notin @('EnterTwice','EnterAndClick')) { throw 'Invalid popup input route' }
     # WM_KEYDOWN/UP with Enter scan code; every message retains an explicit captured HWND.

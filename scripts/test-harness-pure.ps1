@@ -6,6 +6,16 @@ function Assert($Condition, $Message) { if (-not $Condition) { throw $Message };
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
 New-Item -ItemType Directory $dir | Out-Null
 try {
+    Assert ((Get-ProfileCleanupAction $false $true $false $true) -ceq 'LeaveUntouched') 'failed move cannot delete original active profile'
+    Assert ((Get-ProfileCleanupAction $false $true $true $false) -ceq 'MoveBackupBackOnly') 'interruption immediately after move restores without deleting anything'
+    Assert ((Get-ProfileCleanupAction $false $true $true $true) -ceq 'LeaveUntouched') 'ambiguous profile pair is preserved, not merged'
+    Assert ((Get-ProfileCleanupAction $true $false $false $true) -ceq 'RestoreIsolated') 'initially absent profile cleanup removes only isolated fixture'
+    $diagnostic=Get-PerfEvidenceClassification 'P1.cold' 10 $true
+    Assert ($diagnostic.Id -ceq 'Diagnostic.P1.cold' -and $diagnostic.Status -ceq 'INFO') 'small dataset timing cannot become AC13 PASS'
+    Assert ((Get-PerfEvidenceClassification 'P2.Q1.Flat' 10000 $true).Status -ceq 'PASS') '10k timings retain acceptance classification'
+    Assert ((Get-PerfEvidenceClassification 'P0' 10 $false).Status -ceq 'FAIL') 'diagnostic fixture failure is still failure'
+    Assert ((Get-PerfEvidenceClassification 'E10' 10 $true).Id -ceq 'E10') 'small P dataset does not reclassify standard-profile checks'
+    Assert (-not (Test-LogPrivacy @('event target=SS-acceptance-unique.txt - Notepad') @('SS-acceptance-unique'))) 'unique target title token catches title-only leakage'
     Assert (-not (Test-HarnessLogPattern @() 'paste_sent')) 'empty logs cannot satisfy a positive oracle'
     Assert (Test-HarnessLogPattern @('INFO paste_sent state=Dispatched') 'paste_sent') 'singleton log stays a whole line'
     Assert (-not (Test-HarnessLogPattern @('INFO paste_sent') 'paste_sent' 1)) 'log offset beyond singleton is empty'
