@@ -155,7 +155,7 @@ function Get-PopupWindow([int]$ProcId) {
 }
 
 function Get-NotepadText($Window) {
-    foreach ($edit in (Find-All $Window ([Windows.Automation.ControlType]::Edit))) {
+    foreach ($edit in @(@(Find-All $Window ([Windows.Automation.ControlType]::Edit)) + @(Find-All $Window ([Windows.Automation.ControlType]::Document)))) {
         $pattern = $null
         if ($edit.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { return $pattern.Current.Value }
         if ($edit.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { return $pattern.DocumentRange.GetText(-1) }

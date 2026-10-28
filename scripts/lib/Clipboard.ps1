@@ -78,6 +78,17 @@ function Restore-ClipboardText($Saved) {
 function Set-UnsaveableClipboard([string]$Sentinel = 'SMART-SNIPPETS-CLIPBOARD-SENTINEL') {
     [VerifyClipboard]::Install($Sentinel)
     $script:UnsaveableClipboardFingerprint = [VerifyClipboard]::Fingerprint()
+    $entries = $script:UnsaveableClipboardFingerprint -split '\|'
+    $script:SavedUnicodeFingerprint = @($entries | Where-Object { $_ -match '^13:' })[0]
+    $script:OversizedFormatId = @($entries | Where-Object { [long](($_ -split ':')[1]) -gt 64MB } | ForEach-Object { ($_ -split ':')[0] })[0]
+    if (-not $script:SavedUnicodeFingerprint -or -not $script:OversizedFormatId) { throw 'Unsaveable clipboard fixture did not contain expected formats' }
+}
+function Test-UnsaveableClipboardRestored {
+    # Install orders Unicode before the oversized private format. TakeSnapshot saves Unicode,
+    # then reaches the cap; synthesized legacy text formats after that are not preserved entries.
+    # Restoration may legitimately add clipboard-history privacy markers and synthesize text.
+    $entries = [VerifyClipboard]::Fingerprint() -split '\|'
+    return $script:SavedUnicodeFingerprint -cin $entries -and -not [bool]@($entries | Where-Object { ($_ -split ':')[0] -eq $script:OversizedFormatId }).Count
 }
 function Test-ClipboardIntact {
     if (-not $script:UnsaveableClipboardFingerprint) { throw 'Call Set-UnsaveableClipboard first' }

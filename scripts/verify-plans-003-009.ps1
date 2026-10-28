@@ -845,40 +845,7 @@ if (Want 'D') {
 
 if (Want 'E') { . (Join-Path $PSScriptRoot 'lib\PopupSection.ps1') }
 
-if (Want 'F') {
-    Section 'F. Insertion basic verification (incomplete)'
-    $savedClipboard = Save-ClipboardText
-    try {
-        Reset-Profile
-        $p = Start-App
-        if (-not (Wait-Main $p)) { throw 'F requires the main window' }
-        $probe = "Héllo – naïve 👋 世界`r`n`tline 2  `r`nline 3"
-        if (-not (Create-Snippet $p $probe)) { throw 'F could not create Unicode probe' }
-        $target = Start-Target
-        if (-not $target) { throw 'F requires Notepad' }
-        Set-Clipboard -Value 'SMART-SNIPPETS-CLIPBOARD-SENTINEL'
-        $before = (Sql 'select usage_count from snippets order by id desc limit 1;') -join ''
-        $null = Set-Foreground $target
-        Press-Hotkey @([byte]$VK.Ctrl, [byte]$VK.Shift, [byte]$VK.Space)
-        $popup = Wait-Until { Get-PopupWindow $p.Id } 5000 100
-        if (-not $popup) { throw 'F popup did not appear' }
-        $from = (Get-LogLines).Count
-        Send-Chord @([byte]$VK.Enter)
-        $inserted = Wait-Log 'insert_result outcome=Inserted' $from 10000
-        $text = Wait-Until { $s = Get-NotepadText $target; if ($s) { $s } } 10000 100
-        Check 'F1' 'Unicode and multiline probe inserted with CRLF' ($inserted -and $text -ceq $probe) "actual UTF-16 length=$($text.Length) expected=$($probe.Length)"
-        $restored = Wait-Until { (Get-Clipboard -Raw -ErrorAction SilentlyContinue) -ceq 'SMART-SNIPPETS-CLIPBOARD-SENTINEL' } 10000 150
-        Check 'F3' 'clipboard sentinel restored' ([bool]$restored)
-        $usage = (Sql 'select usage_count, last_used_at is not null from snippets order by id desc limit 1;') -join ''
-        Check 'F4.database' 'usage increments exactly once and last-used is set' ($usage -eq "$([int]$before + 1)|1") $usage
-        Add-Result 'INFO' 'F12' 'N/A — uncertain dispatch is unit-tested' 'InsertionServiceTests.FailedDispatch_OnlyUncertainReleasesAndWaits and SendThrows_IsUncertain; PopupViewModelInsertionTests.PasteAnyway_ThenMaybePasted_ShowsCaution'
-        Skip 'F8' 'elevated target' 'requires user UAC acceptance; see compatibility matrix'
-    } finally {
-        Stop-Target
-        Stop-App
-        Restore-ClipboardText $savedClipboard
-    }
-}
+if (Want 'F') { . (Join-Path $PSScriptRoot 'lib\InsertionSection.ps1') }
 
 # Release checks.
 if (Want 'G') {
@@ -1004,9 +971,6 @@ if (Want 'G') {
     }
 }
 if (Want 'P') { . (Join-Path $PSScriptRoot 'lib\PerformanceSection.ps1') }
-foreach ($section in 'F') {
-    if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
-}
 
 }
 finally {
