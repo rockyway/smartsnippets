@@ -784,7 +784,42 @@ if (Want 'D') {
     $bad = @($listItems | Where-Object { $_ -match 'ViewModel' })
     Check 'D14.names' 'list items expose readable accessible names (no "...ViewModel" type names)' ($bad.Count -eq 0) (($bad | Select-Object -First 2) -join ' ; ')
 
-    Check 'D-lock.incomplete' 'locked database recovery verification implemented' $false 'D-lock still needs an exclusive sqlite lock and UI save/retry test'
+    # Keep the sqlite process alive with its transaction open while the UI attempts a write.
+    $lockMarker = Join-Path ([IO.Path]::GetTempPath()) ("ss-lock-" + [guid]::NewGuid() + '.txt')
+    $locker = $null
+    try {
+        $tb = New-SnippetEditor $p
+        if (-not $tb) { throw 'Could not open editor for D-lock' }
+        $lockText = 'locked-save-probe'
+        Set-Text $tb $lockText
+        $psi = New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName = (Get-Command sqlite3).Source
+        $psi.Arguments = '-batch "' + $dbPath + '"'
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardInput = $true
+        $psi.CreateNoWindow = $true
+        $locker = [Diagnostics.Process]::Start($psi)
+        $locker.StandardInput.WriteLine('BEGIN EXCLUSIVE;')
+        $locker.StandardInput.WriteLine('.once "' + $lockMarker.Replace('\', '/') + '"')
+        $locker.StandardInput.WriteLine("SELECT 'locked';")
+        $locker.StandardInput.Flush()
+        if (-not (Wait-Until { Test-Path $lockMarker } 10000 100)) { throw 'sqlite exclusive transaction did not start' }
+        Invoke-El (Btn (Get-Main $p) 'Save snippet')
+        $retry = Wait-Until { Btn (Get-Main $p) 'Try saving again' } 15000 150
+        Check 'D-lock.error' 'database lock shows inline retry' ([bool]$retry)
+        $field = Find-ById (Get-Main $p) 'SnippetTextBox'
+        Check 'D-lock.text' 'failed save preserves editor text' ([bool]$field -and (Get-Text $field) -eq $lockText)
+        $locker.StandardInput.WriteLine('ROLLBACK;')
+        $locker.StandardInput.WriteLine('.quit')
+        $locker.StandardInput.Flush()
+        if (-not $locker.WaitForExit(10000)) { throw 'sqlite lock did not release' }
+        if ($retry) { Invoke-El $retry }
+        Check 'D-lock.retry' 'retry saves after lock release' ([bool](Wait-Until { ((Sql "select count(*) from snippets where text='locked-save-probe';") -join '') -eq '1' } 10000 150))
+    } finally {
+        if ($locker -and -not $locker.HasExited) { $locker.Kill(); $locker.WaitForExit() }
+        if ($locker) { $locker.Dispose() }
+        Remove-Item $lockMarker -Force -ErrorAction SilentlyContinue
+    }
 
     # D15 privacy: no snippet text in the log
     $logText = (Get-LogLines) -join "`n"
