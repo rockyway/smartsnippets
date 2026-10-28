@@ -20,8 +20,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          . ./scripts/release-tag.ps1
+          foreach ($bad in @('v1.0', 'v1.0.0.0', '1.0.0')) {
+            if (Test-ReleaseTag $bad) { throw "Invalid tag accepted: $bad" }
+          }
+          if (-not (Test-ReleaseTag 'v1.0.0-rc.1')) { throw 'Valid prerelease rejected' }
           $tag = $env:GITHUB_REF_NAME
-          if ($tag -notmatch '^v(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$') { throw 'Invalid release tag' }
+          if (-not (Test-ReleaseTag $tag)) { throw 'Invalid release tag' }
+          $null = $tag -cmatch '^v(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$'
           $version = $tag.Substring(1)
           $fileVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3]).${{ github.run_number }}"
           $prerelease = [bool]$Matches[4]
