@@ -4,6 +4,45 @@ function Update-HarnessProgress {
         [IO.File]::WriteAllText($script:HarnessProgressPath, [guid]::NewGuid().ToString('N'))
     }
 }
+function Get-HarnessFileHash([string]$Path) {
+    $stream=[IO.File]::OpenRead($Path); $hash=[Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','') }
+    finally { $hash.Dispose(); $stream.Dispose() }
+}
+function Complete-HarnessWorker($Config, [int]$ExitCode) {
+    # Called only after worker cleanup and report production, not by the bootstrap.
+    $hash=$null
+    if ($Config.Arguments.ReportPath) { $hash=Get-HarnessFileHash $Config.Arguments.ReportPath }
+    $ack=[pscustomobject]@{ RunId=$Config.RunId; ExitCode=$ExitCode; ReportHash=$hash }
+    $temp=$Config.Completion+'.tmp'
+    $ack | Export-Clixml -LiteralPath $temp
+    Move-Item -LiteralPath $temp -Destination $Config.Completion -Force
+}
+function Test-CurrentHarnessReport($Config, [switch]$RequireFailure) {
+    try {
+        $rows=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($Config.Arguments.ReportPath))
+        if (-not @($rows).Count) { return $false }
+        foreach ($row in @($rows)) { if ($row.RunId -cne $Config.RunId) { return $false } }
+        if ($RequireFailure) { return @($rows | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0 }
+        return @($rows | Where-Object { $_.Status -eq 'FAIL' }).Count -eq 0
+    } catch { return $false }
+}
+function Test-HarnessCompletion($Config, [int]$ExitCode) {
+    try {
+        $ack=Import-Clixml -LiteralPath $Config.Completion -ErrorAction Stop
+        if ($ack.RunId -cne $Config.RunId -or $ack.ExitCode -ne $ExitCode) { return $false }
+        if ($Config.Arguments.ReportPath) {
+            if ($ack.ReportHash -cne (Get-HarnessFileHash $Config.Arguments.ReportPath)) { return $false }
+            if (-not (Test-CurrentHarnessReport $Config)) { return $false }
+        }
+        return $true
+    } catch { return $false }
+}
+function Write-HarnessSupervisorFailure($Config, [string]$Id) {
+    if ($Config.Arguments.ReportPath) {
+        @([pscustomobject]@{ RunId=$Config.RunId; Status='FAIL'; Id=$Id; Name='worker did not complete acceptance'; Detail='No acceptance verdict; missing/invalid completion or worker failure' }) | ConvertTo-Json | Set-Content -LiteralPath $Config.Arguments.ReportPath -Encoding UTF8
+    }
+}
 function Invoke-ClipboardWorker([string]$Mode, [string]$BackupPath, [string]$LeasePath) {
     $shell=(Get-Process -Id $PID).Path
     $helper=Join-Path $PSScriptRoot '../clipboard-worker.ps1'
@@ -37,10 +76,11 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
         $configPath=Join-Path $dir 'config.clixml'
         $progress=Join-Path $dir 'progress'
         $parent=Get-Process -Id $PID
-        [pscustomobject]@{ ParentId=$PID; ParentStartTicks=$parent.StartTime.ToUniversalTime().Ticks; Arguments=$Arguments; Script=$ScriptPath; Progress=$progress; WorkerLock=$workerLock } | Export-Clixml -LiteralPath $configPath
+        $config=[pscustomobject]@{ RunId=[guid]::NewGuid().ToString('N'); Completion=(Join-Path $dir 'complete.clixml'); ParentId=$PID; ParentStartTicks=$parent.StartTime.ToUniversalTime().Ticks; Arguments=$Arguments; Script=$ScriptPath; Progress=$progress; WorkerLock=$workerLock }
+        $config | Export-Clixml -LiteralPath $configPath
         $bootstrap=Join-Path $dir 'worker.ps1'
         # Use a hashtable splat, not positional hashtable/array expansion.
-        [IO.File]::WriteAllText($bootstrap, '$c=Import-Clixml -LiteralPath $args[0]; $a=$c.Arguments; & $c.Script @a -HarnessWorkerConfig $args[0]')
+        [IO.File]::WriteAllText($bootstrap, '$ErrorActionPreference="Stop"; try { $c=Import-Clixml -LiteralPath $args[0]; $a=$c.Arguments; $global:LASTEXITCODE=0; & $c.Script @a -HarnessWorkerConfig $args[0]; exit $LASTEXITCODE } catch { exit 1 }')
         $needsClipboard = -not $Arguments.ContainsKey('Only') -or @($Arguments.Only).Count -eq 0 -or 'E' -in $Arguments.Only -or 'F' -in $Arguments.Only
         if ($needsClipboard) {
             $backupPath=Join-Path $dir 'clipboard.clixml'
@@ -58,15 +98,11 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
             }
             if ($idle.Elapsed.TotalSeconds -gt $TimeoutSeconds) { throw 'Acceptance worker exceeded its progress timeout (possibly a blocked UIA/native call)' }
         }
-        if ($worker.ExitCode -ne 0 -and $Arguments.ReportPath) {
-            $hasFailure=$false
-            try { $hasFailure=@(Get-Content -LiteralPath $Arguments.ReportPath -Raw | ConvertFrom-Json | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0 } catch { }
-            if (-not $hasFailure) {
-                @([pscustomobject]@{ Status='FAIL'; Id='HARNESS.workerexit'; Name='worker exited before a failure report'; Detail='No acceptance verdict' }) | ConvertTo-Json | Set-Content -LiteralPath $Arguments.ReportPath -Encoding UTF8
-            }
-        }
+        $exitCode=$worker.ExitCode
+        if ($exitCode -eq 0 -and -not (Test-HarnessCompletion $config $exitCode)) { $exitCode=1 }
+        if ($exitCode -ne 0 -and -not (Test-CurrentHarnessReport $config -RequireFailure)) { Write-HarnessSupervisorFailure $config 'HARNESS.workerexit' }
         $aborted=$false
-        return $worker.ExitCode
+        return $exitCode
     } finally {
         try {
             if ($worker -and -not $worker.HasExited) {
@@ -75,9 +111,7 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
             }
             if ($aborted -and $worker) {
                 Write-Warning 'Acceptance aborted. App/target processes may remain. The real profile backup is NOT automatically moved over a live test profile. Follow docs/guides/002-acceptance-harness-safety.md before retrying.'
-                if ($Arguments.ReportPath) {
-                    @([pscustomobject]@{ Status='FAIL'; Id='HARNESS.watchdog'; Name='worker aborted'; Detail='No acceptance verdict; manual profile/owned-target recovery required' }) | ConvertTo-Json | Set-Content -LiteralPath $Arguments.ReportPath -Encoding UTF8
-                }
+                Write-HarnessSupervisorFailure $config 'HARNESS.watchdog'
             }
         } finally {
             try {

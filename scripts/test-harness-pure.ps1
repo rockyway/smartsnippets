@@ -141,8 +141,28 @@ try {
     # clipboard backstops; no app, Notepad, UIA, real profile or desktop API is involved.
     $fakeWorker=Join-Path $dir 'fake-worker.ps1'
     $testLock=Join-Path $dir 'worker.lock'; $testReport=Join-Path $dir 'fake-report.json'
-    [IO.File]::WriteAllText($fakeWorker, 'param([string[]]$Only,[string]$HarnessWorkerConfig) exit 0')
-    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -TimeoutSeconds 10 -LockPath $testLock) -eq 0) 'supervisor runs an isolated CLI worker to completion'
+    $watchdogLibrary=(Join-Path $PSScriptRoot 'lib/Watchdog.ps1').Replace("'","''")
+    $workerPrefix='param([string[]]$Only,[string]$HarnessWorkerConfig,[string]$ReportPath) . '''+$watchdogLibrary+'''; $c=Import-Clixml -LiteralPath $HarnessWorkerConfig; '
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'Complete-HarnessWorker $c 0; exit 0')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -TimeoutSeconds 10 -LockPath $testLock) -eq 0) 'supervisor accepts explicit success only with fresh completion ack'
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'exit 7')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock) -eq 7) 'bootstrap propagates explicit nonzero exit without report'
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -LockPath $testLock) -eq 7 -and (Get-Content $testReport -Raw | ConvertFrom-Json).Status -eq 'FAIL') 'nonzero exit without report file synthesizes current failure report'
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'[pscustomobject]@{ RunId=$c.RunId; Status="FAIL"; Id="fake.failure" } | ConvertTo-Json | Set-Content $ReportPath; exit 9')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -LockPath $testLock) -eq 9 -and (Get-Content $testReport -Raw | ConvertFrom-Json).Id -eq 'fake.failure') 'explicit nonzero preserves fresh failure report and exit code'
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'throw "PRIVATE exception"')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock) -ne 0) 'bootstrap converts terminating exception to failure'
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'exit 0')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock) -ne 0) 'early zero exit without completion ack is failure'
+    [IO.File]::WriteAllText($testReport,'{"RunId":"stale","Status":"PASS"}')
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'Complete-HarnessWorker $c 0; exit 0')
+    $staleCode=Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -LockPath $testLock
+    $staleResult=Get-Content $testReport -Raw | ConvertFrom-Json
+    Assert ($staleCode -ne 0 -and $staleResult.Status -eq 'FAIL' -and $staleResult.RunId -cne 'stale') 'stale PASS report rejected even with freshly written ack/hash'
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'[pscustomobject]@{ RunId="stale"; ExitCode=0 } | Export-Clixml $c.Completion; exit 0')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock) -ne 0) 'stale completion run identity rejected'
+    [IO.File]::WriteAllText($fakeWorker, $workerPrefix+'[pscustomobject]@{ RunId=$c.RunId; Status="PASS" } | ConvertTo-Json | Set-Content $ReportPath; Complete-HarnessWorker $c 0; exit 0')
+    Assert ((Invoke-HarnessWorker $fakeWorker @{ Only=@('A'); ReportPath=$testReport } -LockPath $testLock) -eq 0) 'fresh report and matching completion hash accept explicit success'
     $held=[IO.File]::Open($testLock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
     $overlapRefused=$false
     try { $null=Invoke-HarnessWorker $fakeWorker @{ Only=@('A') } -LockPath $testLock } catch { $overlapRefused=$true }

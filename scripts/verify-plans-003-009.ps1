@@ -117,7 +117,7 @@ if ($ArtifactZip) {
     if ($hashLine -notmatch '^([0-9a-fA-F]{64})\s+\*?([^\r\n]+)$') { throw 'Invalid SHA-256 file' }
     $expectedHash = $Matches[1]; $expectedName = $Matches[2]
     if ($expectedName -cne [IO.Path]::GetFileName($zipPath)) { throw 'Checksum filename does not match archive' }
-    $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    $actualHash = Get-HarnessFileHash $zipPath
     if ($actualHash -ine $expectedHash) { throw 'Archive SHA-256 mismatch' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
@@ -143,7 +143,7 @@ $script:HotkeyIds = @()
 # ----------------------------------------------------------------- reporting
 function Add-Result($Status, $Id, $Name, $Detail) {
     Update-HarnessProgress
-    [void]$script:Results.Add([pscustomobject]@{ Status = $Status; Id = $Id; Name = $Name; Detail = $Detail })
+    [void]$script:Results.Add([pscustomobject]@{ RunId=$config.RunId; Status = $Status; Id = $Id; Name = $Name; Detail = $Detail })
     $color = switch ($Status) { 'PASS' { 'Green' } 'FAIL' { 'Red' } 'SKIP' { 'DarkYellow' } 'WARN' { 'Yellow' } default { 'Gray' } }
     $line = ('  [{0}] {1} {2}' -f $Status, $Id, $Name)
     if ($Detail) { $line += "  -- $Detail" }
@@ -1064,4 +1064,6 @@ if ($fail) {
 }
 Write-Host '====================================================' -ForegroundColor Cyan
 if ($ReportPath) { $script:Results | ConvertTo-Json -Depth 3 | Set-Content $ReportPath -Encoding UTF8 }
-exit $(if ($fail) { 1 } else { 0 })
+$exitCode=if ($fail) { 1 } else { 0 }
+Complete-HarnessWorker $config $exitCode
+exit $exitCode
