@@ -38,6 +38,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private PopupFooterState _footerState;
     private string _footerMessage = string.Empty;
     private bool _isInserting;
+    private bool _contextDialogOpen;
     private SnippetEditorViewModel? _editor;
 
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
@@ -164,7 +165,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     {
         _cache = _store.Snippets.ToDictionary(v => v.Snippet.Id, v => new PopupItemViewModel(PopupItemKind.Snippet,
             v.Snippet.Id, v.Snippet.Label, SnippetRowViewModel.PreviewOf(v.Snippet.Text),
-            IsFolderLayout ? string.Empty : v.FolderName ?? UiText.Unfiled,
+            IsFolderLayout ? string.Empty : v.FolderName ?? string.Empty,
             v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty)
             { TextSize = _textSize, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
     }
@@ -191,7 +192,48 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void OnStoreChanged(object? sender, StoreChangedEventArgs e) { var id = SelectedId; RebuildSearch(); Refresh(id); }
     public void Dispose() { if (_disposed) return; _disposed = true; _store.Changed -= OnStoreChanged; CloseEditor(); }
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
-    public void OnDeactivated() { if (!IsEditorOpen && !IsInserting) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
+    public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
+    public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    public void CopyRow(PopupItemViewModel item)
+    {
+        if (!CanUseRowActions(item)) return;
+        var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
+        _clipboard.SetText(snippet.Text);
+        AppLog.Info("popup_row_copied", $"id={snippet.Id}");
+    }
+    public Task InsertRowAsync(PopupItemViewModel item) => CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
+    public bool CanInsertFromMain => Target is not null && !IsPreview && !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss;
+    public Task InsertFromMainAsync(long id)
+    {
+        if (!CanInsertFromMain || !_store.Snippets.Any(s => s.Snippet.Id == id)) return Task.CompletedTask;
+        var index = Items.FindIndex(item => item.Kind == PopupItemKind.Snippet && item.SnippetId == id);
+        if (index < 0) { Query = string.Empty; index = Items.FindIndex(item => item.Kind == PopupItemKind.Snippet && item.SnippetId == id); }
+        SelectedIndex = index;
+        return InsertAsync(id, default);
+    }
+    public void EditRow(PopupItemViewModel item)
+    {
+        if (CanUseRowActions(item)) _host.EditSnippet(item.SnippetId);
+    }
+    public async Task DeleteRowAsync(PopupItemViewModel item)
+    {
+        if (!CanUseRowActions(item)) return;
+        var view = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId);
+        _contextDialogOpen = true;
+        try
+        {
+            if (!await _dialogs.ConfirmAsync(UiText.DeleteSnippetTitle(view.Snippet.Label), UiText.DeleteSnippetBody, UiText.DeleteSnippetConfirm)) return;
+            var result = _store.DeleteSnippet(item.SnippetId);
+            if (!result.Success && result.Error != SmartSnippets.Core.Domain.ValidationError.SnippetNotFound)
+                await _dialogs.ShowErrorAsync("Delete failed", $"Could not delete: {result.Message}");
+        }
+        catch (StoreException ex)
+        {
+            AppLog.Info("delete_failed", $"kind={ex.Failure}");
+            await _dialogs.ShowErrorAsync("Delete failed", $"Could not delete: {ex.Message}");
+        }
+        finally { _contextDialogOpen = false; }
+    }
     [RelayCommand] private void OpenMainWindow() => _host.OpenMainWindow();
     [RelayCommand]
     private void AddSnippet()

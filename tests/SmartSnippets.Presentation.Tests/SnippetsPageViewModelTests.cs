@@ -24,6 +24,35 @@ public sealed class SnippetsPageViewModelTests
     }
 
     [Fact]
+    public async Task RowActions_CopyInsertEditAndCancelDelete()
+    {
+        var row = _store.SeedSnippet("synthetic body", "Label");
+        var clipboard = new FakeClipboardService();
+        var inserted = new List<long>();
+        using var page = new SnippetsPageViewModel(_store, _dialogs, clipboard,
+            insertRow: id => { inserted.Add(id); return Task.CompletedTask; }, canInsertRow: () => true);
+        page.CopyRow(row.Id);
+        Assert.Equal("synthetic body", Assert.Single(clipboard.Texts));
+        Assert.True(page.CanInsertRow);
+        await page.InsertRowAsync(row.Id);
+        Assert.Equal(row.Id, Assert.Single(inserted));
+        Assert.True(await page.RequestSelectAsync(row.Id));
+        _dialogs.ConfirmAnswers.Enqueue(false);
+        Assert.False(await page.DeleteRowAsync(row.Id));
+        Assert.Single(_store.Snippets);
+    }
+
+    [Fact]
+    public async Task RowInsertWithoutTargetIsDisabled()
+    {
+        var row = _store.SeedSnippet("body");
+        using var page = new SnippetsPageViewModel(_store, _dialogs);
+        Assert.False(page.CanInsertRow);
+        await page.InsertRowAsync(row.Id);
+        Assert.Single(_store.Snippets);
+    }
+
+    [Fact]
     public async Task SwitchWhileDirty_Save_SavesThenSwitches()
     {
         var (page, a, b) = OpenDirtyOnA();

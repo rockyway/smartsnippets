@@ -200,6 +200,7 @@
                     x:Name="SnippetList"
                     FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                     IsItemClickEnabled="True"
+                    ContainerContentChanging="OnSnippetContainerContentChanging"
                     ItemClick="OnItemClick"
                     ItemContainerStyle="{StaticResource StretchItemStyle}"
                     ItemsSource="{x:Bind ViewModel.List.Items, Mode=OneWay}"

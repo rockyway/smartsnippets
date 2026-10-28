@@ -28,6 +28,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private const int LogicalHeight = 480;
     private readonly HWND _hwnd;
     private readonly Action _openMainWindow;
+    private readonly Action<long> _editSnippet;
     private PopupViewModel _viewModel = null!;
     private long _hotkeyTimestamp;
     private bool _readyPending;
@@ -35,10 +36,11 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private long _searchStarted;
     private bool _awaitingLayout;
     private bool _awaitingFrame;
+    private MenuFlyout? _contextFlyout;
 
-    internal PopupWindow(ITextSizeService textSize, Action openMainWindow)
+    internal PopupWindow(ITextSizeService textSize, Action openMainWindow, Action<long> editSnippet)
     {
-        TextSize = textSize; _openMainWindow = openMainWindow;
+        TextSize = textSize; _openMainWindow = openMainWindow; _editSnippet = editSnippet;
         InitializeComponent();
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -139,6 +141,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (focused) Focus(PopupFocusTarget.Search); else NotifyReopenFailure?.Invoke(ViewModel.FooterMessage);
     }
     public void OpenMainWindow() { _openMainWindow(); Hide(); AppLog.Info("popup_closed", "reason=main_window"); }
+    public void EditSnippet(long snippetId) { Hide(); _editSnippet(snippetId); AppLog.Info("popup_closed", "reason=edit"); }
     public void Focus(PopupFocusTarget target)
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -151,7 +154,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void SetVisible(bool value) { if (_visible == value) return; _visible = value; VisibleChanged?.Invoke(this, value); }
     private void OnActivated(object sender, WindowActivatedEventArgs e)
     {
-        if (e.WindowActivationState == WindowActivationState.Deactivated) { if (_visible) ViewModel.OnDeactivated(); return; }
+        if (e.WindowActivationState == WindowActivationState.Deactivated) { if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
         ReportReady();
     }
     private void OnLayoutUpdated(object? sender, object e) => ReportReady();
@@ -159,7 +162,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (ViewModel.IsEditorOpen) return;
-        if (e.Key == VirtualKey.Escape) { e.Handled = true; ViewModel.Close(); }
+        if (e.Key == VirtualKey.Escape && _contextFlyout is { } flyout) { e.Handled = true; flyout.Hide(); }
+        else if (e.Key == VirtualKey.Escape) { e.Handled = true; ViewModel.Close(); }
+        else if (e.Key == VirtualKey.Application || (e.Key == VirtualKey.F10 && (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & CoreVirtualKeyStates.Down) != 0))
+        {
+            if (PopupList.SelectedItem is PopupItemViewModel selected && PopupList.ContainerFromItem(selected) is ListViewItem container)
+            { e.Handled = true; ShowRowMenu(container, selected); }
+        }
         else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && (e.Key == VirtualKey.Up || e.Key == VirtualKey.Down)) { e.Handled = true; ViewModel.MoveSelection(e.Key == VirtualKey.Up ? -1 : 1); }
         else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && e.Key == VirtualKey.Enter && !ViewModel.IsConfirmingClipboardLoss) { e.Handled = true; _ = ViewModel.InsertSelectedAsync(); }
     }
@@ -168,10 +177,40 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         if (e.Item is PopupItemViewModel item)
         {
+            e.ItemContainer.RightTapped -= OnRowRightTapped;
+            e.ItemContainer.RightTapped += OnRowRightTapped;
             e.ItemContainer.IsEnabled = item.Kind == PopupItemKind.Snippet;
             e.ItemContainer.IsTabStop = item.Kind == PopupItemKind.Snippet;
             StyleSelection(e.ItemContainer, ReferenceEquals(e.Item, PopupList.SelectedItem));
         }
+    }
+    private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem container || container.Content is not PopupItemViewModel item || !ViewModel.CanUseRowActions(item)) return;
+        e.Handled = true;
+        ShowRowMenu(container, item);
+    }
+    private void ShowRowMenu(ListViewItem container, PopupItemViewModel item)
+    {
+        if (!ViewModel.CanUseRowActions(item)) return;
+        ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
+        var menu = new MenuFlyout();
+        var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy };
+        var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert };
+        var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
+        var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
+        copy.Click += (_, _) => ViewModel.CopyRow(item);
+        insert.Click += async (_, _) => await ViewModel.InsertRowAsync(item);
+        edit.Click += (_, _) => ViewModel.EditRow(item);
+        delete.Click += async (_, _) => await ViewModel.DeleteRowAsync(item);
+        menu.Items.Add(copy); menu.Items.Add(insert); menu.Items.Add(edit); menu.Items.Add(delete);
+        _contextFlyout = menu;
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_contextFlyout, menu)) _contextFlyout = null;
+            DispatcherQueue.TryEnqueue(() => { if (_visible && PInvoke.GetForegroundWindow() != _hwnd) ViewModel.OnDeactivated(); });
+        };
+        menu.ShowAt(container);
     }
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {

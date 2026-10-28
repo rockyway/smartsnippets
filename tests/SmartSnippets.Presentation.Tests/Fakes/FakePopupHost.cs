@@ -8,5 +8,6 @@ internal sealed class FakePopupHost : IPopupHost
     public void Hide() => Calls.Add("Hide");
     public void ShowAgain() => Calls.Add("ShowAgain");
     public void OpenMainWindow() => Calls.Add("OpenMainWindow");
+    public void EditSnippet(long snippetId) => Calls.Add($"Edit:{snippetId}");
     public void Focus(PopupFocusTarget target) => Calls.Add($"Focus:{target}");
 }

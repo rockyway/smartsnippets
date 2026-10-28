@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using SmartSnippets.Presentation.Navigation;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 using Windows.System;
 
@@ -173,8 +175,45 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         ApplyLayout();
     }
 
+    private void OnSnippetContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
+    {
+        e.ItemContainer.RightTapped -= OnSnippetRightTapped;
+        e.ItemContainer.RightTapped += OnSnippetRightTapped;
+    }
+
+    private void OnSnippetRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not ListViewItem container || container.Content is not SnippetRowViewModel row) return;
+        e.Handled = true;
+        ShowSnippetMenu(container, row);
+    }
+
+    private void ShowSnippetMenu(ListViewItem container, SnippetRowViewModel row)
+    {
+        if (_viewModel is not { } vm) return;
+        var menu = new MenuFlyout();
+        var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy };
+        var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = vm.CanInsertRow };
+        var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
+        var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
+        copy.Click += (_, _) => vm.CopyRow(row.Id);
+        insert.Click += async (_, _) => await vm.InsertRowAsync(row.Id);
+        edit.Click += async (_, _) => await vm.RequestSelectAsync(row.Id);
+        delete.Click += async (_, _) => await vm.DeleteRowAsync(row.Id);
+        menu.Items.Add(copy); menu.Items.Add(insert); menu.Items.Add(edit); menu.Items.Add(delete);
+        menu.ShowAt(container);
+    }
+
     private void OnListKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if ((e.Key == VirtualKey.Application || (e.Key == VirtualKey.F10 &&
+            (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0)) &&
+            SnippetList.SelectedItem is SnippetRowViewModel row && SnippetList.ContainerFromItem(row) is ListViewItem container)
+        {
+            e.Handled = true;
+            ShowSnippetMenu(container, row);
+            return;
+        }
         if (e.Key == VirtualKey.Delete && _viewModel is { } viewModel && viewModel.DeleteSelectedCommand.CanExecute(null))
         {
             e.Handled = true;

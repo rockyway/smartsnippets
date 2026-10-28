@@ -48,6 +48,11 @@ public sealed class DeferredPopupHost(IPopupHost host) : IPopupHost
         if (!_suspended && !_committed) host.OpenMainWindow();
     }
 
+    public void EditSnippet(long snippetId)
+    {
+        if (!_suspended && !_committed) host.EditSnippet(snippetId);
+    }
+
     public void Focus(PopupFocusTarget target)
     {
         if (_committed) return;

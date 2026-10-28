@@ -159,7 +159,7 @@ internal sealed class AppHost
         AppLog.Info("porting_ready");
 
         // Step 7: popup, then the main window (created hidden).
-        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
+        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets), id => _ = EditFromPopupAsync(id));
         _popup = popup;
         popup.CanShow = () => !_exiting;
 
@@ -170,7 +170,9 @@ internal sealed class AppHost
             {
                 TextSize = textSize,
                 ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService(),
-                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id), textSize: textSize),
+                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id), textSize: textSize,
+                    insertRow: id => _popupViewModel?.InsertFromMainAsync(id) ?? Task.CompletedTask,
+                    canInsertRow: () => _popupViewModel?.CanInsertFromMain == true),
             },
             PageKind.Folders => new FoldersPage
             {
@@ -248,6 +250,14 @@ internal sealed class AppHost
             _ = ApplyLaunchOptionsAsync(Program.InitialOptions, showMain: !startInBackground);
         else if (!startInBackground)
             mainWindow.ShowPage(PageKind.Snippets);
+    }
+
+    private async Task EditFromPopupAsync(long snippetId)
+    {
+        if (_exiting || _mainWindow is not { } window) return;
+        await window.ShowPageWithoutActivationAsync(PageKind.Snippets, show: true);
+        if (window.CurrentPage != PageKind.Snippets || _snippetsViewModel is not { } page) return;
+        if (await page.RequestSelectAsync(snippetId)) window.BringToFront();
     }
 
     private async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain)

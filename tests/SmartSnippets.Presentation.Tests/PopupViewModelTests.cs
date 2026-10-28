@@ -21,6 +21,44 @@ public sealed class PopupViewModelTests
     private PopupViewModel Create(AppSettings? settings = null) => new(_store, _settings, settings ?? new(), _insertion, _clipboard, _elevation, _host, _dialogs, _notices);
 
     [Fact]
+    public void RowActionTextHasRequestedOrder()
+    {
+        Assert.Equal(["Copy", "Insert", "Edit", "Delete"],
+            new[] { UiText.RowActionCopy, UiText.RowActionInsert, UiText.RowActionEdit, UiText.RowActionDelete });
+    }
+
+    [Fact]
+    public async Task RowActions_CopyEditAndCancelDeleteDoNotRecordUsage()
+    {
+        var snippet = _store.SeedSnippet("sensitive synthetic text", "Label");
+        _dialogs.ConfirmAnswers.Enqueue(false);
+        var usage = 0; _store.OnRecordUsage = _ => usage++;
+        using var vm = Create(); vm.OpenPreview();
+        var row = Assert.Single(vm.Items);
+        Assert.True(vm.CanUseRowActions(row));
+        vm.CopyRow(row);
+        Assert.Equal("sensitive synthetic text", Assert.Single(_clipboard.Texts));
+        vm.EditRow(row);
+        Assert.Contains($"Edit:{snippet.Id}", _host.Calls);
+        await vm.DeleteRowAsync(row);
+        Assert.Single(_dialogs.Confirms);
+        Assert.Single(_store.Snippets);
+        Assert.Equal(0, usage);
+        Assert.Empty(_insertion.Calls);
+    }
+
+    [Fact]
+    public async Task PreviewRowInsertClosesWithoutInsertion()
+    {
+        _store.SeedSnippet("body");
+        using var vm = Create(); vm.OpenPreview();
+        await vm.InsertRowAsync(Assert.Single(vm.Items));
+        Assert.Empty(_insertion.Calls);
+        Assert.Empty(_clipboard.Texts);
+        Assert.Contains("Hide", _host.Calls);
+    }
+
+    [Fact]
     public void PopupRowsAndHeadingsShareObservableTextSize()
     {
         var size = new TextSizeService();
@@ -28,6 +66,7 @@ public sealed class PopupViewModelTests
         using var vm = new PopupViewModel(_store, _settings, new AppSettings { PopupLayout = PopupLayout.Folder },
             _insertion, _clipboard, _elevation, _host, _dialogs, _notices, textSize: size);
         Assert.Equal(2, vm.Items.Count);
+        Assert.False(vm.CanUseRowActions(vm.Items.Single(item => item.Kind == PopupItemKind.Heading)));
         Assert.All(vm.Items, item => Assert.Same(size, item.TextSize));
         size.Apply(TextSizePreset.Custom, 32);
         Assert.All(vm.Items, item => Assert.Equal(32, item.TextSize!.FontSize));
@@ -82,6 +121,9 @@ public sealed class PopupViewModelTests
         Assert.Equal("Support", vm.Items[0].FolderChip);
         Assert.Equal("billing", vm.Items[0].Tag1);
         Assert.Equal("chat", vm.Items[0].Tag2);
+        Assert.Equal("#billing #chat #extra", vm.Items[0].TagsDisplay);
+        Assert.Equal("Refund, Support, #billing #chat #extra", vm.Items[0].ToString());
+        Assert.DoesNotContain("Refund policy", vm.Items[0].ToString());
         vm.ToggleLayoutCommand.Execute(null);
         Assert.Equal("Folder", _settings.Get(SettingsKeys.PopupLayout));
         Assert.Equal("Support (1)", vm.Items[0].HeadingText);
