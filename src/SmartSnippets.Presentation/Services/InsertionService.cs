@@ -70,7 +70,12 @@ public sealed class InsertionService(
                         {
                             ct.ThrowIfCancellationRequested();
                             attempts++;
-                            swap = dispatcher.TrySwapClipboard(text, options.AllowClipboardLoss);
+                            try { swap = dispatcher.TrySwapClipboard(text, options.AllowClipboardLoss); }
+                            catch (ClipboardSwapException ex)
+                            {
+                                AppLog.Info("clipboard_swap_exception", $"kind={ex.InnerException?.GetType().Name ?? ex.GetType().Name}");
+                                swap = new ClipboardSwap(SwapStatus.Failed, ex.Snapshot);
+                            }
                             snapshot = swap.Snapshot;
                             if (swap.Status != SwapStatus.Busy) break;
                             if (attempts < _timings.ClipboardAttempts) await _delay(_timings.ClipboardRetryDelay, ct);

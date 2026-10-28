@@ -29,12 +29,19 @@ public interface IClipboardSnapshot
 /// <summary>Snapshot is non-null exactly when the clipboard was emptied. NotPreserved never empties it.</summary>
 public sealed record ClipboardSwap(SwapStatus Status, IClipboardSnapshot? Snapshot, int UnsavedCount = 0, bool CapExceeded = false);
 
+/// <summary>When a dispatcher throws after emptying, it must transfer the snapshot with the exception.</summary>
+public sealed class ClipboardSwapException(IClipboardSnapshot snapshot, Exception innerException)
+    : Exception("Clipboard swap failed after emptying.", innerException)
+{
+    public IClipboardSnapshot Snapshot { get; } = snapshot;
+}
+
 public interface IPasteDispatcher
 {
     Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct);
     /// <summary>False means release was incomplete; do not mutate the clipboard or paste.</summary>
     bool ReleaseHeldModifiers();
-    /// <summary>Snapshots before emptying; incomplete snapshots must not be emptied unless allowed.</summary>
+    /// <summary>Snapshots before emptying; incomplete snapshots must not be emptied unless allowed. Any exception after emptying must carry the snapshot in <see cref="ClipboardSwapException"/>.</summary>
     ClipboardSwap TrySwapClipboard(string text, bool allowIncomplete);
     SwapStatus TryPlaceText(string text);
     /// <summary>Four injected events mean Dispatched, zero NotDispatched, and one to three Uncertain.</summary>

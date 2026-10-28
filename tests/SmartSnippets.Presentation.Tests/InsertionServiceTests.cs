@@ -3,6 +3,10 @@ using SmartSnippets.Presentation.Tests.Fakes;
 
 namespace SmartSnippets.Presentation.Tests;
 
+[CollectionDefinition("Insertion logging", DisableParallelization = true)]
+public sealed class InsertionLoggingCollection;
+
+[Collection("Insertion logging")]
 public sealed class InsertionServiceTests
 {
     private readonly List<string> _calls = [];
@@ -118,6 +122,25 @@ public sealed class InsertionServiceTests
     }
 
     [Fact]
+    public async Task OverCap_LogsCapExceededWithoutClipboardMutation()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ss-cap-log-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            SmartSnippets.Core.Logging.AppLog.Initialize(directory);
+            _dispatcher.Unsaved = 1; _dispatcher.CapExceeded = true;
+            Assert.Equal(InsertionOutcome.ClipboardNotPreserved, (await Insert()).Outcome);
+            var log = File.ReadAllText(Path.Combine(directory, "app.log"));
+            Assert.Contains("status=NotPreserved", log);
+            Assert.Contains("cap_exceeded=True", log);
+            Assert.False(_dispatcher.Emptied);
+            Assert.Equal(new byte[] { 6, 7, 8, 9 }, _dispatcher.Clipboard["image"]);
+            Assert.Equal(0, Usage);
+        }
+        finally { SmartSnippets.Core.Logging.AppLog.Shutdown(); Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task AllowLoss_IncompleteSnapshot_PastesAndRestores()
     {
         _dispatcher.Unsaved = 1; Assert.Equal(InsertionOutcome.Inserted, (await Insert(true)).Outcome);
@@ -143,6 +166,20 @@ public sealed class InsertionServiceTests
     public async Task ClipboardBusy_ThenSuccess() { _dispatcher.Swaps.Enqueue(SwapStatus.Busy); _dispatcher.Swaps.Enqueue(SwapStatus.Busy); Assert.Equal(InsertionOutcome.Inserted, (await Insert()).Outcome); Assert.Equal(3, _calls.Count(x => x == "swap")); }
     [Fact]
     public async Task SwapFailedAfterEmpty_Restores() { _dispatcher.FailAfterEmpty = true; Assert.Equal(InsertionOutcome.PasteFailed, (await Insert()).Outcome); Assert.Contains("restore", _calls); Assert.Equal(0, Usage); }
+
+    [Fact]
+    public async Task SwapThrowsAfterEmpty_RestoresSameSnapshotAndClearsGuard()
+    {
+        _dispatcher.ThrowAfterEmpty = true;
+        Assert.Equal(InsertionOutcome.PasteFailed, (await Insert()).Outcome);
+        Assert.Same(_dispatcher.LastSnapshot, _dispatcher.RestoredSnapshot);
+        Assert.Equal(new byte[] { 1, 2 }, _dispatcher.Clipboard["text"]);
+        Assert.Equal(new byte[] { 6, 7, 8, 9 }, _dispatcher.Clipboard["image"]);
+        Assert.DoesNotContain("send", _calls);
+        Assert.Equal(0, Usage);
+        _dispatcher.ThrowAfterEmpty = false;
+        Assert.Equal(InsertionOutcome.Inserted, (await Insert()).Outcome);
+    }
 
     [Theory]
     [InlineData(DispatchState.NotDispatched, InsertionOutcome.PasteFailed, false)]

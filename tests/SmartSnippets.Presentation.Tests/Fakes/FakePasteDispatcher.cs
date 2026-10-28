@@ -32,6 +32,7 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
     public Action? OnSend { get; set; }
     public bool ThrowSend { get; set; }
     public bool FailAfterEmpty { get; set; }
+    public bool ThrowAfterEmpty { get; set; }
     public Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct) { calls.Add("focus"); FocusTargets.Add(target); return FocusOverride?.Invoke() ?? Task.FromResult(Focus); }
     public bool ModifiersReleased { get; set; } = true;
     public bool PasteKeysReleased { get; set; } = true;
@@ -49,6 +50,7 @@ internal sealed class FakePasteDispatcher(List<string> calls) : IPasteDispatcher
         Emptied = true;
         Clipboard.Clear();
         Clipboard["snippet"] = Encoding.UTF8.GetBytes(text);
+        if (ThrowAfterEmpty) throw new ClipboardSwapException(snapshot, new InvalidOperationException());
         return new(FailAfterEmpty ? SwapStatus.Failed : status, snapshot);
     }
     public SwapStatus TryPlaceText(string text)
