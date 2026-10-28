@@ -174,6 +174,11 @@ try {
                 Request-QAActivation @('--page', $targetPage[0])
                 $shown = Wait-Until { Find-ById (Get-AppWindow $p.Id 'Smart Snippets') $targetPage[1] } 8000 100
                 if (-not $shown) { throw "Redirect did not navigate to $($targetPage[0])" }
+                if ($targetPage[0] -eq 'snippets') {
+                    $visibleText = @(Find-All $shown ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
+                    if ('Synthetic one' -in $visibleText -or 'Synthetic two' -in $visibleText -or 'Synthetic three' -in $visibleText) { throw 'Snippet bodies appeared as separate list rows' }
+                    if ('First synthetic' -notin $visibleText) { throw 'Synthetic row label missing' }
+                }
                 Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
             }
             foreach ($query in @('', 'Synthetic', 'NoSuchQaResult')) {
@@ -189,6 +194,8 @@ try {
                 $rows = @(Find-All $list ([Windows.Automation.ControlType]::ListItem))
                 if ($query -eq 'NoSuchQaResult' -and $rows.Count -ne 0) { throw 'Empty preview search returned rows' }
                 if ($query -ne 'NoSuchQaResult' -and $rows.Count -lt 1) { throw 'Populated preview search returned no rows' }
+                $popupText = @(Find-All $list ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
+                if ('Synthetic one' -in $popupText -or 'Synthetic two' -in $popupText -or 'Synthetic three' -in $popupText) { throw 'Snippet bodies appeared in popup rows' }
                 $state = if (-not $query) { 'filled' } elseif ($query -eq 'Synthetic') { 'search' } else { 'empty' }
                 Save-QAScreenshot ([IntPtr]$popup.Current.NativeWindowHandle) (Join-Path $out ("popup-$state-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
             }
