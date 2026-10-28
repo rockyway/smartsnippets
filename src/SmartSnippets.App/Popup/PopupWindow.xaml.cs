@@ -64,6 +64,12 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
     private Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+    private InfoBarSeverity FooterSeverity(PopupFooterState state) => state switch
+    {
+        PopupFooterState.Error => InfoBarSeverity.Error,
+        PopupFooterState.ConfirmClipboardLoss or PopupFooterState.MaybePasted => InfoBarSeverity.Warning,
+        _ => InfoBarSeverity.Informational,
+    };
 
     internal void Prewarm()
     {
@@ -89,7 +95,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         Center(); AppWindow.Show(); SetVisible(true);
         var focused = ForegroundActivation.TryActivate(_hwnd, out var path);
-        AppLog.Info("popup_reopened", $"outcome={ViewModel.FooterState} focus={path}");
+        AppLog.Info("popup_reopened", $"outcome={ViewModel.LastInsertionOutcome} focus={path}");
         if (focused) Focus(PopupFocusTarget.Search); else NotifyReopenFailure?.Invoke(ViewModel.FooterMessage);
     }
     public void OpenMainWindow() { _openMainWindow(); Hide(); AppLog.Info("popup_closed", "reason=main_window"); }
@@ -120,7 +126,25 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnItemClick(object sender, ItemClickEventArgs e) { if (e.ClickedItem is PopupItemViewModel item) _ = ViewModel.ActivateAsync(item); }
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
     {
-        if (e.Item is PopupItemViewModel item) { e.ItemContainer.IsEnabled = item.Kind == PopupItemKind.Snippet; e.ItemContainer.IsTabStop = item.Kind == PopupItemKind.Snippet; }
+        if (e.Item is PopupItemViewModel item)
+        {
+            e.ItemContainer.IsEnabled = item.Kind == PopupItemKind.Snippet;
+            e.ItemContainer.IsTabStop = item.Kind == PopupItemKind.Snippet;
+            StyleSelection(e.ItemContainer, ReferenceEquals(e.Item, PopupList.SelectedItem));
+        }
+    }
+    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        foreach (var item in e.RemovedItems)
+            if (PopupList.ContainerFromItem(item) is ListViewItem container) StyleSelection(container, false);
+        foreach (var item in e.AddedItems)
+            if (PopupList.ContainerFromItem(item) is ListViewItem container) StyleSelection(container, true);
+    }
+    private void StyleSelection(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, bool selected)
+    {
+        container.Background = selected ? SelectedPalette.Background : null;
+        container.BorderBrush = selected ? SelectedPalette.BorderBrush : null;
+        container.BorderThickness = selected ? new Thickness(3, 0, 0, 0) : new Thickness(0);
     }
     private void OnSortClick(object sender, RoutedEventArgs e)
     {
@@ -154,15 +178,16 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnSearchChanged(object sender, TextChangedEventArgs e)
     {
         if (ViewModel is null || !_visible) return;
-        CompositionTarget.Rendering -= OnRendering;
+        CompositionTarget.Rendered -= OnRendered;
         _searchStarted = Stopwatch.GetTimestamp(); _awaitingLayout = false; _awaitingFrame = false;
-        DispatcherQueue.TryEnqueue(() => { if (!_awaitingLayout) AwaitFrame(); });
+        ViewModel.Query = SearchBox.Text;
+        if (!_awaitingLayout) AwaitFrame();
     }
     private void OnListLayoutUpdated(object? sender, object e) { if (_awaitingLayout) { _awaitingLayout = false; AwaitFrame(); } }
-    private void AwaitFrame() { if (_awaitingFrame || _searchStarted == 0) return; _awaitingFrame = true; CompositionTarget.Rendering += OnRendering; }
-    private void OnRendering(object? sender, object e)
+    private void AwaitFrame() { if (_awaitingFrame || _searchStarted == 0) return; _awaitingFrame = true; CompositionTarget.Rendered += OnRendered; }
+    private void OnRendered(object? sender, object e)
     {
-        CompositionTarget.Rendering -= OnRendering; _awaitingFrame = false;
+        CompositionTarget.Rendered -= OnRendered; _awaitingFrame = false;
         if (_searchStarted == 0) return;
         var elapsed = (int)Stopwatch.GetElapsedTime(_searchStarted).TotalMilliseconds; _searchStarted = 0;
         AppLog.Info("popup_search_ms", PopupLogFormat.SearchMs(elapsed, ViewModel.Layout, ViewModel.Items.Count(i => i.Kind == PopupItemKind.Snippet)));

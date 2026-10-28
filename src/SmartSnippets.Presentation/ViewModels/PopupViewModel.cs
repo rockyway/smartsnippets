@@ -54,7 +54,11 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public PopupOpenMode Open(InsertionTarget target)
     {
         if (IsInserting) return PopupOpenMode.Ignored;
-        if (IsEditorOpen) return PopupOpenMode.Resumed;
+        if (IsEditorOpen)
+        {
+            AppLog.Info("popup_opened", $"mode=Resumed pid={Target?.ProcessId}");
+            return PopupOpenMode.Resumed;
+        }
         Target = target;
         Query = string.Empty;
         ClearFooter(); StatusText = string.Empty;
@@ -120,6 +124,8 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public string EmptyBody => UiText.NoSnippetsMatchBody;
     public PopupFooterState FooterState { get => _footerState; private set { if (SetProperty(ref _footerState, value)) NotifyFooter(); } }
     public string FooterMessage { get => _footerMessage; private set => SetProperty(ref _footerMessage, value); }
+    public string FooterItemStatus => FooterState.ToString();
+    public InsertionOutcome LastInsertionOutcome => _failedOutcome;
     public bool HasFooterMessage => FooterState != PopupFooterState.None;
     public bool IsFooterError => FooterState == PopupFooterState.Error;
     public bool IsFooterCaution => FooterState is PopupFooterState.ConfirmClipboardLoss or PopupFooterState.MaybePasted;
@@ -215,7 +221,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private async Task InsertAsync(long id, InsertionOptions options)
     {
         if (IsInserting || Target is null) return;
-        IsInserting = true; ClearFooter(); _host.Hide();
+        IsInserting = true; ClearFooter(); _host.Hide(); AppLog.Info("popup_closed", "reason=insert");
         InsertionResult result;
         try { result = await _insertion.InsertAsync(Target, id, options); }
         catch (Exception) { result = new(InsertionOutcome.PasteFailed, UiText.InsertFailedGeneric); }
@@ -255,7 +261,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void ClearFooter() { FooterState = PopupFooterState.None; FooterMessage = string.Empty; _pendingId = null; }
     private void NotifyFooter()
     {
-        OnPropertyChanged(nameof(HintText)); OnPropertyChanged(nameof(HasFooterMessage)); OnPropertyChanged(nameof(IsFooterError));
+        OnPropertyChanged(nameof(HintText)); OnPropertyChanged(nameof(FooterItemStatus)); OnPropertyChanged(nameof(HasFooterMessage)); OnPropertyChanged(nameof(IsFooterError));
         OnPropertyChanged(nameof(IsFooterCaution)); OnPropertyChanged(nameof(IsConfirmingClipboardLoss));
         OnPropertyChanged(nameof(CanDismissFooter)); OnPropertyChanged(nameof(CanCopyFailedText)); OnPropertyChanged(nameof(CanRestartAsAdmin));
     }
