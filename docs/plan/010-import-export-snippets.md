@@ -1869,11 +1869,28 @@ fails for the stated reason.
     ```
 
     This is the binding 2,000 ms gate on the `windows-latest` runner. The existing Debug steps are unchanged.
-  - **Calibration (D11, §4.3.9).** On the branch, run `workflow_dispatch` once with a temporary extra step
-    `dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Calibration"`. Read the printed
-    table, then set `MaxImportEntries` and its pinning test by the §4.3.9 rule, and **remove the temporary step**. Run
-    `workflow_dispatch` again: the budget step must now pass. Record the table, the chosen limit and the run links in
-    §10.
+  - **Calibration (D11, §4.3.9).** On the branch, run `workflow_dispatch` once with this temporary extra step.
+    The opt-in environment variable is mandatory, and detailed output is required to expose the measurement table:
+
+    ```yaml
+          - name: Import budget calibration (temporary)
+            shell: pwsh
+            env:
+              SMARTSNIPPETS_CALIBRATE: '1'
+            run: |
+              dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Calibration" --logger "console;verbosity=detailed" 2>&1 | Tee-Object -FilePath calibration.log
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              $measurements = @(Select-String -Path calibration.log -Pattern '^\s*BUDGET kind=')
+              if ($measurements.Count -ne 18) { throw 'Expected 18 calibration measurement lines; a passing no-op is not evidence' }
+              foreach ($kind in @('dense', 'folders', 'typical')) {
+                if (-not ($measurements | Where-Object { $_.Line -match "kind=$kind entries=" })) { throw "Missing calibration case $kind" }
+              }
+    ```
+
+    Read all 18 measured rows (including byte-cap cases), then set `MaxImportEntries` and its pinning test by §4.3.9,
+    and **remove the temporary step**. Run `workflow_dispatch` again: the budget step must now pass. Record the table,
+    chosen limit and run links in §10. The persistent workflow currently contains only the Release Budget step, not
+    a Calibration step; do not add the expensive temporary measurement to ordinary CI runs.
   - **`SnippetFileService(Func<WindowId?> owner)`:**
     - `Microsoft.Windows.Storage.Pickers.FileOpenPicker(id)` with `FileTypeFilter = { ".json" }`,
       `CommitButtonText = "Import"`.
@@ -2164,6 +2181,10 @@ The only remaining "stop" is the standing instruction for plan defects, and an R
 working elevated), which would be a defect report, not a pending decision.
 
 ## 10. Approval log
+
+**Review fix 4:** T10's temporary CI calibration step now explicitly sets `SMARTSNIPPETS_CALIBRATE: '1'`, requests
+detailed console output and rejects runs missing the expected 18 `BUDGET` measurement rows / any case kind. The
+persistent workflow has no Calibration step to amend (only the intended Release Budget gate), so it is unchanged.
 
 **Review fix 3:** full persisted-row fake parity now covers all four fixtures and every stored field except ids.
 The review's stats-discard mutation passed the old oracle (2/2), but fails the strengthened oracle (2 failures / 2
