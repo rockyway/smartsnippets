@@ -210,10 +210,10 @@ try {
             & $fakeWriter ([pscustomobject]@{ Key=$runAddress; Name='SmartSnippets'; Exists=$true; Kind='String'; Value='changed' })
             & $fakeWriter ([pscustomobject]@{ Key=$themeAddress; Name='SystemUsesLightTheme'; Exists=$true; Kind='DWord'; Value=0 })
             $savedAgain=Save-HarnessRegistryOriginal $journalPath 'fake-run' $runAddress 'SmartSnippets' -Reader $fakeReader
-            Assert ($savedAgain.Exists -eq $present -and $savedAgain.Value -ceq $runRecord.Value) "registry journal never overwrites original on repeated save (present=$present)"
             throw 'ordinary fake registry error'
-        } catch { $errorSeen=$true }
+        } catch { if ($_.Exception.Message -cne 'ordinary fake registry error') { throw }; $errorSeen=$true }
         finally { Restore-HarnessRegistryJournal $journalPath 'fake-run' -Writer $fakeWriter }
+        Assert ($savedAgain.Exists -eq $present -and $savedAgain.Value -ceq $runRecord.Value) "registry journal never overwrites original on repeated save (present=$present)"
         $restored=Import-Clixml -LiteralPath $fakeRegPath
         Assert ($errorSeen -and $restored.SmartSnippets.Exists -eq $present -and $restored.SmartSnippets.Kind -ceq $runRecord.Kind -and $restored.SmartSnippets.Value -ceq $runRecord.Value) "ordinary finally restores Run value existence/type/unexpanded value (present=$present)"
         Assert ($restored.SystemUsesLightTheme.Exists -eq $present -and $restored.SystemUsesLightTheme.Kind -ceq $themeRecord.Kind -and $restored.SystemUsesLightTheme.Value -eq $themeRecord.Value) "ordinary finally restores theme value existence/type/value (present=$present)"
