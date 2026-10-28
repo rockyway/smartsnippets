@@ -35,8 +35,13 @@ jobs:
       - name: AOT publish + warning gate
         shell: pwsh
         run: |
-          ./scripts/publish-aot.ps1 -Output publish
+          ./scripts/publish-aot.ps1 -Output publish -Version "0.0.0-ci.${{ github.run_number }}" -BuildNumber ${{ github.run_number }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check stamped version
+        shell: pwsh
+        run: |
+          $info = (Get-Item publish/SmartSnippets.App.exe).VersionInfo
+          if (-not $info.ProductVersion.StartsWith('0.0.0-ci.${{ github.run_number }}') -or $info.FileVersion -ne '0.0.0.${{ github.run_number }}') { throw 'Version stamp mismatch' }
       - uses: actions/upload-artifact@v7
         with:
           name: SmartSnippets-win-x64-aot
