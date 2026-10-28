@@ -55,6 +55,67 @@ public sealed class InsertionShutdownCoordinatorTests
     }
 
     [Fact]
+    public async Task ForwardsCompleteRequestIncludingConsentAndCancellation()
+    {
+        var inner = new RecordingInsertionService();
+        var expected = new InsertionResult(InsertionOutcome.CopiedForManualPaste, "result");
+        inner.Next = (_, _, _, _) => Task.FromResult(expected);
+        var coordinator = new InsertionShutdownCoordinator(inner);
+        using var cancellation = new CancellationTokenSource();
+        var target = new InsertionTarget((nint)987, 321, (nint)654, "distinct target");
+        var options = new InsertionOptions(AllowClipboardLoss: true);
+
+        var result = await coordinator.InsertAsync(target, 12345, options, cancellation.Token);
+
+        var request = Assert.Single(inner.Calls);
+        Assert.Equal(target, request.Target); Assert.Equal(12345, request.Id);
+        Assert.Equal(options, request.Options); Assert.True(request.Options.AllowClipboardLoss);
+        Assert.True(request.Token.CanBeCanceled); Assert.Equal(cancellation.Token, request.Token);
+        Assert.Same(expected, result);
+    }
+
+    [Theory]
+    [InlineData("sync")]
+    [InlineData("fault")]
+    [InlineData("cancel")]
+    public async Task FailedInnerCall_ReleasesActiveTrackingAndAllowsNextCall(string mode)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var inner = new RecordingInsertionService();
+        inner.Next = (_, _, _, ct) => mode switch
+        {
+            "sync" => throw new InvalidOperationException("sync"),
+            "fault" => Task.FromException<InsertionResult>(new InvalidOperationException("fault")),
+            _ => Task.FromCanceled<InsertionResult>(ct),
+        };
+        if (mode == "cancel") cancellation.Cancel();
+        var coordinator = new InsertionShutdownCoordinator(inner);
+        var failed = coordinator.InsertAsync(Target, 7, new(true), cancellation.Token);
+        if (mode == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => failed);
+        else await Assert.ThrowsAsync<InvalidOperationException>(() => failed);
+
+        Assert.True(coordinator.TryBeginShutdown());
+        await coordinator.WaitForIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        coordinator.ResumeAdmission();
+        inner.Next = (_, _, _, _) => Task.FromResult(new InsertionResult(InsertionOutcome.Inserted, ""));
+        Assert.Equal(InsertionOutcome.Inserted, (await coordinator.InsertAsync(Target, 8)).Outcome);
+        Assert.Equal(2, inner.Calls.Count);
+    }
+
+    private sealed class RecordingInsertionService : IInsertionService
+    {
+        public List<(InsertionTarget Target, long Id, InsertionOptions Options, CancellationToken Token)> Calls { get; } = [];
+        public Func<InsertionTarget, long, InsertionOptions, CancellationToken, Task<InsertionResult>> Next { get; set; } =
+            (_, _, _, _) => Task.FromResult(new InsertionResult(InsertionOutcome.Inserted, ""));
+
+        public Task<InsertionResult> InsertAsync(InsertionTarget target, long snippetId, InsertionOptions options = default, CancellationToken ct = default)
+        {
+            Calls.Add((target, snippetId, options, ct));
+            return Next(target, snippetId, options, ct);
+        }
+    }
+
+    [Fact]
     public async Task CancelledShutdown_ReopensAdmissionWhileExistingOperationStillDrains()
     {
         var fake = new FakeInsertionService { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };

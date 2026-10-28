@@ -39,6 +39,7 @@ internal sealed class AppHost
     private HotkeyManager? _hotkeyManager;
     private PopupWindow? _popup;
     private PopupViewModel? _popupViewModel;
+    private DeferredPopupHost? _popupHost;
     private bool _popupVisible;
     private MainWindow? _mainWindow;
     private TrayIcon? _tray;
@@ -210,8 +211,9 @@ internal sealed class AppHost
         UpdateTrayState();
         var popupDialogs = new DialogService(() => popup.ContentXamlRoot, () => { });
         
+        _popupHost = new DeferredPopupHost(popup);
         _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
-            popup, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
+            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += (_, visible) => { _popupVisible = visible; UpdateTrayState(); };
@@ -315,6 +317,7 @@ internal sealed class AppHost
     {
         if (_exiting || (_insertionCoordinator is { } coordinator && !coordinator.TryBeginShutdown())) return false;
         _exiting = true;
+        _popupHost?.Suspend();
         try { _popup?.Hide(); }
         catch { CancelShutdown(); throw; }
         return true;
@@ -324,6 +327,7 @@ internal sealed class AppHost
     {
         _insertionCoordinator?.ResumeAdmission();
         _exiting = false;
+        _popupHost?.Resume();
     }
 
     private async Task ShutDownAsync()
@@ -350,6 +354,7 @@ internal sealed class AppHost
                 if (status is RestoreStatus.Failed or RestoreStatus.Partial)
                     Notices?.Notify("Clipboard restore failed", "Your previous clipboard couldn't be fully restored.");
             }
+            _popupHost?.Commit();
             ReleaseResources();
             AppLog.Shutdown();
             Application.Current.Exit();
