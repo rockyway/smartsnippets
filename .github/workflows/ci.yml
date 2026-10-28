@@ -32,6 +32,8 @@ jobs:
         run: dotnet test tests/SmartSnippets.Core.Tests
       - name: Presentation tests
         run: dotnet test tests/SmartSnippets.Presentation.Tests
+      - name: Import budget (Release)
+        run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Budget"
       - name: AOT publish + warning gate
         shell: pwsh
         run: |

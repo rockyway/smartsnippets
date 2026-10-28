@@ -1,0 +1,11 @@
+{"SchemaVersion":2,"ExportedAt":"2023-11-14T22:13:20Z","SourcePlatform":"Windows","Groups":[{"Id":"g1","Name":"Prompts","IsEnabled":true,"SortOrder":0},{"Id":"g2","Name":"Secure","IsEnabled":true,"SortOrder":1},{"Id":"g3","Name":"","IsEnabled":true,"SortOrder":2}],"Favorites":[{}],"Vocabulary":[{},{}],"Mappings":[
+{"ActionType":"SendKeys","GroupId":"g1","SpokenPhrase":"say hello","ActionParamsJson":"{\"Text\":\"Hello there\",\"SendEnterAfter\":true,\"IsSecret\":false,\"Nonce\":null}"},
+{"ActionType":"SendKeys","SpokenPhrase":"insert last","ActionParamsJson":"{\"text\":\"{last}\"}"},
+{"ActionType":"SendKeys","IsParameterized":true,"ActionParamsJson":"{\"Text\":\"{text}\",\"SendEnterAfter\":true}"},
+{"ActionType":"SendKeys","GroupId":"g2","ActionParamsJson":"{\"Text\":\"c2VjcmV0\",\"IsSecret\":true,\"Nonce\":\"bm9uY2U=\"}"},
+{"ActionType":"OpenUrl","ActionParamsJson":"{\"Url\":\"https://example.invalid\"}"},
+{"ActionType":"SendKeys","ActionParamsJson":""},
+{"ActionType":"SendKeys","GroupId":"g1","ActionParamsJson":"{\"Text\":42}"},
+{"ActionType":"SendKeys","GroupId":"missing","SpokenPhrase":"sign off","ActionParamsJson":"{\"Text\":\"Thanks,\\nTam\"}"},
+{"ActionType":"SendKeys","GroupId":"g3","SpokenPhrase":"","ActionParamsJson":"{\"Text\":\"Line one\\nLine two\"}"}
+]}

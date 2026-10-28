@@ -155,7 +155,8 @@ internal sealed class AppHost
 
         var elevation = new ElevationService(() => _mainWindow?.IsHidden ?? true);
         var startup = new StartupRegistration();
-        Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront());
+        Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront(), textSize);
+        AppLog.Info("porting_ready");
 
         // Step 7: popup, then the main window (created hidden).
         var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
@@ -168,7 +169,8 @@ internal sealed class AppHost
             PageKind.Snippets => new SnippetsPage
             {
                 TextSize = textSize,
-                ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService()),
+                ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService(),
+                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id)),
             },
             PageKind.Folders => new FoldersPage
             {

@@ -163,6 +163,8 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox
                     x:Name="SearchBox"
@@ -177,10 +179,19 @@
                     Style="{StaticResource AccentButtonStyle}"
                     ToolTipService.ToolTip="New snippet (Ctrl+N)"
                     automation:AutomationProperties.Name="New snippet">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon FontSize="14" Glyph="&#xE710;" />
-                        <TextBlock Text="New snippet" />
-                    </StackPanel>
+                    <FontIcon FontSize="14" Glyph="&#xE710;" />
+                </Button>
+                <Button Grid.Column="2"
+                    Command="{x:Bind ViewModel.Porting.ImportCommand, Mode=OneWay}"
+                    ToolTipService.ToolTip="Import snippets from Smart Snippets, TermFlow, Rephlo or InkSpoke (.json)"
+                    automation:AutomationProperties.Name="Import snippets">
+                    <FontIcon FontSize="14" Glyph="&#xE8B5;" />
+                </Button>
+                <Button Grid.Column="3"
+                    Command="{x:Bind ViewModel.Porting.ExportCommand, Mode=OneWay}"
+                    ToolTipService.ToolTip="Export all snippets and folders to a .json file"
+                    automation:AutomationProperties.Name="Export snippets">
+                    <FontIcon FontSize="14" Glyph="&#xEDE1;" />
                 </Button>
             </Grid>
 

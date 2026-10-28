@@ -1,7 +1,7 @@
 # 010 — Import and export snippets
 
 **Date:** 2026-10-28
-**Status:** Approved 2026-10-28 (G2)
+**Status:** Implemented locally; binding CI blocked (no remote branch / no push); manual acceptance PENDING-USER. Approved 2026-10-28 (G2).
 **Size:** L
 **Area:** `src/SmartSnippets.Core/Porting/` (new), `src/SmartSnippets.Core/Store/`, `src/SmartSnippets.Core/Data/SnippetRepository.cs`,
 `src/SmartSnippets.Presentation/ViewModels/`, `src/SmartSnippets.Presentation/Services/`, `src/SmartSnippets.Presentation/Text/UiText.cs`,
@@ -178,10 +178,12 @@ your whole Smart Snippets library as one file.
   message) and carries on. So **a subscriber failure alone can never escape to the caller**, and every other view still
   refreshes. (`Publish` itself could still throw after COMMIT; §4.4's stage table handles that.) This is store-wide
   hardening, approved with the plan.
-- **D11 — per-file entry limit** (user decision on Q1, 2026-10-28). `SnippetFileRules.MaxImportEntries` (provisional
-  100,000; T10 calibrates it from the CI measurement, §4.3.9). A file whose entries array is longer is refused as
-  `TooManyEntries` before any entry is read. Export refuses a library with more snippets than the limit, so every
-  exported file stays importable. One transaction and one event are kept.
+- **D11 — per-file entry limit** (user decision on Q1, 2026-10-28; review fix 2 amended by user). `SnippetFileRules.MaxImportEntries`
+  is 50,000 (local calibration in §10; binding CI remains pending). Native workload entries are **snippets + explicit
+  folders**, counting all raw array slots before mapping, including malformed/duplicate folders. Other formats count
+  their snippet-entry array only. Over-limit import → `TooManyEntries` with the combined count, before mapping or
+  accumulation. Export applies the same combined rule; snippet-only overflow retains `TooManySnippets`, combined
+  overflow uses sibling `TooManyEntries`. One transaction and one event are kept.
 - **D10 — the store's failure log carries no exception message** (review finding 5). `store_write_failed` logs the
   operation, exception type, SQLite error code and HResult, but not `ex.Message`, which can echo a trigger message or a
   path.
@@ -438,7 +440,7 @@ public enum ImportRefusal
     UnknownFormat,      // root is not an object, or no known marker/key
     UnsupportedVersion, // known format, version missing or not the supported one
     MissingEntries,     // known format and version, entries member missing or not an array
-    TooManyEntries,     // entries array longer than SnippetFileRules.MaxImportEntries (D11); checked before any entry is read
+    TooManyEntries,     // array entries exceed MaxImportEntries (native: snippets + explicit folders); checked before mapping
 }
 
 /// <summary>An entry the file holds but this app deliberately does not import.</summary>
@@ -509,7 +511,7 @@ public sealed record ImportSummary(
 /// <summary>Exactly one of <see cref="Summary"/> and <see cref="Failure"/> is non-null.</summary>
 public sealed record ImportRunResult(ImportSummary? Summary, ImportFailure? Failure);
 
-public enum ExportRefusal { TooLarge, TooManySnippets }
+public enum ExportRefusal { TooLarge, TooManySnippets, TooManyEntries }
 
 /// <summary>Exactly one of <see cref="Utf8Json"/> (compact, ≤ MaxImportBytes) and <see cref="Refusal"/> is non-null.
 /// For TooLarge, <see cref="Bytes"/> is "more than MaxImportBytes" (the writer stops at the limit, so the exact size of
@@ -552,7 +554,7 @@ namespace SmartSnippets.Core.Porting;
 public static class SnippetFileRules
 {
     public const int MaxImportBytes = 32 * 1024 * 1024;              // 33,554,432 (A2); also the export limit
-    public const int MaxImportEntries = 100_000;                      // D11: provisional; T10 sets the calibrated value (§4.3.9)
+    public const int MaxImportEntries = 50_000;                       // D11: local calibration (§10); native snippets + explicit folders share it
     public static bool HasJsonExtension(string path);                 // Path.GetExtension, OrdinalIgnoreCase ".json"
     public static string ExportBaseName(DateTimeOffset localNow);     // "smart-snippets-2026-10-28" (InvariantCulture)
 }
@@ -634,11 +636,16 @@ public static class NativeExport
     public const string FormatMarker = "smart-snippets";
     public const int Version = 1;
     /// Pure; safe on a worker thread (the snapshots are immutable lists, never mutated, ISnippetStore.cs:13-17).
-    /// 1. snippets.Count > MaxImportEntries → Refusal TooManySnippets (no serialization at all).
-    /// 2. Compact JSON serialized into a BoundedBufferStream(MaxImportBytes): JsonSerializer.Serialize(stream, doc,
-    ///    NativeJsonContext.Default.NativeDocument). The stream throws an internal ExportLimitExceededException as soon
-    ///    as a write would pass the limit, which is caught here → Refusal TooLarge. So an oversized library costs at most
-    ///    32 MB of buffer and stops early, instead of building the whole output first.
+    /// 1. snippets.Count > MaxImportEntries → TooManySnippets; otherwise snippets.Count + folders.Count over the
+    ///    limit → TooManyEntries. Both refuse before string preflight, DTO creation or serialization.
+    /// 2. Allocation-free string preflight before DTO creation/serialization: run JavaScriptEncoder.Default's span
+    ///    encoder into fixed stack scratch space and sum the UTF-8 size of every encoded string field. This is an exact
+    ///    string-payload count and a lower bound for the document (framing/numbers omitted). Stop as soon as the sum
+    ///    exceeds MaxImportBytes → TooLarge, without allowing the serializer to buffer an oversized token.
+    /// 3. Compact JSON serialized into a BoundedBufferStream(MaxImportBytes): JsonSerializer.Serialize(stream, doc,
+    ///    NativeJsonContext.Default.NativeDocument). The sink catches framing overhead that passes the preflight,
+    ///    throwing ExportLimitExceededException → TooLarge. Its backing buffer stays ≤ 32 MB; the serializer may also
+    ///    use intermediate buffers for accepted tokens (each string payload was already bounded by the preflight).
     public static NativeExportResult Write(IReadOnlyList<Folder> folders, IReadOnlyList<SnippetView> snippets, DateTimeOffset exportedAt);
 }
 ```
@@ -778,11 +785,14 @@ Task ShowInfoAsync(string title, string message);
    `UnsupportedVersion(format, FoundVersion)`. Number versions are compared with `TryGetInt64` (so `1.0` and `"1"` are
    refused for TermFlow). The entries member is not looked at until this passes. A TermFlow file with `version: 2` and
    `snippets: 5` gives `UnsupportedVersion`, not `MissingEntries`.
-5. The entries member is absent or not an array → `MissingEntries(format)`. Its length is greater than
-   `SnippetFileRules.MaxImportEntries` → `TooManyEntries(format, EntryCount: length)`. This is checked from
-   `GetArrayLength()` before any element is read (D11).
-6. The per-format mapper reads each element. `EntryCount` = array length (native and TermFlow: `snippets`; Rephlo:
-   `commands`; InkSpoke: `Mappings`). Every element ends in exactly one of: candidate, skipped, rejected.
+5. The entries member is absent or not an array → `MissingEntries(format)`. Count its raw slots, plus native
+   `folders` raw slots when that member is an array. A combined count greater than `SnippetFileRules.MaxImportEntries`
+   → `TooManyEntries(format, EntryCount: combinedCount)`. Use only `GetArrayLength()` before any element is mapped
+   or accumulated (D11). Absent/null/non-array native `folders` remains ignored.
+6. The per-format mapper reads each element. Successful `ParsedImport.EntryCount` = snippet-entry array length
+   (native and TermFlow: `snippets`; Rephlo: `commands`; InkSpoke: `Mappings`). Every snippet element ends in exactly
+   one of: candidate, skipped, rejected. This summary count excludes native folders, which are reported separately
+   as FoldersCreated, so IsBalanced and the exact four-line summary wording remain unchanged.
 7. Unknown extra members anywhere are ignored. A duplicate member name takes the last value (measured `JsonDocument`
    behaviour; not otherwise special-cased).
 
@@ -997,6 +1007,7 @@ internal sealed partial class NativeJsonContext : JsonSerializerContext;
 | `ExportTooLarge` | `Your library is too large to export as one file: it would be over 32 MB. No file was written.` |
 | — `TooManyEntries` (refusal) | `This {FormatName} file has {count:N0} entries. Smart Snippets can import up to {MaxImportEntries:N0} entries from one file.` (+ ` Nothing was imported.`) |
 | `ExportTooManySnippets(int count)` | `Your library has {count:N0} snippets. One export file can hold up to {MaxImportEntries:N0}, so that it can be imported again. No file was written.` |
+| `ExportTooManyEntries(int snippets, int folders)` | `Your library has {snippets:N0} snippets and {folders:N0} folders. One export file can hold up to {MaxImportEntries:N0} entries (snippets and folders), so that it can be imported again. No file was written.` |
 | `ExportUnexpectedFailure` | `Couldn't export. No file was written.` |
 | `ExportOutcomeUnknown(string fileName)` | `Couldn't finish the export. Check {fileName} before relying on it.` |
 | `ExportCompleteTitle` | `Export complete` |
@@ -1019,7 +1030,7 @@ content, so showing it is safe.
 | `import_failed` | `kind=<StoreFailure>`. The store already logged `store_write_failed op=import_snippets error=<type> sqlite=<code> hresult=…` (D10: no message) |
 | `import_error` (ERROR) | `stage=<before_commit or in_commit or after_commit> error=<exception type name> hresult=0x…`. Never the exception message: IO and SQLite messages can contain paths or text |
 | `store_subscriber_failed` (ERROR, from the store) | `kind=<StoreChangeKind> index=<i> of=<n> error=<type>` (D9) |
-| `export_cancelled`, `export_refused reason=<NotJsonFile or TooLarge or TooManySnippets> snippets=<n>` | — |
+| `export_cancelled`, `export_refused reason=<NotJsonFile or TooLarge or TooManySnippets or TooManyEntries> snippets=<n> folders=<n>` | Folder count included for serialization refusals; path-gate refusal retains snippet count only |
 | `export_error` (ERROR) | `stage=<before_write or in_write or after_write> error=<type> hresult=0x…` |
 | `export_done` | `snippets=<n> folders=<n> bytes=<n>` |
 | `export_failed` | `error=<exception type name> hresult=0x…` |
@@ -1030,10 +1041,13 @@ Never logged: snippet text, labels, tags, folder names, file paths or file names
 
 #### 4.3.9 Entry limit (D11, user decision on Q1) and its calibration
 
-- **Behaviour.** The parser refuses a file whose entries array is longer than `SnippetFileRules.MaxImportEntries` (step
-  5 of §4.3.3), using the `TooManyEntries` message. `NativeExport.Write` refuses a library with more snippets than the
-  limit (`TooManySnippets`). A file exactly at the limit is accepted. The single transaction and single `Changed` event
-  are unchanged.
+- **Behaviour (review fix 2).** The parser refuses workload counts above `SnippetFileRules.MaxImportEntries` using
+  the unchanged `TooManyEntries` message and the combined refusal count. For native files, workload = raw `snippets`
+  slots + raw explicit `folders` slots; every other format counts its snippet-entry array. Version and MissingEntries
+  checks still precede the limit; length checks precede mapping/accumulation. Export refuses too many snippets with
+  existing `TooManySnippets`, or a combined snippet/folder overflow with sibling `TooManyEntries` and the exact
+  `ExportTooManyEntries` message in §4.3.7. Exactly at the combined limit is accepted. Native folders remain separate
+  from the successful snippet summary/balance. One transaction and one `Changed` event are unchanged.
 - **Provisional value:** 100,000. Every test refers to the constant, never the literal, except the pinning test
   `MaxImportEntries_IsCalibratedValue`, which T10 updates together with the constant.
 - **Calibration (T10, binding CI run).** `Budget_Calibrate` measures the commit stage for dense files of 25,000,
@@ -1144,6 +1158,7 @@ Export:
   → var (f, s) = (store.Folders, store.Snippets)                            (UI thread: capture immutable snapshots)
   → await workers.ExportAsync(f, s, now) = Task.Run(() => NativeExport.Write(f, s, now))   (worker; compact; bounded)
      TooManySnippets → export_refused reason=TooManySnippets → ShowErrorAsync(ExportFailedTitle, ExportTooManySnippets(n))
+     TooManyEntries → export_refused reason=TooManyEntries → ShowErrorAsync(ExportFailedTitle, ExportTooManyEntries(n, m))
      TooLarge → export_refused reason=TooLarge → ShowErrorAsync(ExportFailedTitle, ExportTooLarge); no file written
   → await files.WriteAtomicallyAsync(path, bytes)          App → Core AtomicFileWriter: temp file + File.Move(overwrite)
      IOException/UnauthorizedAccessException → export_failed → ShowErrorAsync(ExportFailedTitle, ExportWriteFailed(name))
@@ -1259,7 +1274,7 @@ Export:
   still run and the caller gets its result. Every existing test still passes, which shows no current test relied on a
   subscriber exception propagating.
 - **R14 — A library too large to export.** With compact JSON and escaping, roughly 5–30 MB of stored text, depending on
-  how much is non-ASCII, reaches the 32 MB limit, as does a library with more than `MaxImportEntries` snippets (D11). →
+  how much is non-ASCII, reaches the 32 MB limit, as does a library whose combined snippets + folders exceed `MaxImportEntries` (D11). →
   Refused with a specific message and no file (A2, D11). Serialization runs off the UI thread and stops at the bound.
   Subset export is out of scope by the brief, so such a library cannot be backed up in one file. This is accepted by
   the user's decisions A2 and D11.
@@ -1585,8 +1600,12 @@ fails for the stated reason.
     `Import_AllDuplicates_NoWrite_NoEvent` and the AC6 tests. "Store never called" is proved by call counting at the
     orchestration boundary (finding 9), in T9: `FakeSnippetStore.ImportCalls == 0`, and `ThrowOnImport` makes any
     call fail the test.
-  - **Fake parity:** `FakeSnippetStore_Import_MatchesRealStoreCounts` (Presentation tests, the TermFlow and native
-    fixture bytes embedded as strings) so view-model tests cannot drift from Core.
+  - **Fake parity:** `FakeSnippetStore_Import_MatchesRealStoreCounts` (Presentation tests, all four shared synthetic
+    fixtures). Compare summary/folder names, then full row projections against a freshly reopened real store:
+    `(Text, Label, IsLabelCustom, FolderName, ordered ordinal Tags, UsageCount, CreatedAt, UpdatedAt, LastUsedAt)`.
+    Exclude reassigned ids. Use a fixed parse time and a real-store clock matching the fake's first atomic import tick,
+    so both preserved and fresh timestamps are checked. This oracle must fail if the fake discards imported stats or
+    reorders tags.
 
 ### T7 — Native export (AC7)
 - **Files:** `src/SmartSnippets.Core/Porting/NativeExport.cs`, `NativeJsonContext.cs`;
@@ -1702,8 +1721,9 @@ fails for the stated reason.
     `in_write`, `after_write`). Messages follow the tables: `ImportUnexpectedFailure` only for `before_commit`,
     `ImportOutcomeUnknown` for a non-store exception `in_commit`, and no dialog for `after_commit`. Export uses
     `ExportUnexpectedFailure`, `ExportWriteFailed`, `ExportOutcomeUnknown` or none.
-  - Export handles `NativeExportResult.Refusal`: `TooManySnippets` → `ExportTooManySnippets(count)`, and `TooLarge` →
-    `ExportTooLarge`. Both log `export_refused`, and neither calls `WriteAtomicallyAsync`.
+  - Export handles `NativeExportResult.Refusal`: `TooManySnippets` → `ExportTooManySnippets(count)`, `TooManyEntries` →
+    `ExportTooManyEntries(snippets, folders)`, and `TooLarge` → `ExportTooLarge`. All log `export_refused` and none calls
+    `WriteAtomicallyAsync`.
   - Import handles `TooManyEntries` like every other parser refusal.
   - `ShowInfoAsync` is added to `IDialogService`. In the same commit, `src/SmartSnippets.App/Services/DialogService.cs`
     gets the plain version (same shape as `ShowErrorAsync`, `:53-62`), so the App still compiles. T10 adds the text
@@ -1849,11 +1869,28 @@ fails for the stated reason.
     ```
 
     This is the binding 2,000 ms gate on the `windows-latest` runner. The existing Debug steps are unchanged.
-  - **Calibration (D11, §4.3.9).** On the branch, run `workflow_dispatch` once with a temporary extra step
-    `dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Calibration"`. Read the printed
-    table, then set `MaxImportEntries` and its pinning test by the §4.3.9 rule, and **remove the temporary step**. Run
-    `workflow_dispatch` again: the budget step must now pass. Record the table, the chosen limit and the run links in
-    §10.
+  - **Calibration (D11, §4.3.9).** On the branch, run `workflow_dispatch` once with this temporary extra step.
+    The opt-in environment variable is mandatory, and detailed output is required to expose the measurement table:
+
+    ```yaml
+          - name: Import budget calibration (temporary)
+            shell: pwsh
+            env:
+              SMARTSNIPPETS_CALIBRATE: '1'
+            run: |
+              dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Calibration" --logger "console;verbosity=detailed" 2>&1 | Tee-Object -FilePath calibration.log
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              $measurements = @(Select-String -Path calibration.log -Pattern '^\s*BUDGET kind=')
+              if ($measurements.Count -ne 18) { throw 'Expected 18 calibration measurement lines; a passing no-op is not evidence' }
+              foreach ($kind in @('dense', 'folders', 'typical')) {
+                if (-not ($measurements | Where-Object { $_.Line -match "kind=$kind entries=" })) { throw "Missing calibration case $kind" }
+              }
+    ```
+
+    Read all 18 measured rows (including byte-cap cases), then set `MaxImportEntries` and its pinning test by §4.3.9,
+    and **remove the temporary step**. Run `workflow_dispatch` again: the budget step must now pass. Record the table,
+    chosen limit and run links in §10. The persistent workflow currently contains only the Release Budget step, not
+    a Calibration step; do not add the expensive temporary measurement to ordinary CI runs.
   - **`SnippetFileService(Func<WindowId?> owner)`:**
     - `Microsoft.Windows.Storage.Pickers.FileOpenPicker(id)` with `FileTypeFilter = { ".json" }`,
       `CommitButtonText = "Import"`.
@@ -2145,22 +2182,52 @@ working elevated), which would be a defect report, not a pending decision.
 
 ## 10. Approval log
 
+**Review fix 4:** T10's temporary CI calibration step now explicitly sets `SMARTSNIPPETS_CALIBRATE: '1'`, requests
+detailed console output and rejects runs missing the expected 18 `BUDGET` measurement rows / any case kind. The
+persistent workflow has no Calibration step to amend (only the intended Release Budget gate), so it is unchanged.
+
+**Review fix 3:** full persisted-row fake parity now covers all four fixtures and every stored field except ids.
+The review's stats-discard mutation passed the old oracle (2/2), but fails the strengthened oracle (2 failures / 2
+fresh-format passes). A reversed-tag-order mutation also fails (1 failure / 3 passes). Both mutations reverted;
+**4/4 parity cases pass** against reopened SQLite rows with controlled clocks.
+
+**Review fix 2 (user-directed):** native explicit folders now share the same 50,000 workload-entry limit with
+snippets on import and export. Raw folder slots count before mapping, including malformed/duplicate entries.
+Successful snippet-summary counts are unchanged. Existing messages remain exact; the sibling export refusal has
+its own exact wording in §4.3.7. No full recalibration: keep **50,000** as directed. Cheap local Release verification:
+50,000 empty native folders with zero snippets committed in **339.15 ms** with real subscribers and 20,000 existing
+snippets; dense **611.00 ms**, folder-dense **895.43 ms**, typical **872.94 ms**; **4/4 budgets pass**. Binding CI is
+still pending. Core targeted suite **79 passed**, Presentation view-model/messages **64 passed**.
+
+**Review fix 1 (user-directed):** allocation-free escaped-string preflight now runs before source-generated
+serialization, with the bounded sink retained. The 34 MiB `é` regression was red at **1,610,616,384 allocated bytes**;
+after the fix it allocates **48 bytes** during export (input allocation excluded, metadata warmed). Text, label,
+explicit-folder name, folder reference and tag payloads are all covered, as is their running total. Export/round-trip
+filter: **34 passed**. This supersedes the earlier T7 source-only memory oracle interpretation below.
+
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-28 | Requirement brief confirmed (G1) | User confirmed the brief in §2; PRD exclusion recorded as a scope change (T11) |
 | 2026-10-28 | Review (docs/review, independent plan review, reviewer sol:medium) findings folded | Verdict "changes required"; findings 1–13 plus the nonblocking items folded (§11). User decisions A1 (native full-row dedupe) and A2 (32 MB cap, compact export with a 32 MB refusal) recorded in §2. D1, D5 and D7 remain awaiting user approval |
 | 2026-10-28 | Round-2 review (`docs/review/010-plan-review-round2.md`, reviewer sol:medium) findings folded | Verdict "changes required". R1–R8 and the improvement list fixed as classes (§11, round-2 table) |
 | 2026-10-28 | Plan approved (G2) | User approved plan 010 including D1, D5 and D7. Q1 resolved: per-file entry limit (D11) if the 32 MB commit budget fails; calibrated in T10. Status set to Approved |
+| 2026-10-28 | T12 audit and final local checks | Source call graph, privacy/file I/O/JSON/fixture/doc checks recorded in docs/research/010-wiring-audit.md. Audit caught null version displayed as raw null instead of absent; added red test then fixed JsonFields. Core 409/409 and Presentation 413/413 pass sequentially; full solution 0 warnings; publish-aot.ps1 succeeds with no warnings, native exe + SQLite DLL and no managed App DLL. Fake parity now reads the full shared synthetic fixtures rather than duplicating embedded strings. Binding CI remains blocked and interactive runtime evidence remains PENDING-USER. |
+| 2026-10-28 | T10 local evidence and D7 interpretation | No remote feature/010-import-export branch exists (`git ls-remote --heads origin feature/010-import-export` empty); no push allowed, so workflow_dispatch cannot test this tree. Local Windows calibration/build/Release gates used, with binding CI still BLOCKED. D7 fallback applied conservatively before manual measurement, to avoid shipping a toolbar likely to squeeze Search; real 880 px measurement remains PENDING-USER. |
+| 2026-10-28 | Implementation interpretation: calibration and verification | Calibration constructs ParsedImport directly so counts above the provisional parser guard can reach the commit being measured; the guarded Budget tests still use real JSON and the public parser. Calibration is opt-in with SMARTSNIPPETS_CALIBRATE=1. T9 command tests were exercised against stubs (red run timed out waiting for an uncalled parse seam; the wait now has a timeout); thread/integration/budget tests were added after orchestration. Local Windows calibration is recorded separately from binding CI evidence, which cannot be obtained for unpushed changes. |
+| 2026-10-28 | Implementation interpretation: T7 private buffer oracle | T7 asks tests to inspect an internal stream peak, but fixes a public API exposing no peak and forbids friend-assembly access. Narrow interpretation: public oversized test pins refusal and capped Bytes sentinel; source audit verifies check-before-write and backing-array capacity ≤ cap. No reflection, test-only public API or friend assembly added. Core round-trip tests synchronously wait only at the file boundary to retain store thread ownership; Presentation tests own async UI-hop coverage. |
+
+**Implementation deviations:** T1's file-rules test was confirmed red before implementation; the remaining T1 tests were added after their implementations and have not each been confirmed red. T2 inherited working detection code: the expanded 34-case suite was run against it (33 green, lone-surrogate marker case red), then the marker handling was fixed and all 34 passed; historical red-first evidence cannot be recreated for already-implemented cases. T6 store/observer tests were confirmed red (17 failures against the bulk stub); repository, pipeline and fake-parity tests were added after the shared implementation. T6 log tests use a non-parallel AppLog collection: the first full-suite run exposed a concurrent append/read sharing violation, resolved by serializing the process-wide logger tests.
 
 **Implementation evidence (filled in during implementation):**
 
 | Item | Value |
 |---|---|
-| D11 calibration table (entries → commit ms per case) and CI run link | |
-| Calibrated `MaxImportEntries` | |
-| Budget step times (dense, folder-dense, typical) and CI run link | |
-| D7 wide-mode measurement (search box px) and whether the fallback was applied | |
-| Runbook §7.3 results | |
+| D11 calibration table (entries → commit ms per case) and CI run link | Local Windows Release (.NET 10.0.403 SDK / 10.0.14 runtime): dense 10k=254.50,20k=235.18,25k=258.63,50k=804.42,100k=1239.36,200k=2919.21,1,677,720 (32 MB)=19776.88; folder-dense 10k=223.61,20k=755.50,25k=533.43,50k=952.40,100k=2464.78,200k=4131.83,838,860 (32 MB)=18802.93; typical 10k=376.61,20k=585.27,25k=828.28,31,040 (32 MB)=1753.38. Calibration passed (1 test). CI link BLOCKED: remote feature branch absent and user prohibits pushing. |
+| Calibrated `MaxImportEntries` | 50,000 (local Windows calibration; binding windows-latest calibration pending). Largest measured count passing every applicable case; typical reaches byte cap first at 31,040. |
+| Budget step times (dense, folder-dense, typical) and CI run link | Local Release first gate: dense 50,000=784.29 ms; folder-dense 50,000=1718.42 ms; typical 31,040=1111.59 ms. Final rerun: dense=541.09 ms; folder-dense=912.17 ms; typical=713.08 ms. Both 3/3 passed 2,000 ms gate. CI link blocked as above. |
+| D7 wide-mode measurement (search box px) and whether the fallback was applied | PENDING-USER measurement. New snippet icon-only fallback applied conservatively to preserve search space in the 320 px list; original tooltip/name retained. |
+| Runbook §7.3 results | Steps 1–13 PENDING-USER (no interactive profile changes or UI automation run). Step 14 covered by automated Core tests. |
+| Final local checks | Windows full solution 0 warnings/0 errors; Core 409 passed; Presentation 413 passed (sequential); publish-aot.ps1 exit 0, no IL or other warnings; native exe/e_sqlite3.dll present, managed App DLL absent. T12 static audit: docs/research/010-wiring-audit.md. |
 
 ## 11. Review response
 

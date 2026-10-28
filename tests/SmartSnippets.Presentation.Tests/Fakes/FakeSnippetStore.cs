@@ -1,5 +1,7 @@
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Query;
+using SmartSnippets.Core.Porting;
+using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Store;
 
 namespace SmartSnippets.Presentation.Tests.Fakes;
@@ -51,6 +53,45 @@ internal sealed class FakeSnippetStore : ISnippetStore
         CreateFolder(name).Value ?? throw new InvalidOperationException("seed folder failed");
 
     public void Load() => Raise(StoreChangeKind.Reloaded, null, []);
+
+    public int ImportCalls { get; private set; }
+    public List<ImportBatch> ImportBatches { get; } = [];
+    public bool ThrowOnImport { get; set; }
+    public Action? OnImport { get; set; }
+    public Exception? ImportException { get; set; }
+
+    public ImportCommit ImportSnippets(ImportBatch batch)
+    {
+        ImportCalls++;
+        ImportBatches.Add(batch);
+        OnImport?.Invoke();
+        if (ThrowOnImport) throw new InvalidOperationException("Unexpected import call");
+        if (ImportException is { } ex) throw ex;
+        ThrowIfFailing();
+        var plan = ImportPlanner.Plan(batch, _snippets, _folders);
+        if (plan.Snippets.Count == 0 && plan.NewFolderNames.Count == 0)
+            return new([], 0, plan.SkippedDuplicates, plan.Rejected);
+        var now = Tick();
+        var ids = new Dictionary<string, long>(plan.ExistingFolderIds, StringComparer.Ordinal);
+        foreach (var name in plan.NewFolderNames)
+        {
+            var folder = new Folder(_nextId++, name, now, now);
+            _folders.Add(folder);
+            ids.Add(FolderNameRules.Key(name), folder.Id);
+        }
+        var newIds = new List<long>();
+        foreach (var s in plan.Snippets)
+        {
+            var stats = s.Stats ?? new ImportStats(now, now, null, 0);
+            var id = _nextId++;
+            _snippets.Add(new(id, s.Text, s.Label, s.IsLabelCustom, s.FolderKey is { } key ? ids[key] : null,
+                s.Tags, stats.CreatedAt, stats.UpdatedAt, stats.LastUsedAt, stats.UsageCount));
+            newIds.Add(id);
+        }
+        Publish();
+        Raise(StoreChangeKind.Imported, null, newIds);
+        return new(newIds, plan.NewFolderNames.Count, plan.SkippedDuplicates, plan.Rejected);
+    }
 
     public StoreResult<Snippet> CreateSnippet(SnippetDraft draft)
     {
@@ -198,7 +239,7 @@ internal sealed class FakeSnippetStore : ISnippetStore
             return StoreResult.Fail(ValidationError.SnippetNotFound);
         }
 
-        _snippets[index] = _snippets[index] with { LastUsedAt = Tick(), UsageCount = _snippets[index].UsageCount + 1 };
+        _snippets[index] = _snippets[index] with { LastUsedAt = Tick(), UsageCount = _snippets[index].UsageCount == int.MaxValue ? int.MaxValue : _snippets[index].UsageCount + 1 };
         Publish();
         Raise(StoreChangeKind.UsageRecorded, id, [id]);
         return StoreResult.Ok();
@@ -244,6 +285,12 @@ internal sealed class FakeSnippetStore : ISnippetStore
     {
         var args = new StoreChangedEventArgs(kind, id, snippetIds);
         Raised.Add(args);
-        Changed?.Invoke(this, args);
+        var handlers = Changed?.GetInvocationList();
+        if (handlers is null) return;
+        for (int i = 0; i < handlers.Length; i++)
+        {
+            try { ((EventHandler<StoreChangedEventArgs>)handlers[i])(this, args); }
+            catch (Exception ex) { AppLog.Error("store_subscriber_failed", null, $"kind={kind} index={i} of={handlers.Length} error={ex.GetType().Name}"); }
+        }
     }
 }

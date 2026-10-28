@@ -1,0 +1,12 @@
+{"version":1,"exportedAt":1700009999999,"snippets":[
+{"id":"snip-a","text":"Alpha line","label":"Alpha","folder":"Work","tags":["one","two"],"createdAt":1700000000000,"updatedAt":1700000500000,"lastUsedAt":1700000900000,"usageCount":7},
+{"text":"Bravo\nsecond line","createdAt":1700000100000},
+{"text":"Charlie","folder":"work","createdAt":1700000200000,"lastUsedAt":1700000800000,"usageCount":2},
+{"text":"Alpha line","folder":"Zulu","createdAt":1700000300000},
+{"text":"Delta","tags":["Beta, Gamma","beta"],"createdAt":1700000400000},
+{"text":"Echo","createdAt":1e400,"updatedAt":1.5,"lastUsedAt":"yesterday","usageCount":-3},
+{"text":"Foxtrot","tags":"single string"},
+{"text":"   "},
+42,
+{"text":"Golf","folder":"  ","pinned":true,"createdAt":1700000600000,"lastUsedAt":4102444800000}
+]}

@@ -17,6 +17,18 @@ internal sealed class ScriptedDialogService : IDialogService
 
     /// <summary>When set, <see cref="ShowErrorAsync"/> stays open until the source completes.</summary>
     public TaskCompletionSource? ErrorGate { get; set; }
+    public TaskCompletionSource? InfoGate { get; set; }
+    public List<(string Title, string Message)> Infos { get; } = [];
+    public Exception? InfoException { get; set; }
+    public Action? OnInfo { get; set; }
+
+    public Task ShowInfoAsync(string title, string message)
+    {
+        OnInfo?.Invoke();
+        Infos.Add((title, message));
+        if (InfoException is { } ex) throw ex;
+        return InfoGate?.Task ?? Task.CompletedTask;
+    }
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmText)
     {

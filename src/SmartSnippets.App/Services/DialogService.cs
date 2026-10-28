@@ -10,10 +10,12 @@ internal sealed class DialogService : IDialogService
 {
     private readonly Func<XamlRoot?> _getXamlRoot;
     private readonly Action _showMainWindow;
+    private readonly ITextSizeService? _textSize;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public DialogService(Func<XamlRoot?> getXamlRoot, Action showMainWindow)
+    public DialogService(Func<XamlRoot?> getXamlRoot, Action showMainWindow, ITextSizeService? textSize = null)
     {
+        _textSize = textSize;
         _getXamlRoot = getXamlRoot;
         _showMainWindow = showMainWindow;
     }
@@ -56,6 +58,20 @@ internal sealed class DialogService : IDialogService
         {
             Title = title,
             Content = Body(message),
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+        });
+    }
+
+    public async Task ShowInfoAsync(string title, string message)
+    {
+        var body = Body(message);
+        body.IsTextSelectionEnabled = true;
+        if (_textSize is not null) body.FontSize = _textSize.FontSize;
+        await ShowAsync(new ContentDialog
+        {
+            Title = title,
+            Content = body,
             CloseButtonText = "OK",
             DefaultButton = ContentDialogButton.Close,
         });

@@ -1,4 +1,5 @@
 using SmartSnippets.Core.Settings;
+using SmartSnippets.Core.Porting;
 using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.Presentation.Text;
@@ -132,6 +133,61 @@ public static class UiText
         if (!restoreNotice) return message;
         return outcome == InsertionOutcome.Inserted ? InsertedRestoreNotice : $"{message} {RestoreNotice}";
     }
+
+    // Import and export (010).
+    public const string ImportButtonName = "Import snippets";
+    public const string ExportButtonName = "Export snippets";
+    public const string ImportButtonTooltip = "Import snippets from Smart Snippets, TermFlow, Rephlo or InkSpoke (.json)";
+    public const string ExportButtonTooltip = "Export all snippets and folders to a .json file";
+    public const string ImportCompleteTitle = "Import complete";
+    public const string ImportNothingTitle = "Nothing imported";
+    public const string ImportFailedTitle = "Couldn't import";
+    public const string ImportUnexpectedFailure = "Couldn't import the file. Nothing was imported.";
+    public const string ImportOutcomeUnknown = "Couldn't finish the import. Check your snippet list before importing this file again.";
+    public const string ExportTooLarge = "Your library is too large to export as one file: it would be over 32 MB. No file was written.";
+    public const string ExportUnexpectedFailure = "Couldn't export. No file was written.";
+    public const string ExportCompleteTitle = "Export complete";
+    public const string ExportFailedTitle = "Couldn't export";
+    public const string ExportNotJsonFile = "Choose a file name ending in .json.";
+    public static string FormatName(ImportFormat format) => format switch
+    {
+        ImportFormat.Native => "Smart Snippets", ImportFormat.TermFlow => "TermFlow",
+        ImportFormat.Rephlo => "Rephlo", ImportFormat.InkSpoke => "InkSpoke",
+        _ => throw new ArgumentOutOfRangeException(nameof(format))
+    };
+    public static string ImportSummary(ImportSummary s) =>
+        $"Imported {s.Imported} {(s.Imported == 1 ? "snippet" : "snippets")} from {FormatName(s.Format)}.\n" +
+        $"Skipped {s.SkippedDuplicates} {(s.SkippedDuplicates == 1 ? "duplicate" : "duplicates")}.\n" +
+        $"Skipped {s.SkippedUnsupported} unsupported {(s.SkippedUnsupported == 1 ? "entry" : "entries")}.\n" +
+        $"Rejected {s.Rejected} malformed {(s.Rejected == 1 ? "entry" : "entries")}.";
+    public static string ImportRefusalMessage(ImportFailure f)
+    {
+        var format = f.Format ?? ImportFormat.Native;
+        var supported = format switch { ImportFormat.Rephlo => "1.3", ImportFormat.InkSpoke => "2", _ => "1" };
+        var entries = format switch { ImportFormat.Rephlo => "commands", ImportFormat.InkSpoke => "Mappings", _ => "snippets" };
+        var message = f.Refusal switch
+        {
+            ImportRefusal.NotJsonFile => "Choose a .json file. Smart Snippets imports JSON export files only.",
+            ImportRefusal.Unreadable => "Couldn't read the file. Check that it still exists and isn't open in another app.",
+            ImportRefusal.TooLarge => "This file is larger than 32 MB, the import limit.",
+            ImportRefusal.NotUtf8 => "This file isn't UTF-8 text. Save it as UTF-8 and try again.",
+            ImportRefusal.InvalidJson => "This file isn't valid JSON.",
+            ImportRefusal.UnknownFormat => "This file isn't a snippet export from Smart Snippets, TermFlow, Rephlo or InkSpoke.",
+            ImportRefusal.UnsupportedVersion => f.FoundVersion is { } version
+                ? $"This {FormatName(format)} file is version {version}. Smart Snippets can import version {supported}."
+                : $"This {FormatName(format)} file has no version number. Smart Snippets can import version {supported}.",
+            ImportRefusal.MissingEntries => $"This {FormatName(format)} file has no \"{entries}\" list.",
+            ImportRefusal.TooManyEntries => $"This {FormatName(format)} file has {f.EntryCount:N0} entries. Smart Snippets can import up to {SnippetFileRules.MaxImportEntries:N0} entries from one file.",
+            _ => throw new ArgumentOutOfRangeException(nameof(f))
+        };
+        return message + " Nothing was imported.";
+    }
+    public static string ImportStoreFailed(string storeMessage) => $"Couldn't save the imported snippets: {storeMessage} Nothing was imported.";
+    public static string ExportTooManySnippets(int count) => $"Your library has {count:N0} snippets. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0}, so that it can be imported again. No file was written.";
+    public static string ExportTooManyEntries(int snippets, int folders) => $"Your library has {snippets:N0} snippets and {folders:N0} folders. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0} entries (snippets and folders), so that it can be imported again. No file was written.";
+    public static string ExportOutcomeUnknown(string fileName) => $"Couldn't finish the export. Check {fileName} before relying on it.";
+    public static string ExportComplete(int snippets, int folders, string fileName) => $"Exported {snippets} {(snippets == 1 ? "snippet" : "snippets")} and {folders} {(folders == 1 ? "folder" : "folders")} to {fileName}.";
+    public static string ExportWriteFailed(string fileName) => $"Couldn't write {fileName}. Choose another folder and try again. Any existing file was left unchanged.";
 
     // Tray.
     public const string TrayOpen = "Open Smart Snippets";
