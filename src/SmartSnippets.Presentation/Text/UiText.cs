@@ -1,3 +1,5 @@
+using SmartSnippets.Core.Settings;
+
 namespace SmartSnippets.Presentation.Text;
 
 /// <summary>
@@ -70,6 +72,39 @@ public static class UiText
         $"Another app is already using {attempted}. Your hotkey is still {kept}. Try a different combination.";
     public static string TextSizeHint(double size) => $"{size:0.#} units. Custom accepts 10 to 32.";
     public const string StartAtLoginHint = "Starts in the background without opening the main window.";
+
+    // Global popup.
+    public const string PopupSearchPlaceholder = "Search label, text, folder, or tag";
+    public const string PopupSearchName = "Search snippets";
+    public const string PopupHint = "↑↓ move · Enter insert · Esc close";
+    public static string CountOf(int n, int m) => $"{n} of {m} {(m == 1 ? "snippet" : "snippets")}";
+    public static string FolderHeading(string name, int n) => $"{name} ({n})";
+    public const string NoSnippetsMatch = "No snippets match";
+    public const string NoSnippetsMatchBody = "Try fewer words, or add a new snippet with the plus button.";
+    public static string LayoutTooltip(PopupLayout layout) => layout == PopupLayout.Folder ? "Layout: folder" : "Layout: flat";
+    public static string SortName(SortField sort) => sort switch
+    {
+        SortField.UsageCount => "Usage count", SortField.Created => "Created date", SortField.Updated => "Updated date", _ => "Last used",
+    };
+    public static string SortTooltip(SortField sort) => "Sort: " + SortName(sort).ToLowerInvariant();
+    public const string ToggleLayout = "Toggle layout";
+    public const string SortButton = "Sort";
+    public const string AddSnippet = "Add snippet";
+    public const string OpenMainWindow = "Open main window";
+    public static string TargetKept(string name) => $"Insertion target kept: {name}";
+    public const string CtrlEnterSaves = "Ctrl+Enter saves";
+    public const string Cancel = "Cancel";
+    public const string SnippetAddedReady = "Snippet added and ready to insert";
+    public const string RestartAsAdministrator = "Restart as administrator";
+    public const string InsertFailedGeneric = "Couldn't insert the snippet. Nothing was pasted.";
+    public const string ClipboardLossPrompt = "Some of what's on your clipboard can't be restored after pasting. Paste anyway?";
+    public const string PasteAnyway = "Paste anyway";
+    public const string ConfirmHint = "Enter choose · Esc cancel";
+    public const string Dismiss = "Dismiss";
+    public const string DismissHint = "Enter dismiss · Esc close";
+    public const string MaybePastedFallback = "The snippet may already have been pasted. Check the target app before inserting it again.";
+    public const string CopiedForManualPasteFallback = "The snippet is on your clipboard. Click in the target app and press Ctrl+V.";
+    public const string InsertNoticeTitle = "Snippet inserted";
 
     // Tray.
     public const string TrayOpen = "Open Smart Snippets";

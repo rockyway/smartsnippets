@@ -22,6 +22,15 @@ public sealed class AccessibleNameTests
     }
 
     [Fact]
+    public void PopupItem_ToString_SnippetAndHeading()
+    {
+        var row = new PopupItemViewModel(PopupItemKind.Snippet, 1, "Refund policy", "", "Support", "support", "billing", "");
+        var heading = new PopupItemViewModel(PopupItemKind.Heading, 0, "", "", "", "", "", "Support (2)");
+        Assert.Equal("Refund policy, Support, support, billing", row.ToString());
+        Assert.Equal("Support, 2 snippets", heading.ToString());
+    }
+
+    [Fact]
     public void FolderRow_ReadsAsNameAndCount()
     {
         Assert.Equal("Clients, 3 snippets", new FolderRowViewModel(1, "Clients", 3).ToString());
