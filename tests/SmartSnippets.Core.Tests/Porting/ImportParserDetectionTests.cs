@@ -5,33 +5,48 @@ namespace SmartSnippets.Core.Tests.Porting;
 
 public class ImportParserDetectionTests
 {
-    private static ImportParseResult Parse(string json) => ImportParser.Parse(Encoding.UTF8.GetBytes(json), DateTimeOffset.UtcNow);
-    [Theory]
-    [InlineData("{\"format\":\"smart-snippets\",\"version\":1,\"snippets\":[]}", ImportFormat.Native)]
-    [InlineData("{\"version\":1,\"snippets\":[]}", ImportFormat.TermFlow)]
-    [InlineData("{\"version\":\"1.3\",\"commands\":[]}", ImportFormat.Rephlo)]
-    [InlineData("{\"SchemaVersion\":2,\"Mappings\":[]}", ImportFormat.InkSpoke)]
-    [InlineData("{\"version\":1,\"snippets\":[],\"commands\":[]}", ImportFormat.TermFlow)]
-    public void Detect_KnownFormat(string json, ImportFormat format) => Assert.Equal(format, Parse(json).Parsed!.Format);
-    [Theory]
-    [InlineData("{\"format\":\"other\",\"snippets\":[]}")]
-    [InlineData("{\"mappings\":[]}")]
-    [InlineData("{}")]
-    [InlineData("[]")]
-    public void Detect_Unknown(string json) => Assert.Equal(ImportRefusal.UnknownFormat, Parse(json).Failure!.Refusal);
-    [Theory]
-    [InlineData("{\"version\":2,\"snippets\":5}", "2")]
-    [InlineData("{\"version\":\"1\",\"snippets\":[]}", "\"1\"")]
-    [InlineData("{\"version\":1.0,\"snippets\":[]}", "1.0")]
-    [InlineData("{\"snippets\":[]}", null)]
-    [InlineData("{\"version\":\"1.2\",\"commands\":[]}", "\"1.2\"")]
-    [InlineData("{\"version\":1.3,\"commands\":[]}", "1.3")]
-    [InlineData("{\"SchemaVersion\":3,\"Mappings\":[]}", "3")]
-    [InlineData("{\"format\":\"smart-snippets\",\"version\":2,\"snippets\":[]}", "2")]
-    public void Version_CheckedFirst(string json, string? found) { var f = Parse(json).Failure!; Assert.Equal(ImportRefusal.UnsupportedVersion, f.Refusal); Assert.Equal(found, f.FoundVersion); }
-    [Theory] [InlineData("{\"format\":\"smart-snippets\",\"version\":1}")] [InlineData("{\"version\":1,\"snippets\":42}")]
-    public void Entries_MissingOrNotArray(string json) => Assert.Equal(ImportRefusal.MissingEntries, Parse(json).Failure!.Refusal);
-    [Theory] [InlineData("{")] [InlineData("[1,]")] [InlineData("/*comment*/{}")] [InlineData("{} true")]
-    public void InvalidJson_Syntax(string json) => Assert.Equal(ImportRefusal.InvalidJson, Parse(json).Failure!.Refusal);
-    [Fact] public void Entries_LimitPlusOne_TooManyEntries_WithCount() { var json = "{\"version\":1,\"snippets\":[" + string.Join(',', Enumerable.Repeat("42", SnippetFileRules.MaxImportEntries + 1)) + "]}"; var failure = Parse(json).Failure!; Assert.Equal(ImportRefusal.TooManyEntries, failure.Refusal); Assert.Equal(SnippetFileRules.MaxImportEntries + 1, failure.EntryCount); }
+    private static ImportParseResult Parse(string json) => ImportParser.Parse(Encoding.UTF8.GetBytes(json), DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+    private static void Format(string json, ImportFormat format) { var r = Parse(json); Assert.Null(r.Failure); Assert.Equal(format, r.Parsed!.Format); }
+    private static void Refuse(string json, ImportRefusal refusal) { var r = Parse(json); Assert.Null(r.Parsed); Assert.Equal(refusal, r.Failure!.Refusal); }
+    private static void Version(string json, string? found) { var r = Parse(json); Assert.Null(r.Parsed); Assert.Equal(ImportRefusal.UnsupportedVersion, r.Failure!.Refusal); Assert.Equal(found, r.Failure.FoundVersion); }
+    private static string Entries(int count, int version = 1) => "{\"version\":" + version + ",\"snippets\":[" + string.Join(',', Enumerable.Repeat("42", count)) + "]}";
+
+    [Fact] public void Detect_NativeMarker_Native() => Format("{\"format\":\"smart-snippets\",\"version\":1,\"snippets\":[]}", ImportFormat.Native);
+    [Theory] [InlineData("\"other\"")] [InlineData("42")] [InlineData("null")] [InlineData("\"\\ud800\"")]
+    public void Detect_FormatMemberOtherThanOurs_Unknown(string marker) => Refuse("{\"format\":" + marker + ",\"version\":1,\"snippets\":[]}", ImportRefusal.UnknownFormat);
+    [Fact] public void Detect_SnippetsKey_TermFlow() => Format("{\"version\":1,\"snippets\":[]}", ImportFormat.TermFlow);
+    [Fact] public void Detect_CommandsKey_Rephlo() => Format("{\"version\":\"1.3\",\"commands\":[]}", ImportFormat.Rephlo);
+    [Fact] public void Detect_MappingsKey_InkSpoke() => Format("{\"SchemaVersion\":2,\"Mappings\":[]}", ImportFormat.InkSpoke);
+    [Fact] public void Detect_LowercaseMappings_Unknown() => Refuse("{\"SchemaVersion\":2,\"mappings\":[]}", ImportRefusal.UnknownFormat);
+    [Fact] public void Detect_NoKnownKey_Unknown() => Refuse("{}", ImportRefusal.UnknownFormat);
+    [Fact] public void Detect_RootArray_Unknown() => Refuse("[]", ImportRefusal.UnknownFormat);
+    [Fact] public void Detect_SnippetsAndCommands_TermFlowWins() => Format("{\"version\":1,\"snippets\":[],\"commands\":[]}", ImportFormat.TermFlow);
+    [Fact] public void Version_TermFlow2_Unsupported_FoundVersion2() => Version("{\"version\":2,\"snippets\":[]}", "2");
+    [Fact] public void Version_TermFlowString1_Unsupported() => Version("{\"version\":\"1\",\"snippets\":[]}", "\"1\"");
+    [Fact] public void Version_TermFlow1Point0_Unsupported() => Version("{\"version\":1.0,\"snippets\":[]}", "1.0");
+    [Fact] public void Version_TermFlowMissing_UnsupportedNoVersion() => Version("{\"snippets\":[]}", null);
+    [Fact] public void Version_Rephlo12_Unsupported() => Version("{\"version\":\"1.2\",\"commands\":[]}", "\"1.2\"");
+    [Fact] public void Version_RephloNumber13_Unsupported() => Version("{\"version\":1.3,\"commands\":[]}", "1.3");
+    [Fact] public void Version_InkSpoke3_Unsupported() => Version("{\"SchemaVersion\":3,\"Mappings\":[]}", "3");
+    [Fact] public void Version_Native2_Unsupported() => Version("{\"format\":\"smart-snippets\",\"version\":2,\"snippets\":[]}", "2");
+    [Theory] [InlineData("5")] [InlineData("[42]")]
+    public void Version_CheckedBeforeEntries(string entries) => Version("{\"version\":2,\"snippets\":" + entries + "}", "2");
+    [Fact] public void Entries_Missing_MissingEntries() => Refuse("{\"format\":\"smart-snippets\",\"version\":1}", ImportRefusal.MissingEntries);
+    [Fact] public void Entries_NotArray_MissingEntries() => Refuse("{\"version\":1,\"snippets\":42}", ImportRefusal.MissingEntries);
+    [Fact] public void Entries_AtLimit_Accepted() { var r = Parse(Entries(SnippetFileRules.MaxImportEntries)); Assert.Null(r.Failure); Assert.Equal(SnippetFileRules.MaxImportEntries, r.Parsed!.EntryCount); }
+    [Fact] public void Entries_LimitPlusOne_TooManyEntries_WithCount() { var r = Parse(Entries(SnippetFileRules.MaxImportEntries + 1)); Assert.Null(r.Parsed); Assert.Equal(ImportRefusal.TooManyEntries, r.Failure!.Refusal); Assert.Equal(SnippetFileRules.MaxImportEntries + 1, r.Failure.EntryCount); }
+    [Fact] public void Entries_OverLimit_RefusedBeforeAnyEntryRead() => Refuse(Entries(SnippetFileRules.MaxImportEntries + 1), ImportRefusal.TooManyEntries);
+    [Fact] public void Entries_OverLimit_AfterVersionCheck() => Version(Entries(SnippetFileRules.MaxImportEntries + 1, 2), "2");
+    [Fact] public void InvalidJson_Syntax() => Refuse("{", ImportRefusal.InvalidJson);
+    [Fact] public void InvalidJson_TrailingComma() => Refuse("{\"version\":1,\"snippets\":[],}", ImportRefusal.InvalidJson);
+    [Fact] public void InvalidJson_Comment() => Refuse("/*comment*/{}", ImportRefusal.InvalidJson);
+    [Fact] public void InvalidJson_TrailingGarbage() => Refuse("{} true", ImportRefusal.InvalidJson);
+    [Fact] public void InvalidJson_DepthOver64() => Refuse(new string('[', 65) + "0" + new string(']', 65), ImportRefusal.InvalidJson);
+    [Fact] public void Parse_NeverThrows()
+    {
+        string[] inputs = ["", "null", "[]", "{}", "\"x\"", "true", "false", "0", "1e400", "-1e400", "[", "{", "}", "[1,]", "{}{}", "/*x*/{}", "NaN", "undefined", "\"\\ud800\"", "{\"format\":\"\\ud800\"}", "{\"version\":\"\\ud800\",\"commands\":[]}", "{\"snippets\":null}", "{\"version\":1e400,\"snippets\":[]}", "{\"version\":null,\"snippets\":[]}", "{\"version\":{},\"snippets\":[]}", "{\"version\":[],\"snippets\":[]}", "{\"Mappings\":0}", "{\"format\":false}", new string('[', 100) + "0" + new string(']', 100), "{\"version\":1,\"snippets\":[null]}"];
+        Assert.Equal(30, inputs.Length);
+        foreach (var input in inputs) { var r = Parse(input); Assert.NotEqual(r.Parsed is null, r.Failure is null); }
+        Assert.NotNull(ImportParser.Parse(new byte[] { 0xff, 0xc3, 0x28 }, DateTimeOffset.UtcNow).Failure);
+    }
 }

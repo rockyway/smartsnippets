@@ -2152,7 +2152,7 @@ working elevated), which would be a defect report, not a pending decision.
 | 2026-10-28 | Round-2 review (`docs/review/010-plan-review-round2.md`, reviewer sol:medium) findings folded | Verdict "changes required". R1–R8 and the improvement list fixed as classes (§11, round-2 table) |
 | 2026-10-28 | Plan approved (G2) | User approved plan 010 including D1, D5 and D7. Q1 resolved: per-file entry limit (D11) if the 32 MB commit budget fails; calibrated in T10. Status set to Approved |
 
-**Implementation deviation:** T1's file-rules test was confirmed red before implementation; the remaining T1 tests were added after their implementations and have not each been confirmed red.
+**Implementation deviations:** T1's file-rules test was confirmed red before implementation; the remaining T1 tests were added after their implementations and have not each been confirmed red. T2 inherited working detection code: the expanded 34-case suite was run against it (33 green, lone-surrogate marker case red), then the marker handling was fixed and all 34 passed; historical red-first evidence cannot be recreated for already-implemented cases.
 
 **Implementation evidence (filled in during implementation):**
 

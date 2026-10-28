@@ -39,37 +39,37 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T2 — Parser: detection, version-first refusal, value rules (AC2, AC8)
 
-- [ ] T2 implementation and task verification
-- [ ] `Detect_NativeMarker_Native`
-- [ ] `Detect_FormatMemberOtherThanOurs_Unknown`
-- [ ] `Detect_SnippetsKey_TermFlow`
-- [ ] `Detect_CommandsKey_Rephlo`
-- [ ] `Detect_MappingsKey_InkSpoke`
-- [ ] `Detect_LowercaseMappings_Unknown`
-- [ ] `Detect_NoKnownKey_Unknown`
-- [ ] `Detect_RootArray_Unknown`
-- [ ] `Detect_SnippetsAndCommands_TermFlowWins`
-- [ ] `Version_TermFlow2_Unsupported_FoundVersion2`
-- [ ] `Version_TermFlowString1_Unsupported`
-- [ ] `Version_TermFlow1Point0_Unsupported`
-- [ ] `Version_TermFlowMissing_UnsupportedNoVersion`
-- [ ] `Version_Rephlo12_Unsupported`
-- [ ] `Version_RephloNumber13_Unsupported`
-- [ ] `Version_InkSpoke3_Unsupported`
-- [ ] `Version_Native2_Unsupported`
-- [ ] `Version_CheckedBeforeEntries`
-- [ ] `Entries_Missing_MissingEntries`
-- [ ] `Entries_NotArray_MissingEntries`
-- [ ] `Entries_AtLimit_Accepted`
-- [ ] `Entries_LimitPlusOne_TooManyEntries_WithCount`
-- [ ] `Entries_OverLimit_RefusedBeforeAnyEntryRead`
-- [ ] `Entries_OverLimit_AfterVersionCheck`
-- [ ] `InvalidJson_Syntax`
-- [ ] `InvalidJson_TrailingComma`
-- [ ] `InvalidJson_Comment`
-- [ ] `InvalidJson_TrailingGarbage`
-- [ ] `InvalidJson_DepthOver64`
-- [ ] `Parse_NeverThrows`
+- [x] T2 implementation and task verification
+- [x] `Detect_NativeMarker_Native`
+- [x] `Detect_FormatMemberOtherThanOurs_Unknown`
+- [x] `Detect_SnippetsKey_TermFlow`
+- [x] `Detect_CommandsKey_Rephlo`
+- [x] `Detect_MappingsKey_InkSpoke`
+- [x] `Detect_LowercaseMappings_Unknown`
+- [x] `Detect_NoKnownKey_Unknown`
+- [x] `Detect_RootArray_Unknown`
+- [x] `Detect_SnippetsAndCommands_TermFlowWins`
+- [x] `Version_TermFlow2_Unsupported_FoundVersion2`
+- [x] `Version_TermFlowString1_Unsupported`
+- [x] `Version_TermFlow1Point0_Unsupported`
+- [x] `Version_TermFlowMissing_UnsupportedNoVersion`
+- [x] `Version_Rephlo12_Unsupported`
+- [x] `Version_RephloNumber13_Unsupported`
+- [x] `Version_InkSpoke3_Unsupported`
+- [x] `Version_Native2_Unsupported`
+- [x] `Version_CheckedBeforeEntries`
+- [x] `Entries_Missing_MissingEntries`
+- [x] `Entries_NotArray_MissingEntries`
+- [x] `Entries_AtLimit_Accepted`
+- [x] `Entries_LimitPlusOne_TooManyEntries_WithCount`
+- [x] `Entries_OverLimit_RefusedBeforeAnyEntryRead`
+- [x] `Entries_OverLimit_AfterVersionCheck`
+- [x] `InvalidJson_Syntax`
+- [x] `InvalidJson_TrailingComma`
+- [x] `InvalidJson_Comment`
+- [x] `InvalidJson_TrailingGarbage`
+- [x] `InvalidJson_DepthOver64`
+- [x] `Parse_NeverThrows`
 
 ## T3 — TermFlow and native mappers, value rules (AC1, AC3, AC4)
 

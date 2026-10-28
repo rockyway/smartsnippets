@@ -8,14 +8,14 @@ public static class ImportParser
     {
         try
         {
-            using var doc = JsonDocument.Parse(utf8Json);
+            using var doc = JsonDocument.Parse(utf8Json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Disallow, AllowTrailingCommas = false });
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return ImportParseResult.Fail(new(ImportRefusal.UnknownFormat));
             ImportFormat format;
             string version, entries;
             if (root.TryGetProperty("format", out var marker))
             {
-                if (marker.ValueKind != JsonValueKind.String || marker.GetString() != "smart-snippets") return ImportParseResult.Fail(new(ImportRefusal.UnknownFormat));
+                if (JsonFields.String(root, "format", out var markerText) != JsonFields.Text.Ok || markerText != "smart-snippets") return ImportParseResult.Fail(new(ImportRefusal.UnknownFormat));
                 format = ImportFormat.Native; version = "version"; entries = "snippets";
             }
             else if (root.TryGetProperty("snippets", out _)) { format = ImportFormat.TermFlow; version = "version"; entries = "snippets"; }
@@ -24,7 +24,7 @@ public static class ImportParser
             else return ImportParseResult.Fail(new(ImportRefusal.UnknownFormat));
 
             bool supported = root.TryGetProperty(version, out var v) && (format == ImportFormat.Rephlo
-                ? v.ValueKind == JsonValueKind.String && v.GetString() == "1.3"
+                ? JsonFields.String(root, version, out var versionText) == JsonFields.Text.Ok && versionText == "1.3"
                 : v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n) && n == (format == ImportFormat.InkSpoke ? 2 : 1));
             if (!supported) return ImportParseResult.Fail(new(ImportRefusal.UnsupportedVersion, format, JsonFields.VersionText(root, version)));
             if (!root.TryGetProperty(entries, out var array) || array.ValueKind != JsonValueKind.Array)
