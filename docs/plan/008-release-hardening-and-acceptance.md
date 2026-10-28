@@ -13,8 +13,12 @@
 > popup or the insertion engine (verify-script sections E and F, the compatibility matrix procedure,
 > master §7 checks 1–3, the tray `PopupOpen` hook) names the *behaviour* the PRD requires, not 006/007
 > code. **Task T0 re-baselines this plan against the merged 006/007 code** (names, log events, error
-> wording, accessible names) and may revise those steps. Revisions are recorded in §11 before work
+> wording, accessible names) and may revise those steps. Revisions are recorded in §12 before work
 > starts.
+>
+> **Revised 2026-10-28 after the external review** ([docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md)).
+> The user's decisions on findings 4, 6, 7 and 8, and the verification side of findings 1–3, are
+> folded into the sections below. §11 maps each finding to its change.
 
 ---
 
@@ -62,8 +66,11 @@ Ship Smart Snippets v1 as a downloadable, versioned release and prove it meets t
 - **Verification:**
   - Extend the user's verify script with new sections for the popup (006) and insertion (007) flows,
     keeping the existing sections green.
-  - Performance acceptance on the user's PC, recorded: popup ≤300 ms (`popup_ready_ms` log) and
-    search ≤150 ms at 10k snippets (benchmark).
+  - Performance acceptance on the user's PC, recorded, on the release build with a defined
+    10,000-snippet dataset: popup ≤300 ms (`popup_ready_ms` log) and search ≤150 ms median
+    measured end to end in the popup (`popup_search_ms` log, search text change → results
+    rendered, both layouts). The Core search benchmark is kept as a diagnostic only (review
+    finding 4, user 2026-10-28).
   - Execute the compatibility matrix and record it in `docs/research`. Targets: Notepad, VS Code,
     Word, Outlook, Chrome/Edge text inputs, Windows Terminal (PowerShell and cmd) and Teams, plus an
     elevated Notepad (the expected message). Columns: Unicode, multiline, selected-text replacement,
@@ -257,8 +264,9 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          # copy publish/* except *.pdb into stage/SmartSnippets-<version>/
-          # Compress-Archive stage/* SmartSnippets-win-x64-<version>.zip
+          # copy publish/* except *.pdb into stage/SmartSnippets/   (fixed name, never versioned)
+          # Compress-Archive stage/SmartSnippets SmartSnippets-win-x64-<version>.zip
+          # check: every zip entry starts with "SmartSnippets/" and SmartSnippets/SmartSnippets.App.exe exists; else fail
           # "<sha256 lowercase>  SmartSnippets-win-x64-<version>.zip" > SmartSnippets-win-x64-<version>.zip.sha256
       - name: Create GitHub Release
         shell: pwsh
@@ -273,8 +281,35 @@ jobs:
   generated notes. The header is `.github/release-notes-header.md`: install steps, the SmartScreen
   explanation, hash verification, and upgrade/uninstall.
 - **No third-party release action.** `gh` is preinstalled on the runners.
-- **Zip layout.** The zip contains one top folder, `SmartSnippets-<version>/`, so users extract to a
-  named folder.
+- **Zip layout (review finding 6, user 2026-10-28).** The zip contains exactly one top folder with a
+  **fixed** name, `SmartSnippets\`. The version is only in the zip file name and in the exe's
+  version info, never in the folder. Extracting any release into the same parent folder
+  (recommended `%LOCALAPPDATA%\Programs\`) therefore always yields
+  `%LOCALAPPDATA%\Programs\SmartSnippets\SmartSnippets.App.exe` and overwrites the previous
+  version in place. The HKCU `Run` value `SmartSnippets` stores that exe path
+  (`"<exe>" --background`, `StartupRegistration.cs:44`), so it keeps pointing at the upgraded exe
+  and start at login keeps working without re-toggling. A version-named folder was rejected: it
+  nests a new folder on every upgrade and leaves the `Run` value on the old exe.
+- **Install and upgrade procedure** (the guide and the release header carry these exact steps):
+  1. *Upgrade only:* right-click the tray icon → **Exit**, then confirm the process is gone
+     (`Get-Process SmartSnippets.App -ErrorAction SilentlyContinue` prints nothing). Files of a
+     running exe cannot be overwritten.
+  2. Verify the download:
+     `(Get-FileHash .\SmartSnippets-win-x64-<version>.zip -Algorithm SHA256).Hash` equals the hex
+     in the `.sha256` asset (case-insensitive).
+  3. Extract into the parent folder, overwriting:
+     `Expand-Archive .\SmartSnippets-win-x64-<version>.zip -DestinationPath "$env:LOCALAPPDATA\Programs" -Force`.
+     With Explorer: *Extract All…* → change the destination to `%LOCALAPPDATA%\Programs` (Explorer
+     proposes a folder named after the zip, which would nest the app one level deeper) →
+     *Replace the files in the destination*.
+  4. Start `%LOCALAPPDATA%\Programs\SmartSnippets\SmartSnippets.App.exe` (first run of a new
+     version: SmartScreen steps as documented).
+
+  User data lives in `%LOCALAPPDATA%\SmartSnippets` (database, settings, log) and is never inside
+  the zip, so an upgrade cannot overwrite it. Files that an older version shipped and a newer one
+  dropped stay behind after an overwrite. The guide notes that deleting
+  `%LOCALAPPDATA%\Programs\SmartSnippets` before step 3 is equally safe (same path, data
+  elsewhere) and gives a clean folder (R10).
 - **Pre-release tags** (`v1.0.0-rc.1`) produce a GitHub *pre-release*. That is the dry run used in
   §8.
 
@@ -360,17 +395,21 @@ time or at runtime.
   `NIF_ICON | NIF_TIP`, replacing `UpdateTooltip`, and logs `tray_icon state=<s> theme=<light|dark>`.
   The log gives the verify script something to assert, because the tray image itself is not readable
   through UI Automation.
-- **One state policy:** a pure function `TrayStatePolicy.Compute(bool hotkeyRegistered,
-  bool popupOpen)` lives in Presentation so it can be unit-tested on Linux. The result is
-  `HotkeyUnavailable` if the hotkey is not registered, else `PopupOpen` if the popup is open, else
-  `Ready`.
-  - Red wins because it is a persistent fault the user must act on. The open popup is already
-    visible on screen.
-  - `AppHost` keeps the two inputs, (`hotkeyManager.Status.IsRegistered`, the popup's
-    visible/hidden events from 006), and assigns `tray.State = Compute(...)` from both handlers. That
-    removes the overwrite hazard in §3.
-  - `TrayState` moves to Presentation next to the policy. `TrayIcon` keeps using it.
-  - If 006 already centralises this, T0 adopts 006's shape instead.
+- **One state policy (single definition; review finding 7, user 2026-10-28):** a pure function
+  `TrayStatePolicy.Compute(bool hotkeyRegistered, bool popupOpen)` lives in Presentation so it can be
+  unit-tested on Linux. The result is `HotkeyUnavailable` if the hotkey is not registered, else
+  `PopupOpen` if the popup is open, else `Ready`.
+  - **Red (`HotkeyUnavailable`) wins over blue (`PopupOpen`).** It is a persistent fault the user
+    must act on; the open popup is already visible on screen. This is the only precedence rule in
+    the programme. 006's `AppHost.UpdateTrayState()` (the single writer, called from
+    `PopupWindow.VisibleChanged` and `IHotkeyManager.StatusChanged`) applies this rule from the
+    start, so there is no deferred behaviour change in 008.
+  - `AppHost` keeps the two inputs (`hotkeyManager.Status.IsRegistered`, the popup's
+    `VisibleChanged` from 006) and assigns `tray.State = TrayStatePolicy.Compute(...)` in
+    `UpdateTrayState()`. That removes the overwrite hazard in §3.
+  - `TrayState` moves to Presentation next to the policy. `TrayIcon` keeps using it. If 006 has
+    already extracted the rule into a helper, T7 moves it to `TrayStatePolicy` without changing its
+    result; T0 records which.
 
 **(g) Removing prototype surfaces.** Delete:
 - `Diagnostics/` (both files);
@@ -393,8 +432,10 @@ It is extended, not forked, and keeps its name so the existing docs and links st
   4. records the exe's `FileVersion`/`ProductVersion` in the report.
 
   Acceptance runs against the **release candidate as downloaded**, not a local build.
-- **New sections:** E (popup, 006), F (insertion, 007) and G (release, icons and tray, 008). They
-  are listed in §6 T10.
+- **New parameter `-PerfLibrary <n>`** (default `10000`): size of the generated performance
+  dataset used by section P (§6 T11). `-Only P` runs the performance section alone.
+- **New sections:** E (popup, 006), F (insertion, 007), G (release, icons and tray, 008) and
+  P (performance at 10k, AC13). They are listed in §6 T10 and T11.
 
 ### 4.2 Alternatives considered
 
@@ -415,6 +456,11 @@ It is extended, not forked, and keeps its name so the existing docs and links st
 | L-A — `LoadImage(LR_LOADFROMFILE)` from `Assets\` next to the exe | No `rc.exe`; keeps the SDK's VERSIONINFO + icon | Loose files can go missing → fallback + log | **Chosen** |
 | L-B — custom `.rc`/`.res` Win32 resources | Single-file icons | Replaces the SDK-generated VERSIONINFO and icon; needs `rc.exe` and hand-made versioning | Rejected |
 | L-C — managed embedded resource + `CreateIconFromResourceEx` | AOT-safe, no loose files | Own `.ico` parser and frame selection | Rejected (kept as the fallback design if loose files prove fragile) |
+| Z-A — zip with a fixed top folder `SmartSnippets\`, extracted into a stable parent | Upgrade = overwrite in place; `Run` value path never changes | Old files dropped by a newer release stay unless the folder is deleted first (R10) | **Chosen** (user 2026-10-28) |
+| Z-B — version-named top folder `SmartSnippets-<version>\` | Side-by-side versions | Every upgrade nests a new folder; start at login keeps launching the old exe (review finding 6) | Rejected |
+| Z-C — no top folder (files at the zip root) | Extract straight into any folder | Explorer's default destination and a wrong target folder scatter 287 files | Rejected |
+| P-A — end-to-end `popup_search_ms` in the real popup on a generated 10k dataset | Measures what the user sees (filter, group, row mapping, binding, render), both layouts | Needs a dataset generator and UIA-driven runs | **Chosen** (review finding 4) |
+| P-B — Core `SearchBenchmarkTests` as the pass/fail evidence | Already exists, deterministic | Skips grouping, row mapping, binding and rendering | Kept as a diagnostic only |
 | T-A — registry `SystemUsesLightTheme` + `WM_SETTINGCHANGE "ImmersiveColorSet"` | Exactly the taskbar's mode; no WinRT | Registry contract is undocumented but stable since 1903 | **Chosen** |
 | T-B — `UISettings.ColorValuesChanged` | WinRT API | Reflects the app mode, not the taskbar's; fires on a background thread | Rejected |
 | T-C — one glyph with an outline for both taskbars | 3 files | Contradicts the design ("adapts to light and dark taskbars") | Rejected |
@@ -431,6 +477,10 @@ It is extended, not forked, and keeps its name so the existing docs and links st
   - `tray_theme_changed theme=…`
 
   They are added to the A4.logevents list.
+- Log events 008 consumes from 006 (owned and defined there):
+  - `popup_ready_ms <int>` (popup shown and ready);
+  - `popup_search_ms <int> layout=<flat|folder> results=<n>` (search text change → results
+    rendered; one line per text change).
 - Release asset names:
   - `SmartSnippets-win-x64-<version>.zip`
   - `SmartSnippets-win-x64-<version>.zip.sha256` (`<hex>  <filename>`, `sha256sum -c` compatible)
@@ -452,7 +502,7 @@ Maintainer: git tag v1.0.0 <commit on main> && git push origin v1.0.0   (product
         → dotnet publish -p:Version=1.0.0 -p:FileVersion=1.0.0.<run>
         → gate: exit code, IL2xxx/IL3xxx, no App.dll, exe + e_sqlite3.dll ── any → FAIL
     → VersionInfo check on publish/SmartSnippets.App.exe ── mismatch → FAIL
-    → Package: stage (no *.pdb) → zip → .sha256
+    → Package: stage/SmartSnippets/ (no *.pdb) → zip (single fixed top folder, checked) → .sha256
     → gh release create v1.0.0 zip sha256 --verify-tag --generate-notes --notes-file header [--prerelease]
       → GitHub Release page with 2 assets + header + generated notes
 Parallel paths checked: ci.yml (push main) keeps its own artifact via the same publish-aot.ps1;
@@ -495,10 +545,10 @@ ShowBalloon (NIF_INFO only) unaffected; no other Shell_NotifyIcon caller (grep).
 | `AppHost.cs` | Tray-state wiring; Diagnostics removed; `app_started` log | T3, T7, T8 |
 | `Diagnostics/*`, `Core/Data/ProbeRepository.cs` | Deleted | T8 |
 | `Popup/PopupWindow.xaml.cs` | `TestString` residue removed if present | T9 |
-| `scripts/verify-plans-003-009.ps1`, `scripts/lib/Uia.ps1` | `-ArtifactZip`; sections E, F, G; C11 updated; A3 via shared gate; locked-DB check | T10 |
+| `scripts/verify-plans-003-009.ps1`, `scripts/lib/Uia.ps1` | `-ArtifactZip`, `-PerfLibrary`; sections E, F, G, P; C11 updated; A3 via shared gate; locked-DB check; perf dataset generator; unsaveable-clipboard helper | T10, T11 |
 | `scripts/verify-plan002.ps1` | Header note: historical, superseded by sections A/E/F/G | T10 |
 | `docs/research/003-release-acceptance-v1.md` (new) | Perf, matrix, audits, observations | T11–T16 |
-| `docs/guides/001-install-and-release.md` (new) | Install/upgrade/uninstall, SmartScreen, maintainer release steps | T4 |
+| `docs/guides/001-install-and-release.md` (new) | Install/upgrade (fixed `SmartSnippets\` folder, §4.1(b) steps)/uninstall, SmartScreen, maintainer release steps | T4 |
 | `docs/plan/001` master | §5/§9 status, Complete | T17 |
 
 ## 5. Impact and risk
@@ -508,7 +558,7 @@ ShowBalloon (NIF_INFO only) unaffected; no other Shell_NotifyIcon caller (grep).
 | State management — what survives a crash mid-operation? | Release job: nothing is published until the final `gh release create`. A failed run leaves at most a tag with no release, which can be re-run after deleting the tag or by pushing a new tag. App: tray icon handles are process-local; Explorer drops the icon on exit as today |
 | Data consistency — orphans, races, double-apply? | `concurrency` serialises runs per tag; "release exists" fails the job instead of clobbering. Tray state has one writer (`AppHost.UpdateTrayState`) on the UI thread |
 | User experience — root problem or symptom; any surprise? | Unsigned exe → SmartScreen "Windows protected your PC" on first run. Documented in the release header and the install guide (More info → Run anyway, or Unblock in Properties). Removing Diagnostics removes a duplicate start-at-login toggle; Settings keeps it |
-| Backward compatibility — existing data / sessions / configs? Migration? | DB untouched; `probe` table kept. The `Run` value stores the exe path: extracting a new version **over the same folder** keeps start-at-login working. A new folder needs the toggle re-done (documented). Downgrade to an older build with a newer schema is refused (B checks) |
+| Backward compatibility — existing data / sessions / configs? Migration? | DB untouched; `probe` table kept. The `Run` value stores the exe path. Every zip has the fixed top folder `SmartSnippets\`, so extracting a new version into the same parent (`%LOCALAPPDATA%\Programs\`) overwrites the exe in place and start at login keeps working; proven by runbook R14 (release A → B). Installing to a different parent needs the toggle re-done (documented). Downgrade to an older build with a newer schema is refused (B checks) |
 | Error recovery — what happens on failure; can it recover? | Missing tray icon file → `IDI_APPLICATION` + log; registry read failure → dark; `ApplicationIcon` missing in the AOT exe → caught by the G-section check before acceptance |
 | Logging & debugging — enough to diagnose in the field? | `app_started version=` ties logs to a build; `tray_icon` / `tray_theme_changed` / `tray_icon_load_failed` explain glyph issues; the release run log keeps the full publish log |
 | Edge cases — empty, huge, repeated, concurrent, interrupted? | Pre-release tags → `--prerelease`. Re-pushed or moved tags → "release exists" fail. Tag on a non-main commit → fail. Rapid theme toggles → each broadcast compares and reloads at most once. Elevated instance: `ChangeWindowMessageFilterEx` is already applied for `TaskbarCreated`; `WM_SETTINGCHANGE` is a broadcast from the same-or-lower integrity shell. **Must be checked** on the elevated instance (runbook R9); if blocked, add a message filter for it |
@@ -541,12 +591,28 @@ ShowBalloon (NIF_INFO only) unaffected; no other Shell_NotifyIcon caller (grep).
   all vary. → Sections E and F drive only Notepad (inbox, deterministic); other targets are the
   manual matrix. Every new check uses `Wait-Until` with timeouts, never fixed sleeps. Flaky checks are
   fixed in the harness, never by weakening an assertion (CLAUDE.md). The script already backs up and
-  restores the user's profile; the F section also saves and restores the user's clipboard text.
+  restores the user's profile; the F section also saves and restores the user's clipboard text, and
+  clears the unsaveable test payload (F9–F11) in `finally`.
 - **R8 — Actions major bump changes behaviour** (e.g. `upload-artifact` v4→v5 artifact semantics).
   → Bump in its own commit, then read the next `main` run's annotations and artifact. Revert that
   commit if it misbehaves.
 - **R9 — Generator toolchain drift** (cairosvg version changes anti-aliasing). → Pinned version;
   `--check` mode; outputs checked in, so a drift only shows when someone regenerates.
+- **R10 — Upgrade leaves stale files or fails mid-extract.** Overwriting in place keeps files a
+  newer release dropped, and extracting while the app runs fails on locked files. → The procedure
+  starts with Exit and a process check; the guide offers delete-then-extract as an equally safe
+  clean variant (same path, data elsewhere); runbook R14 proves the documented overwrite path from
+  one real release to the next, including start at login.
+- **R11 — Performance measurement noise.** One run on one PC varies with background load, and the
+  first search after opening may include list materialisation. → Fixed, seeded dataset; 20 runs
+  per (query, layout) cell; the median is the pass bar and p95/max are reported; the machine (CPU,
+  RAM, power plan) and build are recorded. A cell that fails is re-run once after closing other
+  apps; both runs are recorded. A failure is never resolved by changing the dataset or the bar
+  (CLAUDE.md); it goes to the user with the numbers.
+- **R12 — Residual focus race in insertion** (review finding 3). Focus can still move in the few
+  milliseconds between 007's last target revalidation and `SendInput`. The user accepted this
+  residual risk on 2026-10-28. It is not testable by automation; it is recorded in the acceptance
+  notes (T16), and 007's late revalidation is evidenced by its unit tests.
 
 **Rollback:**
 - Release workflow: delete `release.yml`, or delete the release/tag. Main CI is unaffected.
@@ -561,12 +627,20 @@ PC. Linux cannot compile WinUI, so every App change is compiled first by CI on `
 PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 
 ### T0 — Re-baseline against merged 006/007 (C)
-- **Files:** this plan only (§11 revision row).
-- **Change:** re-read the merged 006/007 code and plans, then update §6 T9/T10 and §7:
-  - how the popup reports open/closed;
-  - log events (`insert_result`, usage update, duplicate guard, elevation block);
-  - error wording;
-  - accessible names of the popup search box, list, toolbar and add-snippet editor;
+- **Files:** this plan only (§12 revision row).
+- **Change:** re-read the merged 006/007 code and plans, then update §6 T9–T11 and §7. The
+  behaviours are fixed by this plan; T0 only fills in the names:
+  - how the popup reports open/closed (`VisibleChanged`) and that `AppHost.UpdateTrayState()` uses
+    the §4.1(f) precedence;
+  - the shared insertion contract in `src/SmartSnippets.Presentation/Services/InsertionContracts.cs`
+    (006/007 coordinator T0): the final `InsertionOutcome` names, including 007's new outcomes for
+    the unsaveable-clipboard prompt, the target closed after "Paste anyway", and `MaybePasted`;
+  - log events (`insert_result`, usage update, duplicate guard, elevation block, clipboard
+    preservation, `popup_search_ms`) and the exact end point of `popup_search_ms`;
+  - error and prompt wording, including the "Paste anyway?" prompt and its buttons;
+  - accessible names of the popup search box, list, toolbar, add-snippet editor and the
+    paste-anyway prompt;
+  - which clipboard payload 007 treats as unsaveable (it picks the F9 helper's payload);
   - how CR line endings were resolved;
   - whether `TestString` is gone.
 - **Verify:** the user sees the revision diff before T9/T10 start.
@@ -606,19 +680,29 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 - **Files:** `.github/workflows/release.yml`, `.github/release-notes-header.md`,
   `docs/guides/001-install-and-release.md`.
 - **Change:** §4.1(b).
-  - The guide covers: download; verify the hash (`Get-FileHash -Algorithm SHA256`); extract to a
-    stable folder (e.g. `%LOCALAPPDATA%\Programs\SmartSnippets`); SmartScreen first-run steps;
-    upgrade (Exit from the tray, extract over the folder); uninstall (turn off Start at login, Exit,
-    delete the folder, optionally delete `%LOCALAPPDATA%\SmartSnippets`); where logs are.
-  - The maintainer section covers the tag procedure and the rc-first rule (§8).
+  - The guide covers: download; verify the hash (`Get-FileHash -Algorithm SHA256`); install by
+    extracting into `%LOCALAPPDATA%\Programs\` so the app lands in
+    `%LOCALAPPDATA%\Programs\SmartSnippets\` (the zip's fixed top folder); SmartScreen first-run
+    steps; **upgrade** with the exact §4.1(b) steps (Exit from the tray and confirm the process is
+    gone → verify the hash → extract into the same parent with overwrite → start), including the
+    Explorer destination pitfall and the optional delete-first clean variant; why start at login
+    keeps working (same exe path); uninstall (turn off Start at login, Exit, delete
+    `%LOCALAPPDATA%\Programs\SmartSnippets`, optionally delete `%LOCALAPPDATA%\SmartSnippets`);
+    where logs are.
+  - `.github/release-notes-header.md` carries the short form of the same install and upgrade steps
+    and links the guide.
+  - The maintainer section covers the tag procedure, the rc-first rule and the two-release upgrade
+    test (§8).
 - **Verify (U + C):**
   1. After T1–T9 are on `main` and CI is green, the **user** approves and pushes
      `v1.0.0-rc.1` (or authorises Claude to push that exact tag).
   2. (C) checks the run: all steps green.
   3. The release is marked pre-release, with 2 assets.
   4. The `.sha256` matches the zip after download (`gh release download` + `sha256sum -c`).
-  5. The zip has one top folder, has no `.pdb`, and contains `Assets\*.ico`.
+  5. The zip has exactly one top folder named `SmartSnippets` (no version in it), has no `.pdb`,
+     and contains `SmartSnippets\SmartSnippets.App.exe` and `SmartSnippets\Assets\*.ico`.
   6. The header and the generated notes both appear.
+  7. (U) The upgrade test, runbook R14, passes from the previous release to this one.
 - **Negative checks (C, cheap):** the regex and the ancestry logic are a PowerShell function in the
   workflow step; the same logic is unit-checked by the G-section (U) calling it with `v1.0`,
   `v1.0.0.0`, `1.0.0` and `v1.0.0-rc.1`.
@@ -648,7 +732,8 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 - **Files:** `Services/TrayIcon.cs`, `Services/TaskbarTheme.cs` (new), `NativeMethods.txt` (`LoadImage`,
   `DestroyIcon`, `GetSystemMetricsForDpi`, `GetDpiForSystem`, `WM_SETTINGCHANGE`, `IMAGE_TYPE`,
   `IMAGE_FLAGS`, `SYSTEM_METRICS_INDEX`), `Presentation/Shell/TrayStatePolicy.cs` (+ `TrayState`),
-  `AppHost.cs` (`UpdateTrayState`, wiring to the hotkey status and 006's popup events),
+  `AppHost.cs` (006's `UpdateTrayState()` stays the single writer and now calls
+  `TrayStatePolicy.Compute`; the result is unchanged because 006 already applies red-over-blue),
   `tests/SmartSnippets.Presentation.Tests/TrayStatePolicyTests.cs`.
 - **Change:** §4.1(e)(f).
 - **Verify:**
@@ -709,11 +794,22 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
       restores the prior query and selection.
     - E8 "Open main window" opens the main window.
     - E9 Tab/Shift+Tab cycle; mouse click on a row = Enter.
-    - E10 `popup_ready_ms` sampled 20 times (first open after a `--background` start recorded
-      separately) → median/p95/max in the report.
-    - E11 Master §7 #1: with the popup open, save a snippet in the main window → the popup list
-      shows it without reopening.
-    - E12 Master §7 #2: rename a folder → popup headings update.
+    - E10 `popup_ready_ms` sampled 20 times on the standard test profile (first open after a
+      `--background` start recorded separately) → every sample ≤300 ms; median/p95/max in the
+      report. The 10k measurements are in section P (T11).
+    - **Store-change propagation (master §7 #1, #2).** The popup closes on deactivation by design
+      (006 §2), so it cannot stay open while the user works in the main window. Propagation is
+      proven in two parts (review finding 8):
+      - *Live update while shown:* 006's view-model unit tests raise `store.Changed` while the
+        popup view-model is shown (`StoreChanged_Rebuilds_KeepsSelectionById`,
+        `FolderRenamed_UpdatesHeadingAndChips`, names confirmed at T0). They run in A1.
+      - *End to end through the real app:* E11 and E12 below.
+    - E11 Master §7 #1: with the popup hidden, create a snippet and edit another snippet's label in
+      the main window (UIA) → press the hotkey → the popup list (UIA) contains the new row and shows
+      the edited label, and the new snippet is found by a search for its unique term.
+    - E12 Master §7 #2: with the popup hidden, rename a folder and delete another folder in the main
+      window → reopen the popup in folder layout → the heading shows the new name, the old name is
+      absent, and the deleted folder's snippets appear under Unfiled.
   - **F — Insertion (007)**, Notepad target. Before the section it sets a sentinel clipboard text
     and restores the user's clipboard after it.
     - F1 The Unicode + multiline probe snippet is inserted. Notepad's text equals the snippet with
@@ -727,6 +823,26 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
     - F7 Never inserts into a Smart Snippets window: hotkey while the main window is foreground →
       ignored or the 007 message.
     - F8 Elevated target: SKIP in automation (UAC). It stays in the manual matrix.
+    - **Clipboard that cannot be fully preserved (007, review finding 1).** The helper
+      `Set-UnsaveableClipboard` in `scripts/lib/Uia.ps1` puts a payload on the clipboard that 007
+      classifies as unsaveable (the payload is fixed at T0 from 007's rule, e.g. a private format
+      above the snapshot size cap), plus a text sentinel. `Test-ClipboardIntact` compares the format
+      list and a hash of each format against the values recorded right after setting it.
+    - F9 Unsaveable clipboard → hotkey → Enter on the script's plain probe snippet (`smart-snippets-probe`) → the popup shows the "Paste anyway?"
+      prompt (accessible names per T0); nothing has been pasted yet. **Cancel** → Notepad text
+      unchanged, `Test-ClipboardIntact` true, `usage_count` unchanged, `insert_result` shows the
+      cancelled outcome.
+    - F10 Same setup → **Paste anyway** → the probe snippet is pasted once into Notepad, `usage_count` +1, and
+      the clipboard ends in the state 007 specifies for this path (the unsaveable payload is not
+      restored, as the prompt warned; the preserved formats are restored).
+    - F11 Same setup → prompt shown → the script closes Notepad → **Paste anyway** → the popup shows
+      007's target-closed message, nothing is pasted anywhere, the snippet text is left on the
+      clipboard (`Get-Clipboard` equals the probe text) so the user can paste it manually, `usage_count`
+      unchanged.
+    - F12 `MaybePasted` (dispatch outcome unknown: partial `SendInput` or an exception after
+      dispatch) cannot be forced from outside the process. No script check; the evidence is 007's
+      unit tests for those paths (usage rule, message, no automatic retry), cited in §7.2. F12 is
+      recorded as **N/A — unit-test evidence**, not SKIP.
   - **G — Release, icons, tray (008):**
     - G1 Exe `FileVersion`/`ProductVersion` match the expected version (the zip name when
       `-ArtifactZip` is used).
@@ -748,21 +864,67 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
     - G10 Log privacy re-run over the whole log after E/F (no probe or snippet text in `app.log`).
 - **Verify (U):** a full run against the rc zip:
   `powershell -ExecutionPolicy Bypass -File scripts/verify-plans-003-009.ps1 -ArtifactZip <path>
-  -ReportPath docs\research\003-run.md`. Pass bar: 0 FAIL, 0 WARN. Remaining SKIPs = only the §7
-  manual list. The report is attached to `docs/research/003` (T16).
+  -ReportPath docs\research\003-run.md` (sections A–G and P). Pass bar: 0 FAIL, 0 WARN. Remaining
+  SKIPs = only the §7 manual list; F12 is N/A with unit-test evidence. The report is attached to
+  `docs/research/003` (T16).
 
 ### T11 — Performance acceptance (U runs; C records) (AC13, PRD §5)
-- **Popup:** E10 samples on the rc build.
-  - Pass: **every** sample ≤300 ms, including the first open after a background start.
-  - Also recorded, informational: the same with a seeded 10k-snippet profile (`-PerfLibrary 10000`
-    seeds via sqlite into the temporary profile). If it exceeds 300 ms, raise it to the user; do not
-    silently accept it.
-- **Search:**
+Section P of the verify script, run on the rc build (`-ArtifactZip`), in its own temporary
+profile. It measures the user-visible path (review finding 4, user 2026-10-28).
+
+- **P0 — Dataset (generated, deterministic).** `New-PerfLibrary -Count $PerfLibrary -Seed 42`
+  starts the app once on an empty temporary profile so the schema exists, exits it, then inserts
+  through `sqlite3` in one transaction:
+  - **Folders:** 50 (`Perf folder 01` … `Perf folder 50`).
+  - **Snippets:** 10,000. 9,000 spread evenly over the 50 folders (180 each), 1,000 Unfiled.
+  - **Text** from a fixed 2,000-word English-like vocabulary: 60 % short (20–200 characters,
+    one line), 30 % medium (200–1,000 characters, 2–8 lines), 10 % long (1,000–4,000 characters,
+    10–40 lines). About 5 % contain non-ASCII characters (accents, CJK, emoji).
+  - **Labels:** 70 % custom (`label_is_custom=1`, 2–5 vocabulary words), 30 % auto (the first line
+    of the text, truncated as the app does).
+  - **Tags:** 0–3 per snippet from a 100-tag vocabulary, in the store's normalised format.
+  - **Usage:** `usage_count` 0–500 with a long tail (most 0–5), `last_used_at` within the last
+    365 days or NULL for unused, `created_at`/`updated_at` spread over two years, so all four
+    sorts have real work.
+  - **Planted search terms** (no vocabulary word, label, tag or folder name contains them, so
+    substring matching cannot add hits): `alpha` in exactly 1,000
+    snippets (spread over text, labels and tags), `bravo` in 1,000, both in exactly 100. Counts are
+    asserted by SQL before measuring.
+- **P1 — Popup ready at 10k (pass/fail).** First open after a `--background` start, then 20 opens
+  (10 in flat layout, 10 in folder layout), each from Notepad with Esc between. Pass: **every**
+  `popup_ready_ms` sample ≤300 ms. Median/p95/max reported.
+  - **Why pass/fail at 10k, not informational:** AC13 (master `001:83`) sets search at 10k and the
+    popup at ≤300 ms without naming a library size. The popup's ready time grows with the library
+    (it materialises the list), 006 designs its pipeline and prewarm for 10k (006 R4), and judging
+    popup and search on the same dataset makes AC13 one consistent condition. A small-library-only
+    pass bar would leave the popup target unproven at the only scale the programme agreed. E10
+    keeps the small-profile check as well.
+- **P2 — Search end to end (pass/fail).** In the open popup the script sets the search box text
+  in one step with UIA `ValuePattern.SetValue`, so each change produces exactly one
+  `popup_search_ms <int> layout=<flat|folder> results=<n>` line, and waits for that line.
+  Queries:
+
+  | Query | Change | Expected `results` |
+  |---|---|---|
+  | Q1 one common term | empty → `alpha` | 1,000 |
+  | Q2 two-term AND | empty → `alpha bravo` | 100 |
+  | Q3 no match | empty → `zzqxv` | 0 (empty state shown) |
+  | Q4 clearing the query | `alpha bravo` → empty | 10,000 |
+
+  Each query runs **20 times in each layout** (4 × 2 × 20 = 160 samples), in a fixed interleaved
+  order; the precondition text for Q4 is set first and its own line is not counted. `results=<n>`
+  must equal the expected count (else FAIL: the measurement did not measure the dataset).
+  Pass: **median ≤150 ms in every (query, layout) cell**. p95 and max are reported for every cell;
+  they are not pass conditions, but any p95 above 300 ms is raised to the user.
+- **P3 — Core benchmark (diagnostic only).**
   `dotnet test tests/SmartSnippets.Core.Tests -c Release --filter Category=Benchmark --logger "console;verbosity=detailed"`
-  on the user's PC. Pass: all medians ≤150 ms and build+sort ≤150 ms (`SearchBenchmarkTests.cs:64-68`).
-  The script captures the output lines (`:56-62`) into the report, along with CPU model and RAM.
-- **Verify:** numbers recorded in `docs/research/003` §Performance, with machine details and build
-  version.
+  runs when the SDK is present; its lines (`SearchBenchmarkTests.cs:56-62`) go into the report as
+  INFO. It never decides AC13. When P2 fails, P3 helps tell Core search cost apart from popup
+  grouping, binding and rendering.
+- The report records CPU model, RAM, power plan, display scale, build version and the dataset
+  counts.
+- **Verify:** P0–P2 PASS in the rc run; numbers recorded in `docs/research/003` §Performance. A
+  failing cell follows R11 (one re-run, both recorded, then the user decides on a fix-forward).
 
 ### T12 — Compatibility matrix and remaining manual items (U runs; C prepares and records) (AC9, AC10, AC14, PRD §5)
 - **Preparation (C):** a matrix template in `docs/research/003`, plus three probe snippets the user
@@ -775,7 +937,15 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
   2. insert P-Unicode, then P-Multi into an empty field;
   3. select a word and insert P-Plain;
   4. run `Get-Clipboard` in a separate PowerShell → expect the sentinel;
-  5. check that the main window's "Used" counter went up by exactly the number of insertions.
+  5. check that the main window's "Used" counter went up by exactly the number of insertions;
+  6. **unsaveable clipboard** (007, findings 1–3): dot-source `scripts/lib/Uia.ps1` in a separate
+     PowerShell and run `Set-UnsaveableClipboard`; insert P-Plain → the popup shows "Paste anyway?"
+     → **Cancel** → `Test-ClipboardIntact` prints `True` and nothing was pasted; repeat → **Paste
+     anyway** → P-Plain is pasted once and "Used" goes up by one. Run `Clear-UnsaveableClipboard`
+     afterwards.
+
+  The "Paste anyway after closing the target" path and `MaybePasted` are not repeated per target:
+  the first is F11 (Notepad), the second has unit-test evidence only (F12).
 - **Rows:**
   - Notepad
   - VS Code (editor)
@@ -789,7 +959,7 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
   - **Elevated Notepad** with the app not elevated → expected: the 007 elevation message, no
     insertion, usage unchanged; then Restart as administrator → insertion works (AC10).
 - **Columns:** Unicode · multiline · selected-text replacement · clipboard restored · usage counted
-  once · notes.
+  once · unsaveable clipboard (Cancel keeps it / Paste anyway pastes) · notes.
   - Terminals: multiline paste may trigger the terminal's multi-line paste warning, and selection
     replacement does not apply (N/A by nature).
   - Expected differences are recorded as notes, not failures, and the user accepts them explicitly.
@@ -808,14 +978,15 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 
   | §7 check | Evidence |
   |---|---|
-  | #1 | E11 |
-  | #2 | E12 (+ D folder-rename propagation) |
+  | #1 | E11 (main-window change while the popup is hidden → reopen shows it) + 006 view-model test `StoreChanged_Rebuilds_KeepsSelectionById` (live update while shown) |
+  | #2 | E12 (folder rename/delete while hidden → reopen shows it) + 006 `FolderRenamed_UpdatesHeadingAndChips` + D folder-rename propagation |
   | #3 | F4 |
   | #4 | C9 plus a restart check: C9.restart, added — after the change and an app restart, the new hotkey still opens the popup |
   | #5 | C12.free |
   | #6 | B (fresh profile, v1 → v2 upgrade) |
 
-- **Verify:** each row PASS in the T10 report, cited in `docs/research/003`.
+- **Verify:** each row PASS in the T10 report (and, for #1/#2, the named unit tests green in A1),
+  cited in `docs/research/003`.
 
 ### T14 — Spec-vs-implementation audit (C; independent verifier) (all ACs, PRD §5)
 - **Change:** fill §7.2's checklist with evidence links (script IDs, test names, matrix cells,
@@ -836,8 +1007,13 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
     subscriber unsubscribes on exit.
   - New log events present in A4.
   - Removed Diagnostics: no dangling callbacks or ctor parameters.
-  - 006/007 handoffs: popup → inserter → usage update → store `Changed` → popup and main list
-    refresh. One refresh path (master §4).
+  - 006/007 handoffs: popup → `IInsertionService` (declared once, in
+    `src/SmartSnippets.Presentation/Services/InsertionContracts.cs`) → usage update → store
+    `Changed` → popup and main list refresh. One refresh path (master §4). Every
+    `InsertionOutcome`, including the paste-anyway and `MaybePasted` outcomes, has a popup handling
+    branch and a `UiText` message.
+  - `UpdateTrayState()` is the only `tray.State =` assignment and calls `TrayStatePolicy.Compute`.
+  - `popup_search_ms` and `popup_ready_ms` are emitted by the popup and parsed by sections E and P.
 - **Verify:** every entry has a caller; each new log event appears in the T10 run's `app.log`.
 
 ### T16 — Open observations and acceptance record (C) (PRD §5)
@@ -857,7 +1033,15 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
   | Lone-CR line breaks (WARN D1.eol) | Resolved by 007. Evidence: F1 CRLF comparison + matrix multiline column; D1.eol becomes PASS or is reworded by T0 to assert 007's chosen normalisation |
   | Conflict sentence unreachable by recording a `RegisterHotKey`-owned chord | **Accepted as-is** by the user (2026-10-28). The startup-conflict path (C13) and G5 cover the user-visible feedback |
   | "Snippet text cannot be empty." vs plan wording | Accepted. The code wording is canonical (`UiText`); plan 005 runbook text is historical |
-- **Verify:** the user reads the doc. The acceptance sign-off is recorded in §11 and in the master §9.
+
+  **Insertion acceptance notes** (review findings 1–3, recorded in `docs/research/003`):
+
+  | Item | Disposition |
+  |---|---|
+  | Clipboard that cannot be fully preserved (finding 1) | Behaviour per 007: prompt before anything is emptied. Evidence: F9–F11, matrix column "unsaveable clipboard", 007 unit tests |
+  | Uncertain dispatch, `MaybePasted` (finding 2) | Not forceable from outside the process. Evidence: 007 unit tests only (partial `SendInput`, exception after dispatch), cited by name; F12 = N/A |
+  | Residual few-ms focus race between the last target check and `SendInput` (finding 3) | **Accepted** by the user (2026-10-28) as residual risk (R12). Evidence of the late revalidation: 007 unit tests; no automated reproduction |
+- **Verify:** the user reads the doc. The acceptance sign-off is recorded in §12 and in the master §9.
 
 ### T17 — Close the programme (C)
 - **Files:** `docs/plan/001-master-smart-snippets-v1.md` (§5 status for 004/005/009 runbooks → done
@@ -870,6 +1054,8 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 ### 7.1 Layers
 - **Unit (Linux + Windows CI):**
   - `TrayStatePolicyTests` (new);
+  - cited from 006/007 (not written here): the popup view-model store-change tests (E11/E12 live
+    part) and 007's clipboard-preservation and uncertain-dispatch tests (F12);
   - existing Core (incl. `MigratorTests` with the `probe` table) and Presentation suites, unchanged
     and green;
   - generator `--check` (Linux, run by C when icons change).
@@ -879,13 +1065,13 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 - **CI (Windows):** the AOT gate through `publish-aot.ps1`, with the version stamp check. The release
   workflow is exercised by the rc tag (§8).
 - **Automated acceptance on the user's PC:** `verify-plans-003-009.ps1 -ArtifactZip <rc zip>`,
-  sections A–G. Pass bar: 0 FAIL, 0 WARN; SKIPs limited to the runbook rows below.
+  sections A–G and P. Pass bar: 0 FAIL, 0 WARN; SKIPs limited to the runbook rows below.
 - **Manual runbook (U, on the rc build).** Unchecked rows block the final tag.
 
 | # | Step | Expected |
 |---|---|---|
 | R1 | Download the rc zip from the Release page; `Get-FileHash` | Matches the `.sha256` asset |
-| R2 | Extract with Explorer, run `SmartSnippets.App.exe` | SmartScreen warning as documented; "Run anyway" starts the app. Properties → Details shows the version |
+| R2 | Install per the guide: Explorer *Extract All…* with destination `%LOCALAPPDATA%\Programs`, run `%LOCALAPPDATA%\Programs\SmartSnippets\SmartSnippets.App.exe` | App lands in `…\Programs\SmartSnippets\` (no extra nesting); SmartScreen warning as documented; "Run anyway" starts the app. Properties → Details shows the version |
 | R3 | Restart as administrator from tray and from Settings; accept, then repeat and cancel UAC | Accept: elevated instance, tray icon present, hotkey works. Cancel: notice, app keeps running |
 | R4 | Restart Explorer (Task Manager → Restart) | Tray icon returns with the correct glyph for the current theme/state |
 | R5 | Look at the exe in Explorer, the taskbar button, Alt+Tab, pin to taskbar | Bracket+caret app icon everywhere, crisp at 100 % |
@@ -897,6 +1083,7 @@ PRs, §8). Claude reads CI results with `gh run view` and the job logs.
 | R11 | Visual: Light/Dark, text size Custom 32, window < 720 px wide, Narrator on popup and main window | No clipped essential controls; Narrator announces names (PRD §5 theme/text size) |
 | R12 | Compatibility matrix (T12) | All cells filled, failures fixed or accepted |
 | R13 | Exit from tray; uninstall per the guide | Process gone, hotkey free, `Run` value removed when the toggle is off, folder deletable |
+| R14 | **Upgrade test** (release A = previous rc, B = rc under test; §8 step 3). Run R13's uninstall first if needed. (1) Install A per the guide; turn on Start at login in Settings; add one snippet `upgrade-probe`; record `Get-ItemPropertyValue HKCU:\Software\Microsoft\Windows\CurrentVersion\Run -Name SmartSnippets`. (2) Upgrade to B with the guide's exact steps: tray → Exit, confirm no `SmartSnippets.App` process, verify B's hash, `Expand-Archive <B zip> -DestinationPath "$env:LOCALAPPDATA\Programs" -Force`, start the exe. (3) Check. (4) Sign out and in | (3) `(Get-Item "$env:LOCALAPPDATA\Programs\SmartSnippets\SmartSnippets.App.exe").VersionInfo.ProductVersion` starts with B's version; no `SmartSnippets-*` or nested `SmartSnippets\SmartSnippets` folder exists; `upgrade-probe` and all other snippets, folders and settings are present; the `Run` value is byte-identical to the one recorded for A; Settings shows Start at login on. (4) B starts in the background, the tray glyph is correct, the hotkey opens the popup, and `app.log` shows `app_started version=<B>` |
 
 ### 7.2 Acceptance checklist (spec-vs-implementation, filled by T14)
 
@@ -910,9 +1097,10 @@ tests by class name.
 | **PRD §5** Popup supports the complete keyboard-only workflow | E1–E4, E9; R11 Narrator |
 | **PRD §5** Each toolbar action behaves as specified | E5 (layout, sort), E6 (names/tooltips), E7 (add), E8 (open main) |
 | **PRD §5** A snippet created from the popup can be inserted immediately | E7 |
-| **PRD §5** Search and popup latency meet the agreed targets | T11: E10 samples ≤300 ms; benchmark medians ≤150 ms on the user's PC |
-| **PRD §5** Successful dispatch increments usage once and updates last used | F4; matrix "usage counted once" column |
-| **PRD §5** Cancellation and failed dispatch do not increment usage | E4 (Esc), F6 (target gone), M:elevated Notepad |
+| **PRD §5** Search and popup latency meet the agreed targets | T11 on the 10k dataset: P1 every `popup_ready_ms` ≤300 ms; P2 `popup_search_ms` median ≤150 ms in every (query, layout) cell, p95 reported; E10 small-profile popup samples ≤300 ms. P3 Core benchmark = diagnostic only |
+| **PRD §5** Successful dispatch increments usage once and updates last used | F4, F10; matrix "usage counted once" column |
+| **PRD §5** Cancellation and failed dispatch do not increment usage | E4 (Esc), F6 (target gone), F9 (paste-anyway Cancel), F11 (target closed after Paste anyway), M:elevated Notepad; uncertain dispatch (`MaybePasted`): 007 unit tests (F12 N/A) |
+| **PRD §5** Clipboard contents are restored, or the user is told first when they cannot be | F3; F9 (Cancel keeps the clipboard intact); F10; F11 (snippet left on the clipboard + message); matrix "clipboard restored" and "unsaveable clipboard" columns |
 | **PRD §5** Unicode, multiline, selected-text replacement, duplicate-activation protection | F1, F2, F5; matrix columns |
 | **PRD §5** Theme and text-size changes do not make essential controls inaccessible | C (theme/text size apply), R11 |
 | **PRD §5** Hotkey conflicts, unavailable targets, database failures → understandable feedback | C13 (startup conflict) + accepted observation; F6, M:elevated; D-lock (locked DB) |
@@ -926,12 +1114,12 @@ tests by class name.
 | **AC6** Search semantics, live, empty state, keeps sort/layout | Core search tests; E2, E5 |
 | **AC7** Flat/folder layouts, 4 sorts, accessible toolbar | Core sort tests; E3, E5, E6 |
 | **AC8** Add snippet from popup | E7 |
-| **AC9** Insertion guarantees | F1–F7; matrix |
+| **AC9** Insertion guarantees | F1–F7, F9–F11; F12 via 007 unit tests; matrix; residual focus race accepted by the user (T16 notes, R12) |
 | **AC10** Elevated detection + Restart as administrator | M:elevated Notepad; R3 |
 | **AC11** Theme/text size live, start at login | C (theme, text size, Run value), R10, R11 |
 | **AC12** Close keeps hotkey; Exit unregisters; single instance | C4, C12, second-instance check in C; G4/G5 tray states |
-| **AC13** Performance on the user's PC | T11 record |
-| **AC14** AOT release artifact passes the gate; matrix recorded | Release run + G1/G9 + T12 |
+| **AC13** Performance on the user's PC | T11 record: P1, P2 (end to end, 10k dataset, both layouts) |
+| **AC14** AOT release artifact passes the gate; matrix recorded | Release run + G1/G9 + T12; install and upgrade from the downloaded zip: R2, R14 |
 
 ## 8. Rollout / phasing
 
@@ -949,16 +1137,21 @@ tests by class name.
 2. **Release candidate:** once PR-1…PR-5 are green, the user confirms and `v1.0.0-rc.1` is pushed
    on the green `main` commit → pre-release.
 3. **Acceptance on the rc (U):**
-   - T10 full script run with `-ArtifactZip`;
-   - T11 performance;
-   - T12 matrix and runbook R1–R13;
+   - T10 full script run with `-ArtifactZip` (includes section P = T11 performance);
+   - T12 matrix and runbook R1–R14;
+   - **R14 needs two published releases.** A = the previous rc, B = the rc under test. When the
+     first acceptance round has only `v1.0.0-rc.1`, the user confirms and `v1.0.0-rc.2` is pushed
+     (the same commit is allowed; the run number gives it a distinct FileVersion) and R14 runs
+     rc.1 → rc.2; the remaining acceptance then runs on rc.2;
    - C records everything (T13–T16).
 4. **Failures:** fix-forward PR → new `v1.0.0-rc.N`. Re-run only the affected sections and matrix
-   cells, plus a full script run on the final rc.
-5. **Acceptance sign-off:** the user confirms in writing, recorded in §11.
+   cells, plus a full script run and R14 (previous rc → final rc) on the final rc.
+5. **Acceptance sign-off:** the user confirms in writing, recorded in §12.
 6. **Final release:** the user confirms, and `v1.0.0` is pushed on **the same commit as the
    accepted rc**. That gives a byte-identical source with a different version stamp; the release job
-   re-runs tests and the gate. Pre-releases are kept or deleted per Q3.
+   re-runs tests and the gate. Pre-releases are kept or deleted per Q3. The user then repeats R14
+   steps 2–4 once from the accepted rc to `v1.0.0` (the path real users take), recorded in
+   `docs/research/003`.
 7. T17 closes the master plan.
 
 The release runs only after acceptance: no non-pre-release tag before step 5.
@@ -984,9 +1177,26 @@ None blocking approval. The defaults below apply unless the user says otherwise.
 *(Filled during implementation: T0 revisions, deviations, CI runs, release runs, link to
 `docs/research/003-release-acceptance-v1.md`.)*
 
-## 11. Approval log
+## 11. Review response
+
+Review: [docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md).
+Decisions by the user on 2026-10-28. Finding 5 (Ctrl+Enter in WinUI) is owned by 006 and needs no
+008 change; the design side of findings 1–3 is owned by 007.
+
+| Finding | Change in 008 |
+|---|---|
+| 1 — clipboard restoration can lose data (007) | Verification only: F9 (unsaveable clipboard → "Paste anyway?" → Cancel leaves the clipboard intact), F10 (Paste anyway pastes), `Set-UnsaveableClipboard` / `Test-ClipboardIntact` helpers, matrix step 6 and column, §7.2 clipboard row, T16 note |
+| 2 — a failed dispatch can already have pasted (007) | Verification only: F11 (Paste anyway after the target closed → snippet left on the clipboard + message, no usage); F12 records `MaybePasted` as not forceable, evidence = 007 unit tests; §7.2 cancellation/AC9 rows and T16 note |
+| 3 — foreground gate is not absolute (007) | Residual few-ms focus race accepted by the user; recorded as R12 and in the T16 acceptance notes; AC9 row cites it |
+| 4 — search acceptance measured the wrong path | T11 rewritten as section P: generated 10k dataset (50 folders, defined text/label/tag/usage distribution, planted terms), four queries × both layouts × 20 runs of the end-to-end `popup_search_ms` log, pass = median ≤150 ms per cell, p95 reported; popup `popup_ready_ms` at 10k is pass/fail (≤300 ms every sample) with the reason stated; Core benchmark demoted to diagnostic (P3); §2, §4.1(h), §4.2 P-A/P-B, §4.3, §7.2, R11 updated |
+| 6 — archive layout conflicts with upgrade | Zip top folder fixed as `SmartSnippets\`; packaging step checks it; exact install/upgrade steps in §4.1(b) (Exit → verify hash → extract into `%LOCALAPPDATA%\Programs\` with overwrite → start); guide and release header (T4) carry them; R2 updated; new runbook R14 upgrade test (A → B: version, data kept, `Run` value unchanged, start at login works); §8 adds rc.2 for R14 and an rc → v1.0.0 repeat; §4.2 Z-A/Z-B/Z-C; R10 |
+| 7 — contract file and tray precedence disagree | §4.1(f) is the single precedence definition: `HotkeyUnavailable` (red) wins over `PopupOpen` (blue); 006's `AppHost.UpdateTrayState()` applies it from the start, so 008 has no deferred behaviour change (T7 only routes it through `TrayStatePolicy`). The shared contract is `src/SmartSnippets.Presentation/Services/InsertionContracts.cs` (006/007 coordinator T0), referenced in T0 and T15 |
+| 8 — E11/E12 impossible with popup deactivation | E11/E12 rewritten: live propagation proven by 006 view-model unit tests (store raises `Changed` while the popup VM is shown); end to end by changing data in the main window while the popup is hidden, then reopening and asserting rows/folder headings via UIA; T13 mapping updated |
+
+## 12. Approval log
 
 | Date | Event | Notes |
 |---|---|---|
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Draft written | Before 006/007 are detailed; T0 re-baselines the popup/insertion acceptance steps once 006/007 are complete |
+| 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 4, 6, 7, 8 + verification for 1–3 addressed; user decisions recorded |
