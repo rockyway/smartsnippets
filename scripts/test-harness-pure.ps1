@@ -6,6 +6,16 @@ function Assert($Condition, $Message) { if (-not $Condition) { throw $Message };
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
 New-Item -ItemType Directory $dir | Out-Null
 try {
+    $enterMessages=@(Get-PopupDuplicateMessages 'EnterTwice' 10 0 0 0)
+    Assert ($enterMessages.Count -eq 4 -and @($enterMessages | Where-Object { $_.Window -ne 10 }).Count -eq 0 -and ($enterMessages.Message -join ',') -eq '256,257,256,257') 'double Enter queues only explicit popup keyboard messages'
+    $clickMessages=@(Get-PopupDuplicateMessages 'EnterAndClick' 10 11 20 30)
+    Assert ($clickMessages.Count -eq 4 -and ($clickMessages.Window -join ',') -eq '10,10,11,11' -and ($clickMessages.Message -join ',') -eq '256,257,513,514') 'Enter plus click queues to captured popup children without global input'
+    $badRoute=$false
+    try { $null=@(Get-PopupDuplicateMessages 'EnterTwice' 0 0 0 0) } catch { $badRoute=$true }
+    Assert $badRoute 'missing popup keyboard route refused'
+    $badRoute=$false
+    try { $null=@(Get-PopupDuplicateMessages 'EnterAndClick' 10 0 20 30) } catch { $badRoute=$true }
+    Assert $badRoute 'missing popup mouse route refused before dispatch'
     $script:clipboardAttempts = 0
     $retried = Invoke-ClipboardRetry { $script:clipboardAttempts++; if ($script:clipboardAttempts -lt 3) { throw 'private payload' }; 'ok' } -Attempts 3 -DelayMs 0
     Assert ($retried -eq 'ok' -and $script:clipboardAttempts -eq 3) 'transient clipboard contention retried'

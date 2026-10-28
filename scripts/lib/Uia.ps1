@@ -54,6 +54,24 @@ public static class Win32Verify {
         for (int i = 0; i < n; i++) { var sb = new StringBuilder(256); GetMenuString(hm, (uint)i, sb, 256, 0x400); r.Add(sb.ToString()); }
         return r.ToArray();
     }
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct GuiThreadInfo { public int Size; public uint Flags; public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret; public Rect CaretRect; }
+    [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    [DllImport("user32.dll")] static extern bool IsChild(IntPtr parent, IntPtr child);
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr window, ref Point point);
+    public static IntPtr PopupKeyboardWindow(IntPtr popup, uint expectedPid) {
+        uint pid; uint thread=GetWindowThreadProcessId(popup, out pid);
+        if (pid != expectedPid || GetForegroundWindow() != popup) throw new InvalidOperationException("Popup is not the verified foreground process");
+        var info=new GuiThreadInfo(); info.Size=Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(thread, ref info) || (info.Focus != popup && !IsChild(popup, info.Focus))) throw new InvalidOperationException("Popup native keyboard focus unavailable");
+        return info.Focus;
+    }
+    public static IntPtr PopupMouseWindow(IntPtr popup, uint expectedPid, ref Point point) {
+        var child=WindowFromPoint(point); uint pid; GetWindowThreadProcessId(child, out pid);
+        if (pid != expectedPid || (child != popup && !IsChild(popup,child)) || !ScreenToClient(child,ref point)) throw new InvalidOperationException("Popup row does not belong to verified input window");
+        return child;
+    }
     public const uint KEYUP = 2;
     public static bool ForceForeground(IntPtr h) {
         ShowWindow(h, 9);

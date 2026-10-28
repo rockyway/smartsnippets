@@ -29,6 +29,22 @@ public sealed class PopupViewModelInsertionTests
         Assert.Equal(Target, call.Target); Assert.Equal(s.Id, call.Id); Assert.False(call.Options.AllowClipboardLoss);
         _insertion.Pending.SetResult(new(InsertionOutcome.Inserted, "")); await task;
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DuplicateActivation_WhilePending_DoesNotDispatchOrChangeSelection(bool click)
+    {
+        _store.SeedSnippet("first"); var other = _store.SeedSnippet("second");
+        _insertion.Pending = new(); using var vm = Create();
+        var selected = vm.Items[vm.SelectedIndex];
+        var first = vm.InsertSelectedAsync();
+        Assert.True(vm.IsInserting);
+        if (click) await vm.ActivateAsync(vm.Items.Single(i => i.SnippetId == other.Id));
+        else await vm.InsertSelectedAsync();
+        Assert.Single(_insertion.Calls);
+        Assert.Same(selected, vm.Items[vm.SelectedIndex]);
+        _insertion.Pending.SetResult(new(InsertionOutcome.Inserted, "")); await first;
+    }
     [Fact]
     public async Task Click_EqualsEnter()
     {

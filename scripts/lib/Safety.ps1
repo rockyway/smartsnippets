@@ -13,6 +13,21 @@ function Invoke-ClipboardRetry([scriptblock]$Operation, [int]$Attempts = 50, [in
 function Test-ValidClipboardBackup($Saved) {
     return $null -ne $Saved -and $Saved.Valid -ceq $true -and $Saved.HasText -is [bool] -and (-not $Saved.HasText -or $Saved.Text -is [string])
 }
+function Get-PopupDuplicateMessages([string]$Mode, [long]$KeyboardWindow, [long]$MouseWindow, [int]$X, [int]$Y) {
+    if ($KeyboardWindow -eq 0 -or $Mode -notin @('EnterTwice','EnterAndClick')) { throw 'Invalid popup input route' }
+    # WM_KEYDOWN/UP with Enter scan code; every message retains an explicit captured HWND.
+    [pscustomobject]@{ Window=$KeyboardWindow; Message=0x100; WParam=13; LParam=0x001C0001 }
+    [pscustomobject]@{ Window=$KeyboardWindow; Message=0x101; WParam=13; LParam=3223060481L }
+    if ($Mode -eq 'EnterTwice') {
+        [pscustomobject]@{ Window=$KeyboardWindow; Message=0x100; WParam=13; LParam=0x001C0001 }
+        [pscustomobject]@{ Window=$KeyboardWindow; Message=0x101; WParam=13; LParam=3223060481L }
+    } else {
+        if ($MouseWindow -eq 0 -or $X -lt 0 -or $Y -lt 0 -or $X -gt 32767 -or $Y -gt 32767) { throw 'Invalid popup row input route' }
+        $position=($Y -shl 16) -bor $X
+        [pscustomobject]@{ Window=$MouseWindow; Message=0x201; WParam=1; LParam=$position }
+        [pscustomobject]@{ Window=$MouseWindow; Message=0x202; WParam=0; LParam=$position }
+    }
+}
 function Test-DisposableTargetIdentity($Expected, $Actual, [object[]]$Windows) {
     if (-not $Expected -or -not $Actual -or -not $Expected.Token -or -not $Windows.Count) { return $false }
     if ($Expected.Id -ne $Actual.Id -or $Expected.StartTicks -ne $Actual.StartTicks -or $Expected.Path -ine $Actual.Path) { return $false }

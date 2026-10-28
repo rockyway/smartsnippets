@@ -207,11 +207,13 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public async Task InsertSelectedAsync()
     {
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return; }
-        if (IsConfirmingClipboardLoss || IsInserting || Target is null || SelectedId is not { } id) return;
+        if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=keyboard"); return; }
+        if (IsConfirmingClipboardLoss || Target is null || SelectedId is not { } id) return;
         await InsertAsync(id, default);
     }
     public Task ActivateAsync(PopupItemViewModel item)
     {
+        if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=row"); return Task.CompletedTask; }
         if (item.Kind != PopupItemKind.Snippet) return Task.CompletedTask;
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return Task.CompletedTask; }
         if (IsConfirmingClipboardLoss) return Task.CompletedTask;

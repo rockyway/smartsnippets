@@ -61,6 +61,28 @@ function Click-Element($Element) {
     if ($r.IsEmpty -or $Element.Current.IsOffscreen) { throw 'Cannot click offscreen element' }
     [Win32Verify]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
 }
+function Send-PopupDuplicate($Proc, [string]$Mode) {
+    $popup = Get-PopupWindow $Proc.Id
+    $search = Find-ById $popup 'PopupSearch'
+    $search.SetFocus()
+    if (-not $search.Current.HasKeyboardFocus) { throw 'Duplicate test requires popup search focus' }
+    $window = [IntPtr]$popup.Current.NativeWindowHandle
+    $keyboard = [Win32Verify]::PopupKeyboardWindow($window, $Proc.Id)
+    $mouse = [IntPtr]::Zero; $point = New-Object Win32Verify+Point
+    if ($Mode -eq 'EnterAndClick') {
+        $row = Get-SelectedPopupRow $Proc
+        $rect = $row.Current.BoundingRectangle
+        if ($rect.IsEmpty -or $row.Current.IsOffscreen) { throw 'Duplicate test row is not visible' }
+        $point.X=[int]($rect.X+$rect.Width/2); $point.Y=[int]($rect.Y+$rect.Height/2)
+        $mouse=[Win32Verify]::PopupMouseWindow($window, $Proc.Id, [ref]$point)
+    }
+    $messages = @(Get-PopupDuplicateMessages $Mode $keyboard.ToInt64() $mouse.ToInt64() $point.X $point.Y)
+    # Targeted, queued messages, NOT global SendInput/cached-coordinate clicks. Even after hide,
+    # the second activation cannot go to an underlying app. Receipt at the VM gate is mandatory.
+    foreach ($m in $messages) {
+        if (-not [Win32Verify]::PostMessage([IntPtr]$m.Window, $m.Message, [IntPtr]$m.WParam, [IntPtr]$m.LParam)) { throw 'Could not queue popup activation' }
+    }
+}
 function Get-ReadySample([int]$From) {
     ConvertFrom-PopupReadyLog @(Get-LogLines | Select-Object -Skip $From)
 }

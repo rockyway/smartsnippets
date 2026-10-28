@@ -97,29 +97,25 @@ try {
         Set-TargetText $target ''
         $beforeUsage = Get-ProbeUsage
         Open-ProbePopup $p $target
-        $rectangle = (Get-SelectedPopupRow $p).Current.BoundingRectangle
-        if ($rectangle.IsEmpty) { throw 'F5 row has no clickable rectangle' }
         $from = @(Get-LogLines).Count
-        Send-Chord @([byte]$VK.Enter)
-        # The UI suppresses repeated insertion commands silently. Exercise its logged hotkey
-        # gate during restoration too; do this before a click can foreground an underlying app.
-        Press-Hotkey @([byte]$VK.Ctrl,[byte]$VK.Shift,[byte]$VK.Space)
-        if ($activation -eq 'EnterTwice') { Send-Chord @([byte]$VK.Enter) }
-        else {
-            # Cached coordinates let a real fast click race the popup hide without dereferencing
-            # an element that has already disappeared. No fixed sleep between input events.
-            [void][Win32Verify]::SetCursorPos([int]($rectangle.X+$rectangle.Width/2),[int]($rectangle.Y+$rectangle.Height/2))
-            [Win32Verify]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
-            [Win32Verify]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
-        }
+        Send-PopupDuplicate $p $activation
         $done = Wait-Log 'insert_result outcome=Inserted' $from
-        $guard = Wait-Log 'popup_open_ignored reason=inserting' $from 3000
+        $source = if ($activation -eq 'EnterTwice') { 'keyboard' } else { 'row' }
+        $guard = Wait-Log "popup_insert_ignored reason=inserting source=$source" $from 3000
         $text = Get-NotepadText $target
-        $occurrences = [regex]::Matches($text,[regex]::Escape('smart-snippets-probe')).Count
         $successful = @(Get-LogLines | Select-Object -Skip $from | Where-Object { $_ -match 'insert_result outcome=Inserted' }).Count
-        Check "F5.$activation" 'double activation inserts once, increments once, guard logged' ($done -and $guard -and $occurrences -eq 1 -and $successful -eq 1 -and [int](Get-ProbeUsage) -eq ([int]$beforeUsage + 1)) (Tail $from)
+        Check "F5.$activation" 'targeted duplicate reaches popup gate; exact one paste and increment' ($done -and $guard -and $text -ceq 'smart-snippets-probe' -and $successful -eq 1 -and [int](Get-ProbeUsage) -eq ([int]$beforeUsage + 1)) (Tail $from)
         Close-TestPopup $p
     }
+    Set-TargetText $target ''
+    $beforeUsage = Get-ProbeUsage
+    Open-ProbePopup $p $target
+    $from = @(Get-LogLines).Count
+    Send-Chord @([byte]$VK.Enter)
+    Press-Hotkey @([byte]$VK.Ctrl,[byte]$VK.Shift,[byte]$VK.Space)
+    $hotkeyGuard = Wait-Log 'popup_open_ignored reason=inserting' $from 3000
+    Check 'F5.hotkey' 'independent in-flight hotkey gate' ((Wait-Log 'insert_result outcome=Inserted' $from) -and $hotkeyGuard -and (Get-NotepadText $target) -ceq 'smart-snippets-probe' -and [int](Get-ProbeUsage) -eq ([int]$beforeUsage + 1))
+    Close-TestPopup $p
     Set-TargetText $target ''
     Open-ProbePopup $p $target
     $beforeUsage = Get-ProbeUsage

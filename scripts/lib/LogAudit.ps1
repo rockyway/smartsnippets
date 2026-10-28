@@ -7,7 +7,7 @@ function Get-HarnessLogEvents {
         'navigate_failed','second_instance_redirect','snippet_saved','snippet_deleted','folder_created','folder_renamed','folder_deleted',
         'app_started','tray_icon','tray_icon_load_failed','tray_theme_changed','popup_ready_ms','popup_search_ms',
         'popup_opened','popup_closed','popup_layout','popup_sort','popup_add_opened','popup_add_saved','popup_add_cancelled',
-        'popup_insert','popup_open_ignored','popup_paste_anyway','popup_paste_cancelled','insert_start','target_check',
+        'popup_insert','popup_insert_ignored','popup_open_ignored','popup_paste_anyway','popup_paste_cancelled','insert_start','target_check',
         'target_rejected','foreground_gate','clipboard_swap','clipboard_restore','clipboard_restore_formats',
         'insert_result','manual_paste_fallback','usage_record_failed','paste_sent'
     )
