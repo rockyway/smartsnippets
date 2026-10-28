@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Query;
@@ -13,6 +15,10 @@ public static class NativeExport
     {
         if (snippets.Count > SnippetFileRules.MaxImportEntries)
             return new(null, ExportRefusal.TooManySnippets, 0, snippets.Count, folders.Count);
+        // The serializer buffers a complete escaped token before writing to the bounded sink.
+        // Refuse large string payloads BEFORE it can rent those token-sized intermediate buffers.
+        if (StringPayloadExceedsLimit(folders, snippets))
+            return new(null, ExportRefusal.TooLarge, SnippetFileRules.MaxImportBytes + 1L, snippets.Count, folders.Count);
         var document = new NativeDocument(FormatMarker, Version, exportedAt.ToUnixTimeMilliseconds(),
             folders.Select(f => new NativeFolder(f.Name)).ToArray(),
             snippets.Select(v => new NativeSnippet(v.Snippet.Text, v.Snippet.Label, v.Snippet.IsLabelCustom, v.FolderName,
@@ -29,6 +35,47 @@ public static class NativeExport
         {
             return new(null, ExportRefusal.TooLarge, SnippetFileRules.MaxImportBytes + 1L, snippets.Count, folders.Count);
         }
+    }
+
+    // Counts the exact default-encoded string payloads without creating encoded strings, DTOs or enumerators.
+    // Omitting quotes, property names, numbers and punctuation makes the running sum a lower bound for the
+    // whole document. The bounded sink remains the final authority for those small framing costs.
+    private static bool StringPayloadExceedsLimit(IReadOnlyList<Folder> folders, IReadOnlyList<SnippetView> snippets)
+    {
+        int remaining = SnippetFileRules.MaxImportBytes;
+        if (!FitsString(FormatMarker, ref remaining)) return true;
+        for (int i = 0; i < folders.Count; i++)
+            if (!FitsString(folders[i].Name, ref remaining)) return true;
+        for (int i = 0; i < snippets.Count; i++)
+        {
+            var view = snippets[i];
+            var snippet = view.Snippet;
+            if (!FitsString(snippet.Text, ref remaining) || !FitsString(snippet.Label, ref remaining) ||
+                !FitsString(view.FolderName, ref remaining)) return true;
+            for (int j = 0; j < snippet.Tags.Count; j++)
+                if (!FitsString(snippet.Tags[j], ref remaining)) return true;
+        }
+        return false;
+    }
+
+    private static bool FitsString(string? value, ref int remaining)
+    {
+        if (value is null) return true;
+        // Escaping / UTF-8 never needs fewer bytes than the input's UTF-16 code-unit count.
+        if (value.Length > remaining) return false;
+        ReadOnlySpan<char> source = value;
+        Span<char> escaped = stackalloc char[1024];
+        while (!source.IsEmpty)
+        {
+            // Same encoder as the source-generated context. Its span API handles surrogate pairs and
+            // replacement of lone surrogates with bounded scratch space, unlike Encode(string).
+            JavaScriptEncoder.Default.Encode(source, escaped, out int consumed, out int written);
+            int bytes = Encoding.UTF8.GetByteCount(escaped[..written]);
+            if (bytes > remaining) return false;
+            remaining -= bytes;
+            source = source[consumed..];
+        }
+        return true;
     }
 }
 

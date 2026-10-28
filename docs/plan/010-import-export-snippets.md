@@ -635,10 +635,14 @@ public static class NativeExport
     public const int Version = 1;
     /// Pure; safe on a worker thread (the snapshots are immutable lists, never mutated, ISnippetStore.cs:13-17).
     /// 1. snippets.Count > MaxImportEntries → Refusal TooManySnippets (no serialization at all).
-    /// 2. Compact JSON serialized into a BoundedBufferStream(MaxImportBytes): JsonSerializer.Serialize(stream, doc,
-    ///    NativeJsonContext.Default.NativeDocument). The stream throws an internal ExportLimitExceededException as soon
-    ///    as a write would pass the limit, which is caught here → Refusal TooLarge. So an oversized library costs at most
-    ///    32 MB of buffer and stops early, instead of building the whole output first.
+    /// 2. Allocation-free string preflight before DTO creation/serialization: run JavaScriptEncoder.Default's span
+    ///    encoder into fixed stack scratch space and sum the UTF-8 size of every encoded string field. This is an exact
+    ///    string-payload count and a lower bound for the document (framing/numbers omitted). Stop as soon as the sum
+    ///    exceeds MaxImportBytes → TooLarge, without allowing the serializer to buffer an oversized token.
+    /// 3. Compact JSON serialized into a BoundedBufferStream(MaxImportBytes): JsonSerializer.Serialize(stream, doc,
+    ///    NativeJsonContext.Default.NativeDocument). The sink catches framing overhead that passes the preflight,
+    ///    throwing ExportLimitExceededException → TooLarge. Its backing buffer stays ≤ 32 MB; the serializer may also
+    ///    use intermediate buffers for accepted tokens (each string payload was already bounded by the preflight).
     public static NativeExportResult Write(IReadOnlyList<Folder> folders, IReadOnlyList<SnippetView> snippets, DateTimeOffset exportedAt);
 }
 ```
@@ -2144,6 +2148,12 @@ The only remaining "stop" is the standing instruction for plan defects, and an R
 working elevated), which would be a defect report, not a pending decision.
 
 ## 10. Approval log
+
+**Review fix 1 (user-directed):** allocation-free escaped-string preflight now runs before source-generated
+serialization, with the bounded sink retained. The 34 MiB `é` regression was red at **1,610,616,384 allocated bytes**;
+after the fix it allocates **48 bytes** during export (input allocation excluded, metadata warmed). Text, label,
+explicit-folder name, folder reference and tag payloads are all covered, as is their running total. Export/round-trip
+filter: **34 passed**. This supersedes the earlier T7 source-only memory oracle interpretation below.
 
 | Date | Event | Notes |
 |---|---|---|

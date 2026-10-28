@@ -230,7 +230,10 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `ExportImport_ExactlyAtCap_ExportsAndImports`
 - [x] `ExportImport_OneByteOver_RefusedAtExport_NoFile`
 - [x] `ExportImport_EscapingExpansion_RefusedAtExport`
-- [x] `Export_Oversized_StopsAtBound` (public refusal + Bytes; internal capacity source-audited, plan §10)
+- [x] `Export_Oversized_StopsAtBound` (also protected by allocation-free preflight after review)
+- [x] `Export_SingleOversizedToken_PreflightRefusesWithoutLargeAllocations` (red 1,610,616,384 bytes; green 48 bytes)
+- [x] `Export_PreflightCoversEveryEscapedStringField` (5 cases)
+- [x] `Export_PreflightSumsStringPayloads`
 - [x] `Export_TooManySnippets_RefusedWithoutSerializing`
 - [x] `Export_AtEntryLimit_Exports`
 - [x] `ExportImport_EscapingNearCap_ImportsBack`
