@@ -88,3 +88,4 @@ GET_WINDOW_CMD
 IsWindowVisible
 IsIconic
 GetClassName
+GetWindowText
