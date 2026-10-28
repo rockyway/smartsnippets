@@ -165,7 +165,8 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         _cache = _store.Snippets.ToDictionary(v => v.Snippet.Id, v => new PopupItemViewModel(PopupItemKind.Snippet,
             v.Snippet.Id, v.Snippet.Label, SnippetRowViewModel.PreviewOf(v.Snippet.Text),
             IsFolderLayout ? string.Empty : v.FolderName ?? UiText.Unfiled,
-            v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty) { TextSize = _textSize });
+            v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty)
+            { TextSize = _textSize, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
     }
     private void Refresh(long? keep)
     {

@@ -209,25 +209,23 @@
                     automation:AutomationProperties.Name="Snippets">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:SnippetRowViewModel">
-                            <StackPanel Padding="0,6" Spacing="2">
-                                <TextBlock
+                            <Grid Padding="0,4" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock VerticalAlignment="Center"
                                     FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind Label}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <TextBlock
-                                    FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    MaxLines="1"
-                                    Text="{x:Bind Preview}"
-                                    TextTrimming="CharacterEllipsis"
-                                    TextWrapping="NoWrap" />
-                                <TextBlock
-                                    FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{x:Bind Meta}"
-                                    TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                                    Text="{x:Bind Label}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                <Grid Grid.Column="1" ColumnSpacing="4" HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE8B7;" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind HasFolder}" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Details}" TextAlignment="Right"
+                                        FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                </Grid>
+                            </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>

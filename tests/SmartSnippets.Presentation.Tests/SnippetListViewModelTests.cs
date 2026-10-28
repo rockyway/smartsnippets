@@ -13,6 +13,19 @@ public sealed class SnippetListViewModelTests
     private readonly FakeSnippetStore _store = new();
 
     [Fact]
+    public void RowProjectsLabelFolderAndAllTagsWithoutTextInAccessibleName()
+    {
+        _store.SeedSnippet("private body", label: "Display label", folder: "Clients", tags: "mail,work,third");
+        using var vm = new SnippetListViewModel(_store);
+        var row = Assert.Single(vm.Items);
+        Assert.Equal("Display label", row.Label);
+        Assert.Equal("Clients", row.FolderName);
+        Assert.Equal("#mail #work #third", row.TagsDisplay);
+        Assert.DoesNotContain("private body", row.ToString());
+        Assert.Equal("Display label, Clients, #mail #work #third", row.ToString());
+    }
+
+    [Fact]
     public void RowsShareObservableTextSizeAcrossRebuilds()
     {
         var size = new TextSizeService();
