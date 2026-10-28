@@ -245,7 +245,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Persist();
     }
 
-    private void Persist() => _settings.Save(_settingsStore);
+    private void Persist() => _settings.SaveShell(_settingsStore);
 
     private void SetStatus(string message, StatusSeverity severity)
     {
