@@ -10,4 +10,8 @@ The harness refuses to launch while another Notepad is running. It opens a uniqu
 
 Smart Snippets must also be exited by the user before acceptance. Only process handles started by this run are terminated. An unowned instance blocks profile mutation instead of being killed.
 
+## Clipboard
+
+E/F preserve **text only**. Rich formats/images/files are not backed up. Acquisition must succeed before any fixture overwrites the clipboard; a failed read is never interpreted as an empty clipboard. Reads, writes and restores retry contention for up to 50 attempts with 100 ms between failures, then fail explicitly without echoing payloads. Clipboard/provider calls themselves are native synchronous calls, covered by the worker watchdog described below. Finally blocks restore a validated snapshot on ordinary failure/interrupt. Force-killing PowerShell, closing the terminal, logout or power loss cannot run finally or recover an in-memory clipboard snapshot: save valuable clipboard text elsewhere before starting. A final restoration failure is a failed run, not successful preservation.
+
 The historical `verify-plan002.ps1` is retired and refuses execution; its unsafe profile/clipboard/process operations are not supported.

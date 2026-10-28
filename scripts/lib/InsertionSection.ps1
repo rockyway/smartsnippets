@@ -16,7 +16,7 @@ function Set-TargetText($Target, [string]$Text) {
         if (-not (Set-Foreground $Target)) { throw 'Cannot foreground owned target for fixture input' }
         (Get-TargetEditor $Target).SetFocus()
         Send-Chord @([byte]$VK.Ctrl,[byte]$VK.A)
-        if ($Text) { Set-Clipboard -Value $Text; Send-Chord @([byte]$VK.Ctrl,[byte]0x56) }
+        if ($Text) { Set-ClipboardText $Text; Send-Chord @([byte]$VK.Ctrl,[byte]0x56) }
         else { Send-Chord @([byte]$VK.Delete) }
         if (-not (Wait-Until { (Get-NotepadText $Target) -ceq $Text })) { throw 'Notepad fixture text mismatch' }
     } finally { Restore-ClipboardText $saved }
@@ -48,7 +48,7 @@ try {
     $target = Start-Target
     if (-not $target) { throw 'F requires Notepad' }
     Set-TargetText $target ''
-    Set-Clipboard -Value $sentinel
+    Set-ClipboardText $sentinel
     $before = (Sql "select usage_count,coalesce(last_used_at,0) from snippets where label='F unicode';") -join ''
     Open-ProbePopup $p $target 'F unicode'
     $from = @(Get-LogLines).Count
@@ -58,7 +58,7 @@ try {
     $actual = Get-NotepadText $target
     # Ordinal equality compares all UTF-16 code units, including surrogate pairs, tabs and spaces.
     Check 'F1' 'Unicode/mixed-CR-LF probe equals CRLF-normalized text (ordinal)' ($inserted -and [bool]$exact -and [string]::Equals($actual,$probe,[StringComparison]::Ordinal)) "actual units=$($actual.Length); expected=$($probe.Length)"
-    Check 'F3' 'clipboard equals sentinel after restore delay' ([bool](Wait-Until { (Get-Clipboard -Raw) -ceq $sentinel } 10000 50))
+    Check 'F3' 'clipboard equals sentinel after restore delay' ([bool](Wait-Until { (Read-ClipboardText) -ceq $sentinel } 10000 50))
     $usage = (Sql "select usage_count,last_used_at from snippets where label='F unicode';") -join ''
     $parts = $usage -split '\|'; $old = $before -split '\|'
     Check 'F4.database' 'usage +1 exactly once and last_used_at advanced' ([int]$parts[0] -eq ([int]$old[0] + 1) -and [long]$parts[1] -gt [long]$old[1]) "before=$before after=$usage"
@@ -171,7 +171,7 @@ try {
             } else {
                 $done = Wait-Log 'insert_result outcome=CopiedForManualPaste' $from
                 $message = Wait-Until { $f = Find-ById (Get-PopupWindow $p.Id) 'PopupFooterError'; $f -and $f.Current.Name -match "^Couldn't paste into .+\. The snippet is on your clipboard\. Paste it yourself with Ctrl\+V\.$" }
-                Check 'F11' 'target closed after prompt: manual-paste message, probe on clipboard, no dispatch or usage' ($done -and [bool]$message -and (Get-Clipboard -Raw) -ceq 'smart-snippets-probe' -and (Get-ProbeUsage) -eq $beforeUsage -and (Log-Has 'manual_paste_fallback reason=Closed status=Swapped' $from) -and -not (Log-Has 'paste_sent' $from))
+                Check 'F11' 'target closed after prompt: manual-paste message, probe on clipboard, no dispatch or usage' ($done -and [bool]$message -and (Read-ClipboardText) -ceq 'smart-snippets-probe' -and (Get-ProbeUsage) -eq $beforeUsage -and (Log-Has 'manual_paste_fallback reason=Closed status=Swapped' $from) -and -not (Log-Has 'paste_sent' $from))
             }
         }
         Close-TestPopup $p

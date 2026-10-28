@@ -1,7 +1,7 @@
 Section 'E. Popup acceptance'
 $savedPopupClipboard = Save-ClipboardText
 try {
-Set-Clipboard -Value 'SMART-SNIPPETS-POPUP-CLIPBOARD-SENTINEL'
+Set-ClipboardText 'SMART-SNIPPETS-POPUP-CLIPBOARD-SENTINEL'
 Reset-Profile
 $p = Start-App
 if (-not (Wait-Main $p)) { throw 'E requires main window' }

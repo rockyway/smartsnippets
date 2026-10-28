@@ -6,6 +6,16 @@ function Assert($Condition, $Message) { if (-not $Condition) { throw $Message };
 $dir = Join-Path ([IO.Path]::GetTempPath()) ('ss-pure-' + [guid]::NewGuid())
 New-Item -ItemType Directory $dir | Out-Null
 try {
+    $script:clipboardAttempts = 0
+    $retried = Invoke-ClipboardRetry { $script:clipboardAttempts++; if ($script:clipboardAttempts -lt 3) { throw 'private payload' }; 'ok' } -Attempts 3 -DelayMs 0
+    Assert ($retried -eq 'ok' -and $script:clipboardAttempts -eq 3) 'transient clipboard contention retried'
+    $refused=$false
+    try { Invoke-ClipboardRetry { throw 'private payload' } -Attempts 2 -DelayMs 0 } catch { $refused=$_.Exception.Message -notmatch 'private payload' }
+    Assert $refused 'clipboard acquisition failure throws a payload-free error'
+    Assert (Test-ValidClipboardBackup ([pscustomobject]@{ Valid=$true; HasText=$false; Text=$null })) 'successfully empty clipboard backup accepted'
+    Assert (Test-ValidClipboardBackup ([pscustomobject]@{ Valid=$true; HasText=$true; Text='' })) 'empty string text is distinct from missing text'
+    Assert (-not (Test-ValidClipboardBackup $null)) 'null clipboard backup refused'
+    Assert (-not (Test-ValidClipboardBackup ([pscustomobject]@{ HasText=$false }))) 'failed/unvalidated clipboard backup refused'
     $expectedTarget = [pscustomobject]@{ Id=12; StartTicks=100; Path='C:\Windows\notepad.exe'; Token='SS-owned-123' }
     $actualTarget = [pscustomobject]@{ Id=12; StartTicks=100; Path='C:\Windows\notepad.exe' }
     $targetWindow = [pscustomobject]@{ ProcessId=12; ClassName='Notepad'; HasClassicEdit=$true; Title='SS-owned-123.txt - Notepad' }
@@ -79,8 +89,16 @@ try {
     Assert (-not (Test-LogPrivacy @('body a.b[1]') @('a.b[1]'))) 'privacy uses literal not regex matching'
     # Substitute just the native boundary; exercise the real helper comparisons without touching
     # the desktop clipboard. Clipboard.ps1 skips Add-Type when this test double is present.
-    Add-Type 'public static class VerifyClipboard { public static string Value; public static void Install(string s) { Value="13:40:TEXT|49152:67112960:BIG"; } public static string Fingerprint() { return Value; } public static string OrderedFingerprint() { return Value; } }'
+    Add-Type 'public static class VerifyClipboard { public static string Value; public static int Reads; public static int Writes; public static bool FailRead; public static string Text; public static string ReadText() { Reads++; if (FailRead) throw new System.Exception("PRIVATE"); return Text; } public static void WriteText(string s) { Writes++; Text=s; } public static void Clear() { Writes++; Text=null; } public static void Install(string s) { Value="13:40:TEXT|49152:67112960:BIG"; } public static string Fingerprint() { return Value; } public static string OrderedFingerprint() { return Value; } }'
     . "$PSScriptRoot/lib/Clipboard.ps1"
+    [VerifyClipboard]::Text='original'
+    $savedText=Save-ClipboardText
+    Set-ClipboardText 'fixture'
+    Restore-ClipboardText $savedText
+    Assert ([VerifyClipboard]::Text -ceq 'original') 'real snapshot/restore wrappers preserve text through a fake native boundary'
+    $writes=[VerifyClipboard]::Writes; $invalidRefused=$false
+    try { Restore-ClipboardText ([pscustomobject]@{ HasText=$false }) } catch { $invalidRefused=$true }
+    Assert ($invalidRefused -and [VerifyClipboard]::Writes -eq $writes) 'invalid backup cannot clear clipboard'
     Set-UnsaveableClipboard 'test'
     Assert (Test-ClipboardIntact) 'F9 exact format/hash fingerprint accepted'
     [VerifyClipboard]::Value = '13:40:CHANGED|49152:67112960:BIG'
