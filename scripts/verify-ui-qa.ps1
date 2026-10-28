@@ -246,7 +246,7 @@ try {
     Write-Host "Screenshots: $out"
 } finally {
     foreach ($p in $procs) { Stop-OwnedProcess $p }
-    if (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue) { throw 'App remains running; profile recovery requires manual inspection' }
+    if ($isolated -and (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue)) { throw 'App remains running; profile recovery requires manual inspection' }
     $action = Get-ProfileCleanupAction $isolated $had (Test-Path $backup) (Test-Path $profile)
     if ($action -eq 'RestoreIsolated') {
         if (Test-Path $profile) { Remove-Item -LiteralPath $profile -Recurse -Force }

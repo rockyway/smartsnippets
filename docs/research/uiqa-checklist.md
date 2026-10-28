@@ -1,5 +1,7 @@
 # UI QA progress — feature/ui-qa
 
+New DISPLAY9-only screen slot started 2026-10-28 18:23 -0500, deadline approximately 18:53 -0500. No builds, foreground input, cursor or keyboard operations allowed. Initial run refused before app launch or profile/registry isolation because an unowned Smart Snippets instance (dev build) was already running. Do not kill or interact with it; retry only after it exits. Cleanup diagnostic was corrected so a preflight refusal is not masked.
+
 Build slot batch: Core 426/426, Presentation 422/422, one AOT publish succeeded with `DOTNET_PROCESSOR_COUNT=4` and MSBuild `-m:4`; 0 warnings observed. No further builds without a new slot.
 
 BUILD_BATCH_DONE
