@@ -33,8 +33,11 @@ jobs:
           $prerelease = [bool]$Matches[4]
           git merge-base --is-ancestor $env:GITHUB_SHA origin/main
           if ($LASTEXITCODE -ne 0) { throw 'Tag must point at main' }
-          gh release view $tag 2>$null
-          if ($LASTEXITCODE -eq 0) { throw 'Release exists; delete it to re-run' }
+          $lookup = (gh release view $tag 2>&1 | Out-String)
+          $lookupCode = $LASTEXITCODE
+          if ($lookupCode -eq 0) { throw 'Release exists; delete it to re-run' }
+          if ($lookup -notmatch 'release not found') { throw "Release lookup failed: $lookup" }
+          $global:LASTEXITCODE = 0
           "version=$version" >> $env:GITHUB_OUTPUT
           "fileversion=$fileVersion" >> $env:GITHUB_OUTPUT
           "prerelease=$($prerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
@@ -52,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           $info = (Get-Item publish/SmartSnippets.App.exe).VersionInfo
-          if (-not $info.ProductVersion.StartsWith('${{ steps.tag.outputs.version }}') -or $info.FileVersion -ne '${{ steps.tag.outputs.fileversion }}') { throw 'Version stamp mismatch' }
+          if (($info.ProductVersion -split '\+')[0] -ne '${{ steps.tag.outputs.version }}' -or $info.FileVersion -ne '${{ steps.tag.outputs.fileversion }}') { throw 'Version stamp mismatch' }
       - name: Package
         shell: pwsh
         run: |
