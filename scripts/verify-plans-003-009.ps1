@@ -856,6 +856,13 @@ if (Want 'G') {
     else { Skip 'G9' 'release archive and checksum' 'requires -ArtifactZip' }
     Check 'G.incomplete' 'interactive release checks implemented' $false 'G2 associated icon, G4–G8 runtime and G10 privacy are not yet implemented'
 }
+if (Want 'P') {
+    Section 'P. Performance diagnostic'
+    if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+        $benchmark = & dotnet test tests/SmartSnippets.Core.Tests -c Release --filter 'Category=Benchmark' --logger 'console;verbosity=detailed' 2>&1 | Out-String
+        Add-Result 'INFO' 'P3' 'Core benchmark (diagnostic only; does not decide AC13)' $benchmark
+    } else { Add-Result 'INFO' 'P3' 'Core benchmark' 'SDK unavailable; diagnostic not run' }
+}
 foreach ($section in 'E', 'F', 'P') {
     if (Want $section) { Check "$section.incomplete" "section $section implementation" $false 'Not yet implemented; do not use this run for acceptance' }
 }
