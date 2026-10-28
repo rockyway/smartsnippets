@@ -1140,7 +1140,9 @@ popup and remains unrun. The T7 parallel-path/prototype audit therefore does not
 The dispatcher boundary adds `DiscardClipboardSnapshot`: the foreground-lost manual-paste branch
 must discard its pending exit restore so shutdown does not replace the intentionally retained text.
 The runbook, remaining exhaustive state-machine test cases, and exit-while-clipboard-busy behaviour
-remain to be verified before calling this plan complete.
+remain to be verified before calling this plan complete. On a successful final gate, the service logs
+`foreground_gate` after the dispatcher logs `paste_sent`, so file I/O does not widen the race between
+the actual foreground check and input dispatch; this differs from the proposed T7 log ordering.
 
 ## 11. Review response
 
