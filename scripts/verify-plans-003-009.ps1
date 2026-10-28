@@ -834,7 +834,9 @@ if (Want 'G') {
     $info = (Get-Item $exe).VersionInfo
     if ($ArtifactZip -and [IO.Path]::GetFileName($ArtifactZip) -match '^SmartSnippets-win-x64-(.+)\.zip$') {
         $expectedVersion = $Matches[1]
-        Check 'G1' 'ProductVersion matches release archive' ($info.ProductVersion.StartsWith($expectedVersion)) "ProductVersion=$($info.ProductVersion); FileVersion=$($info.FileVersion)"
+        $numericVersion = ($expectedVersion -split '-', 2)[0]
+        $validFileVersion = $info.FileVersion -match ('^' + [regex]::Escape($numericVersion) + '\.\d+$')
+        Check 'G1' 'ProductVersion and FileVersion match release archive' ($info.ProductVersion.StartsWith($expectedVersion) -and $validFileVersion) "ProductVersion=$($info.ProductVersion); FileVersion=$($info.FileVersion)"
     } else { Skip 'G1' 'release version' 'requires -ArtifactZip named SmartSnippets-win-x64-<version>.zip' }
     function Get-IcoFrameCount([string]$Path) {
         if (-not (Test-Path $Path -PathType Leaf)) { return 0 }
@@ -844,6 +846,28 @@ if (Want 'G') {
     }
     $appIcon = Join-Path $root 'publish\Assets\SmartSnippets.ico'
     Check 'G2.frames' 'app icon has eight frames' ((Get-IcoFrameCount $appIcon) -eq 8)
+    Add-Type -AssemblyName System.Drawing
+    function Get-IconPixelHash($Icon) {
+        $bitmap = New-Object Drawing.Bitmap 32, 32
+        try {
+            $graphics = [Drawing.Graphics]::FromImage($bitmap)
+            try { $graphics.Clear([Drawing.Color]::Transparent); $graphics.DrawIcon($Icon, 0, 0, 32, 32) } finally { $graphics.Dispose() }
+            $stream = New-Object IO.MemoryStream
+            try {
+                $bitmap.Save($stream, [Drawing.Imaging.ImageFormat]::Png)
+                $hash = [Security.Cryptography.SHA256]::Create()
+                try { return [Convert]::ToBase64String($hash.ComputeHash($stream.ToArray())) } finally { $hash.Dispose() }
+            } finally { $stream.Dispose() }
+        } finally { $bitmap.Dispose() }
+    }
+    $associated = [Drawing.Icon]::ExtractAssociatedIcon($exe)
+    $sourceIcon = New-Object Drawing.Icon($appIcon, 32, 32)
+    try {
+        $associatedHash = Get-IconPixelHash $associated
+        $expectedIconHash = Get-IconPixelHash $sourceIcon
+        $defaultIconHash = Get-IconPixelHash ([Drawing.SystemIcons]::Application)
+        Check 'G2.associated' 'exe associated icon matches app mark and differs from stock icon' ($associatedHash -eq $expectedIconHash -and $associatedHash -ne $defaultIconHash)
+    } finally { if ($associated) { $associated.Dispose() }; $sourceIcon.Dispose() }
     foreach ($theme in 'Light', 'Dark') {
         foreach ($state in 'Ready', 'PopupOpen', 'HotkeyUnavailable') {
             $name = "Tray-$theme-$state.ico"
@@ -854,7 +878,8 @@ if (Want 'G') {
     Check 'G8.tags' 'invalid tags rejected and prerelease accepted' (-not (Test-ReleaseTag 'v1.0') -and -not (Test-ReleaseTag 'v1.0.0.0') -and -not (Test-ReleaseTag '1.0.0') -and (Test-ReleaseTag 'v1.0.0-rc.1'))
     if ($ArtifactZip) { Check 'G9' 'archive hash and layout validated before extraction' $true $artifactInfo }
     else { Skip 'G9' 'release archive and checksum' 'requires -ArtifactZip' }
-    Check 'G.incomplete' 'interactive release checks implemented' $false 'G2 associated icon, G4–G8 runtime and G10 privacy are not yet implemented'
+    Check 'G10' 'whole log excludes known acceptance snippet text' (-not ((Get-LogLines) -join "`n" -match 'smart-snippets-probe|locked-save-probe|ZZ-PRIVACY-MARKER-7431'))
+    Check 'G.incomplete' 'interactive release checks implemented' $false 'G4–G8 runtime checks are not yet implemented'
 }
 if (Want 'P') {
     Section 'P. Performance diagnostic'
