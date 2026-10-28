@@ -1,7 +1,7 @@
 # 010 — Import and export snippets
 
 **Date:** 2026-10-28
-**Status:** Approved 2026-10-28 (G2)
+**Status:** Implemented locally; binding CI blocked (no remote branch / no push); manual acceptance PENDING-USER. Approved 2026-10-28 (G2).
 **Size:** L
 **Area:** `src/SmartSnippets.Core/Porting/` (new), `src/SmartSnippets.Core/Store/`, `src/SmartSnippets.Core/Data/SnippetRepository.cs`,
 `src/SmartSnippets.Presentation/ViewModels/`, `src/SmartSnippets.Presentation/Services/`, `src/SmartSnippets.Presentation/Text/UiText.cs`,
@@ -2151,6 +2151,7 @@ working elevated), which would be a defect report, not a pending decision.
 | 2026-10-28 | Review (docs/review, independent plan review, reviewer sol:medium) findings folded | Verdict "changes required"; findings 1–13 plus the nonblocking items folded (§11). User decisions A1 (native full-row dedupe) and A2 (32 MB cap, compact export with a 32 MB refusal) recorded in §2. D1, D5 and D7 remain awaiting user approval |
 | 2026-10-28 | Round-2 review (`docs/review/010-plan-review-round2.md`, reviewer sol:medium) findings folded | Verdict "changes required". R1–R8 and the improvement list fixed as classes (§11, round-2 table) |
 | 2026-10-28 | Plan approved (G2) | User approved plan 010 including D1, D5 and D7. Q1 resolved: per-file entry limit (D11) if the 32 MB commit budget fails; calibrated in T10. Status set to Approved |
+| 2026-10-28 | T12 audit and final local checks | Source call graph, privacy/file I/O/JSON/fixture/doc checks recorded in docs/research/010-wiring-audit.md. Audit caught null version displayed as raw null instead of absent; added red test then fixed JsonFields. Core 409/409 and Presentation 413/413 pass sequentially; full solution 0 warnings; publish-aot.ps1 succeeds with no warnings, native exe + SQLite DLL and no managed App DLL. Fake parity now reads the full shared synthetic fixtures rather than duplicating embedded strings. Binding CI remains blocked and interactive runtime evidence remains PENDING-USER. |
 | 2026-10-28 | T10 local evidence and D7 interpretation | No remote feature/010-import-export branch exists (`git ls-remote --heads origin feature/010-import-export` empty); no push allowed, so workflow_dispatch cannot test this tree. Local Windows calibration/build/Release gates used, with binding CI still BLOCKED. D7 fallback applied conservatively before manual measurement, to avoid shipping a toolbar likely to squeeze Search; real 880 px measurement remains PENDING-USER. |
 | 2026-10-28 | Implementation interpretation: calibration and verification | Calibration constructs ParsedImport directly so counts above the provisional parser guard can reach the commit being measured; the guarded Budget tests still use real JSON and the public parser. Calibration is opt-in with SMARTSNIPPETS_CALIBRATE=1. T9 command tests were exercised against stubs (red run timed out waiting for an uncalled parse seam; the wait now has a timeout); thread/integration/budget tests were added after orchestration. Local Windows calibration is recorded separately from binding CI evidence, which cannot be obtained for unpushed changes. |
 | 2026-10-28 | Implementation interpretation: T7 private buffer oracle | T7 asks tests to inspect an internal stream peak, but fixes a public API exposing no peak and forbids friend-assembly access. Narrow interpretation: public oversized test pins refusal and capped Bytes sentinel; source audit verifies check-before-write and backing-array capacity ≤ cap. No reflection, test-only public API or friend assembly added. Core round-trip tests synchronously wait only at the file boundary to retain store thread ownership; Presentation tests own async UI-hop coverage. |
@@ -2163,9 +2164,10 @@ working elevated), which would be a defect report, not a pending decision.
 |---|---|
 | D11 calibration table (entries → commit ms per case) and CI run link | Local Windows Release (.NET 10.0.403 SDK / 10.0.14 runtime): dense 10k=254.50,20k=235.18,25k=258.63,50k=804.42,100k=1239.36,200k=2919.21,1,677,720 (32 MB)=19776.88; folder-dense 10k=223.61,20k=755.50,25k=533.43,50k=952.40,100k=2464.78,200k=4131.83,838,860 (32 MB)=18802.93; typical 10k=376.61,20k=585.27,25k=828.28,31,040 (32 MB)=1753.38. Calibration passed (1 test). CI link BLOCKED: remote feature branch absent and user prohibits pushing. |
 | Calibrated `MaxImportEntries` | 50,000 (local Windows calibration; binding windows-latest calibration pending). Largest measured count passing every applicable case; typical reaches byte cap first at 31,040. |
-| Budget step times (dense, folder-dense, typical) and CI run link | Local Release: dense 50,000=784.29 ms; folder-dense 50,000=1718.42 ms; typical 31,040=1111.59 ms. 3/3 passed 2,000 ms gate. CI link blocked as above. |
+| Budget step times (dense, folder-dense, typical) and CI run link | Local Release first gate: dense 50,000=784.29 ms; folder-dense 50,000=1718.42 ms; typical 31,040=1111.59 ms. Final rerun: dense=541.09 ms; folder-dense=912.17 ms; typical=713.08 ms. Both 3/3 passed 2,000 ms gate. CI link blocked as above. |
 | D7 wide-mode measurement (search box px) and whether the fallback was applied | PENDING-USER measurement. New snippet icon-only fallback applied conservatively to preserve search space in the 320 px list; original tooltip/name retained. |
 | Runbook §7.3 results | Steps 1–13 PENDING-USER (no interactive profile changes or UI automation run). Step 14 covered by automated Core tests. |
+| Final local checks | Windows full solution 0 warnings/0 errors; Core 409 passed; Presentation 413 passed (sequential); publish-aot.ps1 exit 0, no IL or other warnings; native exe/e_sqlite3.dll present, managed App DLL absent. T12 static audit: docs/research/010-wiring-audit.md. |
 
 ## 11. Review response
 

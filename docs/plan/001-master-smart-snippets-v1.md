@@ -129,7 +129,7 @@ projects, CI, or `.gitignore` exist. No `docs/plan/` existed before this plan.
 | 007 | [007-insertion-engine-and-elevation.md](007-insertion-engine-and-elevation.md) | Production insertion engine, clipboard restore, double-activation guard, elevation detection, usage stats | 002, 003, 006 | In progress; 006 integration and manual runbook pending |
 | 008 | [008-release-hardening-and-acceptance.md](008-release-hardening-and-acceptance.md) | AOT release artifact, perf acceptance, compatibility matrix, full runbook, wiring audit | 003–007 | Placeholder |
 | 009 | [009-design-alignment-004-005.md](009-design-alignment-004-005.md) | Align built 004/005 surfaces (main window, folders, settings, dialogs, tray menu, tokens) with `docs/design/001-smart-snippets-design.html` | 004, 005 | Complete — CI green on `main` (run #33); manual runbook pending |
-| 010 | [010-import-export-snippets.md](010-import-export-snippets.md) | Import TermFlow/Rephlo/InkSpoke/native JSON; export the library | 003, 005 | Implemented locally; binding CI and manual acceptance pending |
+| 010 | [010-import-export-snippets.md](010-import-export-snippets.md) | Import TermFlow/Rephlo/InkSpoke/native JSON; export the library | 003, 005 | Implemented — local build/AOT/tests/budgets green; binding CI blocked (no push), manual acceptance pending |
 
 Only one subplan is detailed and in progress at a time. Approving this master approves the
 decomposition, not the contents of undetailed subplans.
@@ -191,7 +191,7 @@ or the 007 runbook complete until the branches are integrated and verified.
 | 2026-10-27 | 005 | Implementation complete | View-models (T1–T3, T6) and views (snippet editor control, Snippets and Folders pages, AppHost wiring, T4/T5/T7/T8) done; Core and Presentation tests pass locally; App not compiled on Linux, awaiting CI (AOT publish) and the manual runbook (005 §7) |
 | 2026-10-27 | 005 | Complete — CI green | First Windows compile failed on `FlowLayout` (not in WinUI 3); replaced with `UniformGridLayout` in `6e75872`; CI #28 green incl. AOT publish with 0 trim/AOT warnings. Manual runbook (005 §7) pending |
 | 2026-10-27 | 003, 004, 005, 009 | Automated verification on the AOT exe | `scripts/verify-plans-003-009.ps1`: 103 pass, 0 fail, 1 warn, 5 skip (manual) on branch `verify/plans-003-009`. Found and fixed two startup-blocking crashes on `main` (New snippet and Settings page: `IReadOnlyList<string>` as ItemsSource) and unreadable accessible names; open items for 007 (lone-CR line breaks). See `docs/research/002-verification-plans-003-009.md` |
-| 2026-10-28 | 010 | Local implementation and scope update | Import/export, D8 usage saturation, D9 subscriber isolation and D10 redacted store failures implemented. Local Windows solution build and Release budgets pass; 50,000 entry limit calibrated locally (plan 010 §10). Binding CI blocked by unpushed branch; manual runbook PENDING-USER. |
+| 2026-10-28 | 010 | Local implementation and scope update | Import/export, D8 usage saturation, D9 subscriber isolation and D10 redacted store failures implemented. Local Windows solution build (0 warnings), AOT publish (no IL warnings), Core 409 and Presentation 413 tests pass sequentially; Release budgets pass, 50,000 entry limit calibrated locally (plan 010 §10). T12 static audit recorded in docs/research/010-wiring-audit.md. Binding CI blocked by unpushed branch; manual runbook PENDING-USER. |
 
 ## 10. Open questions
 

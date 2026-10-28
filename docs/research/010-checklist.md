@@ -321,29 +321,30 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T12 — Wiring audit (L)
 
-- [ ] T12 implementation and task verification
+- [x] T12 static implementation and task verification (actual source/privacy/fixture/docs audit in docs/research/010-wiring-audit.md; runtime runbook evidence PENDING-USER)
 
 ## Manual and final gates
 
-- [ ] Runbook §7.3 step 1
-- [ ] Runbook §7.3 step 2
-- [ ] Runbook §7.3 step 3
-- [ ] Runbook §7.3 step 4
-- [ ] Runbook §7.3 step 5
-- [ ] Runbook §7.3 step 6 (a–f)
-- [ ] Runbook §7.3 step 7
-- [ ] Runbook §7.3 step 8
-- [ ] Runbook §7.3 step 9a
-- [ ] Runbook §7.3 step 9b
-- [ ] Runbook §7.3 step 10
-- [ ] Runbook §7.3 step 11
-- [ ] Runbook §7.3 step 12
-- [ ] Runbook §7.3 step 13
-- [ ] Runbook §7.3 step 14 (automated evidence)
-- [ ] Windows solution build, 0 warnings
-- [ ] Core tests (sequential)
-- [ ] Presentation tests (sequential)
-- [ ] scripts/publish-aot.ps1, no IL warnings
-- [ ] T10 budget calibration and Release budget gate
+- [ ] Runbook §7.3 step 1 — PENDING-USER
+- [ ] Runbook §7.3 step 2 — PENDING-USER
+- [ ] Runbook §7.3 step 3 — PENDING-USER
+- [ ] Runbook §7.3 step 4 — PENDING-USER
+- [ ] Runbook §7.3 step 5 — PENDING-USER
+- [ ] Runbook §7.3 step 6 (a–f) — PENDING-USER
+- [ ] Runbook §7.3 step 7 — PENDING-USER
+- [ ] Runbook §7.3 step 8 — PENDING-USER
+- [ ] Runbook §7.3 step 9a — PENDING-USER
+- [ ] Runbook §7.3 step 9b — PENDING-USER
+- [ ] Runbook §7.3 step 10 — PENDING-USER
+- [ ] Runbook §7.3 step 11 — PENDING-USER
+- [ ] Runbook §7.3 step 12 — PENDING-USER
+- [ ] Runbook §7.3 step 13 — PENDING-USER
+- [x] Runbook §7.3 step 14 (automated evidence)
+- [x] Windows solution build, 0 warnings
+- [x] Core tests (sequential): 409 passed
+- [x] Presentation tests (sequential): 413 passed
+- [x] scripts/publish-aot.ps1, no IL warnings (exit 0; no warnings at all)
+- [ ] T10 binding CI budget calibration and Release budget gate (local Windows calibration + 3 Release budgets passed; CI blocked: remote feature branch absent, user prohibits push)
 - [x] T11 documentation verification
-- [ ] T12 wiring, privacy, fixture and runtime audits
+- [x] T12 wiring, privacy and fixture source audits
+- [ ] T12 runtime audit (porting_ready / real-sample import_done) — PENDING-USER, runbook step 1

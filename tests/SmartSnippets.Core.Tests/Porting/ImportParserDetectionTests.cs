@@ -24,6 +24,7 @@ public class ImportParserDetectionTests
     [Fact] public void Version_TermFlow2_Unsupported_FoundVersion2() => Version("{\"version\":2,\"snippets\":[]}", "2");
     [Fact] public void Version_TermFlowString1_Unsupported() => Version("{\"version\":\"1\",\"snippets\":[]}", "\"1\"");
     [Fact] public void Version_TermFlow1Point0_Unsupported() => Version("{\"version\":1.0,\"snippets\":[]}", "1.0");
+    [Fact] public void Version_Null_IsAbsent() => Version("{\"version\":null,\"snippets\":[]}", null);
     [Fact] public void Version_TermFlowMissing_UnsupportedNoVersion() => Version("{\"snippets\":[]}", null);
     [Fact] public void Version_Rephlo12_Unsupported() => Version("{\"version\":\"1.2\",\"commands\":[]}", "\"1.2\"");
     [Fact] public void Version_RephloNumber13_Unsupported() => Version("{\"version\":1.3,\"commands\":[]}", "1.3");

@@ -53,7 +53,7 @@ internal static class JsonFields
     }
     internal static string? VersionText(JsonElement obj, string name)
     {
-        if (!obj.TryGetProperty(name, out var element)) return null;
+        if (!obj.TryGetProperty(name, out var element) || element.ValueKind == JsonValueKind.Null) return null;
         var raw = element.GetRawText(); return raw.Length > 32 ? raw[..32] : raw;
     }
 }
