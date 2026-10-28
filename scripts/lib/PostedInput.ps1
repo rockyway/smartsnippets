@@ -16,6 +16,8 @@ public static class SmartSnippetsPostedInput
     [DllImport("user32.dll")] private static extern IntPtr GetThreadDpiAwarenessContext();
     [DllImport("user32.dll")] private static extern bool AreDpiAwarenessContextsEqual(IntPtr first, IntPtr second);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumProc callback, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc callback, IntPtr data);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int length);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool IsChild(IntPtr parent, IntPtr child);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr hwnd);
@@ -38,6 +40,38 @@ public static class SmartSnippetsPostedInput
         var name = new StringBuilder(256);
         GetClassName(hwnd, name, name.Capacity);
         return name.ToString();
+    }
+    public static string[] DescribeOwnedWindows(uint pid)
+    {
+        var result = new List<string>();
+        EnumWindows((h, _) => {
+            uint owner; GetWindowThreadProcessId(h, out owner);
+            if (owner == pid) {
+                var text = new StringBuilder(512); GetWindowText(h, text, text.Capacity);
+                result.Add(h.ToInt64() + " class=" + ClassName(h) + " title=" + text.ToString() + " visible=" + IsWindowVisible(h));
+            }
+            return true;
+        }, IntPtr.Zero);
+        return result.ToArray();
+    }
+    public static IntPtr FindOwnedWindow(uint pid, string title, string className)
+    {
+        var matches = new List<IntPtr>();
+        EnumWindows((h, _) => {
+            uint owner; GetWindowThreadProcessId(h, out owner);
+            if (owner != pid) return true;
+            var text = new StringBuilder(512); GetWindowText(h, text, text.Capacity);
+            if ((string.IsNullOrEmpty(title) || text.ToString() == title) && (string.IsNullOrEmpty(className) || ClassName(h) == className)) matches.Add(h);
+            return true;
+        }, IntPtr.Zero);
+        if (matches.Count != 1) throw new InvalidOperationException("Expected exactly one owned window");
+        return matches[0];
+    }
+    public static void PostTrayOpen(IntPtr hwnd, uint pid)
+    {
+        uint owner; GetWindowThreadProcessId(hwnd, out owner);
+        if (owner != pid || ClassName(hwnd) != "SmartSnippets.MessageWindow") throw new InvalidOperationException("Unowned tray window");
+        Post(hwnd, 0x8001, IntPtr.Zero, new IntPtr(0x202));
     }
     private static bool Contains(IntPtr hwnd, int x, int y)
     {
