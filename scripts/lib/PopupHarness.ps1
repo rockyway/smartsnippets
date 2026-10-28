@@ -21,6 +21,20 @@ function Set-PopupQuery($Proc, [string]$Query) {
     Set-Text $search $Query
     if (-not (Wait-Log 'popup_search_ms \d+ layout=' $from)) { throw 'Search render timing missing' }
 }
+function Type-PopupQuery($Proc, [string]$Query) {
+    $popup=Get-PopupWindow $Proc.Id
+    $search=Find-ById $popup 'PopupSearch'
+    if ((Get-Text $search) -cne '') { throw 'Typing test requires an empty search box' }
+    $search.SetFocus()
+    $from=@(Get-LogLines).Count
+    foreach ($character in $Query.ToCharArray()) {
+        if (-not $search.Current.HasKeyboardFocus) { throw 'Popup search lost keyboard focus; typing stopped' }
+        $null=[Win32Verify]::PopupKeyboardWindow([IntPtr]$popup.Current.NativeWindowHandle, $Proc.Id)
+        [Win32Verify]::TypeCharacter($character)
+    }
+    if (-not (Wait-Until { (Get-Text $search) -ceq $Query })) { throw 'Typed popup query did not arrive intact' }
+    if (-not (Wait-Log 'popup_search_ms \d+ layout=' $from)) { throw 'Typed search did not render' }
+}
 function Set-PopupLayout($Proc, [string]$Layout) {
     $button = Find-ById (Get-PopupWindow $Proc.Id) 'PopupLayoutButton'
     $wanted = $Layout -eq 'Folder'

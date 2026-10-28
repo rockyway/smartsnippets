@@ -29,10 +29,11 @@ $area = [Win32Verify]::WorkArea([IntPtr]$target.Current.NativeWindowHandle)
 $rect = $popup.Current.BoundingRectangle
 $centered = [Math]::Abs(($rect.X + $rect.Width / 2) - ($area.Left + $area.Right) / 2) -le 2 -and [Math]::Abs(($rect.Y + $rect.Height / 2) - ($area.Top + $area.Bottom) / 2) -le 2
 Check 'E1' 'popup visible, centered in target monitor work area, search focused' ($centered -and [bool](Wait-Until { $search.Current.HasKeyboardFocus })) "popup=$rect work=$($area.Left),$($area.Top),$($area.Right),$($area.Bottom)"
-Set-PopupQuery $p 'alpha bravo'
+Type-PopupQuery $p 'alpha bravo'
 $count = Wait-Until { $c = Find-ById (Get-PopupWindow $p.Id) 'PopupCount'; if ($c.Current.Name -eq '1 of 4 snippets') { $c.Current.Name } }
 Check 'E2.and' 'typing filters with AND terms' ([bool]$count) "$count"
-Set-PopupQuery $p 'zzqxv'
+Set-PopupQuery $p ''
+Type-PopupQuery $p 'zzqxv'
 Check 'E2.empty' 'no match empty state' ([bool](Wait-Until { Find-ByName (Get-PopupWindow $p.Id) 'No snippets match' }))
 foreach ($pair in @(@('PopupLayoutButton','Toggle layout'),@('PopupSortButton','Sort'),@('PopupAddButton','Add snippet'),@('PopupOpenMainButton','Open main window'))) {
     $button = Find-ById (Get-PopupWindow $p.Id) $pair[0]

@@ -9,7 +9,7 @@
 | T9 prototype removal | No `TestString` or `Héllo – naïve` prototype string in `src`; F uses stored snippets. Diagnostics/ProbeRepository callers are absent (System.Diagnostics is unrelated). |
 | T10 shared | ArtifactZip verifies filename/hash/layout/no PDB before extraction and records exe versions; A3 calls the shared gate; A4 runs `Get-HarnessLogAudit`; C11 expects the production menu; D-lock holds a real SQLite writer transaction, checks inline retry and retained text, releases and retries. |
 | E1 | `PopupWindow.ShowFor`/`WindowPlacement.CenterOn`; `PopupSearch` / `Search snippets`; monitor work rectangle comes from GetMonitorInfo, physical UIA rectangle centers compared within rounding tolerance (2 px). |
-| E2 | `SnippetSearch` AND substring semantics; `PopupCount` (`1 of 4 snippets`) and `UiText.NoSnippetsMatch`. |
+| E2 | Types both query fixtures using per-character native keyboard text input with foreground/search-focus checks, then verifies exact entered text, `PopupCount` (`1 of 4 snippets`) and `UiText.NoSnippetsMatch`. P2 deliberately retains whole-value UIA SetValue for timing. |
 | E3 | `PopupViewModel.MoveSelection`, `PopupItemKind.Snippet`; disabled heading containers in PopupWindow. Both arrow directions traverse the fixture, skipping headings. |
 | E4 | Esc → `PopupViewModel.Close`; assert hidden, exact unchanged target and SQLite usage sum. |
 | E5 | `popup.layout` = Flat/Folder; `popup.sort` = LastUsed/UsageCount/Created/Updated. Eight layout/sort combinations checked in UI and SQLite on reopen and process restart. Selecting an unstored default LastUsed is a no-op, so the helper changes away first to exercise a real persistence write. |

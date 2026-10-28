@@ -72,6 +72,16 @@ public static class Win32Verify {
         if (pid != expectedPid || (child != popup && !IsChild(popup,child)) || !ScreenToClient(child,ref point)) throw new InvalidOperationException("Popup row does not belong to verified input window");
         return child;
     }
+    [StructLayout(LayoutKind.Sequential)] struct KeyboardInput { public ushort Vk, Scan; public uint Flags, Time; public UIntPtr Extra; }
+    [StructLayout(LayoutKind.Sequential)] struct MouseInput { public int X, Y; public uint Data, Flags, Time; public UIntPtr Extra; }
+    [StructLayout(LayoutKind.Explicit)] struct InputUnion { [FieldOffset(0)] public KeyboardInput Keyboard; [FieldOffset(0)] public MouseInput Mouse; }
+    [StructLayout(LayoutKind.Sequential)] struct Input { public uint Type; public InputUnion Data; }
+    [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint count, Input[] inputs, int size);
+    public static void TypeCharacter(char value) {
+        var down=new Input { Type=1, Data=new InputUnion { Keyboard=new KeyboardInput { Scan=value, Flags=4 } } };
+        var up=new Input { Type=1, Data=new InputUnion { Keyboard=new KeyboardInput { Scan=value, Flags=6 } } };
+        if (SendInput(2, new [] { down,up }, Marshal.SizeOf(typeof(Input))) != 2) throw new InvalidOperationException("Keyboard text input failed");
+    }
     public const uint KEYUP = 2;
     public static bool ForceForeground(IntPtr h) {
         ShowWindow(h, 9);
