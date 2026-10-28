@@ -192,7 +192,7 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 - [x] `Read_UsageAboveIntMax_ClampedToIntMax`
 - [x] `UsageImported_Paste_Sort_Reopen`
 - [x] `UsageAtIntMax_Paste_Saturates_Reopen`
-- [ ] `UsageChain_Export_Reimport_Exact`
+- [x] `UsageChain_Export_Reimport_Exact`
 - [x] `Import_SubscriberThrows_CommitReturned_RowsPersisted_LaterSubscribersRan`
 - [x] `Create_SubscriberThrows_ResultReturned`
 - [x] `Import_OneTransaction_OneEvent_KindImported_IdsAreNew`
@@ -212,28 +212,28 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T7 — Native export (AC7)
 
-- [ ] T7 implementation and task verification
-- [ ] `Export_EnvelopeShape_MarkerVersionArrays`
-- [ ] `Export_IsCompact`
-- [ ] `Export_EmptyLibrary_ValidEmptyArrays`
-- [ ] `Export_UnfiledFolderNull_NeverUsedLastUsedNull`
-- [ ] `Export_DatesAreEpochMs`
-- [ ] `Export_NoBom`
-- [ ] `Export_LoneSurrogate_WrittenAsReplacementChar`
-- [ ] `RoundTrip_ExportThenImportIntoEmpty_ReproducesEverything`
-- [ ] `RoundTrip_FullKeyRepeat_CollapsesToFirst`
-- [ ] `RoundTrip_FolderIdsDiffer_ProjectionStillEqual`
-- [ ] `UsageChain_Export_Reimport_Exact`
-- [ ] `RoundTrip_ReimportIntoSameLibrary_ZeroNew_NoEvent`
-- [ ] `RoundTrip_ReimportIntoTarget_ZeroNew`
-- [ ] `RoundTrip_ParserDetectsOwnOutputAsNative`
-- [ ] `ExportImport_ExactlyAtCap_ExportsAndImports`
-- [ ] `ExportImport_OneByteOver_RefusedAtExport_NoFile`
-- [ ] `ExportImport_EscapingExpansion_RefusedAtExport`
-- [ ] `Export_Oversized_StopsAtBound`
-- [ ] `Export_TooManySnippets_RefusedWithoutSerializing`
-- [ ] `Export_AtEntryLimit_Exports`
-- [ ] `ExportImport_EscapingNearCap_ImportsBack`
+- [x] T7 implementation and task verification (27 filtered cases pass; AOT remains final gate)
+- [x] `Export_EnvelopeShape_MarkerVersionArrays`
+- [x] `Export_IsCompact`
+- [x] `Export_EmptyLibrary_ValidEmptyArrays`
+- [x] `Export_UnfiledFolderNull_NeverUsedLastUsedNull`
+- [x] `Export_DatesAreEpochMs`
+- [x] `Export_NoBom`
+- [x] `Export_LoneSurrogate_WrittenAsReplacementChar`
+- [x] `RoundTrip_ExportThenImportIntoEmpty_ReproducesEverything`
+- [x] `RoundTrip_FullKeyRepeat_CollapsesToFirst`
+- [x] `RoundTrip_FolderIdsDiffer_ProjectionStillEqual`
+- [x] `UsageChain_Export_Reimport_Exact`
+- [x] `RoundTrip_ReimportIntoSameLibrary_ZeroNew_NoEvent`
+- [x] `RoundTrip_ReimportIntoTarget_ZeroNew`
+- [x] `RoundTrip_ParserDetectsOwnOutputAsNative`
+- [x] `ExportImport_ExactlyAtCap_ExportsAndImports`
+- [x] `ExportImport_OneByteOver_RefusedAtExport_NoFile`
+- [x] `ExportImport_EscapingExpansion_RefusedAtExport`
+- [x] `Export_Oversized_StopsAtBound` (public refusal + Bytes; internal capacity source-audited, plan §10)
+- [x] `Export_TooManySnippets_RefusedWithoutSerializing`
+- [x] `Export_AtEntryLimit_Exports`
+- [x] `ExportImport_EscapingNearCap_ImportsBack`
 
 ## T8 — Porting messages (AC2, AC8, AC9)
 
