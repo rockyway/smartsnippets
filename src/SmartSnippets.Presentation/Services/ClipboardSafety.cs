@@ -30,6 +30,19 @@ public static class ClipboardSafety
         return success;
     }
 
+    /// <summary>Retries only clipboard contention, without blocking the UI thread.</summary>
+    public static async Task<(RestoreStatus Status, int Attempts)> RetryRestoreAsync(
+        Func<RestoreStatus> attempt, int attempts, TimeSpan retryDelay, Func<TimeSpan, Task> delay)
+    {
+        if (attempts <= 0) throw new ArgumentOutOfRangeException(nameof(attempts));
+        for (var count = 1; ; count++)
+        {
+            var status = attempt();
+            if (status != RestoreStatus.Busy || count == attempts) return (status, count);
+            await delay(retryDelay);
+        }
+    }
+
     /// <summary>Captures the sequence before closing, so a subsequent owner's write cannot be mistaken for ours.</summary>
     public static uint CaptureBeforeClose(Func<uint> sequence, Action close)
     {

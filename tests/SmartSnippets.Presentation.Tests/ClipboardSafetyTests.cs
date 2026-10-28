@@ -47,6 +47,25 @@ public sealed class ClipboardSafetyTests
     }
 
     [Fact]
+    public async Task ShutdownRestore_RetriesBusyUntilSuccess()
+    {
+        var results = new Queue<RestoreStatus>([RestoreStatus.Busy, RestoreStatus.Busy, RestoreStatus.Restored]);
+        var delays = new List<TimeSpan>();
+        var result = await ClipboardSafety.RetryRestoreAsync(results.Dequeue, 10, TimeSpan.FromMilliseconds(20), delay => { delays.Add(delay); return Task.CompletedTask; });
+        Assert.Equal((RestoreStatus.Restored, 3), result);
+        Assert.Equal(new[] { TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20) }, delays);
+    }
+
+    [Fact]
+    public async Task ShutdownRestore_BusyIsBounded()
+    {
+        var calls = 0;
+        var result = await ClipboardSafety.RetryRestoreAsync(() => { calls++; return RestoreStatus.Busy; }, 3, TimeSpan.Zero, _ => Task.CompletedTask);
+        Assert.Equal((RestoreStatus.Busy, 3), result);
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
     public void CaptureBeforeClose_ConcurrentWriterChangesSequenceAfterCapture()
     {
         uint sequence = 10;

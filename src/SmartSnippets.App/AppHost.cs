@@ -180,7 +180,7 @@ internal sealed class AppHost
                     startup,
                     hotkeyManager,
                     elevation,
-                    requestExit: () => _ui!.Post(ShutDown)),
+                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync())),
             },
         };
 
@@ -262,7 +262,7 @@ internal sealed class AppHost
         if (result.Outcome == ElevationOutcome.Started)
         {
             // The elevated copy waits for this process to exit, so do not stop for an unsaved-changes prompt.
-            ShutDown();
+            _ = ShutDownAsync();
             return;
         }
 
@@ -303,7 +303,7 @@ internal sealed class AppHost
                 return;
             }
 
-            ShutDown();
+            await ShutDownAsync();
         }
         catch (Exception ex)
         {
@@ -311,24 +311,39 @@ internal sealed class AppHost
         }
     }
 
-    private void ShutDown()
+    private async Task ShutDownAsync()
     {
-        if (_exiting)
-        {
-            return;
-        }
-
+        if (_exiting) return;
         _exiting = true;
-        ReleaseResources();
-        AppLog.Shutdown();
-        Application.Current.Exit();
+        try
+        {
+            if (_pasteDispatcher is { } dispatcher)
+            {
+                var status = await dispatcher.RestorePendingAsync();
+                if (status == RestoreStatus.Busy)
+                {
+                    _exiting = false;
+                    Notices?.Notify("Clipboard in use", "Smart Snippets could not restore your clipboard. Close the app using it and try Exit again.");
+                    return;
+                }
+                if (status is RestoreStatus.Failed or RestoreStatus.Partial)
+                    Notices?.Notify("Clipboard restore failed", "Your previous clipboard couldn't be fully restored.");
+            }
+            ReleaseResources();
+            AppLog.Shutdown();
+            Application.Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            _exiting = false;
+            AppLog.Error("exit_failed", ex);
+        }
     }
 
     private void ReleaseResources()
     {
         try
         {
-            _pasteDispatcher?.RestorePendingNow();
             _hotkeyManager?.UnregisterAll();
             AppLog.Info("exit_unregistered");
             _tray?.Dispose();
@@ -353,6 +368,6 @@ internal sealed class AppHost
             message,
             "Smart Snippets",
             MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_ICONERROR | MESSAGEBOX_STYLE.MB_TOPMOST | MESSAGEBOX_STYLE.MB_SETFOREGROUND);
-        ShutDown();
+        _ = ShutDownAsync();
     }
 }

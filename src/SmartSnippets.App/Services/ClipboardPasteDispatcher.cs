@@ -137,13 +137,14 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         if (ReferenceEquals(_pending, snapshot)) _pending = null;
     }
 
-    public void RestorePendingNow()
+    public async Task<RestoreStatus> RestorePendingAsync()
     {
-        if (_pending is { } pending)
-        {
-            var status = TryRestoreClipboard(pending);
-            AppLog.Info("clipboard_restore", $"status={status} attempts=1 exit=True");
-        }
+        var timings = InsertionTimings.Default;
+        var (status, attempts) = await ClipboardSafety.RetryRestoreAsync(
+            () => _pending is { } pending ? TryRestoreClipboard(pending) : RestoreStatus.Restored,
+            timings.ClipboardAttempts, timings.ClipboardRetryDelay, delay => Task.Delay(delay));
+        AppLog.Info("clipboard_restore", $"status={status} attempts={attempts} exit=True");
+        return status;
     }
 
     private static bool Skipped(uint format) => format is 2 or 3 or 9 or 0x80 or 0x82 or 0x83 or 0x8e || format is >= 0x200 and <= 0x3ff;
