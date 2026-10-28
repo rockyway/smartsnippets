@@ -9,33 +9,33 @@ Every task and explicitly named test from plan §6; unchecked means not verified
 
 ## T1 — Bounded read, encoding and file rules (AC8)
 
-- [ ] T1 implementation and task verification
-- [ ] `MaxImportBytes_Is32MiB`
-- [ ] `MaxImportEntries_IsCalibratedValue`
-- [ ] `ExactlyCap_Accepted`
-- [ ] `CapPlusOne_TooLarge`
-- [ ] `TooLarge_StopsReadingAtCapPlusOne`
-- [ ] `LengthLies_StillCapped`
-- [ ] `ReadThrowsIOException_OnFirstRead_Unreadable`
-- [ ] `ReadThrowsIOException_AfterSomeBytes_Unreadable`
-- [ ] `ReadThrowsUnauthorized_Unreadable`
-- [ ] `ReadCancelled_PropagatesOperationCanceled`
-- [ ] `ReadThrowsInvalidData_Propagates`
-- [ ] `Utf8Bom_Stripped`
-- [ ] `Utf16LeBom_NotUtf8`
-- [ ] `Utf16BeBom_NotUtf8`
-- [ ] `Utf32Bom_NotUtf8`
-- [ ] `InvalidUtf8InsideString_NotUtf8`
-- [ ] `Empty_ReturnsEmptyBytes`
-- [ ] `HasJsonExtension`
-- [ ] `ExportBaseName_IsInvariantDate`
-- [ ] `Write_NewFile_CreatedNoTempLeft`
-- [ ] `Write_ExistingFile_Replaced`
-- [ ] `OpenTempFails_TargetUntouched_NoTemp`
-- [ ] `WriteFailsMidway_TargetUntouched_TempDeleted`
-- [ ] `MoveFails_TargetUntouched_TempDeleted`
-- [ ] `TempDeleteFails_OriginalExceptionStillThrown`
-- [ ] `TempStreamDisposedBeforeMove`
+- [x] T1 implementation and task verification
+- [x] `MaxImportBytes_Is32MiB`
+- [x] `MaxImportEntries_IsCalibratedValue`
+- [x] `ExactlyCap_Accepted`
+- [x] `CapPlusOne_TooLarge`
+- [x] `TooLarge_StopsReadingAtCapPlusOne`
+- [x] `LengthLies_StillCapped`
+- [x] `ReadThrowsIOException_OnFirstRead_Unreadable`
+- [x] `ReadThrowsIOException_AfterSomeBytes_Unreadable`
+- [x] `ReadThrowsUnauthorized_Unreadable`
+- [x] `ReadCancelled_PropagatesOperationCanceled`
+- [x] `ReadThrowsInvalidData_Propagates`
+- [x] `Utf8Bom_Stripped`
+- [x] `Utf16LeBom_NotUtf8`
+- [x] `Utf16BeBom_NotUtf8`
+- [x] `Utf32Bom_NotUtf8`
+- [x] `InvalidUtf8InsideString_NotUtf8`
+- [x] `Empty_ReturnsEmptyBytes`
+- [x] `HasJsonExtension`
+- [x] `ExportBaseName_IsInvariantDate`
+- [x] `Write_NewFile_CreatedNoTempLeft`
+- [x] `Write_ExistingFile_Replaced`
+- [x] `OpenTempFails_TargetUntouched_NoTemp`
+- [x] `WriteFailsMidway_TargetUntouched_TempDeleted`
+- [x] `MoveFails_TargetUntouched_TempDeleted`
+- [x] `TempDeleteFails_OriginalExceptionStillThrown`
+- [x] `TempStreamDisposedBeforeMove`
 
 ## T2 — Parser: detection, version-first refusal, value rules (AC2, AC8)
 
