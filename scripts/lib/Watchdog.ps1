@@ -21,9 +21,9 @@ function Invoke-ClipboardWorker([string]$Mode, [string]$BackupPath) {
         finally { $proc.Dispose() }
     }
 }
-function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$TimeoutSeconds = 600) {
-    $lockPath = Join-Path $env:LOCALAPPDATA 'SmartSnippets.verify.lock'
-    try { $lease = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$TimeoutSeconds = 600, [string]$LockPath = '') {
+    if (-not $LockPath) { $LockPath = Join-Path $env:LOCALAPPDATA 'SmartSnippets.verify.lock' }
+    try { $lease = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
     catch { throw 'Another acceptance supervisor holds the exclusive profile lock; no side effects were started' }
     $worker=$null; $saved=$null; $dir=$null; $aborted=$true; $retainBackup=$false
     try {
@@ -52,6 +52,13 @@ function Invoke-HarnessWorker([string]$ScriptPath, [hashtable]$Arguments, [int]$
                 if ($current -and $current -ne $last) { $last=$current; $idle.Restart() }
             }
             if ($idle.Elapsed.TotalSeconds -gt $TimeoutSeconds) { throw 'Acceptance worker exceeded its progress timeout (possibly a blocked UIA/native call)' }
+        }
+        if ($worker.ExitCode -ne 0 -and $Arguments.ReportPath) {
+            $hasFailure=$false
+            try { $hasFailure=@(Get-Content -LiteralPath $Arguments.ReportPath -Raw | ConvertFrom-Json | Where-Object { $_.Status -eq 'FAIL' }).Count -gt 0 } catch { }
+            if (-not $hasFailure) {
+                @([pscustomobject]@{ Status='FAIL'; Id='HARNESS.workerexit'; Name='worker exited before a failure report'; Detail='No acceptance verdict' }) | ConvertTo-Json | Set-Content -LiteralPath $Arguments.ReportPath -Encoding UTF8
+            }
         }
         $aborted=$false
         return $worker.ExitCode
