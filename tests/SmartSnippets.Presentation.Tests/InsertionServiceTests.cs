@@ -33,6 +33,11 @@ public sealed class InsertionServiceTests
         Assert.Equal("a\r\nb", _dispatcher.Text);
         Assert.Equal("a\rb", _store.Snippets.Single().Snippet.Text);
         Assert.Equal(1, Usage);
+        Assert.Same(_dispatcher.LastSnapshot, _dispatcher.RestoredSnapshot);
+        Assert.Null(_dispatcher.Pending);
+        Assert.Equal(new byte[] { 1, 2 }, _dispatcher.Clipboard["text"]);
+        Assert.Equal(new byte[] { 3, 4, 5 }, _dispatcher.Clipboard["html"]);
+        Assert.Equal(new byte[] { 6, 7, 8, 9 }, _dispatcher.Clipboard["image"]);
     }
 
     [Theory]
@@ -84,7 +89,21 @@ public sealed class InsertionServiceTests
     [InlineData(false, InsertionOutcome.FocusFailed, true)]
     [InlineData(true, InsertionOutcome.CopiedForManualPaste, false)]
     public async Task ForegroundLost_RestoresUnlessLossAllowed(bool loss, InsertionOutcome expected, bool restored)
-    { _probe.Foreground = false; Assert.Equal(expected, (await Insert(loss)).Outcome); Assert.Equal(restored, _calls.Contains("restore")); Assert.DoesNotContain("send", _calls); Assert.Equal(0, Usage); }
+    {
+        _probe.Foreground = false; Assert.Equal(expected, (await Insert(loss)).Outcome);
+        Assert.Equal(restored, _calls.Contains("restore")); Assert.DoesNotContain("send", _calls); Assert.Equal(0, Usage);
+        Assert.Null(_dispatcher.Pending);
+        if (loss)
+        {
+            Assert.Same(_dispatcher.LastSnapshot, _dispatcher.DiscardedSnapshot);
+            Assert.Equal("a\r\nb", System.Text.Encoding.UTF8.GetString(_dispatcher.Clipboard["snippet"]));
+        }
+        else
+        {
+            Assert.Same(_dispatcher.LastSnapshot, _dispatcher.RestoredSnapshot);
+            Assert.Equal(new byte[] { 6, 7, 8, 9 }, _dispatcher.Clipboard["image"]);
+        }
+    }
 
     [Fact]
     public async Task IncompleteSnapshot_DoesNotEmpty() { _dispatcher.Unsaved = 1; Assert.Equal(InsertionOutcome.ClipboardNotPreserved, (await Insert()).Outcome); Assert.False(_dispatcher.Emptied); Assert.False(_dispatcher.AllowIncomplete); Assert.DoesNotContain("send", _calls); }
@@ -99,7 +118,14 @@ public sealed class InsertionServiceTests
     }
 
     [Fact]
-    public async Task AllowLoss_IncompleteSnapshot_PastesAndRestores() { _dispatcher.Unsaved = 1; Assert.Equal(InsertionOutcome.Inserted, (await Insert(true)).Outcome); Assert.True(_dispatcher.AllowIncomplete); Assert.Contains("restore", _calls); Assert.Equal(1, Usage); }
+    public async Task AllowLoss_IncompleteSnapshot_PastesAndRestores()
+    {
+        _dispatcher.Unsaved = 1; Assert.Equal(InsertionOutcome.Inserted, (await Insert(true)).Outcome);
+        Assert.True(_dispatcher.AllowIncomplete); Assert.Same(_dispatcher.LastSnapshot, _dispatcher.RestoredSnapshot);
+        Assert.Equal(new byte[] { 1, 2 }, _dispatcher.Clipboard["text"]);
+        Assert.Equal(new byte[] { 3, 4, 5 }, _dispatcher.Clipboard["html"]);
+        Assert.False(_dispatcher.Clipboard.ContainsKey("image")); Assert.Equal(1, Usage);
+    }
 
     [Theory]
     [InlineData(true)]
