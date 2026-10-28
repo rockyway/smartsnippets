@@ -33,6 +33,17 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
 . (Join-Path $PSScriptRoot 'lib\Uia.ps1')
+. (Join-Path $PSScriptRoot 'lib\Perf.ps1')
+$script:ArchivedLogs = New-Object System.Collections.Generic.List[string]
+$script:PrivacySecrets = New-Object System.Collections.Generic.List[string]
+foreach ($secret in @('smart-snippets-probe','locked-save-probe','ZZ-PRIVACY-MARKER-7431')) { $script:PrivacySecrets.Add($secret) }
+function Archive-Logs {
+    if (Test-Path $appRoot) {
+        foreach ($file in (Get-ChildItem (Join-Path $appRoot 'logs') -File -ErrorAction SilentlyContinue)) {
+            foreach ($line in (Get-Content -LiteralPath $file.FullName)) { $script:ArchivedLogs.Add($line) }
+        }
+    }
+}
 
 $exe = Join-Path $root 'publish\SmartSnippets.App.exe'
 $appRoot = Join-Path $env:LOCALAPPDATA 'SmartSnippets'
@@ -95,6 +106,7 @@ function Stop-App {
 }
 function Reset-Profile([scriptblock]$Seed = $null) {
     Stop-App
+    Archive-Logs
     if (Test-Path $appRoot) { Remove-Item $appRoot -Recurse -Force }
     New-Item -ItemType Directory -Path $appRoot | Out-Null
     if ($Seed) { & $Seed }
@@ -179,6 +191,8 @@ function Save-Snippet($Proc) {
     return $true
 }
 function Create-Snippet($Proc, [string]$Text, [string]$Tags = '', [string]$Label = $null) {
+    $script:PrivacySecrets.Add($Text)
+    foreach ($line in ($Text -split '\r?\n|\r')) { if ($line.Length -ge 8) { $script:PrivacySecrets.Add($line) } }
     $tb = New-SnippetEditor $Proc
     if (-not $tb) { throw 'editor did not open' }
     $w = Get-Main $Proc
@@ -902,7 +916,6 @@ if (Want 'F') {
 # Release checks.
 if (Want 'G') {
     Section 'G. Release artifact and icon structure'
-    $priorLogText = (Get-LogLines) -join "`n"
     $info = (Get-Item $exe).VersionInfo
     if ($ArtifactZip -and [IO.Path]::GetFileName($ArtifactZip) -match '^SmartSnippets-win-x64-(.+)\.zip$') {
         $expectedVersion = $Matches[1]
@@ -1011,8 +1024,6 @@ if (Want 'G') {
     Check 'G7' 'tray menu has restart and no diagnostics' ($joined -match 'Restart as administrator' -and $joined -notmatch 'Diagnostics') $joined
     Send-Chord @([byte]$VK.Esc)
     Stop-App
-    $allLogText = $priorLogText + "`n" + ((Get-LogLines) -join "`n")
-    Check 'G10' 'log excludes known acceptance snippet text' (-not ($allLogText -match 'smart-snippets-probe|locked-save-probe|ZZ-PRIVACY-MARKER-7431'))
     $gateDir = Join-Path ([IO.Path]::GetTempPath()) ('ss-fake-aot-' + [guid]::NewGuid())
     try {
         New-Item -ItemType Directory -Path $gateDir | Out-Null
@@ -1040,6 +1051,9 @@ foreach ($section in 'E', 'F', 'P') {
 finally {
     foreach ($id in $script:HotkeyIds) { [void][Win32Verify]::UnregisterHotKey([IntPtr]::Zero, $id) }
     Stop-Target
+    Stop-App
+    Archive-Logs
+    if (Want 'G') { Check 'G10' 'whole-run logs across profile resets exclude acceptance snippet text' (Test-LogPrivacy $script:ArchivedLogs.ToArray() $script:PrivacySecrets.ToArray()) "archived lines=$($script:ArchivedLogs.Count) secrets=$($script:PrivacySecrets.Count)" }
     Restore-Profile
 }
 
