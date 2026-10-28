@@ -11,8 +11,6 @@ internal static unsafe class ElevationProbe
 {
     private const int ErrorInvalidParameter = 87;
 
-    public static bool IsBlocked(ForegroundTargetInfo target) => IsBlocked(target.ProcessId);
-
     public static bool IsBlocked(uint processId)
     {
         if (IsOwnProcessElevated())

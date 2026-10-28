@@ -1,350 +1,94 @@
-using System.Diagnostics;
-using System.Text;
+using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
-using Windows.Win32;
-using Windows.Win32.Foundation;
-using Windows.Win32.System.Memory;
-using Windows.Win32.UI.Input.KeyboardAndMouse;
-using Windows.Win32.System.Ole;
+using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.App.Services;
 
-internal sealed class ClipboardPasteInserter : IInserter
+// Temporary prototype bridge until 006 replaces the popup. Reuses the same safety boundary as
+// production; it never grants clipboard-loss consent and never maintains a second Win32 path.
+internal sealed class ClipboardPasteInserter(ClipboardPasteDispatcher dispatcher) : IInserter
 {
-    public static readonly TimeSpan RestoreDelay = TimeSpan.FromMilliseconds(250);
+    private readonly Win32TargetProbe _probe = new();
+    private readonly InsertionTimings _timings = InsertionTimings.Default;
 
-    private const int FocusTimeoutMs = 500;
-    private const int ClipboardRetries = 10;
-    private const int ClipboardRetryDelayMs = 20;
-
-    private readonly HWND _clipboardOwner;
-
-    public ClipboardPasteInserter(HWND clipboardOwner)
+    public async Task<InsertResult> InsertAsync(ForegroundTargetInfo captured, string text, CancellationToken ct = default)
     {
-        _clipboardOwner = clipboardOwner;
-    }
-
-    public async Task<InsertResult> InsertAsync(ForegroundTargetInfo target, string text, CancellationToken ct = default)
-    {
-        var result = await InsertCoreAsync(target, text, ct);
-        AppLog.Info("insert_result", result.Outcome.ToString());
+        var target = ToTarget(captured);
+        IClipboardSnapshot? snapshot = null;
+        var delayRestore = false;
+        var result = new InsertResult(InsertOutcome.SendInputFailed, "Couldn't paste. Nothing was pasted.");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var check = _probe.Check(target);
+            if (check != TargetCheck.Ok)
+                return check switch
+                {
+                    TargetCheck.Closed => new(InsertOutcome.TargetClosed, "The target window was closed."),
+                    TargetCheck.Elevated => new(InsertOutcome.TargetElevated, "The target app runs as administrator."),
+                    _ => result,
+                };
+            if (await dispatcher.RestoreFocusAsync(target, ct) is null)
+                return new(InsertOutcome.FocusFailed, "Could not return focus to the target window.");
+            if (!dispatcher.ReleaseHeldModifiers()) return result;
+            ClipboardSwap swap = new(SwapStatus.Busy, null);
+            for (var attempt = 0; attempt < _timings.ClipboardAttempts; attempt++)
+            {
+                ct.ThrowIfCancellationRequested();
+                try { swap = dispatcher.TrySwapClipboard(LineEndings.ToCrLf(text), false); }
+                catch (ClipboardSwapException ex) { swap = new(SwapStatus.Failed, ex.Snapshot); }
+                snapshot = swap.Snapshot;
+                if (swap.Status != SwapStatus.Busy) break;
+                if (attempt + 1 < _timings.ClipboardAttempts) await Task.Delay(_timings.ClipboardRetryDelay, ct);
+            }
+            if (swap.Status == SwapStatus.NotPreserved)
+                result = new(InsertOutcome.SendInputFailed, "The clipboard can't be safely preserved. Nothing was pasted.");
+            else if (swap.Status == SwapStatus.Busy)
+                result = new(InsertOutcome.ClipboardBusy, "The clipboard is in use by another application.");
+            else if (swap.Status == SwapStatus.Swapped)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!_probe.IsTargetForeground(target)) result = new(InsertOutcome.FocusFailed, "Could not return focus to the target window.");
+                else
+                {
+                    DispatchState state;
+                    try { state = dispatcher.SendPaste(); }
+                    catch (Exception) { state = DispatchState.Uncertain; }
+                    if (state == DispatchState.Uncertain)
+                    {
+                        delayRestore = true;
+                        result = new(InsertOutcome.SendInputFailed, "Smart Snippets may have pasted. Check before trying again.");
+                        try { if (!dispatcher.ReleasePasteKeys()) AppLog.Info("paste_key_release_failed"); }
+                        catch (Exception ex) { AppLog.Info("paste_key_release_failed", $"kind={ex.GetType().Name}"); }
+                    }
+                    else if (state == DispatchState.Dispatched)
+                    {
+                        delayRestore = true;
+                        result = new(InsertOutcome.Success, "Inserted.");
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { AppLog.Info("prototype_insert_failed", $"kind={ex.GetType().Name}"); }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                if (delayRestore) await Task.Delay(_timings.RestoreDelay);
+                var (status, attempts) = await ClipboardSafety.RetryRestoreAsync(
+                    () => dispatcher.TryRestoreClipboard(snapshot), _timings.ClipboardAttempts,
+                    _timings.ClipboardRetryDelay, delay => Task.Delay(delay));
+                AppLog.Info("clipboard_restore", $"status={status} attempts={attempts}");
+                if (status is RestoreStatus.Busy or RestoreStatus.Failed or RestoreStatus.Partial)
+                    result = result.Outcome == InsertOutcome.Success
+                        ? new(InsertOutcome.SendInputFailed, "Pasted, but your previous clipboard couldn't be fully restored.")
+                        : result with { Message = result.Message + " Your previous clipboard couldn't be fully restored." };
+            }
+        }
         return result;
     }
 
-    private async Task<InsertResult> InsertCoreAsync(ForegroundTargetInfo target, string text, CancellationToken ct)
-    {
-        if (ElevationProbe.IsBlocked(target))
-        {
-            return new InsertResult(InsertOutcome.TargetElevated, "The target application runs as administrator, so SmartSnippets cannot insert text into it.");
-        }
-
-        if (!PInvoke.IsWindow(target.Hwnd))
-        {
-            return new InsertResult(InsertOutcome.TargetClosed, "The target window was closed.");
-        }
-
-        if (!await RestoreFocusAsync(target.Hwnd))
-        {
-            return new InsertResult(InsertOutcome.FocusFailed, "Could not return focus to the target window.");
-        }
-
-        if (!TryOpenClipboard())
-        {
-            return new InsertResult(InsertOutcome.ClipboardBusy, "The clipboard is in use by another application.");
-        }
-
-        List<ClipboardEntry> snapshot;
-        var textSet = false;
-        try
-        {
-            snapshot = TakeSnapshot(out var skipped);
-            AppLog.Info("clipboard_snapshot", $"formats={snapshot.Count} skipped={skipped}");
-            PInvoke.EmptyClipboard();
-            textSet = SetText(text);
-        }
-        finally
-        {
-            PInvoke.CloseClipboard();
-        }
-
-        try
-        {
-            if (!textSet)
-            {
-                return new InsertResult(InsertOutcome.ClipboardBusy, "Could not place the text on the clipboard.");
-            }
-
-            ReleaseHeldModifiers();
-
-            if (!SendPaste())
-            {
-                return new InsertResult(InsertOutcome.SendInputFailed, "The paste keystroke could not be sent.");
-            }
-
-            AppLog.Info("restore_delay_ms", ((int)RestoreDelay.TotalMilliseconds).ToString());
-            await Task.Delay(RestoreDelay, CancellationToken.None);
-            return new InsertResult(InsertOutcome.Success, "Inserted.");
-        }
-        finally
-        {
-            RestoreClipboard(snapshot);
-        }
-    }
-
-    private async Task<bool> RestoreFocusAsync(HWND target)
-    {
-        PInvoke.SetForegroundWindow(target);
-        if (await WaitForForegroundAsync(target))
-        {
-            AppLog.Info("focus_path", "direct");
-            return true;
-        }
-
-        var currentThread = PInvoke.GetCurrentThreadId();
-        var foreground = PInvoke.GetForegroundWindow();
-        var foregroundThread = foreground.IsNull ? 0 : PInvoke.GetWindowThreadProcessId(foreground, out _);
-        var attached = foregroundThread != 0 && foregroundThread != currentThread
-            && PInvoke.AttachThreadInput(currentThread, foregroundThread, true);
-        try
-        {
-            PInvoke.SetForegroundWindow(target);
-        }
-        finally
-        {
-            if (attached)
-            {
-                PInvoke.AttachThreadInput(currentThread, foregroundThread, false);
-            }
-        }
-
-        if (await WaitForForegroundAsync(target))
-        {
-            AppLog.Info("focus_path", "attach_thread_input");
-            return true;
-        }
-
-        AppLog.Info("focus_path", "failed");
-        return false;
-    }
-
-    private static async Task<bool> WaitForForegroundAsync(HWND target)
-    {
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < FocusTimeoutMs)
-        {
-            if (PInvoke.GetForegroundWindow() == target)
-            {
-                return true;
-            }
-
-            await Task.Delay(10);
-        }
-
-        return PInvoke.GetForegroundWindow() == target;
-    }
-
-    private bool TryOpenClipboard()
-    {
-        for (var i = 0; i < ClipboardRetries; i++)
-        {
-            if (PInvoke.OpenClipboard(_clipboardOwner))
-            {
-                return true;
-            }
-
-            Thread.Sleep(ClipboardRetryDelayMs);
-        }
-
-        return false;
-    }
-
-    private static bool IsSkippedFormat(uint format) => format switch
-    {
-        (uint)CLIPBOARD_FORMAT.CF_BITMAP => true,
-        (uint)CLIPBOARD_FORMAT.CF_METAFILEPICT => true,
-        (uint)CLIPBOARD_FORMAT.CF_PALETTE => true,
-        (uint)CLIPBOARD_FORMAT.CF_ENHMETAFILE => true,
-        (uint)CLIPBOARD_FORMAT.CF_OWNERDISPLAY => true,
-        (uint)CLIPBOARD_FORMAT.CF_DSPBITMAP => true,
-        (uint)CLIPBOARD_FORMAT.CF_DSPMETAFILEPICT => true,
-        (uint)CLIPBOARD_FORMAT.CF_DSPENHMETAFILE => true,
-        _ => format >= (uint)CLIPBOARD_FORMAT.CF_GDIOBJFIRST && format <= (uint)CLIPBOARD_FORMAT.CF_GDIOBJLAST,
-    };
-
-    private static unsafe List<ClipboardEntry> TakeSnapshot(out int skipped)
-    {
-        var entries = new List<ClipboardEntry>();
-        skipped = 0;
-        uint format = 0;
-        while ((format = PInvoke.EnumClipboardFormats(format)) != 0)
-        {
-            if (IsSkippedFormat(format))
-            {
-                skipped++;
-                continue;
-            }
-
-            var handle = PInvoke.GetClipboardData(format);
-            if (handle.IsNull)
-            {
-                skipped++;
-                continue;
-            }
-
-            var global = new HGLOBAL(handle.Value);
-            var size = PInvoke.GlobalSize(global);
-            if (size == 0 || size > int.MaxValue)
-            {
-                skipped++;
-                continue;
-            }
-
-            var source = PInvoke.GlobalLock(global);
-            if (source is null)
-            {
-                skipped++;
-                continue;
-            }
-
-            try
-            {
-                var data = new byte[(int)size];
-                new ReadOnlySpan<byte>(source, data.Length).CopyTo(data);
-                entries.Add(new ClipboardEntry(format, data));
-            }
-            finally
-            {
-                PInvoke.GlobalUnlock(global);
-            }
-        }
-
-        return entries;
-    }
-
-    private static bool SetText(string text)
-    {
-        if (!SetData((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0")))
-        {
-            return false;
-        }
-
-        var excludeFormat = PInvoke.RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing");
-        if (excludeFormat != 0)
-        {
-            SetData(excludeFormat, new byte[4]);
-        }
-
-        return true;
-    }
-
-    private static unsafe bool SetData(uint format, ReadOnlySpan<byte> data)
-    {
-        var global = PInvoke.GlobalAlloc(GLOBAL_ALLOC_FLAGS.GMEM_MOVEABLE, (nuint)data.Length);
-        if (global.IsNull)
-        {
-            return false;
-        }
-
-        var destination = PInvoke.GlobalLock(global);
-        if (destination is null)
-        {
-            PInvoke.GlobalFree(global);
-            return false;
-        }
-
-        data.CopyTo(new Span<byte>(destination, data.Length));
-        PInvoke.GlobalUnlock(global);
-
-        if (PInvoke.SetClipboardData(format, new HANDLE(global.Value)).IsNull)
-        {
-            PInvoke.GlobalFree(global);
-            return false;
-        }
-
-        return true;
-    }
-
-    private void RestoreClipboard(List<ClipboardEntry> snapshot)
-    {
-        try
-        {
-            if (!TryOpenClipboard())
-            {
-                AppLog.Info("clipboard_restore_failed", "busy");
-                return;
-            }
-
-            try
-            {
-                PInvoke.EmptyClipboard();
-                var failed = 0;
-                foreach (var entry in snapshot)
-                {
-                    if (!SetData(entry.Format, entry.Data))
-                    {
-                        failed++;
-                    }
-                }
-
-                AppLog.Info("clipboard_restored", $"formats={snapshot.Count} failed={failed}");
-            }
-            finally
-            {
-                PInvoke.CloseClipboard();
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("clipboard_restore_failed", ex);
-        }
-    }
-
-    private static void ReleaseHeldModifiers()
-    {
-        VIRTUAL_KEY[] modifiers = [VIRTUAL_KEY.VK_SHIFT, VIRTUAL_KEY.VK_CONTROL, VIRTUAL_KEY.VK_MENU, VIRTUAL_KEY.VK_LWIN, VIRTUAL_KEY.VK_RWIN];
-        var inputs = new List<INPUT>();
-        foreach (var key in modifiers)
-        {
-            if ((PInvoke.GetAsyncKeyState((int)key) & 0x8000) != 0)
-            {
-                inputs.Add(KeyInput(key, up: true));
-            }
-        }
-
-        if (inputs.Count > 0)
-        {
-            Send(inputs.ToArray());
-        }
-    }
-
-    private static bool SendPaste()
-    {
-        INPUT[] inputs =
-        [
-            KeyInput(VIRTUAL_KEY.VK_CONTROL, up: false),
-            KeyInput(VIRTUAL_KEY.VK_V, up: false),
-            KeyInput(VIRTUAL_KEY.VK_V, up: true),
-            KeyInput(VIRTUAL_KEY.VK_CONTROL, up: true),
-        ];
-        return Send(inputs) == inputs.Length;
-    }
-
-    private static unsafe uint Send(INPUT[] inputs)
-    {
-        fixed (INPUT* p = inputs)
-        {
-            return PInvoke.SendInput((uint)inputs.Length, p, sizeof(INPUT));
-        }
-    }
-
-    private static INPUT KeyInput(VIRTUAL_KEY key, bool up)
-    {
-        var input = default(INPUT);
-        input.type = INPUT_TYPE.INPUT_KEYBOARD;
-        input.Anonymous.ki.wVk = key;
-        input.Anonymous.ki.dwFlags = up ? KEYBD_EVENT_FLAGS.KEYEVENTF_KEYUP : 0;
-        return input;
-    }
-
-    private sealed record ClipboardEntry(uint Format, byte[] Data);
+    private static unsafe InsertionTarget ToTarget(ForegroundTargetInfo target) =>
+        new((nint)target.Hwnd.Value, target.ProcessId, (nint)target.Monitor.Value, "the target app");
 }

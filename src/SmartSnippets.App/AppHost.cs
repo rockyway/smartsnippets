@@ -152,7 +152,7 @@ internal sealed class AppHost
         Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront());
 
         // Step 7: popup, then the main window (created hidden).
-        var popup = new PopupWindow(new ClipboardPasteInserter(messageWindow.Handle));
+        var popup = new PopupWindow(new ClipboardPasteInserter(pasteDispatcher));
         _popup = popup;
         popup.Prewarm();
         theme.Register(popup);
