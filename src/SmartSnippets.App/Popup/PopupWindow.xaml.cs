@@ -120,17 +120,25 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal void RefreshFrame()
     {
         if (_closed) return;
-        var text = _uiSettings.UIElementColor(UIElementType.WindowText);
-        var color = PopupFramePolicy.BorderColor(RootGrid.ActualTheme == ElementTheme.Dark,
-            _accessibility.HighContrast, text.R, text.G, text.B);
-        var result = WindowSurface.RoundPopup(this, color);
-        if (result.Corner < 0 || result.Border < 0)
+        try
         {
-            if (_lastFrameFailure != result)
-                AppLog.Info("popup_frame_failed", $"corner_hr=0x{result.Corner:X8} border_hr=0x{result.Border:X8}");
-            _lastFrameFailure = result;
+            var text = WindowSurface.WindowTextColor();
+            var color = PopupFramePolicy.BorderColor(RootGrid.ActualTheme == ElementTheme.Dark,
+                _accessibility.HighContrast, text.R, text.G, text.B);
+            var result = WindowSurface.RoundPopup(this, color);
+            if (result.Corner < 0 || result.Border < 0)
+            {
+                if (_lastFrameFailure != result)
+                    AppLog.Info("popup_frame_failed", $"corner_hr=0x{result.Corner:X8} border_hr=0x{result.Border:X8}");
+                _lastFrameFailure = result;
+            }
+            else _lastFrameFailure = null;
         }
-        else _lastFrameFailure = null;
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            // Frame styling is cosmetic: never let a platform lookup take the popup (or startup) down.
+            AppLog.Info("popup_frame_failed", $"hr=0x{ex.HResult:X8}");
+        }
     }
     private void OnSystemColorsChanged(UISettings sender, object args)
         => DispatcherQueue.TryEnqueue(() => RefreshFrame());
