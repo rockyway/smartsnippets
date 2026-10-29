@@ -21,20 +21,40 @@ internal static class FlyoutSurface
 
     private static void OnOpened(object? sender, object e)
     {
-        MenuFlyoutPresenter? found = null;
-        if (sender is FlyoutBase flyout && flyout.Target?.XamlRoot is { } root)
+        // The menu may open in its own popup surface with its own XamlRoot, so the presenter is located through the menu
+        // items it hosts (their ancestors) first; the open-popups lookup is only a fallback.
+        var found = sender is MenuFlyout menu ? FromItems(menu) : null;
+        if (found is null && sender is FlyoutBase flyout && flyout.Target?.XamlRoot is { } root)
         {
             foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
             {
-                if (Find(popup.Child) is not { } presenter) continue;
-                presenter.SystemBackdrop = null;
-                // High contrast keeps the system window colour from the theme dictionaries.
-                if (presenter.ActualTheme == ElementTheme.Dark) presenter.Background = Dark;
-                else if (presenter.ActualTheme == ElementTheme.Light) presenter.Background = Light;
-                found ??= presenter;
+                if (Find(popup.Child) is { } presenter) { found = presenter; break; }
             }
         }
+        if (found is not null) MakeSolid(found);
         LogSurface(found);
+    }
+
+    private static MenuFlyoutPresenter? FromItems(MenuFlyout menu)
+    {
+        foreach (var item in menu.Items)
+        {
+            DependencyObject? node = item;
+            for (var depth = 0; node is not null && depth < 64; depth++)
+            {
+                if (node is MenuFlyoutPresenter presenter) return presenter;
+                node = VisualTreeHelper.GetParent(node);
+            }
+        }
+        return null;
+    }
+
+    private static void MakeSolid(MenuFlyoutPresenter presenter)
+    {
+        presenter.SystemBackdrop = null;
+        // High contrast keeps the system window colour from the theme dictionaries.
+        if (presenter.ActualTheme == ElementTheme.Dark) presenter.Background = Dark;
+        else if (presenter.ActualTheme == ElementTheme.Light) presenter.Background = Light;
     }
 
     private static void LogSurface(MenuFlyoutPresenter? presenter)
