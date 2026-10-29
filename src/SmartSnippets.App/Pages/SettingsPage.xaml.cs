@@ -60,9 +60,9 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void OnCustomSizeChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    private void OnCustomSizeChanged(NumberBox sender, NumberBoxValueChangedEventArgs e)
     {
-        if (!_rebinding && _viewModel is not null && sender is Slider slider && slider.FocusState != FocusState.Unfocused)
+        if (!_rebinding && _viewModel is not null && sender.FocusState != FocusState.Unfocused && double.IsFinite(e.NewValue))
             _viewModel.CustomTextSize = e.NewValue;
     }
 
