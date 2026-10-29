@@ -193,7 +193,7 @@ internal sealed class AppHost
                     previewGlobalDialog: () =>
                     {
                         if (_mainWindow is { } window)
-                            popup.ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)));
+                            EnsurePopup().ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)));
                     }),
             },
         };
@@ -218,16 +218,17 @@ internal sealed class AppHost
         tray.Add();
         Notices = new Notifier(tray);
         UpdateTrayState();
-        var popupDialogs = new DialogService(() => popup.ContentXamlRoot, () => { });
+        var popupDialogs = new DialogService(() => _popup?.ContentXamlRoot, () => { });
         
-        _popupHost = new DeferredPopupHost(popup);
+        _popupHost = new DeferredPopupHost(new RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
         _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
-            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()), textSize);
+            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()), textSize, action => _ui!.Post(action));
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += OnPopupVisibleChanged;
         // Apply the saved theme before the prewarm creates the first visible surface.
         theme.Register(popup);
+        TrackPopupClose(popup);
         popup.Prewarm();
 
         if (!hotkeyStatus.IsRegistered)
@@ -253,6 +254,32 @@ internal sealed class AppHost
             mainWindow.ShowPage(PageKind.Snippets);
     }
 
+    private void TrackPopupClose(PopupWindow popup)
+    {
+        popup.Closed += (_, _) =>
+        {
+            popup.VisibleChanged -= OnPopupVisibleChanged;
+            if (!ReferenceEquals(_popup, popup)) return;
+            _popup = null; _popupVisible = false;
+            UpdateTrayState();
+        };
+    }
+
+    private PopupWindow EnsurePopup()
+    {
+        if (_popup is not null) return _popup;
+        var popup = new PopupWindow(TextSize, () => _mainWindow?.ShowPage(PageKind.Snippets), id => _ = EditFromPopupAsync(id));
+        _popup = popup;
+        popup.CanShow = () => !_exiting;
+        popup.ViewModel = _popupViewModel!;
+        popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
+        popup.VisibleChanged += OnPopupVisibleChanged;
+        _theme!.Register(popup);
+        TrackPopupClose(popup);
+        popup.Prewarm();
+        return popup;
+    }
+
     private async Task EditFromPopupAsync(long snippetId)
     {
         if (_exiting || _mainWindow is not { } window) return;
@@ -268,7 +295,7 @@ internal sealed class AppHost
         {
             if (options.Page is { } page) await window.ShowPageWithoutActivationAsync(page, showMain);
             if (options.PreviewPopup && !_exiting)
-                _popup?.ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)), options.PreviewQuery, activate: false);
+                EnsurePopup().ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)), options.PreviewQuery, activate: false);
         }
         catch (Exception)
         {
@@ -287,14 +314,14 @@ internal sealed class AppHost
             return;
         }
 
-        _popup?.ShowFor(target, timestamp);
+        EnsurePopup().ShowFor(target, timestamp);
     }
 
     private void ShowPopupFromTray(HWND hwnd)
     {
         if (_exiting) return;
         var target = TargetCapture.CaptureFrom(hwnd);
-        if (target is not null) _popup?.ShowFor(target, System.Diagnostics.Stopwatch.GetTimestamp());
+        if (target is not null) EnsurePopup().ShowFor(target, System.Diagnostics.Stopwatch.GetTimestamp());
     }
 
     private void OnHotkeyStatusChanged(object? sender, EventArgs e) => _ui?.Post(UpdateTrayState);

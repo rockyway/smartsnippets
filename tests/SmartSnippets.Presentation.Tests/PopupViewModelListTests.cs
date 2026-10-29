@@ -77,9 +77,9 @@ public sealed class PopupViewModelListTests
         using var vm = Create(); Assert.Equal("Folder", vm.Items[0].FolderChip); Assert.Equal("one", vm.Items[0].Tag1); Assert.Equal("two", vm.Items[0].Tag2); Assert.Equal("", vm.Items[1].FolderChip);
     }
     [Fact]
-    public void Preview_FirstNonBlankLine()
+    public void Projection_DoesNotDuplicateSnippetText()
     {
-        _store.SeedSnippet("\n  first   line \nsecond"); using var vm = Create(); Assert.Equal("first line", vm.Items[0].Preview);
+        _store.SeedSnippet("\n  first   line \nsecond"); using var vm = Create(); Assert.Empty(vm.Items[0].Preview);
     }
     [Fact]
     public void FolderLayout_HeadingsWithCounts_FoldersByName_UnfiledLast()
