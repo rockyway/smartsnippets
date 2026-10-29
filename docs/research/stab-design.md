@@ -6,7 +6,13 @@
 - Text, label and tags also have two-way bindings across the VM swap; their order and actual WinUI behavior require control-level verification. Folders page needs a similar audit.
 - Popup and VM already exist at startup, with a precomputed search and row dictionary. `Prewarm` briefly shows off-screen and immediately hides; theme registration happens afterward. A white/black flash has not been localized or reproduced; first-frame initialization and theme-before-prewarm are suspects, not proven causes.
 
-## Proposed approach
+## Implementation and validation follow-up
+
+Completed in stability commits through `125a05a`; detailed decisions and invalidation matrix are in plan 006 §10's stability amendment. Folder selection is now OneWay with explicit user selection and control/VM guards; text inputs and Settings initialization are also guarded. Cache invalidation is UI-queued/coalesced with synchronous show freshness barriers. Closed popup windows are replaced through a stable forwarding endpoint under the unchanged recovery gate. Prewarm applies theme/DWM attributes before showing a cloaked offscreen surface and waits for first content layout before hiding/uncloaking.
+
+Granted validation ran exclusively from `C:\temp\ss-stab-build`: build 0 warnings/errors, Core 426 passed, Presentation 467 passed, one Native AOT publish gate passed with 0 warnings. The 50k-row dirty-open VM test measured 67.48 ms. No app launch or screen pass occurred. The reported WinUI folder event sequence and visual flash causality remain candidates pending user screen confirmation; the unsafe static write path and initialization ordering were confirmed and corrected.
+
+## Original proposed approach
 
 Guard null at the folder property's entry point; explicit Unfiled remains a real choice. Ensure rebuilt selection is the actual collection member. Prevent control selection feedback during a source swap, and review other two-way fields. Unit tests simulate null during collection reset and editor switching; WinUI verification is still required.
 

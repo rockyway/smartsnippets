@@ -1,11 +1,19 @@
 # Stability checklist
 
 - [x] Read repository guidance, build protocol, popup/insertion/editor plans and UI QA notes; static investigation documented.
-- [x] T1: explicit guarded folder selection, OneWay editor inputs, regression tests including unchanged-save store row. Tests await grant; screen reproduction pending.
+- [x] T1: explicit guarded folder selection, OneWay editor inputs, regression tests including unchanged-save store row. Presentation suite passed; screen reproduction remains PENDING-USER.
 - [x] T1 audit: editor inputs explicitly guarded across rebind; Settings radios/startup/size guarded. Folders text belongs to stable row VMs (no session swap); popup query already explicit, selection does not persist data. Sort actions are explicit.
 - [x] T2: corrected confirmed theme-after-prewarm ordering and immediate-hide-before-layout; cloak offscreen prewarm through first layout, DWM dark attributes before show. Solid root already existed; no backdrop/per-show theme setup found. Visual causality/first-frame verification PENDING-USER.
-- [x] T3: UI-queued coalesced projection rebuilds + show freshness barrier, numeric timing logs, lazy window replacement behind unchanged DeferredPopupHost, subscription disposal. Invalidation/coalescing/50k import/memory/isolation tests added; await granted execution.
+- [x] T3: UI-queued coalesced projection rebuilds + show freshness barrier, numeric timing logs, lazy window replacement behind unchanged DeferredPopupHost, subscription disposal. Invalidation/coalescing/50k import/memory/isolation tests passed. 50k dirty open: 67.48 ms (VM rebuild/filter only, not rendered frame).
 - [x] T4: plan 006 records A/B/C approval, confirmed vs candidate causes, full invalidation matrix and screen limits; AGENTS documents queued cache/recoverable host architecture.
-- [x] T5 preparation: code/tests committed and changed compiled bindings statically reviewed. Requesting stab-01; no build/test/publish/app launch has run. Await explicit BUILD GO stab-01.
-- [ ] T5 execution: sequential Core/Presentation tests (-m:4), final AOT gate (-MaxCpuCount 4), record exact counts/warnings and BUILD_FINISHED.
-- [ ] Screen pass and before/after measurements arranged separately.
+- [x] T5 preparation: code/tests committed; compiled bindings statically reviewed. Explicit BUILD GO stab-01 received; all build outputs and TEMP/TMP confined to C: snapshot, nothing built on full D:.
+- [x] T5 execution: dotnet build -m:4 succeeded (0 warnings, 0 errors); Core 426 passed / 0 failed / 0 skipped; Presentation 467 passed / 0 failed / 0 skipped (sequential, -m:4). One scripts/publish-aot.ps1 -MaxCpuCount 4 -Output C:\temp\ss-stab-build\publish passed with 0 warnings, including 0 IL2xxx/IL3xxx. EXE + e_sqlite3.dll present, managed app DLL absent. BUILD_FINISHED stab-01 written. Initial build found one NumberBox event signature error; fixed/committed/re-mirrored before successful build and tests.
+- [ ] PENDING-USER: authorized screen pass, first-frame colour (light/dark/system/high contrast), first/repeated hotkey timings, A→Back→B folder behaviour, hidden theme/data refresh and lazy window recovery. No app launch, insertion, clipboard operation or user-profile mutation performed. No baseline or rendered-frame measurements claimed.
+
+## Evidence (C: only)
+
+- Validated source commit: `125a05a`; following commits update small text evidence only.
+- Build log: `C:\temp\ss-stab-build-build.log` (final successful build).
+- Core log: `C:\temp\ss-stab-core.log`; results `C:\temp\ss-stab-results\core.trx`.
+- Presentation log: `C:\temp\ss-stab-presentation.log`; results `C:\temp\ss-stab-results\presentation.trx` (includes `dirty_open_50000_ms=67.48 rows=50000`).
+- AOT log: `C:\temp\ss-stab-build\publish.log`; artifacts remain `C:\temp\ss-stab-build\publish`. No app was launched. User chooses deployment/run location.
