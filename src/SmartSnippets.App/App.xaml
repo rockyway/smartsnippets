@@ -11,6 +11,7 @@
             <!-- Design tokens (plan 009 T7). Inlined here rather than a separate ms-appx dictionary: the unpackaged app uses no ms-appx URIs elsewhere. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="MenuSolidBrush" Color="#2B2B2B" />
                     <!-- Menus (sort, row context) use a solid surface, not the default translucent acrylic. -->
                     <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SolidBackgroundFillColorQuarternaryBrush" />
                     <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
@@ -28,6 +29,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="MenuSolidBrush" Color="#F9F9F9" />
                     <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SolidBackgroundFillColorQuarternaryBrush" />
                     <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
                     <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
@@ -44,6 +46,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="MenuSolidBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ListViewItemBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="{ThemeResource SystemColorWindowColor}" />
@@ -66,6 +69,7 @@
             <!-- The default presenter paints a desktop-acrylic SystemBackdrop that shows the rows behind a menu; menus here are solid. -->
             <Style x:Key="SolidMenuFlyoutPresenterStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
                 <Setter Property="SystemBackdrop" Value="{x:Null}" />
+                <Setter Property="Background" Value="{ThemeResource MenuSolidBrush}" />
             </Style>
             <Style x:Key="SnippetListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
