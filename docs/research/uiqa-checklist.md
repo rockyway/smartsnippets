@@ -1,5 +1,18 @@
 # UI QA progress — feature/ui-qa
 
+DISPLAY9 visual-fix screen slot started 2026-10-28 19:17 -0500 and stopped approximately 19:24, before 19:47 deadline. Preflight and final process checks found zero Smart Snippets processes; no leftover profile backup. No builds or input; foreground probes compare HWNDs only. Each run used an owned copy, supervisor/watchdog, registry journal and hash-checked profile restoration.
+
+SCREEN_BATCH_DONE — visual matrix inspected; native popup presenter and minimum-size fixes still require build and new UI verification.
+
+## Latest visual-fix recheck
+
+- [x] Light popup background fix `e1bfa76` visually verified: `docs/qa/ui/c99a529829854285bdbdad03061120d5/popup-filled-Light-size0-900x600.png` is readable with light background; empty state is also readable. A narrowed search (`First`) shows one selected row and a 1-of-3 footer in `docs/qa/ui/74f6714782a74b8f85c82954a8ddc6e5/popup-search-Light-size32-900x600.png` (read individually, full image). Dark equivalent: `docs/qa/ui/4a94661838304ac5b050ce3740d5b31b/popup-search-Dark-size10-900x600.png`. The earlier apparently blank search attachment was a presentation/cropping ambiguity; pixel comparison confirmed identical result content below the toolbar for the previous query matching all rows.
+- [x] Folder icon adjacency fix `555aedf` verified on 900×600 (`docs/qa/ui/c99a529829854285bdbdad03061120d5/snippets-Light-size0-900x600.png`). Folder creation row now aligns with heading (`docs/qa/ui/c99a529829854285bdbdad03061120d5/folders-Light-size0-1280x800.png`, fix `9383e43`).
+- [ ] **Confirmed popup window-style defect:** the owned popup HWND has `WS_CAPTION=True` and `WS_EX_TOPMOST=False` (`style=0x14CF0000`), consistent with the visible native title bar in `docs/qa/ui/c99a529829854285bdbdad03061120d5/popup-filled-Light-size0-900x600.png`. Presenter initialization was conditional on an OverlappedPresenter before show; candidate explicit presenter `eb66e47` needs build and actual HWND-style/re-screenshot verification. Harness now asserts caption absent and topmost present.
+- [ ] **Minimum not verified:** manual WM_GETMINMAXINFO query still reports 136×39 and forced resize yields 148×39, including with the earlier preferred-size candidate. Programmatic resize can bypass interactive tracking; this does not establish the user's true drag minimum. Candidate explicit presenter `5f0ff45` needs build and interactive-equivalent verification; do not claim fixed.
+- [x] Read every PNG from current runs `c99a529829854285bdbdad03061120d5`, `1912325d6bad4d55909eaa7586451ab5`, `97d73b7d266f44268cc16e6805464610`, `974bafcdaa934a94baecba74e4a19cad`, `74f6714782a74b8f85c82954a8ddc6e5`, `4a94661838304ac5b050ce3740d5b31b`, `bb0cb5009dc943749bb1f87b5424b18d` under `docs/qa/ui/`. Snippets/Folders/Settings and popup filled/search/empty were captured in light/dark, default/10/32, at 1280×800 and 900×600; tiny forced candidates are not true-minimum evidence. One Light-10 run aborted after a foreground HWND changed; cause unproven, cleanup completed, and the repeat completed the captures.
+- [ ] Context menu screenshot/interaction BLOCKED-needs-pointer, real hotkey, insertion and picker flows PENDING-USER; no full UI acceptance claimed. Build request `uiqa-presenter-04` is pending.
+
 DISPLAY9 screen slot started 2026-10-28 19:04 -0500 and stopped approximately 19:14, before the 19:34 deadline. No builds or input were sent. Workers used isolated profile, watchdog and registry journal; cleanup reported no profile-hash mismatch. Final check: zero Smart Snippets processes and no leftover profile backup.
 
 SCREEN_BATCH_DONE — captures completed with visual failures and minimum-size limitations.

@@ -1,5 +1,5 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
-param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly)
+param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle)
 $ErrorActionPreference = 'Stop'
 if (-not $CaptureOnly) { throw 'Only the no-input capture mode is supported' }
 trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
@@ -37,6 +37,7 @@ public static class QaResize {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowStyle(IntPtr h, int index);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
@@ -55,6 +56,7 @@ public static class QaResize {
 }
 '@
 $script:QaFailures = New-Object 'System.Collections.Generic.List[string]'
+$script:PopupCaptionWarned = $false
 function Assert-OnDisplay9([IntPtr]$window) {
     $rect = New-Object QaResize+Rect
     if (-not [QaResize]::GetWindowRect($window, [ref]$rect)) { throw 'Window rectangle unavailable' }
@@ -177,6 +179,17 @@ try {
             Write-Host "Verified synthetic rows=$($fixtureRows[0]), theme=$Theme, customSize=$CustomSize"
             if ($MeasureOnly) {
                 if ($isMinimum) { continue }
+                if ($ProbePopupStyle) {
+                    Request-QAActivation @('--preview-popup')
+                    $popup = Wait-Until { Get-PopupWindow $p.Id } 8000 100
+                    if (-not $popup) { throw 'Preview popup not found for style probe' }
+                    $ph = [IntPtr]$popup.Current.NativeWindowHandle
+                    $null = Assert-OnDisplay9 $ph
+                    $style = [QaResize]::GetWindowStyle($ph, -16).ToInt64()
+                    $extendedStyle = [QaResize]::GetWindowStyle($ph, -20).ToInt64()
+                    Write-Host ("Owned popup WS_CAPTION=$([bool]($style -band 0x00C00000)); WS_EX_TOPMOST=$([bool]($extendedStyle -band 8)); style=0x{0:X}" -f $style)
+                    continue
+                }
                 $label = Find-ByName (Get-AppWindow $p.Id 'Smart Snippets') 'First synthetic' ([Windows.Automation.ControlType]::Text)
                 if (-not $label) { throw 'Synthetic label not found for text size measurement' }
                 Write-Host "Synthetic label bounding height=$($label.Current.BoundingRectangle.Height)"
@@ -198,22 +211,30 @@ try {
                 }
                 Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
             }
-            foreach ($query in @('', 'Synthetic', 'NoSuchQaResult')) {
+            foreach ($query in @('', 'First', 'NoSuchQaResult')) {
                 $activation = @('--preview-popup')
                 if ($query) { $activation += @('--preview-popup-query', $query) }
                 Request-QAActivation $activation
                 $popup = Wait-Until { Get-PopupWindow $p.Id } 8000 100
                 if (-not $popup) { throw 'Preview popup did not appear' }
+                $popupStyle = [QaResize]::GetWindowStyle([IntPtr]$popup.Current.NativeWindowHandle, -16).ToInt64()
+                $popupExtendedStyle = [QaResize]::GetWindowStyle([IntPtr]$popup.Current.NativeWindowHandle, -20).ToInt64()
+                if ((($popupStyle -band 0x00C00000) -ne 0 -or ($popupExtendedStyle -band 8) -eq 0) -and -not $script:PopupCaptionWarned) {
+                    $script:PopupCaptionWarned = $true
+                    $script:QaFailures.Add('Popup is not borderless and topmost')
+                    Write-Warning $script:QaFailures[-1]
+                }
                 $search = Find-ById $popup 'PopupSearch'
                 if (-not $search -or (Get-Text $search) -cne $query) { throw 'Preview query did not match' }
                 $list = Find-ById $popup 'PopupList'
                 if (-not $list) { throw 'Popup list missing' }
                 $rows = @(Find-All $list ([Windows.Automation.ControlType]::ListItem))
                 if ($query -eq 'NoSuchQaResult' -and $rows.Count -ne 0) { throw 'Empty preview search returned rows' }
-                if ($query -ne 'NoSuchQaResult' -and $rows.Count -lt 1) { throw 'Populated preview search returned no rows' }
+                if (-not $query -and $rows.Count -lt 3) { throw 'Populated preview returned fewer than three rows' }
+                if ($query -eq 'First' -and $rows.Count -ne 1) { throw 'Preview search did not return exactly one row' }
                 $popupText = @(Find-All $list ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                 if ('Synthetic one' -in $popupText -or 'Synthetic two' -in $popupText -or 'Synthetic three' -in $popupText) { throw 'Snippet bodies appeared in popup rows' }
-                $state = if (-not $query) { 'filled' } elseif ($query -eq 'Synthetic') { 'search' } else { 'empty' }
+                $state = if (-not $query) { 'filled' } elseif ($query -eq 'First') { 'search' } else { 'empty' }
                 Save-QAScreenshot ([IntPtr]$popup.Current.NativeWindowHandle) (Join-Path $out ("popup-$state-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
             }
             continue
