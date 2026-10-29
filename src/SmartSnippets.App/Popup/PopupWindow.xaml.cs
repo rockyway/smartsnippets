@@ -42,6 +42,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private DispatcherQueueTimer? _prewarmTimer;
     private readonly UISettings _uiSettings = new();
     private bool _closed;
+    private bool _previewSortMenuPending;
+    private bool _previewSortMenuQueued;
     private (int Corner, int Border)? _lastFrameFailure;
 
     internal PopupWindow(ITextSizeService textSize, Action openMainWindow)
@@ -181,14 +183,16 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private PopupShowResult ShowForReady(InsertionTarget target, long hotkeyTimestamp)
     {
         if (CanShow?.Invoke() == false) return default;
+        _previewSortMenuPending = false;
         var mode = ViewModel.Open(target);
         if (mode == PopupOpenMode.Ignored) { AppLog.Info("popup_open_ignored", "reason=inserting"); return default; }
         _hotkeyTimestamp = hotkeyTimestamp; _readyPending = true;
         Center(); ShowSurface(); SetVisible(true); ReportReady(); Activate(); PInvoke.SetForegroundWindow(_hwnd);
         return new(true, mode == PopupOpenMode.Resumed ? PopupFocusTarget.Editor : PopupFocusTarget.Search);
     }
-    internal void ShowPreview(HWND owner, string? query = null, bool activate = true) => _shows.RequestShow(() => ShowPreviewReady(owner, query, activate));
-    private PopupShowResult ShowPreviewReady(HWND owner, string? query, bool activate)
+    internal void ShowPreview(HWND owner, string? query = null, bool activate = true, bool openSortMenu = false)
+        => _shows.RequestShow(() => ShowPreviewReady(owner, query, activate, openSortMenu));
+    private PopupShowResult ShowPreviewReady(HWND owner, string? query, bool activate, bool openSortMenu)
     {
         if (CanShow?.Invoke() == false) return default;
         if (ViewModel.OpenPreview() == PopupOpenMode.Ignored) return default;
@@ -196,7 +200,11 @@ public sealed partial class PopupWindow : Window, IPopupHost
         var monitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
         if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
             WindowPlacement.CenterOn(AppWindow, PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), LogicalWidth, LogicalHeight);
+        // The QA menu seam is always non-activating, even if a caller uses the default activate value.
+        if (openSortMenu) activate = false;
+        _previewSortMenuPending = openSortMenu;
         ShowSurface(activate); SetVisible(true);
+        QueuePreviewSortMenu();
         if (activate)
         {
             Activate(); PInvoke.SetForegroundWindow(_hwnd);
@@ -212,6 +220,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     public void Hide()
     {
+        _previewSortMenuPending = false;
+        SortFlyout.Hide();
         _shows.Hide();
         if (!AppWindow.IsVisible && !_visible) return;
         CompositionTarget.Rendered -= OnRendered;
@@ -252,7 +262,29 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (e.WindowActivationState == WindowActivationState.Deactivated) { if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
         ReportReady();
     }
-    private void OnLayoutUpdated(object? sender, object e) => ReportReady();
+    private void OnLayoutUpdated(object? sender, object e)
+    {
+        ReportReady();
+        QueuePreviewSortMenu();
+    }
+    private void QueuePreviewSortMenu()
+    {
+        if (!_previewSortMenuPending || _previewSortMenuQueued || _closed || !_visible ||
+            SortButton.XamlRoot is null || SortButton.ActualWidth <= 0 || SortButton.ActualHeight <= 0) return;
+        // Leave the layout callback before creating another popup surface. Transient does not
+        // take keyboard focus (Standard, including Button's normal flyout invocation, does).
+        _previewSortMenuQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _previewSortMenuQueued = false;
+            if (!_previewSortMenuPending || _closed || !_visible || CanShow?.Invoke() == false) return;
+            _previewSortMenuPending = false;
+            UpdateSortChecks();
+            SortFlyout.ShowAt(SortButton, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+            {
+                ShowMode = Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowMode.Transient,
+            });
+        });
+    }
     private void ReportReady() { if (!_readyPending || !_visible) return; _readyPending = false; var ms = (int)Stopwatch.GetElapsedTime(_hotkeyTimestamp).TotalMilliseconds; AppLog.Info("popup_ready_ms", ms.ToString()); AppLog.Info(PopupLogFormat.Show(ms)); }
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -322,7 +354,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
             if (node is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or Microsoft.UI.Xaml.Controls.Primitives.RangeBase) return;
         Focus(ViewModel.IsConfirmingClipboardLoss ? PopupFocusTarget.Footer : PopupFocusTarget.Search);
     }
-    private void OnSortClick(object sender, RoutedEventArgs e)
+    private void OnSortClick(object sender, RoutedEventArgs e) => UpdateSortChecks();
+    private void UpdateSortChecks()
     {
         SortLast.IsChecked = ViewModel.Sort == SortField.LastUsed; SortUsage.IsChecked = ViewModel.Sort == SortField.UsageCount;
         SortCreated.IsChecked = ViewModel.Sort == SortField.Created; SortUpdated.IsChecked = ViewModel.Sort == SortField.Updated;

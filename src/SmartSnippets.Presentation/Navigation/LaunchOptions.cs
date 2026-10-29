@@ -3,7 +3,7 @@ using System.Text;
 namespace SmartSnippets.Presentation.Navigation;
 
 /// <summary>Optional, non-inserting navigation requests from a launch or redirected launch.</summary>
-public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? PreviewQuery)
+public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? PreviewQuery, bool PreviewPopupSortMenu = false)
 {
     public bool HasRequest => Page is not null || PreviewPopup;
 
@@ -11,6 +11,7 @@ public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? Pr
     {
         PageKind? page = null;
         bool preview = false;
+        bool sortMenu = false;
         string? query = null;
         for (var i = 0; i < args.Count; i++)
         {
@@ -22,9 +23,10 @@ public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? Pr
                 else if (value.Equals("settings", StringComparison.OrdinalIgnoreCase)) page = PageKind.Settings;
             }
             else if (args[i].Equals("--preview-popup", StringComparison.OrdinalIgnoreCase)) preview = true;
+            else if (args[i].Equals("--preview-popup-sort-menu", StringComparison.OrdinalIgnoreCase)) sortMenu = true;
             else if (args[i].Equals("--preview-popup-query", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal)) query = args[++i];
         }
-        return new(page, preview, preview ? query : null);
+        return new(page, preview, preview ? query : null, preview && sortMenu);
     }
 
     private static bool IsDelimiter(char c) => c == ' ' || c == '	';
