@@ -22,7 +22,6 @@
 
         <Grid
             Grid.Row="1"
-            MaxWidth="560"
             HorizontalAlignment="Stretch"
             ColumnSpacing="8">
             <Grid.ColumnDefinitions>
