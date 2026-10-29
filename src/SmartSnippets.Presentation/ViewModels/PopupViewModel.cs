@@ -207,6 +207,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public Task InsertFromMainAsync(long id)
     {
         if (!CanInsertFromMain || !_store.Snippets.Any(s => s.Snippet.Id == id)) return Task.CompletedTask;
+        if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return Task.CompletedTask; }
         var index = Items.FindIndex(item => item.Kind == PopupItemKind.Snippet && item.SnippetId == id);
         if (index < 0) { Query = string.Empty; index = Items.FindIndex(item => item.Kind == PopupItemKind.Snippet && item.SnippetId == id); }
         SelectedIndex = index;

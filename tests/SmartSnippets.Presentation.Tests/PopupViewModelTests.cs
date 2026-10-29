@@ -197,6 +197,22 @@ public sealed class PopupViewModelTests
     }
 
     [Fact]
+    public async Task MainInsertAfterMaybePasted_DismissesBeforeChangingQueryOrInserting()
+    {
+        var first = _store.SeedSnippet("first", "First");
+        var second = _store.SeedSnippet("second", "Second");
+        _insertion.Results.Enqueue(new(InsertionOutcome.MaybePasted, ""));
+        using var vm = Create(); vm.Open(Target); vm.Query = "First";
+        await vm.InsertSelectedAsync();
+        await vm.InsertFromMainAsync(second.Id);
+        Assert.Equal(PopupFooterState.None, vm.FooterState);
+        Assert.Equal("First", vm.Query);
+        Assert.Equal((Target, first.Id, default(InsertionOptions)), Assert.Single(_insertion.Calls));
+        await vm.InsertFromMainAsync(second.Id);
+        Assert.Equal((Target, second.Id, default(InsertionOptions)), _insertion.Calls[1]);
+    }
+
+    [Fact]
     public async Task SuccessWithNotice_StaysHidden()
     {
         _store.SeedSnippet("body"); _insertion.Results.Enqueue(new(InsertionOutcome.Inserted, "notice"));
