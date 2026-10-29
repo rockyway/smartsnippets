@@ -10,6 +10,15 @@
 - [x] T5 execution: dotnet build -m:4 succeeded (0 warnings, 0 errors); Core 426 passed / 0 failed / 0 skipped; Presentation 467 passed / 0 failed / 0 skipped (sequential, -m:4). One scripts/publish-aot.ps1 -MaxCpuCount 4 -Output C:\temp\ss-stab-build\publish passed with 0 warnings, including 0 IL2xxx/IL3xxx. EXE + e_sqlite3.dll present, managed app DLL absent. BUILD_FINISHED stab-01 written. Initial build found one NumberBox event signature error; fixed/committed/re-mirrored before successful build and tests.
 - [ ] PENDING-USER: authorized screen pass, first-frame colour (light/dark/system/high contrast), first/repeated hotkey timings, A→Back→B folder behaviour, hidden theme/data refresh and lazy window recovery. No app launch, insertion, clipboard operation or user-profile mutation performed. No baseline or rendered-frame measurements claimed.
 
+## Static review fix round (validation pending stab-02)
+
+- [x] Fix 1: NumberBox focus-within walks the focused descendant tree; an edit-session latch and deferred final-value read preserve focus-loss commits. Finite/rebind/session-identity guards retained. Typing, stepping, spin buttons and focus-loss commit still require control-level verification.
+- [ ] Fix 2: preserve recovery focus across asynchronous prewarm and suspended resume; regression tests.
+- [ ] Fix 3: explicit cancel/restart/timeout lifecycle; regression tests and dropped-request sweep.
+- [ ] Fix 4: same-ID search-field and exact usage-sort regression oracles.
+- [ ] Fix 5: narrow cache memory claims to actual cache-size/disposal checks.
+- [ ] Granted stab-02 C: snapshot build, sequential tests, AOT gate and final report.
+
 ## Screen grant stab-screen (2026-10-28)
 
 - [x] Safety preflight: authorized DISPLAY9 geometry exists; refused launch because unowned SmartSnippets.App PID 55600 was running from `D:\sources\demo\smartsnippets\publish\SmartSnippets.App.exe` and remained after a bounded 60-second wait.
