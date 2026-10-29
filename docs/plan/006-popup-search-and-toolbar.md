@@ -1561,6 +1561,93 @@ converters. Footer styling uses WinUI `InfoBar` severity. Several planned indivi
 are combined in theories or multi-assertion tests. Manual accessibility, mixed-DPI, Ctrl+Enter,
 performance and activation checks are deliberately left to the user's runbook.
 
+### Stability amendment — folder rebind, first frame and cached popup (2026-10-28)
+
+User decisions: (A) prevent silent folder loss when switching editor sessions, including all
+transient binding feedback, (B) stabilize white/black overlay flashing, (C) prewarm/cache the
+popup at startup and refresh its cache after changes. This supersedes the synchronous
+per-Changed cache pipeline and row-preview allocation described above (compact-row amendment
+`f85d4a1` remains authoritative for the UI).
+
+**Confirmed in static code:** editor assigned the new VM before updating a TwoWay
+SelectedItem with a changing ItemsSource; null was historically translated to Unfiled. The
+unsafe write path is removed: OneWay selection plus explicit user-selection method, rebind
+and VM loading/choice-refresh guards, real non-null Unfiled, selection restored through the
+current choice collection by ID. Other editor inputs use OneWay plus focused-input handlers;
+Settings rebinding is guarded. Folders row text edits have stable individual row VMs and only
+explicit commands persist them. Popup query is already explicit; selection is ephemeral and
+sort/layout actions are explicit. **Candidate UI causality:** actual WinUI event order producing
+the reported folder loss still requires screen confirmation; view-model tests simulate it and
+assert the saved store row, including save without edits and deliberate Unfiled.
+
+**Confirmed initialization defects:** original theme registration followed popup prewarm;
+prewarm showed then immediately hid without waiting for layout. Solid themed root background
+already existed. No popup Mica/acrylic backdrop, per-show presenter setup, or per-show theme
+switch was found. Main window constructor navigates but does not show; registration precedes
+show. DialogService copies the owner's requested theme before ShowAsync. Preview uses the
+same themed window. **Candidate flash cause:** unthemed/unfinished first surface; not visually
+proven. Prewarm now cloaks the native surface, shows offscreen without activation/switcher
+entry, waits for first valid content layout, hides then uncloaks. Show requests arriving during
+prewarm are deferred. ThemeService applies DWM immersive-dark state before show and updates
+hidden registered windows as well as visible ones. The solid ThemeResource root remains the
+background source (including high contrast); there is no material transition. Presenter and
+theme are not reapplied on every show. First-frame colour must still be checked on screen.
+
+**Cache:** compact projection only (label/folder/tags; no text preview copy), plus a search
+index referencing the store's immutable snapshots so full-text search is preserved. Startup
+builds the cache. A store event only marks dirty and queues one UI-dispatcher rebuild; events
+before that callback coalesce. No store access on a background thread. Hidden and visible
+result lists refresh while preserving query and selected ID. Open/OpenPreview/ShowAgain flush
+dirty work before showing, and editor-save/query/layout paths also enforce freshness. A
+queued callback following a show-barrier rebuild is a no-op. Rebuild replaces the dictionary,
+not appends. Dispose unsubscribes, clears rows/search/cache, and queued work checks disposal.
+Store D9 subscriber isolation was already implemented; existing Core tests and the new popup
+fake-store test cover failure of an earlier subscriber.
+
+| Invalidation source | Projection/search | Result/window action |
+|---|---|---|
+| Snippet create/edit/delete | Dirty; one queued rebuild | Refilter current query; preserve selected ID or first row |
+| Folder create/rename/delete | Same (folder labels/search/grouping may change) | Same; deleted folder becomes Unfiled |
+| Import (one Changed per batch), reload | Same; usage events in same turn coalesce | Same; 50k-import test exercises show barrier |
+| Usage recorded | Same (sort keys change) | Resort, preserve selected ID |
+| Popup sort preference | Immediate sorted search rebuild (also clears dirty) | Persist own key, first selection |
+| Popup layout preference | Flush dirty then rebuild row projection | Persist own key, regroup, first selection |
+| Query/filter | Flush dirty, filter current index | No persisted content writes; first selection |
+| Text size preference | No row-data copy to invalidate | Shared observable ITextSizeService updates existing rows/headings |
+| Theme preference / system actual theme | No row-data copy to invalidate | Apply registered window/root and DWM state even while hidden |
+
+Closed/lost popup windows are recreated lazily, themed and prewarmed before showing, using a
+stable forwarding endpoint beneath unchanged DeferredPopupHost. TrayStatePolicy and
+InsertionShutdownCoordinator are unchanged. Popup/editor view subscriptions detach on close.
+New logs are numeric-only `popup_cache_rebuild_ms=NN rows=N` and `popup_show_ms=NN`; the latter
+measures hotkey-handler timestamp through successful AppWindow.Show (not compositor latency).
+Existing `popup_ready_ms` and search-frame logs remain. The 50k dirty-open test records measured
+VM rebuild/filter time; real first-frame timing and <=300 ms acceptance remain screen work.
+
+### Static-review fix round (stab-02 validated)
+
+NumberBox edits use focus-within (including template descendants) plus a short edit-session
+latch/final-value read across focus-loss commit; finite/rebinding/session guards remain.
+`PopupShowCoordinator` now owns readiness/show/focus ordering, shared by the real WinUI window
+and pure tests. Pending recovery Footer focus survives asynchronous replacement warmup and
+DeferredPopupHost suspend/resume; default Search never overwrites it. Queued focus is versioned
+and cancelled by hide, close or any newer show (including nonactivating preview).
+Hide during warmup explicitly detaches layout, stops the timer, hides/uncloaks and returns to
+cold; the next show restarts initialization. A generation-tagged two-second timeout retries
+once, then logs `popup_prewarm_failed retry=next_show` and stays hidden/restartable. Timeout
+callbacks capture their originating generation, so stale timeouts cannot affect another
+attempt. WinUI layout readiness instead validates current warming/visibility/XamlRoot/width
+and detaches the handler on cancellation; it does not capture a per-attempt layout generation.
+Shared-policy tests reject explicitly supplied old completion generations, not prove native
+layout-event attribution. Real focus, layout and timer behaviour remain pending an authorized
+control-level pass; tests exercise the shared policy,
+not WinUI events. DeferredPopupHost, tray policy and shutdown coordinator remain unchanged.
+Granted C: snapshot validation of `ef70486`: final build 0 warnings/errors, Core 426 passed,
+Presentation 480 passed (including 13 additional fix-round cases), single Native AOT gate
+passed with 0 warnings. The initial ambiguous dispatcher-timer type and cascading XAML
+warning/error were corrected before the successful build. No app was launched. Current 50k
+VM dirty-open diagnostic: 69.16 ms; not desktop acceptance or memory-retention evidence.
+
 ## 11. Review response
 
 Review: [docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md).
@@ -1585,3 +1672,4 @@ change; the engine side of findings 1–2 is 007's.
 | 2026-10-28 | Draft written | Awaiting approval (G2), including the §9 design calls |
 | 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 4, 5, 7, 8 + UI for 1–2 addressed; user decisions recorded |
 | 2026-10-28 | User approved compact-row/context-menu amendment | One label row, right-aligned folder/tags, Copy / Insert / Edit / Delete; preview has no insertion, clipboard write or usage recording, and Copy is disabled. Pending UI verification. |
+| 2026-10-28 | User requested stability decisions A/B/C | Eliminate editor rebind write hazards; stabilize overlay first frame; startup-prewarm cached popup with coalesced fresh data. Static confirmed defects vs candidate visual causes and invalidation matrix recorded in §10 stability amendment. Granted C: snapshot build: 0 warnings/errors; Core 426/426, Presentation 467/467; single AOT gate passed, 0 warnings. Dirty-open projection/filter at 50k rows: 67.48 ms (not render time). Screen acceptance remains PENDING-USER. |

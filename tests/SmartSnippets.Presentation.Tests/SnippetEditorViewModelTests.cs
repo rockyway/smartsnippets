@@ -113,6 +113,43 @@ public sealed class SnippetEditorViewModelTests
     }
 
     [Fact]
+    public async Task FolderSelection_NullFeedbackDuringSwapAndRefresh_DoesNotMoveSnippet()
+    {
+        var a = _store.SeedSnippet("first", folder: "First");
+        var b = _store.SeedSnippet("second", folder: "Second", tags: "work");
+        using var page = new SnippetsPageViewModel(_store, _dialogs);
+        Assert.True(await page.RequestSelectAsync(a.Id));
+        // Back in the narrow view only hides the current editor; it does not clear the VM.
+        Assert.True(await page.RequestSelectAsync(b.Id));
+        var editor = page.Editor!;
+        editor.SelectFolder(null); // transient ComboBox SelectedItem feedback
+        Assert.Equal(b.FolderId, editor.SelectedFolder.Id);
+        Assert.False(editor.IsDirty);
+        editor.FolderChoices.CollectionChanged += (_, _) => editor.SelectedFolder = null!;
+        _store.SeedFolder("Another");
+        _store.RenameFolder(b.FolderId!.Value, "Renamed");
+        Assert.Equal("Renamed", editor.SelectedFolder.Name);
+        Assert.Equal(b.FolderId, editor.SelectedFolder.Id);
+        Assert.Contains(editor.FolderChoices, choice => ReferenceEquals(choice, editor.SelectedFolder));
+        Assert.False(editor.IsDirty);
+        Assert.True(await editor.SaveAsync());
+        Assert.Equal(b.FolderId, _store.Snippets.Single(s => s.Snippet.Id == b.Id).Snippet.FolderId);
+        Assert.Equal(b.FolderId, _store.UpdatedDrafts.Last().Draft.FolderId);
+    }
+
+    [Fact]
+    public async Task FolderSelection_ExplicitUnfiled_IsAnEdit()
+    {
+        var b = _store.SeedSnippet("second", folder: "Second");
+        using var editor = Edit(b.Id);
+        editor.SelectFolder(editor.FolderChoices.Single(c => c.Id is null));
+        Assert.Null(editor.SelectedFolder.Id);
+        Assert.True(editor.IsDirty);
+        Assert.True(await editor.SaveAsync());
+        Assert.Null(_store.Snippets.Single(s => s.Snippet.Id == b.Id).Snippet.FolderId);
+    }
+
+    [Fact]
     public async Task Save_WhitespaceText_ShowsTextError_KeepsDirty()
     {
         var vm = NewEditor();

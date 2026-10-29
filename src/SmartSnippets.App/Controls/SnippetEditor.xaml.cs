@@ -18,6 +18,7 @@ public sealed partial class SnippetEditor : UserControl
     private SnippetEditorViewModel? _viewModel;
     private ITextSizeService? _textSize;
     private bool _isCompact;
+    private bool _rebinding;
 
     public event EventHandler? EscapePressed;
 
@@ -38,19 +39,33 @@ public sealed partial class SnippetEditor : UserControl
         get => _viewModel;
         set
         {
-            if (_viewModel is not null)
+            _rebinding = true;
+            try
             {
-                _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            }
+                if (_viewModel is not null)
+                    _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
-            _viewModel = value;
-            if (_viewModel is not null)
-            {
-                _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-            }
+                _viewModel = value;
+                if (_viewModel is not null)
+                    _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
-            Bindings.Update();
+                Bindings.Update();
+            }
+            finally { _rebinding = false; }
         }
+    }
+
+    private bool IsUserInput(Control control) => !_rebinding && _viewModel is not null && control.FocusState != FocusState.Unfocused;
+    private void OnTextInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.Text = box.Text; }
+    private void OnLabelInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.Label = box.Text; }
+    private void OnTagsInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.TagsInput = box.Text; }
+    private void OnFolderNameInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.NewFolderName = box.Text; }
+    private void OnCustomLabelInput(object sender, RoutedEventArgs e) { if (sender is ToggleSwitch toggle && IsUserInput(toggle)) _viewModel!.IsLabelCustom = toggle.IsOn; }
+    private void OnFolderSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox box && !_rebinding && (box.IsDropDownOpen || box.FocusState == FocusState.Keyboard)
+            && box.SelectedItem is FolderChoice choice)
+            _viewModel?.SelectFolder(choice);
     }
 
     /// <summary>Font size source for the text, label and tags boxes.</summary>

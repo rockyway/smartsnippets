@@ -69,10 +69,11 @@ internal sealed class ThemeService : IThemeService
         UpdateTitleBar(window, root.ActualTheme);
     }
 
-    private static void UpdateTitleBar(Window window, ElementTheme effective)
+    private void UpdateTitleBar(Window window, ElementTheme effective)
     {
         var titleBar = window.AppWindow.TitleBar;
-        var dark = effective == ElementTheme.Dark;
+        var dark = ThemeSource.IsDark(Current, effective == ElementTheme.Dark);
+        WindowSurface.SetDark(window, dark);
         var foreground = dark ? Colors.White : Colors.Black;
         var hoverBackground = dark ? Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x33, 0x00, 0x00, 0x00);
         var pressedBackground = dark ? Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x22, 0x00, 0x00, 0x00);

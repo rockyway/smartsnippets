@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.ViewModels;
 
@@ -8,6 +10,8 @@ namespace SmartSnippets.App.Pages;
 public sealed partial class SettingsPage : Page
 {
     private SettingsViewModel? _viewModel;
+    private bool _rebinding;
+    private bool _customSizeEditing;
 
     public SettingsPage()
     {
@@ -20,8 +24,10 @@ public sealed partial class SettingsPage : Page
         get => _viewModel!;
         set
         {
-            _viewModel = value;
-            Bindings.Update();
+            _rebinding = true;
+            _customSizeEditing = false;
+            try { _viewModel = value; Bindings.Update(); }
+            finally { _rebinding = false; }
         }
     }
 
@@ -43,7 +49,7 @@ public sealed partial class SettingsPage : Page
     private void OnThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var index = ThemeRadios.SelectedIndex;
-        if (_viewModel is not null && index >= 0)
+        if (!_rebinding && _viewModel is not null && index >= 0)
         {
             _viewModel.SelectedTheme = SettingsViewModel.IndexToTheme(index);
         }
@@ -52,15 +58,50 @@ public sealed partial class SettingsPage : Page
     private void OnTextSizeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var index = TextSizeRadios.SelectedIndex;
-        if (_viewModel is not null && index >= 0)
+        if (!_rebinding && _viewModel is not null && index >= 0)
         {
             _viewModel.SelectedTextSizePreset = (TextSizePreset)index;
         }
     }
 
+    private static bool HasFocusWithin(FrameworkElement owner)
+    {
+        if (owner.XamlRoot is null) return false;
+        var focused = FocusManager.GetFocusedElement(owner.XamlRoot) as DependencyObject;
+        for (var current = focused; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (ReferenceEquals(current, owner)) return true;
+        return false;
+    }
+
+    private void OnCustomSizeGotFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_rebinding) _customSizeEditing = true;
+    }
+
+    private void OnCustomSizeLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not NumberBox box || !_customSizeEditing) return;
+        var session = _viewModel;
+        // NumberBox can commit its internal TextBox when focus leaves. Keep the edit
+        // session alive through that routed event, and read the final value afterward.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(session, _viewModel) || _rebinding) return;
+            if (_customSizeEditing && double.IsFinite(box.Value) && session is not null)
+                session.CustomTextSize = box.Value;
+            _customSizeEditing = HasFocusWithin(box);
+        });
+    }
+
+    private void OnCustomSizeChanged(NumberBox sender, NumberBoxValueChangedEventArgs e)
+    {
+        if (!_rebinding && _viewModel is not null && (_customSizeEditing || HasFocusWithin(sender)) && double.IsFinite(e.NewValue))
+            _viewModel.CustomTextSize = e.NewValue;
+    }
+
     private void OnStartupToggled(object sender, RoutedEventArgs e)
     {
-        if (_viewModel is not null)
+        if (!_rebinding && _viewModel is not null)
         {
             _viewModel.StartAtLogin = StartupToggle.IsOn;
         }

@@ -21,6 +21,11 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private readonly INotifier _notices;
     private readonly Action? _requestExit;
     private readonly ITextSizeService? _textSize;
+    private readonly Action<Action> _schedule;
+    private bool _cacheDirty;
+    private bool _rebuildQueued;
+    public int CacheRebuildCount { get; private set; }
+    public int CachedRowCount => _cache.Count;
     private SnippetSearch _search = new([]);
     private Dictionary<long, PopupItemViewModel> _cache = [];
     private long? _pendingId;
@@ -43,10 +48,11 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
 
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
         IInsertionService insertion, IClipboardService clipboard, IElevation elevation,
-        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null, ITextSizeService? textSize = null)
+        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null, ITextSizeService? textSize = null, Action<Action>? schedule = null)
     {
         _store = store; _settings = settingsStore; _insertion = insertion; _clipboard = clipboard;
         _elevation = elevation; _host = host; _dialogs = editorDialogs; _notices = notices; _requestExit = requestExit; _textSize = textSize;
+        _schedule = schedule ?? (action => action());
         _layout = initial.PopupLayout; _sort = initial.PopupSort;
         RebuildSearch(); Refresh(null);
         _store.Changed += OnStoreChanged;
@@ -58,6 +64,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     {
         // Never replace an in-flight insertion or an editor's preserved target.
         if (IsInserting || IsEditorOpen) return PopupOpenMode.Ignored;
+        EnsureCurrent();
         Target = null;
         IsPreview = true;
         Query = string.Empty;
@@ -69,6 +76,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public PopupOpenMode Open(InsertionTarget target)
     {
         if (IsInserting) return PopupOpenMode.Ignored;
+        EnsureCurrent();
         if (IsEditorOpen)
         {
             AppLog.Info("popup_opened", $"mode=Resumed pid={Target?.ProcessId}");
@@ -89,6 +97,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         set
         {
             if (!SetProperty(ref _query, value ?? string.Empty)) return;
+            EnsureCurrent();
             ClearTransientFooter(); StatusText = string.Empty; Refresh(null);
         }
     }
@@ -120,6 +129,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ToggleLayout()
     {
+        EnsureCurrent();
         _layout = IsFolderLayout ? PopupLayout.Flat : PopupLayout.Folder;
         _settings.Set(SettingsKeys.PopupLayout, _layout.ToString());
         OnPropertyChanged(nameof(Layout)); OnPropertyChanged(nameof(IsFolderLayout)); OnPropertyChanged(nameof(LayoutTooltip));
@@ -158,13 +168,18 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
 
     private void RebuildSearch()
     {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         _search = new SnippetSearch(SnippetSort.Apply(_store.Snippets, Sort));
         BuildCache();
+        _cacheDirty = false;
+        CacheRebuildCount++;
+        var ms = (int)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        AppLog.Info(PopupLogFormat.CacheRebuild(ms, _cache.Count));
     }
     private void BuildCache()
     {
         _cache = _store.Snippets.ToDictionary(v => v.Snippet.Id, v => new PopupItemViewModel(PopupItemKind.Snippet,
-            v.Snippet.Id, v.Snippet.Label, SnippetRowViewModel.PreviewOf(v.Snippet.Text),
+            v.Snippet.Id, v.Snippet.Label, string.Empty,
             IsFolderLayout ? string.Empty : v.FolderName ?? string.Empty,
             v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty)
             { TextSize = _textSize, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
@@ -189,8 +204,29 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CountText)); OnPropertyChanged(nameof(IsEmpty)); OnPropertyChanged(nameof(CanCopyFailedText));
     }
     private void SelectFirst() => SelectedIndex = Items.FindIndex(i => i.Kind == PopupItemKind.Snippet);
-    private void OnStoreChanged(object? sender, StoreChangedEventArgs e) { var id = SelectedId; RebuildSearch(); Refresh(id); }
-    public void Dispose() { if (_disposed) return; _disposed = true; _store.Changed -= OnStoreChanged; CloseEditor(); }
+    /// <summary>Show barrier: no window may be shown with a dirty projection.</summary>
+    public void EnsureCurrent()
+    {
+        if (_disposed || !_cacheDirty) return;
+        var id = SelectedId;
+        RebuildSearch(); Refresh(id);
+    }
+    private void OnStoreChanged(object? sender, StoreChangedEventArgs e)
+    {
+        _cacheDirty = true;
+        if (_rebuildQueued) return;
+        _rebuildQueued = true;
+        _schedule(() =>
+        {
+            _rebuildQueued = false;
+            if (_disposed) return;
+            // Rebuild off the hotkey/event stack, hidden or visible; preserve query and ID.
+            var id = SelectedId;
+            if (!_cacheDirty) return;
+            RebuildSearch(); Refresh(id);
+        });
+    }
+    public void Dispose() { if (_disposed) return; _disposed = true; _store.Changed -= OnStoreChanged; CloseEditor(); _cache.Clear(); _search = new([]); Items = []; }
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
     public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
     public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
@@ -258,6 +294,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     private void OnEditorSaved(object? sender, long id)
     {
+        EnsureCurrent();
         CloseEditor();
         if (!Items.Any(i => i.Kind == PopupItemKind.Snippet && i.SnippetId == id)) Query = string.Empty;
         Refresh(id); StatusText = UiText.SnippetAddedReady; _host.Focus(PopupFocusTarget.Search);

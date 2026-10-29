@@ -27,7 +27,7 @@
                         Header="Text"
                         IsSpellCheckEnabled="False"
                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                        Text="{x:Bind ViewModel.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Text="{x:Bind ViewModel.Text, Mode=OneWay}" TextChanged="OnTextInput"
                         TextWrapping="Wrap"
                         automation:AutomationProperties.Name="Snippet text" />
                     <TextBlock
@@ -50,12 +50,12 @@
                             FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                             Header="Label"
                             PlaceholderText="{x:Bind ViewModel.LabelPlaceholder, Mode=OneWay}"
-                            Text="{x:Bind ViewModel.Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            Text="{x:Bind ViewModel.Label, Mode=OneWay}" TextChanged="OnLabelInput"
                             automation:AutomationProperties.Name="Snippet label" />
                         <ToggleSwitch
                             Grid.Column="1"
                             VerticalAlignment="Bottom"
-                            IsOn="{x:Bind ViewModel.IsLabelCustom, Mode=TwoWay}"
+                            IsOn="{x:Bind ViewModel.IsLabelCustom, Mode=OneWay}" Toggled="OnCustomLabelInput"
                             OffContent="{x:Bind CustomLabelText}"
                             OnContent="{x:Bind CustomLabelText}"
                             ToolTipService.ToolTip="Off: the label follows the first tag or the first line of the text"
@@ -87,7 +87,8 @@
                             HorizontalAlignment="Stretch"
                             Header="Folder"
                             ItemsSource="{x:Bind ViewModel.FolderChoices, Mode=OneWay}"
-                            SelectedItem="{x:Bind ViewModel.SelectedFolder, Mode=TwoWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedFolder, Mode=OneWay}"
+                            SelectionChanged="OnFolderSelectionChanged"
                             automation:AutomationProperties.Name="Folder">
                             <!-- Typed template instead of DisplayMemberPath: reflection paths are not AOT-safe (WMC1510). -->
                             <ComboBox.ItemTemplate>
@@ -122,7 +123,7 @@
                                 Grid.Column="0"
                                 KeyDown="OnNewFolderKeyDown"
                                 PlaceholderText="Folder name"
-                                Text="{x:Bind ViewModel.NewFolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                Text="{x:Bind ViewModel.NewFolderName, Mode=OneWay}" TextChanged="OnFolderNameInput"
                                 automation:AutomationProperties.Name="New folder name" />
                             <Button
                                 Grid.Column="1"
@@ -157,7 +158,7 @@
                     <TextBox
                         FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
                         Header="Tags, comma separated"
-                        Text="{x:Bind ViewModel.TagsInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Text="{x:Bind ViewModel.TagsInput, Mode=OneWay}" TextChanged="OnTagsInput"
                         automation:AutomationProperties.Name="Tags" />
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.TagChips, Mode=OneWay}">
                         <ItemsRepeater.Layout>

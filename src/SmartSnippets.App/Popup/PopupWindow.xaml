@@ -8,7 +8,7 @@
     Title="Smart Snippets popup">
     <Grid x:Name="RootGrid" Padding="12" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" KeyDown="OnKeyDown">
         <Border x:Name="SelectedPalette" Background="{ThemeResource AccentTintBrush}" BorderBrush="{ThemeResource SystemControlHighlightAccentBrush}" Visibility="Collapsed"/>
-        <ContentControl IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <ContentControl Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid RowSpacing="8">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid ColumnSpacing="4">

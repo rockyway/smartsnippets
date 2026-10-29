@@ -144,7 +144,7 @@ public sealed class PopupViewModelTests
         vm.Open(Target);
         vm.Query = "REF bill";
         Assert.Equal(a.Id, vm.Items.Single().SnippetId);
-        Assert.Equal("Refund policy", vm.Items[0].Preview);
+        Assert.Empty(vm.Items[0].Preview);
         Assert.Equal("Support", vm.Items[0].FolderChip);
         Assert.Equal("billing", vm.Items[0].Tag1);
         Assert.Equal("chat", vm.Items[0].Tag2);
@@ -156,7 +156,7 @@ public sealed class PopupViewModelTests
         Assert.Equal("Support (1)", vm.Items[0].HeadingText);
         Assert.Equal(string.Empty, vm.Items[1].FolderChip);
         _store.UpdateSnippet(a.Id, new SnippetDraft("Refund edited", "Refund", true, a.FolderId, "billing"));
-        Assert.Equal("Refund edited", vm.Items[1].Preview);
+        Assert.Empty(vm.Items[1].Preview);
         Assert.Equal(a.Id, vm.Items[vm.SelectedIndex].SnippetId);
         vm.SetSort(SortField.Updated);
         Assert.Equal("Updated", _settings.Get(SettingsKeys.PopupSort));

@@ -30,6 +30,8 @@ Three projects with a strict dependency direction, `App → Presentation → Cor
 
 Insertion flow (plans 006/007): the foreground window is captured as an `InsertionTarget` before the popup shows; on Enter the popup hides, `IInsertionService.InsertAsync` revalidates the target, swaps the clipboard, sends Ctrl+V, restores the clipboard, and records usage only when the outcome is `Inserted`. The shared contract is `Presentation/Services/InsertionContracts.cs`; plans 006 and 007 both depend on it, so change it only by updating both plans.
 
+Popup caching: `PopupViewModel` builds its compact projection/search index at startup; store changes mark dirty and coalesce through an injected UI-dispatcher scheduler. Open/preview/re-show flush dirty data before showing. `RecoverablePopupHost` lazily replaces closed windows beneath the unchanged `DeferredPopupHost` recovery gate. Keep all store/cache work on the UI thread; no background access to the single-threaded store. `PopupShowCoordinator` (Presentation, shared policy tests) sequences native warmup, pending shows and focus; hiding an unfinished warmup returns it to cold, next show restarts, and generation-tagged timeout retries are bounded. Do not route focus around this coordinator or reveal an unfinished surface.
+
 ## Constraints that shape the code
 
 - Native AOT: no reflection. JSON only via source-generated contexts; Win32 via `LibraryImport`/CsWin32 (`NativeMethods.txt`); XAML uses compiled `x:Bind`. `IsAotCompatible` is on for every non-test project, so trim/AOT warnings are real defects.

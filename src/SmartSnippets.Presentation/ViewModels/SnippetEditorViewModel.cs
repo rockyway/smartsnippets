@@ -44,8 +44,28 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [NotifyPropertyChangedFor(nameof(AutoLabelHint))]
     private bool _isLabelCustom;
 
-    [ObservableProperty]
     private FolderChoice _selectedFolder = FolderChoice.Unfiled;
+
+    /// <summary>Null is transient control feedback, not a request to choose Unfiled.</summary>
+    public FolderChoice SelectedFolder
+    {
+        get => _selectedFolder;
+        set
+        {
+            if (value is null || ReferenceEquals(_selectedFolder, value)) return;
+            _selectedFolder = value;
+            OnPropertyChanged();
+            OnSelectedFolderChanged(value);
+        }
+    }
+
+    /// <summary>Only explicit, current choices are edits; collection reset/null feedback is not.</summary>
+    public void SelectFolder(FolderChoice? choice)
+    {
+        if (_loading || _updatingChoices || choice is null) return;
+        var current = FolderChoices.FirstOrDefault(c => c.Id == choice.Id);
+        if (current is not null) SelectedFolder = current;
+    }
 
     [ObservableProperty]
     private string _tagsInput = string.Empty;
@@ -407,16 +427,10 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         RecomputeDirty();
     }
 
-    partial void OnSelectedFolderChanged(FolderChoice value)
+    private void OnSelectedFolderChanged(FolderChoice value)
     {
         if (_loading || _updatingChoices)
         {
-            return;
-        }
-
-        if (value is null)
-        {
-            SelectedFolder = FolderChoice.Unfiled;
             return;
         }
 
