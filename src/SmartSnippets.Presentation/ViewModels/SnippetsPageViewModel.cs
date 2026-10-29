@@ -73,6 +73,16 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     /// </summary>
     public event EventHandler<long?>? SelectionRestored;
 
+    /// <summary>Requests that a view reveal the editor after a successful explicit Edit action.</summary>
+    public event EventHandler? EditorRevealRequested;
+
+    public async Task<bool> RequestEditAsync(long id)
+    {
+        if (!await RequestSelectAsync(id)) return false;
+        EditorRevealRequested?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     public void Dispose()
     {
         if (_disposed)

@@ -36,12 +36,14 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
             if (_viewModel is not null)
             {
                 _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+                _viewModel.EditorRevealRequested -= OnEditorRevealRequested;
             }
 
             _viewModel = value;
             if (_viewModel is not null)
             {
                 _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+                _viewModel.EditorRevealRequested += OnEditorRevealRequested;
             }
 
             Bindings.Update();
@@ -162,6 +164,12 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         BackButton.Visibility = showEditor ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    private void OnEditorRevealRequested(object? sender, EventArgs e)
+    {
+        _narrowShowsEditor = true;
+        ApplyLayout();
+    }
+
     private void OnBackClick(object sender, RoutedEventArgs e)
     {
         _narrowShowsEditor = false;
@@ -198,7 +206,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
         copy.Click += (_, _) => vm.CopyRow(row.Id);
         insert.Click += async (_, _) => await vm.InsertRowAsync(row.Id);
-        edit.Click += async (_, _) => await vm.RequestSelectAsync(row.Id);
+        edit.Click += async (_, _) => await vm.RequestEditAsync(row.Id);
         delete.Click += async (_, _) => await vm.DeleteRowAsync(row.Id);
         menu.Items.Add(copy); menu.Items.Add(insert); menu.Items.Add(edit); menu.Items.Add(delete);
         menu.ShowAt(container);

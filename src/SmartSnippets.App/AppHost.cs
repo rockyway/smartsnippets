@@ -257,7 +257,7 @@ internal sealed class AppHost
         if (_exiting || _mainWindow is not { } window) return;
         await window.ShowPageWithoutActivationAsync(PageKind.Snippets, show: true);
         if (window.CurrentPage != PageKind.Snippets || _snippetsViewModel is not { } page) return;
-        if (await page.RequestSelectAsync(snippetId)) window.BringToFront();
+        if (await page.RequestEditAsync(snippetId)) window.BringToFront();
     }
 
     private async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain)

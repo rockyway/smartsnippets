@@ -43,6 +43,23 @@ public sealed class SnippetsPageViewModelTests
     }
 
     [Fact]
+    public async Task EditRequestRevealsExistingEditorButNotWhenGuardCancelled()
+    {
+        var (page, a, b) = OpenDirtyOnA();
+        using (page)
+        {
+            var reveals = 0;
+            page.EditorRevealRequested += (_, _) => reveals++;
+            Assert.True(await page.RequestEditAsync(a));
+            Assert.Equal(1, reveals);
+            _dialogs.ChoiceAnswers.Enqueue(SaveChoice.Cancel);
+            Assert.False(await page.RequestEditAsync(b));
+            Assert.Equal(1, reveals);
+            Assert.Equal(a, page.Editor!.SnippetId);
+        }
+    }
+
+    [Fact]
     public async Task RowInsertWithoutTargetIsDisabled()
     {
         var row = _store.SeedSnippet("body");
