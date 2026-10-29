@@ -1,5 +1,8 @@
 GetForegroundWindow
 SetForegroundWindow
+ShowWindow
+SetWindowPos
+FlashWindow
 GetWindowThreadProcessId
 AttachThreadInput
 GetCurrentThreadId
