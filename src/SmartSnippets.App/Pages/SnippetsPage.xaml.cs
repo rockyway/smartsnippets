@@ -78,6 +78,15 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         _searchTimer.Stop();
         if (SearchBox.Text != _viewModel.List.Query) _searchTimer.Start();
     }
+    // Escape in the search box clears the text and shows the full list at once.
+    private void OnSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape || _viewModel is null || SearchBox.Text.Length == 0) return;
+        e.Handled = true;
+        _searchTimer?.Stop();
+        SearchBox.Text = string.Empty;
+        _viewModel.List.Query = string.Empty;
+    }
     private Microsoft.UI.Dispatching.DispatcherQueueTimer CreateSearchTimer()
     {
         var timer = DispatcherQueue.CreateTimer();
