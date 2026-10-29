@@ -1624,6 +1624,21 @@ measures hotkey-handler timestamp through successful AppWindow.Show (not composi
 Existing `popup_ready_ms` and search-frame logs remain. The 50k dirty-open test records measured
 VM rebuild/filter time; real first-frame timing and <=300 ms acceptance remain screen work.
 
+### Static-review fix round (awaiting stab-02 validation)
+
+NumberBox edits use focus-within (including template descendants) plus a short edit-session
+latch/final-value read across focus-loss commit; finite/rebinding/session guards remain.
+`PopupShowCoordinator` now owns readiness/show/focus ordering, shared by the real WinUI window
+and pure tests. Pending recovery Footer focus survives asynchronous replacement warmup and
+DeferredPopupHost suspend/resume; default Search never overwrites it. Queued focus is versioned
+and cancelled by hide, close or any newer show (including nonactivating preview).
+Hide during warmup explicitly detaches layout, stops the timer, hides/uncloaks and returns to
+cold; the next show restarts initialization. A generation-tagged two-second timeout retries
+once, then logs `popup_prewarm_failed retry=next_show` and stays hidden/restartable. Late
+completion/timeout callbacks cannot complete an abandoned generation. Real focus and timer
+behaviour remain pending an authorized control-level pass; tests exercise the shared policy,
+not WinUI events. DeferredPopupHost, tray policy and shutdown coordinator remain unchanged.
+
 ## 11. Review response
 
 Review: [docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md).

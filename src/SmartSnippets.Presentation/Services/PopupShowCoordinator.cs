@@ -2,31 +2,66 @@ namespace SmartSnippets.Presentation.Services;
 
 public readonly record struct PopupShowResult(bool Shown, PopupFocusTarget? DefaultFocus);
 
-/// <summary>Orders asynchronous surface readiness, show and focus without WinUI dependencies.</summary>
-public sealed class PopupShowCoordinator(Action<Action> schedule, Action<PopupFocusTarget> applyFocus)
+/// <summary>Orders restartable surface initialization, show and focus without WinUI dependencies.</summary>
+public sealed class PopupShowCoordinator(Action<Action> schedule, Action<PopupFocusTarget> applyFocus,
+    Action? startWarmup = null, Action? stopWarmup = null, Action? warmupFailed = null)
 {
     private Func<PopupShowResult>? _pendingShow;
     private PopupFocusTarget? _pendingFocus;
     private bool _ready;
+    private bool _warming;
     private bool _visible;
     private bool _closed;
     private int _focusVersion;
+    private int _warmupRestarts;
+    public int WarmupGeneration { get; private set; }
+    public bool IsWarming => _warming;
 
-    public void BeginWarmup() { _ready = false; _visible = false; _focusVersion++; }
+    public void BeginWarmup()
+    {
+        if (_closed || _ready || _warming) return;
+        _warming = true; _visible = false; _focusVersion++; WarmupGeneration++;
+        try { startWarmup?.Invoke(); }
+        catch { CancelWarmup(); throw; }
+    }
 
     public void RequestShow(Func<PopupShowResult> show)
     {
         if (_closed) return;
+        _focusVersion++; // Even a non-activating preview supersedes previously queued focus.
         _pendingShow = show;
         _pendingFocus = null; // A newer show supersedes the old show and its focus.
         if (_ready) ShowPending();
+        else
+        {
+            if (!_warming) _warmupRestarts = 0;
+            BeginWarmup();
+        }
     }
 
-    public void CompleteWarmup()
+    public void CompleteWarmup(int generation)
     {
-        if (_closed) return;
-        _ready = true;
+        if (_closed || !_warming || generation != WarmupGeneration) return;
+        _warming = false; _ready = true;
+        stopWarmup?.Invoke();
         ShowPending();
+    }
+
+    public void WarmupTimedOut(int generation)
+    {
+        if (_closed || !_warming || generation != WarmupGeneration) return;
+        CancelWarmup();
+        // One bounded retry; a second failure stays cold (never reveal unfinished content).
+        // Retain the pending request/focus, and let a subsequent show start another attempt.
+        if (_warmupRestarts++ == 0) BeginWarmup();
+        else warmupFailed?.Invoke();
+    }
+
+    private void CancelWarmup()
+    {
+        if (!_warming) return;
+        _warming = false; _ready = false; WarmupGeneration++;
+        stopWarmup?.Invoke();
     }
 
     private void ShowPending()
@@ -58,6 +93,8 @@ public sealed class PopupShowCoordinator(Action<Action> schedule, Action<PopupFo
     public void Hide()
     {
         _visible = false; _pendingShow = null; _pendingFocus = null; _focusVersion++;
+        _warmupRestarts = 0;
+        CancelWarmup();
     }
 
     public void Close() { Hide(); _closed = true; }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.UI.Input;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -37,15 +38,16 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private bool _awaitingLayout;
     private bool _awaitingFrame;
     private MenuFlyout? _contextFlyout;
-    private bool _prewarming;
     private readonly PopupShowCoordinator _shows;
+    private DispatcherQueueTimer? _prewarmTimer;
 
     internal PopupWindow(ITextSizeService textSize, Action openMainWindow, Action<long> editSnippet)
     {
         TextSize = textSize; _openMainWindow = openMainWindow; _editSnippet = editSnippet;
         InitializeComponent();
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus);
+        _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
+            StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
         // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
         // Install one explicitly so borderless/topmost settings are not silently skipped.
         var presenter = OverlappedPresenter.Create();
@@ -103,26 +105,33 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _ => InfoBarSeverity.Informational,
     };
 
-    internal void Prewarm()
+    internal void Prewarm() => _shows.BeginWarmup();
+    private void StartWindowWarmup()
     {
-        if (_prewarming) return;
-        _prewarming = true;
-        _shows.BeginWarmup();
         // Keep the compositor surface cloaked until themed content has completed first layout.
         // Showing without activation is needed to create XamlRoot; immediate Hide aborted layout.
         WindowSurface.Cloak(this, true);
         RootGrid.LayoutUpdated += OnPrewarmLayout;
+        var generation = _shows.WarmupGeneration;
+        _prewarmTimer = DispatcherQueue.CreateTimer();
+        _prewarmTimer.Interval = TimeSpan.FromSeconds(2);
+        _prewarmTimer.IsRepeating = false;
+        _prewarmTimer.Tick += (_, _) => _shows.WarmupTimedOut(generation);
+        _prewarmTimer.Start();
         AppWindow.MoveAndResize(new RectInt32(-32000, -32000, LogicalWidth, LogicalHeight));
         AppWindow.Show(false);
     }
-    private void OnPrewarmLayout(object? sender, object e)
+    private void StopWindowWarmup()
     {
-        if (RootGrid.XamlRoot is null || RootGrid.ActualWidth <= 0) return;
+        _prewarmTimer?.Stop(); _prewarmTimer = null;
         RootGrid.LayoutUpdated -= OnPrewarmLayout;
         AppWindow.Hide();
         WindowSurface.Cloak(this, false);
-        _prewarming = false;
-        _shows.CompleteWarmup();
+    }
+    private void OnPrewarmLayout(object? sender, object e)
+    {
+        if (!_shows.IsWarming || !AppWindow.IsVisible || RootGrid.XamlRoot is null || RootGrid.ActualWidth <= 0) return;
+        _shows.CompleteWarmup(_shows.WarmupGeneration);
     }
     internal void ShowFor(InsertionTarget target, long hotkeyTimestamp) => _shows.RequestShow(() => ShowForReady(target, hotkeyTimestamp));
     private PopupShowResult ShowForReady(InsertionTarget target, long hotkeyTimestamp)
