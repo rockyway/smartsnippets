@@ -51,6 +51,10 @@ public sealed partial class PopupWindow : Window, IPopupHost
         TextSize = textSize; _openMainWindow = openMainWindow;
         InitializeComponent();
         FlyoutSurface.KeepSolid(SortFlyout);
+        RootGrid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
+        {
+            if (e.Key is VirtualKey.Enter or VirtualKey.Down or VirtualKey.Up or VirtualKey.PageDown or VirtualKey.PageUp or VirtualKey.Tab) ApplyQuery();
+        }), true);
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
@@ -244,6 +248,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     public void Hide()
     {
         _previewSortMenuPending = false;
+        _searchTimer?.Stop();
         SortFlyout.Hide();
         _shows.Hide();
         if (!AppWindow.IsVisible && !_visible) return;
@@ -455,6 +460,25 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnSearchChanged(object sender, TextChangedEventArgs e)
     {
         if (ViewModel is null || !_visible) return;
+        // Debounce: restart the timer on every keystroke so fast typing searches once, not per character.
+        if (SearchBox.Text == ViewModel.Query) { _searchTimer?.Stop(); return; }
+        _searchTimer ??= CreateSearchTimer();
+        _searchTimer.Stop(); _searchTimer.Start();
+    }
+    private const int SearchDebounceMs = 120;
+    private DispatcherQueueTimer? _searchTimer;
+    private DispatcherQueueTimer CreateSearchTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(SearchDebounceMs); timer.IsRepeating = false;
+        timer.Tick += (_, _) => ApplyQuery();
+        return timer;
+    }
+    // Also called before Enter/arrow keys act, so they never see a stale result list.
+    private void ApplyQuery()
+    {
+        _searchTimer?.Stop();
+        if (ViewModel is null || !_visible || SearchBox.Text == ViewModel.Query) return;
         CompositionTarget.Rendered -= OnRendered;
         _searchStarted = Stopwatch.GetTimestamp(); _awaitingLayout = false; _awaitingFrame = false;
         ViewModel.Query = SearchBox.Text;
