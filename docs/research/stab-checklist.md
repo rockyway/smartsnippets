@@ -10,6 +10,12 @@
 - [x] T5 execution: dotnet build -m:4 succeeded (0 warnings, 0 errors); Core 426 passed / 0 failed / 0 skipped; Presentation 467 passed / 0 failed / 0 skipped (sequential, -m:4). One scripts/publish-aot.ps1 -MaxCpuCount 4 -Output C:\temp\ss-stab-build\publish passed with 0 warnings, including 0 IL2xxx/IL3xxx. EXE + e_sqlite3.dll present, managed app DLL absent. BUILD_FINISHED stab-01 written. Initial build found one NumberBox event signature error; fixed/committed/re-mirrored before successful build and tests.
 - [ ] PENDING-USER: authorized screen pass, first-frame colour (light/dark/system/high contrast), first/repeated hotkey timings, A→Back→B folder behaviour, hidden theme/data refresh and lazy window recovery. No app launch, insertion, clipboard operation or user-profile mutation performed. No baseline or rendered-frame measurements claimed.
 
+## Screen grant stab-screen (2026-10-28)
+
+- [x] Safety preflight: authorized DISPLAY9 geometry exists; refused launch because unowned SmartSnippets.App PID 55600 was running from `D:\sources\demo\smartsnippets\publish\SmartSnippets.App.exe` and remained after a bounded 60-second wait.
+- [ ] Screen checks remain PENDING (blocked before launch): first-frame colour/capture, no activation/taskbar entry, synthetic 10k timing logs, Snippets/Settings rendering. Folder behaviour remains PENDING-USER.
+- No windows touched/captured, no candidate launch, no builds/input/profile/registry changes. `docs/qa/ui/stab/README.md` records the refusal; no screenshot evidence exists.
+
 ## Evidence (C: only)
 
 - Validated source commit: `125a05a`; following commits update small text evidence only.
