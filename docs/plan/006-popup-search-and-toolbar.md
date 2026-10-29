@@ -1634,9 +1634,13 @@ DeferredPopupHost suspend/resume; default Search never overwrites it. Queued foc
 and cancelled by hide, close or any newer show (including nonactivating preview).
 Hide during warmup explicitly detaches layout, stops the timer, hides/uncloaks and returns to
 cold; the next show restarts initialization. A generation-tagged two-second timeout retries
-once, then logs `popup_prewarm_failed retry=next_show` and stays hidden/restartable. Late
-completion/timeout callbacks cannot complete an abandoned generation. Real focus and timer
-behaviour remain pending an authorized control-level pass; tests exercise the shared policy,
+once, then logs `popup_prewarm_failed retry=next_show` and stays hidden/restartable. Timeout
+callbacks capture their originating generation, so stale timeouts cannot affect another
+attempt. WinUI layout readiness instead validates current warming/visibility/XamlRoot/width
+and detaches the handler on cancellation; it does not capture a per-attempt layout generation.
+Shared-policy tests reject explicitly supplied old completion generations, not prove native
+layout-event attribution. Real focus, layout and timer behaviour remain pending an authorized
+control-level pass; tests exercise the shared policy,
 not WinUI events. DeferredPopupHost, tray policy and shutdown coordinator remain unchanged.
 Granted C: snapshot validation of `ef70486`: final build 0 warnings/errors, Core 426 passed,
 Presentation 480 passed (including 13 additional fix-round cases), single Native AOT gate
