@@ -12,6 +12,7 @@
   <ItemGroup>
     <None Include="..\SmartSnippets.Core.Tests\Porting\Fixtures\*.json" Link="Porting\Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Source contracts only: inspect layout without referencing WinUI or compiling App on Linux. -->
+    <None Include="..\..\src\SmartSnippets.App\Popup\PopupWindow.xaml.cs;..\..\src\SmartSnippets.App\Pages\SnippetsPage.xaml.cs;..\..\src\SmartSnippets.App\Services\FlyoutSurface.cs" Link="UiContracts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\SmartSnippets.App\**\*.xaml" Exclude="..\..\src\SmartSnippets.App\obj\**;..\..\src\SmartSnippets.App\bin\**" Link="UiContracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

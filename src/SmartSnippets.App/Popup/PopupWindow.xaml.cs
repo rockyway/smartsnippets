@@ -281,6 +281,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
             UpdateSortChecks();
             SortFlyout.ShowAt(SortButton, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
             {
+                Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom,
                 ShowMode = Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowMode.Transient,
             });
         });
