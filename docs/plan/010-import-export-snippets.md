@@ -165,7 +165,9 @@ your whole Smart Snippets library as one file.
   snippet. T10 measures the search box at that fixed width (runbook step 9a). **Defined fallback:** if the search box is
   narrower than 120 px, the New snippet button also becomes icon-only (glyph `&#xE710;`). Its tooltip "New snippet
   (Ctrl+N)" and accessible name "New snippet" are unchanged, which frees about 80 px. The step is re-measured, and the
-  result recorded in §10.
+  result recorded in §10. User-directed icon redesign: Import uses Download U+E896 (arrow into tray), Export uses
+  Upload U+E898 (arrow out of tray), from Segoe Fluent Icons / Segoe MDL2 Assets; retain icon-only buttons,
+  tooltips, accessible names, and automation IDs. Visual verification across themes and text sizes remains pending.
 - **D8 — one usage rule everywhere: the representable range `0..int.MaxValue`, saturating at the top** (review finding
   3; round-2 R1).
   - **Import** (every format) keeps any integral count in `0..int.MaxValue` **exactly**, and saturates larger finite

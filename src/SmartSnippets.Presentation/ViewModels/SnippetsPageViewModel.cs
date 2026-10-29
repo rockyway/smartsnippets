@@ -21,6 +21,8 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     private readonly IDialogService _dialogs;
     private readonly IClipboardService? _clipboard;
     private readonly TimeProvider? _time;
+    private readonly Func<long, Task>? _insertRow;
+    private readonly Func<bool>? _canInsertRow;
     private int _suppressListSelection;
     private bool _disposed;
 
@@ -34,14 +36,19 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         IDialogService dialogs,
         IClipboardService? clipboard = null,
         TimeProvider? time = null,
-        ISnippetFileService? files = null)
+        ISnippetFileService? files = null,
+        ITextSizeService? textSize = null,
+        Func<long, Task>? insertRow = null,
+        Func<bool>? canInsertRow = null)
     {
         _store = store;
         _dialogs = dialogs;
         _clipboard = clipboard;
         _time = time;
+        _insertRow = insertRow;
+        _canInsertRow = canInsertRow;
         Porting = new SnippetPortingViewModel(store, dialogs, files, time);
-        List = new SnippetListViewModel(store);
+        List = new SnippetListViewModel(store, textSize);
         List.PropertyChanged += OnListPropertyChanged;
         List.Rebuilt += OnListRebuilt;
     }
@@ -65,6 +72,16 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     /// or null). <see cref="SnippetListViewModel.SelectedId"/> changes too; views bound to it need nothing else.
     /// </summary>
     public event EventHandler<long?>? SelectionRestored;
+
+    /// <summary>Requests that a view reveal the editor after a successful explicit Edit action.</summary>
+    public event EventHandler? EditorRevealRequested;
+
+    public async Task<bool> RequestEditAsync(long id)
+    {
+        if (!await RequestSelectAsync(id)) return false;
+        EditorRevealRequested?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
 
     public void Dispose()
     {
@@ -118,6 +135,21 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         SetListSelection(null);
         return true;
     }
+
+    public bool CanInsertRow => _insertRow is not null && _canInsertRow?.Invoke() == true;
+
+    public void CopyRow(long id)
+    {
+        var snippet = _store.Snippets.FirstOrDefault(v => v.Snippet.Id == id)?.Snippet;
+        if (snippet is null || _clipboard is null) return;
+        _clipboard.SetText(snippet.Text);
+        AppLog.Info("snippet_row_copied", $"id={id}");
+    }
+
+    public Task InsertRowAsync(long id) => CanInsertRow && _store.Snippets.Any(v => v.Snippet.Id == id)
+        ? _insertRow!(id) : Task.CompletedTask;
+
+    public Task<bool> DeleteRowAsync(long id) => DeleteAsync(id);
 
     /// <summary>Deletes the selected snippet after confirming, then selects the next row. False when nothing was deleted.</summary>
     public Task<bool> DeleteSelectedAsync() => DeleteAsync(List.SelectedId ?? Editor?.SnippetId);

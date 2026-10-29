@@ -59,6 +59,16 @@ public sealed class DeferredPopupHostTests
     }
 
     [Fact]
+    public void EditRespectsShutdownSuspension()
+    {
+        var window = new FakePopupHost(); var host = new DeferredPopupHost(window);
+        host.EditSnippet(1);
+        host.Suspend(); host.EditSnippet(2);
+        host.Commit(); host.EditSnippet(3);
+        Assert.Equal(["Edit:1"], window.Calls);
+    }
+
+    [Fact]
     public void CommittedShutdown_DiscardsPendingAndFutureRecovery()
     {
         var window = new FakePopupHost(); var host = new DeferredPopupHost(window);

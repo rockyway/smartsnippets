@@ -22,6 +22,17 @@ public sealed class SettingsViewModelTests
         new(initial ?? new AppSettings(), _store, _theme, _textSize, _startup, _hotkey, _elevation, () => _exitRequests++);
 
     [Fact]
+    public void PreviewGlobalDialog_InvokesPreviewHost()
+    {
+        var opened = 0;
+        using var vm = new SettingsViewModel(new AppSettings(), _store, _theme, _textSize, _startup, _hotkey, _elevation,
+            previewGlobalDialog: () => opened++);
+        vm.PreviewGlobalDialogCommand.Execute(null);
+        Assert.Equal(1, opened);
+        Assert.Equal(UiText.PreviewGlobalDialog, vm.PreviewGlobalDialogText);
+    }
+
+    [Fact]
     public void LoadsPersistedValues()
     {
         _startup.Enabled = true;

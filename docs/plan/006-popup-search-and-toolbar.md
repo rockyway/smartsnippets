@@ -1,12 +1,14 @@
 # 006 — Popup: search, layouts, sorts, toolbar and add snippet
 
 **Date:** 2026-10-28
-**Status:** Approved 2026-10-28 (G2)
+**Status:** Approved 2026-10-28 (G2); compact rows/context menu amendment in progress
 **Size:** L (subplan of [001-master-smart-snippets-v1.md](001-master-smart-snippets-v1.md))
 **Area:** `src/SmartSnippets.Presentation/` (popup view-model, contracts, `UiText`), `src/SmartSnippets.App/Popup/`, `src/SmartSnippets.App/Controls/SnippetEditor.xaml(.cs)`, `src/SmartSnippets.App/Services/` (target capture, tray, interim insertion adapter), `src/SmartSnippets.App/AppHost.cs`, `tests/SmartSnippets.Presentation.Tests/`, one small Core settings change
 **Depends on:** 003, 004, 005, 009 (all complete, CI green on `main`), plus the **007 insertion contract** (§4.3.1), which the coordinator writes in T0 before any track starts
 **Design reference:** [docs/design/001-smart-snippets-design.html](../design/001-smart-snippets-design.html), section "Global popup" and its `<script>` (`row()`, `render()`, key handling, add-snippet dialog)
 **Requirement brief confirmed:** 2026-10-28 (G1, 006–008 brief)
+
+> **User amendment — compact rows and context actions (2026-10-28).** Supersedes older row-preview/chip statements: each snippet is a single ellipsized label with muted, right-aligned folder and tags on the same row, respecting text size and accessible naming. Search still matches text, label, folder and tags. A row context menu must offer exactly Copy, Insert, Edit and Delete; preview-mode Insert closes without insertion. Menu interaction must not accidentally trigger popup deactivation, and Esc dismisses the menu before the popup. Implementation and real-UI acceptance are pending.
 **Revised:** 2026-10-28 after the external review
 [docs/review/006-008-implementation-readiness.md](../review/006-008-implementation-readiness.md)
 and the user's decisions on it (§11)
@@ -1582,3 +1584,4 @@ change; the engine side of findings 1–2 is 007's.
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Draft written | Awaiting approval (G2), including the §9 design calls |
 | 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 4, 5, 7, 8 + UI for 1–2 addressed; user decisions recorded |
+| 2026-10-28 | User approved compact-row/context-menu amendment | One label row, right-aligned folder/tags, Copy / Insert / Edit / Delete; preview has no insertion, clipboard write or usage recording, and Copy is disabled. Pending UI verification. |

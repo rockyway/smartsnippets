@@ -14,6 +14,8 @@ public sealed partial class MainWindow : Window
 {
     private const int LogicalWidth = 1000;
     private const int LogicalHeight = 700;
+    private const int MinimumLogicalWidth = 640;
+    private const int MinimumLogicalHeight = 480;
 
     private readonly Func<PageKind, UIElement> _pageFactory;
     private readonly Dictionary<PageKind, UIElement> _pages = [];
@@ -36,6 +38,28 @@ public sealed partial class MainWindow : Window
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var dpi = PInvoke.GetDpiForWindow(hwnd);
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
+        // Install the presenter explicitly; the pre-show default may not expose
+        // OverlappedPresenter, which otherwise silently skips the size limits.
+        var presenter = OverlappedPresenter.Create();
+        presenter.PreferredMinimumWidth = (int)(MinimumLogicalWidth * scale);
+        presenter.PreferredMinimumHeight = (int)(MinimumLogicalHeight * scale);
+        AppWindow.SetPresenter(presenter);
+        AppWindow.Changed += (_, args) =>
+        {
+            if (!args.DidPositionChange && !args.DidSizeChange) return;
+            // Re-read after move or size/DPI processing, rather than using the
+            // monitor on which the hidden window was originally constructed.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                var currentDpi = PInvoke.GetDpiForWindow(hwnd);
+                if (currentDpi == 0) return;
+                var currentScale = currentDpi / 96.0;
+                var width = (int)(MinimumLogicalWidth * currentScale);
+                var height = (int)(MinimumLogicalHeight * currentScale);
+                if (presenter.PreferredMinimumWidth != width) presenter.PreferredMinimumWidth = width;
+                if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
+            });
+        };
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         AppWindow.Closing += OnClosing;
 
@@ -57,6 +81,13 @@ public sealed partial class MainWindow : Window
     {
         BringToFront();
         _ = NavigateGuardedAsync(kind);
+    }
+
+    /// <summary>Navigate through the normal unsaved-changes guard without taking foreground.</summary>
+    internal async Task ShowPageWithoutActivationAsync(PageKind kind, bool show)
+    {
+        await NavigateGuardedAsync(kind);
+        if (show) AppWindow.Show(false);
     }
 
     /// <summary>Shows and activates the window on the page it already displays.</summary>

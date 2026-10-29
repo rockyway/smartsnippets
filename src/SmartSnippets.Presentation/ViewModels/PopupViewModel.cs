@@ -20,6 +20,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogs;
     private readonly INotifier _notices;
     private readonly Action? _requestExit;
+    private readonly ITextSizeService? _textSize;
     private SnippetSearch _search = new([]);
     private Dictionary<long, PopupItemViewModel> _cache = [];
     private long? _pendingId;
@@ -37,20 +38,34 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private PopupFooterState _footerState;
     private string _footerMessage = string.Empty;
     private bool _isInserting;
+    private bool _contextDialogOpen;
     private SnippetEditorViewModel? _editor;
 
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
         IInsertionService insertion, IClipboardService clipboard, IElevation elevation,
-        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null)
+        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null, ITextSizeService? textSize = null)
     {
         _store = store; _settings = settingsStore; _insertion = insertion; _clipboard = clipboard;
-        _elevation = elevation; _host = host; _dialogs = editorDialogs; _notices = notices; _requestExit = requestExit;
+        _elevation = elevation; _host = host; _dialogs = editorDialogs; _notices = notices; _requestExit = requestExit; _textSize = textSize;
         _layout = initial.PopupLayout; _sort = initial.PopupSort;
         RebuildSearch(); Refresh(null);
         _store.Changed += OnStoreChanged;
     }
 
     public InsertionTarget? Target { get; private set; }
+    public bool IsPreview { get; private set; }
+    public PopupOpenMode OpenPreview()
+    {
+        // Never replace an in-flight insertion or an editor's preserved target.
+        if (IsInserting || IsEditorOpen) return PopupOpenMode.Ignored;
+        Target = null;
+        IsPreview = true;
+        Query = string.Empty;
+        ClearFooter(); StatusText = string.Empty;
+        SelectFirst();
+        AppLog.Info("popup_opened", "mode=Preview");
+        return PopupOpenMode.Fresh;
+    }
     public PopupOpenMode Open(InsertionTarget target)
     {
         if (IsInserting) return PopupOpenMode.Ignored;
@@ -60,6 +75,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             return PopupOpenMode.Resumed;
         }
         Target = target;
+        IsPreview = false;
         Query = string.Empty;
         ClearFooter(); StatusText = string.Empty;
         SelectFirst();
@@ -149,8 +165,9 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     {
         _cache = _store.Snippets.ToDictionary(v => v.Snippet.Id, v => new PopupItemViewModel(PopupItemKind.Snippet,
             v.Snippet.Id, v.Snippet.Label, SnippetRowViewModel.PreviewOf(v.Snippet.Text),
-            IsFolderLayout ? string.Empty : v.FolderName ?? UiText.Unfiled,
-            v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty));
+            IsFolderLayout ? string.Empty : v.FolderName ?? string.Empty,
+            v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty)
+            { TextSize = _textSize, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
     }
     private void Refresh(long? keep)
     {
@@ -161,7 +178,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             foreach (var group in SnippetGrouping.ByFolder(found))
             {
                 var heading = UiText.FolderHeading(group.FolderName ?? UiText.Unfiled, group.Items.Count);
-                rows.Add(new(PopupItemKind.Heading, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, heading));
+                rows.Add(new(PopupItemKind.Heading, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, heading) { TextSize = _textSize });
                 rows.AddRange(group.Items.Select(v => _cache[v.Snippet.Id]));
             }
         }
@@ -175,14 +192,57 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void OnStoreChanged(object? sender, StoreChangedEventArgs e) { var id = SelectedId; RebuildSearch(); Refresh(id); }
     public void Dispose() { if (_disposed) return; _disposed = true; _store.Changed -= OnStoreChanged; CloseEditor(); }
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
-    public void OnDeactivated() { if (!IsEditorOpen && !IsInserting) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
+    public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
+    public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && CanUseRowActions(item);
+    public void CopyRow(PopupItemViewModel item)
+    {
+        if (!CanCopyRow(item)) return;
+        var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
+        _clipboard.SetText(snippet.Text);
+        AppLog.Info("popup_row_copied", $"id={snippet.Id}");
+    }
+    public Task InsertRowAsync(PopupItemViewModel item) => CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
+    public bool CanInsertFromMain => Target is not null && !IsPreview && !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss;
+    public Task InsertFromMainAsync(long id)
+    {
+        if (!CanInsertFromMain || !_store.Snippets.Any(s => s.Snippet.Id == id)) return Task.CompletedTask;
+        if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return Task.CompletedTask; }
+        var index = Items.FindIndex(item => item.Kind == PopupItemKind.Snippet && item.SnippetId == id);
+        if (index < 0) { Query = string.Empty; index = Items.FindIndex(item => item.Kind == PopupItemKind.Snippet && item.SnippetId == id); }
+        SelectedIndex = index;
+        return InsertAsync(id, default);
+    }
+    public void EditRow(PopupItemViewModel item)
+    {
+        if (CanUseRowActions(item)) _host.EditSnippet(item.SnippetId);
+    }
+    public async Task DeleteRowAsync(PopupItemViewModel item)
+    {
+        if (!CanUseRowActions(item)) return;
+        var view = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId);
+        _contextDialogOpen = true;
+        try
+        {
+            if (!await _dialogs.ConfirmAsync(UiText.DeleteSnippetTitle(view.Snippet.Label), UiText.DeleteSnippetBody, UiText.DeleteSnippetConfirm)) return;
+            var result = _store.DeleteSnippet(item.SnippetId);
+            if (!result.Success && result.Error != SmartSnippets.Core.Domain.ValidationError.SnippetNotFound)
+                await _dialogs.ShowErrorAsync("Delete failed", $"Could not delete: {result.Message}");
+        }
+        catch (StoreException ex)
+        {
+            AppLog.Info("delete_failed", $"kind={ex.Failure}");
+            await _dialogs.ShowErrorAsync("Delete failed", $"Could not delete: {ex.Message}");
+        }
+        finally { _contextDialogOpen = false; }
+    }
     [RelayCommand] private void OpenMainWindow() => _host.OpenMainWindow();
     [RelayCommand]
     private void AddSnippet()
     {
         if (IsEditorOpen || IsInserting) return;
         _editorQuery = Query; _editorSelection = SelectedId;
-        Editor = new SnippetEditorViewModel(_store, _dialogs, null, _clipboard);
+        Editor = new SnippetEditorViewModel(_store, _dialogs, null, IsPreview ? null : _clipboard);
         Editor.Saved += OnEditorSaved;
         OnPropertyChanged(nameof(EditorTargetLine)); _host.Focus(PopupFocusTarget.Editor); AppLog.Info("popup_add_opened");
     }
@@ -208,7 +268,9 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     {
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return; }
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=keyboard"); return; }
-        if (IsConfirmingClipboardLoss || Target is null || SelectedId is not { } id) return;
+        if (IsConfirmingClipboardLoss || SelectedId is not { } id) return;
+        if (IsPreview) { _host.Hide(); AppLog.Info("popup_closed", "reason=preview_selection"); return; }
+        if (Target is null) return;
         await InsertAsync(id, default);
     }
     public Task ActivateAsync(PopupItemViewModel item)

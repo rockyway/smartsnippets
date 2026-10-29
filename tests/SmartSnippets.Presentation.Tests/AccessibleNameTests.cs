@@ -18,15 +18,16 @@ public sealed class AccessibleNameTests
     [Fact]
     public void SnippetRow_ReadsAsLabelAndMeta()
     {
-        Assert.Equal("Greeting, Clients, used once", new SnippetRowViewModel(1, "Greeting", "Hello", "Clients, used once").ToString());
+        var row = new SnippetRowViewModel(1, "Greeting", "Hello", "Clients, used once") { FolderName = "Clients", TagsDisplay = "#mail #work" };
+        Assert.Equal("Greeting, Clients, #mail #work", row.ToString());
     }
 
     [Fact]
     public void PopupItem_ToString_SnippetAndHeading()
     {
-        var row = new PopupItemViewModel(PopupItemKind.Snippet, 1, "Refund policy", "", "Support", "support", "billing", "");
+        var row = new PopupItemViewModel(PopupItemKind.Snippet, 1, "Refund policy", "", "Support", "support", "billing", "") { TagsDisplay = "#support #billing" };
         var heading = new PopupItemViewModel(PopupItemKind.Heading, 0, "", "", "", "", "", "Support (2)");
-        Assert.Equal("Refund policy, Support, support, billing", row.ToString());
+        Assert.Equal("Refund policy, Support, #support #billing", row.ToString());
         Assert.Equal("Support, 2 snippets", heading.ToString());
     }
 

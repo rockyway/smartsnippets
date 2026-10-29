@@ -159,7 +159,7 @@ internal sealed class AppHost
         AppLog.Info("porting_ready");
 
         // Step 7: popup, then the main window (created hidden).
-        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
+        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets), id => _ = EditFromPopupAsync(id));
         _popup = popup;
         popup.CanShow = () => !_exiting;
 
@@ -170,7 +170,9 @@ internal sealed class AppHost
             {
                 TextSize = textSize,
                 ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService(),
-                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id)),
+                    files: new SnippetFileService(() => _mainWindow?.AppWindow.Id), textSize: textSize,
+                    insertRow: id => _popupViewModel?.InsertFromMainAsync(id) ?? Task.CompletedTask,
+                    canInsertRow: () => _popupViewModel?.CanInsertFromMain == true),
             },
             PageKind.Folders => new FoldersPage
             {
@@ -187,7 +189,12 @@ internal sealed class AppHost
                     startup,
                     hotkeyManager,
                     elevation,
-                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync())),
+                    requestExit: () => _ui!.Post(() => _ = ShutDownAsync()),
+                    previewGlobalDialog: () =>
+                    {
+                        if (_mainWindow is { } window)
+                            popup.ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)));
+                    }),
             },
         };
 
@@ -215,7 +222,7 @@ internal sealed class AppHost
         
         _popupHost = new DeferredPopupHost(popup);
         _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
-            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()));
+            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()), textSize);
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += OnPopupVisibleChanged;
@@ -228,11 +235,44 @@ internal sealed class AppHost
         }
 
         // Step 9: second launches reach the existing instance here.
-        AppInstance.GetCurrent().Activated += (_, _) => _ui!.Post(() => _mainWindow?.ShowPage(PageKind.Snippets));
-
-        if (!startInBackground)
+        AppInstance.GetCurrent().Activated += (_, activation) =>
         {
+            var launch = activation.Data as Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs;
+            var options = launch is null ? new LaunchOptions(null, false, null) : LaunchOptions.Parse(LaunchOptions.SplitCommandLine(launch.Arguments));
+            _ui!.Post(() =>
+            {
+                if (options.HasRequest) _ = ApplyLaunchOptionsAsync(options, showMain: true);
+                else _mainWindow?.ShowPage(PageKind.Snippets);
+            });
+        };
+
+        if (Program.InitialOptions.HasRequest)
+            _ = ApplyLaunchOptionsAsync(Program.InitialOptions, showMain: !startInBackground);
+        else if (!startInBackground)
             mainWindow.ShowPage(PageKind.Snippets);
+    }
+
+    private async Task EditFromPopupAsync(long snippetId)
+    {
+        if (_exiting || _mainWindow is not { } window) return;
+        await window.ShowPageWithoutActivationAsync(PageKind.Snippets, show: true);
+        if (window.CurrentPage != PageKind.Snippets || _snippetsViewModel is not { } page) return;
+        if (await page.RequestEditAsync(snippetId)) window.BringToFront();
+    }
+
+    private async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain)
+    {
+        if (_exiting || _mainWindow is not { } window) return;
+        try
+        {
+            if (options.Page is { } page) await window.ShowPageWithoutActivationAsync(page, showMain);
+            if (options.PreviewPopup && !_exiting)
+                _popup?.ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)), options.PreviewQuery, activate: false);
+        }
+        catch (Exception)
+        {
+            // Do not log the supplied query or exception payload.
+            AppLog.Info("launch_navigation_failed");
         }
     }
 

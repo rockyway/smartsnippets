@@ -21,6 +21,121 @@ public sealed class PopupViewModelTests
     private PopupViewModel Create(AppSettings? settings = null) => new(_store, _settings, settings ?? new(), _insertion, _clipboard, _elevation, _host, _dialogs, _notices);
 
     [Fact]
+    public void RowActionTextHasRequestedOrder()
+    {
+        Assert.Equal(["Copy", "Insert", "Edit", "Delete"],
+            new[] { UiText.RowActionCopy, UiText.RowActionInsert, UiText.RowActionEdit, UiText.RowActionDelete });
+    }
+
+    [Fact]
+    public async Task RowActions_CopyEditAndCancelDeleteDoNotRecordUsage()
+    {
+        var snippet = _store.SeedSnippet("sensitive synthetic text", "Label");
+        _dialogs.ConfirmAnswers.Enqueue(false);
+        var usage = 0; _store.OnRecordUsage = _ => usage++;
+        using var vm = Create(); vm.OpenPreview();
+        var row = Assert.Single(vm.Items);
+        Assert.True(vm.CanUseRowActions(row));
+        Assert.False(vm.CanCopyRow(row));
+        vm.CopyRow(row);
+        Assert.Empty(_clipboard.Texts);
+        vm.EditRow(row);
+        Assert.Contains($"Edit:{snippet.Id}", _host.Calls);
+        await vm.DeleteRowAsync(row);
+        Assert.Single(_dialogs.Confirms);
+        Assert.Single(_store.Snippets);
+        Assert.Equal(0, usage);
+        Assert.Empty(_insertion.Calls);
+    }
+
+    [Fact]
+    public void NormalPopupRowCopyWritesClipboard()
+    {
+        _store.SeedSnippet("synthetic body");
+        using var vm = Create(); vm.Open(Target);
+        var row = Assert.Single(vm.Items);
+        Assert.True(vm.CanCopyRow(row));
+        vm.CopyRow(row);
+        Assert.Equal("synthetic body", Assert.Single(_clipboard.Texts));
+    }
+
+    [Fact]
+    public async Task PreviewRowInsertClosesWithoutInsertion()
+    {
+        _store.SeedSnippet("body");
+        using var vm = Create(); vm.OpenPreview();
+        await vm.InsertRowAsync(Assert.Single(vm.Items));
+        Assert.Empty(_insertion.Calls);
+        Assert.Empty(_clipboard.Texts);
+        Assert.Contains("Hide", _host.Calls);
+    }
+
+    [Fact]
+    public void PopupRowsAndHeadingsShareObservableTextSize()
+    {
+        var size = new TextSizeService();
+        _store.SeedSnippet("one", folder: "Work");
+        using var vm = new PopupViewModel(_store, _settings, new AppSettings { PopupLayout = PopupLayout.Folder },
+            _insertion, _clipboard, _elevation, _host, _dialogs, _notices, textSize: size);
+        Assert.Equal(2, vm.Items.Count);
+        Assert.False(vm.CanUseRowActions(vm.Items.Single(item => item.Kind == PopupItemKind.Heading)));
+        Assert.All(vm.Items, item => Assert.Same(size, item.TextSize));
+        size.Apply(TextSizePreset.Custom, 32);
+        Assert.All(vm.Items, item => Assert.Equal(32, item.TextSize!.FontSize));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreviewSelection_ClosesWithoutInsertionClipboardOrUsage(bool click)
+    {
+        var snippet = _store.SeedSnippet("preview");
+        var usageCalls = 0;
+        _store.OnRecordUsage = _ => usageCalls++;
+        using var vm = Create();
+        vm.Open(Target);
+        Assert.Equal(PopupOpenMode.Fresh, vm.OpenPreview());
+        Assert.Null(vm.Target);
+        Assert.True(vm.IsPreview);
+        if (click) await vm.ActivateAsync(vm.Items.Single());
+        else await vm.InsertSelectedAsync();
+        Assert.Contains("Hide", _host.Calls);
+        Assert.Empty(_insertion.Calls);
+        Assert.Empty(_clipboard.Texts);
+        Assert.Equal(0, usageCalls);
+        Assert.Equal(0, _store.Snippets.Single(s => s.Snippet.Id == snippet.Id).Snippet.UsageCount);
+        vm.Open(Target);
+        Assert.False(vm.IsPreview);
+        await vm.InsertSelectedAsync();
+        Assert.Single(_insertion.Calls);
+    }
+
+    [Fact]
+    public void PreviewAddEditor_HasNoClipboardCopyButNormalAddDoes()
+    {
+        using (var preview = Create())
+        {
+            preview.OpenPreview();
+            preview.AddSnippetCommand.Execute(null);
+            Assert.False(preview.Editor!.CopyTextCommand.CanExecute(null));
+        }
+        using var normal = Create();
+        normal.Open(Target);
+        normal.AddSnippetCommand.Execute(null);
+        Assert.True(normal.Editor!.CopyTextCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void PreviewDoesNotReplaceEditorTarget()
+    {
+        using var vm = Create();
+        vm.Open(Target);
+        vm.AddSnippetCommand.Execute(null);
+        Assert.Equal(PopupOpenMode.Ignored, vm.OpenPreview());
+        Assert.Equal(Target, vm.Target);
+    }
+
+    [Fact]
     public void Search_AndTerms_LayoutsAndStoreChanges()
     {
         var a = _store.SeedSnippet("Refund policy\nsecond", "Refund", "Support", "billing, chat, extra");
@@ -33,6 +148,9 @@ public sealed class PopupViewModelTests
         Assert.Equal("Support", vm.Items[0].FolderChip);
         Assert.Equal("billing", vm.Items[0].Tag1);
         Assert.Equal("chat", vm.Items[0].Tag2);
+        Assert.Equal("#billing #chat #extra", vm.Items[0].TagsDisplay);
+        Assert.Equal("Refund, Support, #billing #chat #extra", vm.Items[0].ToString());
+        Assert.DoesNotContain("Refund policy", vm.Items[0].ToString());
         vm.ToggleLayoutCommand.Execute(null);
         Assert.Equal("Folder", _settings.Get(SettingsKeys.PopupLayout));
         Assert.Equal("Support (1)", vm.Items[0].HeadingText);
@@ -102,6 +220,22 @@ public sealed class PopupViewModelTests
         Assert.True(vm.CanCopyFailedText);
         await vm.InsertSelectedAsync(); Assert.Single(_insertion.Calls);
         await vm.InsertSelectedAsync(); Assert.Equal(2, _insertion.Calls.Count);
+    }
+
+    [Fact]
+    public async Task MainInsertAfterMaybePasted_DismissesBeforeChangingQueryOrInserting()
+    {
+        var first = _store.SeedSnippet("first", "First");
+        var second = _store.SeedSnippet("second", "Second");
+        _insertion.Results.Enqueue(new(InsertionOutcome.MaybePasted, ""));
+        using var vm = Create(); vm.Open(Target); vm.Query = "First";
+        await vm.InsertSelectedAsync();
+        await vm.InsertFromMainAsync(second.Id);
+        Assert.Equal(PopupFooterState.None, vm.FooterState);
+        Assert.Equal("First", vm.Query);
+        Assert.Equal((Target, first.Id, default(InsertionOptions)), Assert.Single(_insertion.Calls));
+        await vm.InsertFromMainAsync(second.Id);
+        Assert.Equal((Target, second.Id, default(InsertionOptions)), _insertion.Calls[1]);
     }
 
     [Fact]

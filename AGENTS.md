@@ -43,3 +43,7 @@ Insertion flow (plans 006/007): the foreground window is captured as an `Inserti
 Work is driven by numbered documents: requirements in `docs/requirements/`, plans in `docs/plan/NNN-*.md` (status, tasks T0..Tn, approval log), reviews in `docs/review/`, handoffs in `docs/handoff/`. Read the relevant plan before changing an area; plans cite files and line numbers and record user decisions. Numbered docs use the next free `NNN`; never renumber existing ones.
 
 `main` is the production branch: land work through feature branches and PRs, not direct commits. Agent worktrees go under `.claude/worktrees/` (git-ignored).
+
+## Non-inserting UI QA launch options
+
+`--page snippets|folders|settings` requests guarded navigation without foreground activation; `--preview-popup` opens the real popup in target-free preview mode. `--preview-popup-query <text>` optionally initializes its search. These options work on initial launch and redirected single-instance launches; preview selection closes without insertion, clipboard use or usage recording. Unknown options are ignored. The command-line query is not logged by the app; nevertheless use synthetic, non-sensitive text for QA. The UI harness requires an isolated profile, owned processes, watchdog, registry recovery, and an explicitly authorized screen slot; see `docs/guides/002-acceptance-harness-safety.md` and `scripts/verify-ui-qa.ps1`.

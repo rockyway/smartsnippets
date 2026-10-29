@@ -74,7 +74,7 @@ public sealed class PopupViewModelListTests
     public void Flat_RowChips_FolderOrUnfiled_PlusAtMostTwoTags()
     {
         _store.SeedSnippet("a", "A", "Folder", "one,two,three"); _store.SeedSnippet("b", "B");
-        using var vm = Create(); Assert.Equal("Folder", vm.Items[0].FolderChip); Assert.Equal("one", vm.Items[0].Tag1); Assert.Equal("two", vm.Items[0].Tag2); Assert.Equal("Unfiled", vm.Items[1].FolderChip);
+        using var vm = Create(); Assert.Equal("Folder", vm.Items[0].FolderChip); Assert.Equal("one", vm.Items[0].Tag1); Assert.Equal("two", vm.Items[0].Tag2); Assert.Equal("", vm.Items[1].FolderChip);
     }
     [Fact]
     public void Preview_FirstNonBlankLine()
@@ -139,7 +139,7 @@ public sealed class PopupViewModelListTests
     public void WhileShown_FolderDeleted_RowsShowUnfiled()
     {
         var a = _store.SeedSnippet("a", "A", "Folder"); using var vm = Create(); vm.Open(Target); _store.DeleteFolder(a.FolderId!.Value);
-        Assert.Equal("Unfiled", vm.Items[0].FolderChip);
+        Assert.Equal("", vm.Items[0].FolderChip);
     }
     [Fact]
     public void WhileShown_QueryKept_ResultRefiltered()

@@ -1,3 +1,5 @@
+using SmartSnippets.Presentation.Services;
+
 namespace SmartSnippets.Presentation.ViewModels;
 
 public enum PopupItemKind { Heading, Snippet }
@@ -5,6 +7,11 @@ public enum PopupItemKind { Heading, Snippet }
 public sealed record PopupItemViewModel(PopupItemKind Kind, long SnippetId, string Label, string Preview,
     string FolderChip, string Tag1, string Tag2, string HeadingText)
 {
+    public ITextSizeService? TextSize { get; init; }
+    public string TagsDisplay { get; init; } = string.Empty;
+    public bool HasFolder => !string.IsNullOrEmpty(FolderChip);
+    public string Details => string.Join(" ", new[] { FolderChip, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
+
     public override string ToString()
     {
         if (Kind == PopupItemKind.Heading)
@@ -15,7 +22,7 @@ public sealed record PopupItemViewModel(PopupItemKind Kind, long SnippetId, stri
                 : HeadingText;
         }
 
-        return string.Join(", ", new[] { Label, FolderChip, Tag1, Tag2 }.Where(s => !string.IsNullOrEmpty(s)));
+        return string.Join(", ", new[] { Label, FolderChip, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
     }
 }
 
