@@ -1,5 +1,15 @@
 # UI QA progress — feature/ui-qa
 
+DISPLAY9 DPI-fix smoke slot started 2026-10-28 19:35 -0500 and stopped approximately 19:38, before the 19:45 deadline. Preflight/final process checks: zero Smart Snippets processes; no leftover profile backup. Isolated profile hash and registry recovery completed without reported mismatch. No builds or input were sent; foreground checks used HWND only.
+
+SCREEN_BATCH_DONE — minimum DPI fix and requested smoke captures verified; manual input-dependent acceptance remains pending.
+
+- [x] Build `uiqa-dpi-05`: solution build 0 warnings/0 errors; Core 426 passed, Presentation 439 passed, 0 failed or skipped; Native AOT publish succeeded without observed warnings.
+- [x] At 96 DPI, WM_GETMINMAXINFO reported 640×480; SetWindowPos request 100×100 clamped to 640×480 in light and dark runs. Requested 900×600 was achieved after monitor move. Minimum content smoke `docs/qa/ui/be71038f9ea045f2968e3adf7f1842df/` and `docs/qa/ui/8c96193a912241999c56a9ff4f9a059e/` was captured and every PNG read; Settings lower content remains scroll-dependent and unverified. No interactive drag or presenter property read-back was performed.
+- [x] Requested three smoke captures: light Snippets 1280×800 (`be71038f9ea045f2968e3adf7f1842df`), dark Folders 900×600 and dark filled popup (`8c96193a912241999c56a9ff4f9a059e`).
+- [ ] Two initial light attempts aborted after the foreground HWND changed during redirect, cause unproven; no input was sent. A hidden background redirect and no-op navigation suppression were added in the harness and subsequent runs completed. Context menus, picker workflows, hotkey, insertion and other input-driven behaviors remain PENDING-USER.
+- [x] Superseded screenshots pruned from the current tree; `docs/qa/ui/README.md` indexes retained runs. Historical notes below may reference pruned paths; original images remain in prior git commits.
+
 DISPLAY9 presenter recheck slot started 2026-10-28 19:26 -0500 and stopped at approximately 19:32, before the 19:46 deadline. Preflight/final checks: zero Smart Snippets processes; no leftover profile backup. Isolated-profile hash restoration and registry journal cleanup completed without a reported mismatch. No builds or input were sent; foreground checks used HWND only.
 
 SCREEN_BATCH_DONE — popup presenter verified; 900×600 remains blocked by wrong-DPI minimum; candidate fix needs build.

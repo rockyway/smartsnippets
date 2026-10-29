@@ -1,5 +1,5 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
-param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle)
+param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum)
 $ErrorActionPreference = 'Stop'
 if (-not $CaptureOnly) { throw 'Only the no-input capture mode is supported' }
 trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
@@ -83,7 +83,12 @@ function Save-QAScreenshot([IntPtr]$window, [string]$path) {
 }
 function Request-QAActivation([string[]]$arguments) {
     $before = [Win32Verify]::GetForegroundWindow()
-    $redirect = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') $arguments $procs
+    # Hidden secondary launch carries only a redirect; it must never activate a window.
+    $redirectArgs = @('--background') + $arguments
+    $redirect = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') $redirectArgs $procs -Factory {
+        param($path, $items)
+        Start-Process -FilePath $path -ArgumentList $items -WindowStyle Hidden -PassThru
+    }
     if (-not (Wait-OwnedSecondLaunch $redirect 10000) -or $redirect.ExitCode -ne 0) { throw 'Owned activation redirect failed' }
     Start-Sleep -Milliseconds 600
     $after = [Win32Verify]::GetForegroundWindow()
@@ -164,6 +169,15 @@ try {
         $script:QaFailures.Add("Main window minimum does not match current monitor DPI: expected ${expectedMinimumWidth}x$expectedMinimumHeight")
         Write-Warning $script:QaFailures[-1]
     }
+    if ($SmokeMinimum) {
+        $fgBefore = [Win32Verify]::GetForegroundWindow()
+        if (-not [QaResize]::SetWindowPos([IntPtr]$mainHwnd,[IntPtr]::Zero,-1880,1546,100,100,0x14)) { throw 'Below-minimum resize failed' }
+        Start-Sleep -Milliseconds 600
+        $clamped = Assert-OnDisplay9 ([IntPtr]$mainHwnd)
+        if ($fgBefore -ne [Win32Verify]::GetForegroundWindow()) { throw 'Foreground changed during below-minimum resize' }
+        if (($clamped.Right-$clamped.Left) -ne $minimum.X -or ($clamped.Bottom-$clamped.Top) -ne $minimum.Y) { throw 'Below-minimum resize did not clamp to queried minimum' }
+        Write-Host "Below-minimum resize clamped to $($minimum.X)x$($minimum.Y)"
+    }
     foreach ($size in @(@(1280,800),@(900,600),@($minimum.X,$minimum.Y))) {
         $isMinimum = $size[0] -eq $minimum.X -and $size[1] -eq $minimum.Y
         Update-HarnessProgress
@@ -203,8 +217,16 @@ try {
                 Write-Host "Synthetic label bounding height=$($label.Current.BoundingRectangle.Height)"
                 continue
             }
-            foreach ($targetPage in @(@('snippets','SnippetList'), @('folders','FolderList'), @('settings','TextSizeRadios'))) {
-                Request-QAActivation @('--page', $targetPage[0])
+            $targetPages = @(@('snippets','SnippetList'), @('folders','FolderList'), @('settings','TextSizeRadios'))
+            if ($SmokeMinimum -and -not $isMinimum) {
+                $targetPages = @()
+                if ($Theme -eq 'Light' -and $size[0] -eq 1280) { $targetPages += ,@('snippets','SnippetList') }
+                elseif ($Theme -eq 'Dark' -and $size[0] -eq 900) { $targetPages += ,@('folders','FolderList') }
+            }
+            foreach ($targetPage in $targetPages) {
+                if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') $targetPage[1])) {
+                    Request-QAActivation @('--page', $targetPage[0])
+                }
                 $shown = Wait-Until { Find-ById (Get-AppWindow $p.Id 'Smart Snippets') $targetPage[1] } 8000 100
                 if (-not $shown) { throw "Redirect did not navigate to $($targetPage[0])" }
                 if ($targetPage[0] -eq 'snippets' -and -not $isMinimum) {
@@ -217,9 +239,10 @@ try {
                         if (-not $label -or $label.Current.BoundingRectangle.Height -lt ($CustomSize * $dpiScale * 0.8)) { throw 'Snippet label does not reflect custom text size' }
                     }
                 }
-                Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
+                Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$(if ($isMinimum) {'minimum'} else {'requested'})-$($size[0])x$($size[1]).png"))
             }
-            foreach ($query in @('', 'First', 'NoSuchQaResult')) {
+            $queries = if ($SmokeMinimum) { if ($Theme -eq 'Dark' -and -not $isMinimum -and $size[0] -eq 900) { ,'' } else { @() } } else { @('', 'First', 'NoSuchQaResult') }
+            foreach ($query in $queries) {
                 $activation = @('--preview-popup')
                 if ($query) { $activation += @('--preview-popup-query', $query) }
                 Request-QAActivation $activation
@@ -243,7 +266,7 @@ try {
                 $popupText = @(Find-All $list ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                 if ('Synthetic one' -in $popupText -or 'Synthetic two' -in $popupText -or 'Synthetic three' -in $popupText) { throw 'Snippet bodies appeared in popup rows' }
                 $state = if (-not $query) { 'filled' } elseif ($query -eq 'First') { 'search' } else { 'empty' }
-                Save-QAScreenshot ([IntPtr]$popup.Current.NativeWindowHandle) (Join-Path $out ("popup-$state-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
+                Save-QAScreenshot ([IntPtr]$popup.Current.NativeWindowHandle) (Join-Path $out ("popup-$state-$Theme-size$CustomSize-$(if ($isMinimum) {'minimum'} else {'requested'})-$($size[0])x$($size[1]).png"))
             }
             continue
         }
