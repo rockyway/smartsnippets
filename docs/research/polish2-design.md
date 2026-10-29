@@ -29,3 +29,11 @@ Commit this note first, then separate frame and spacing fixes (including focused
 - Sweep found no other zero-spaced custom action rows. Popup footer message/actions now use 8, overlay sections 8, title/subtitle 4, Cancel/Save 8; Snippets Cancel/Create increased from 4 to 8. Shared editor field groups (12), inline folder actions (8), failure InfoBar actions (8), and main editor footer (8) retained.
 
 Visual acceptance remains PENDING-USER: light/dark/high contrast, active/inactive, first show/re-show, warmup/cloak and monitor DPI changes (100/150/200%), single physical-pixel native grey edge and smooth native clipping, compact Add/Edit fields/InfoBar/actions. No desktop slot has been authorized; do not launch the app as part of the build round.
+
+## Authorized validation result — polish2-01
+
+Received `BUILD GO polish2-01 15`. Initial build of 291b470 compiled but emitted three xUnit2031 analyzer warnings; the zero-warning gate stopped before tests/publish. Commit 2015af7 changes only those assertions to Assert.Single's predicate overload. Refreshed the C: snapshot with robocopy using the requested exclusions, verified SHA-256 equality for all 335 tracked non-excluded files, and cleaned old bin/obj/publish outputs. TEMP/TMP=C:\temp\ss-polish2-temp; DOTNET_PROCESSOR_COUNT=4.
+
+Final code tested: **2015af7a4be92e0cf0e37a23369b6d3b03f9f76c**. `dotnet build -m:4` passed with **0 warnings / 0 errors**; sequential Core **426/426** and Presentation **497/497** passed, zero skipped. Exactly one `scripts/publish-aot.ps1 -MaxCpuCount 4 -Output C:\temp\ss-stab-build\publish` invocation passed, with no warning/error diagnostics, native SmartSnippets.App.exe and e_sqlite3.dll present, and no SmartSnippets.App.dll. BUILD_FINISHED polish2-01 appended to the requested protocol file.
+
+Evidence: C:\temp\polish2-snapshot.txt, polish2-copy.log, polish2-build.log, polish2-core-tests.log, polish2-presentation-tests.log, polish2-result.txt, and C:\temp\ss-stab-build\publish.log. Initial warning evidence retained as C:\temp\polish2-build-initial.log. No app launch, desktop QA, push, merge or tag. Source/layout contracts and color policy passed; exact native white-pixel attribution and rendered appearance remain PENDING-USER as stated above.
