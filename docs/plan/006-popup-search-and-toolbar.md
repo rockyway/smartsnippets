@@ -1624,7 +1624,7 @@ measures hotkey-handler timestamp through successful AppWindow.Show (not composi
 Existing `popup_ready_ms` and search-frame logs remain. The 50k dirty-open test records measured
 VM rebuild/filter time; real first-frame timing and <=300 ms acceptance remain screen work.
 
-### Static-review fix round (awaiting stab-02 validation)
+### Static-review fix round (stab-02 validated)
 
 NumberBox edits use focus-within (including template descendants) plus a short edit-session
 latch/final-value read across focus-loss commit; finite/rebinding/session guards remain.
@@ -1638,6 +1638,11 @@ once, then logs `popup_prewarm_failed retry=next_show` and stays hidden/restarta
 completion/timeout callbacks cannot complete an abandoned generation. Real focus and timer
 behaviour remain pending an authorized control-level pass; tests exercise the shared policy,
 not WinUI events. DeferredPopupHost, tray policy and shutdown coordinator remain unchanged.
+Granted C: snapshot validation of `ef70486`: final build 0 warnings/errors, Core 426 passed,
+Presentation 480 passed (including 13 additional fix-round cases), single Native AOT gate
+passed with 0 warnings. The initial ambiguous dispatcher-timer type and cascading XAML
+warning/error were corrected before the successful build. No app was launched. Current 50k
+VM dirty-open diagnostic: 69.16 ms; not desktop acceptance or memory-retention evidence.
 
 ## 11. Review response
 
