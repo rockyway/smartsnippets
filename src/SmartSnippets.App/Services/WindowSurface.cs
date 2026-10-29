@@ -19,6 +19,20 @@ internal static partial class WindowSurface
         return ((byte)(c & 0xFF), (byte)((c >> 8) & 0xFF), (byte)((c >> 16) & 0xFF));
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HighContrastInfo { public uint Size; public uint Flags; public nint Scheme; }
+
+    [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SystemParametersInfo(uint action, uint param, ref HighContrastInfo value, uint winIni);
+
+    /// <summary>High-contrast state via SPI_GETHIGHCONTRAST; avoids the WinRT AccessibilitySettings object.</summary>
+    internal static bool IsHighContrast()
+    {
+        var info = new HighContrastInfo { Size = (uint)Marshal.SizeOf<HighContrastInfo>() };
+        return SystemParametersInfo(0x42, info.Size, ref info, 0) && (info.Flags & 1) != 0;
+    }
+
     internal static void SetDark(Window window, bool dark)
     {
         var value = dark ? 1 : 0;

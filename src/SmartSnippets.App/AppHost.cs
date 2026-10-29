@@ -82,9 +82,15 @@ internal sealed class AppHost
         }
         catch (Exception ex)
         {
-            AppLog.Error("startup_failed", ex);
+            AppLog.Error("startup_failed", ex, StackFrames(ex)); // frames only, no user content
             FailStartup("Smart Snippets could not start. Details were written to the log in " + new AppPaths().LogDirectory);
         }
+    }
+
+    private static string? StackFrames(Exception ex)
+    {
+        var trace = (ex.StackTrace ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return trace.Length == 0 ? null : trace[..Math.Min(trace.Length, 1500)];
     }
 
     // Steps 1-3: migrations, store, settings. Failure here means there is nothing to show, so the app exits.

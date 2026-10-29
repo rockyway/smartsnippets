@@ -41,7 +41,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private readonly PopupShowCoordinator _shows;
     private DispatcherQueueTimer? _prewarmTimer;
     private readonly UISettings _uiSettings = new();
-    private readonly AccessibilitySettings _accessibility = new();
     private bool _closed;
     private (int Corner, int Border)? _lastFrameFailure;
 
@@ -61,14 +60,12 @@ public sealed partial class PopupWindow : Window, IPopupHost
         AppWindow.SetPresenter(presenter);
         RefreshFrame();
         _uiSettings.ColorValuesChanged += OnSystemColorsChanged;
-        _accessibility.HighContrastChanged += OnHighContrastChanged;
         AppWindow.IsShownInSwitchers = false;
         Activated += OnActivated; RootGrid.LayoutUpdated += OnLayoutUpdated; PopupList.LayoutUpdated += OnListLayoutUpdated;
         Closed += (_, _) =>
         {
             _closed = true;
             _uiSettings.ColorValuesChanged -= OnSystemColorsChanged;
-            _accessibility.HighContrastChanged -= OnHighContrastChanged;
             if (_viewModel is not null) _viewModel.PropertyChanged -= OnViewModelChanged;
             CompositionTarget.Rendered -= OnRendered;
             RootGrid.LayoutUpdated -= OnPrewarmLayout;
@@ -124,7 +121,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         {
             var text = WindowSurface.WindowTextColor();
             var color = PopupFramePolicy.BorderColor(RootGrid.ActualTheme == ElementTheme.Dark,
-                _accessibility.HighContrast, text.R, text.G, text.B);
+                WindowSurface.IsHighContrast(), text.R, text.G, text.B);
             var result = WindowSurface.RoundPopup(this, color);
             if (result.Corner < 0 || result.Border < 0)
             {
@@ -141,8 +138,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
         }
     }
     private void OnSystemColorsChanged(UISettings sender, object args)
-        => DispatcherQueue.TryEnqueue(() => RefreshFrame());
-    private void OnHighContrastChanged(AccessibilitySettings sender, object args)
         => DispatcherQueue.TryEnqueue(() => RefreshFrame());
     private void ShowSurface(bool activate = true)
     {
