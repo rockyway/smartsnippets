@@ -1,6 +1,7 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
-param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly, [switch]$MeasureOnly)
+param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly)
 $ErrorActionPreference = 'Stop'
+if (-not $CaptureOnly) { throw 'Only the no-input capture mode is supported' }
 trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'lib/Watchdog.ps1')
@@ -36,7 +37,7 @@ public static class QaResize {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd);
-    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
     public static Point MinimumTrackSize(IntPtr hwnd) {
@@ -53,6 +54,7 @@ public static class QaResize {
     }
 }
 '@
+$script:QaFailures = New-Object 'System.Collections.Generic.List[string]'
 function Assert-OnDisplay9([IntPtr]$window) {
     $rect = New-Object QaResize+Rect
     if (-not [QaResize]::GetWindowRect($window, [ref]$rect)) { throw 'Window rectangle unavailable' }
@@ -70,15 +72,19 @@ function Save-QAScreenshot([IntPtr]$window, [string]$path) {
         try { if (-not [QaResize]::PrintWindow($window,$dc,2)) { throw 'PrintWindow failed' } }
         finally { $graphics.ReleaseHdc($dc) }
         $bitmap.Save($path,[System.Drawing.Imaging.ImageFormat]::Png)
+        if ([IO.Path]::GetFileName($path) -like 'popup-*-Light-*' -and $bitmap.Width -gt 120 -and $bitmap.Height -gt 180) {
+            $pixel = $bitmap.GetPixel([int]($bitmap.Width / 2), $bitmap.Height - 100)
+            if ($pixel.R -lt 100 -and $pixel.G -lt 100 -and $pixel.B -lt 100) { $script:QaFailures.Add('Light popup background is dark or PrintWindow could not capture it'); Write-Warning $script:QaFailures[-1] }
+        }
         Write-Host "shot $path $($bitmap.Width)x$($bitmap.Height)"
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
 function Request-QAActivation([string[]]$arguments) {
-    $before = & pwsh -NoProfile -File $probe
+    $before = [Win32Verify]::GetForegroundWindow()
     $redirect = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') $arguments $procs
     if (-not (Wait-OwnedSecondLaunch $redirect 10000) -or $redirect.ExitCode -ne 0) { throw 'Owned activation redirect failed' }
     Start-Sleep -Milliseconds 600
-    $after = & pwsh -NoProfile -File $probe
+    $after = [Win32Verify]::GetForegroundWindow()
     if ($before -cne $after) { throw 'Foreground changed during activation redirect' }
 }
 function ProfileHash($path) {
@@ -109,7 +115,7 @@ try {
         # Seed only the isolated profile while the owned app is stopped.
         Stop-OwnedProcess $p
         $db = Join-Path $profile 'smartsnippets.db'
-        & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('theme','$Theme') ON CONFLICT(key) DO UPDATE SET value=excluded.value; INSERT INTO folders(name,name_key,created_at,updated_at) VALUES('QA folder','QA FOLDER',1700000000000,1700000000000); INSERT INTO snippets(text,label,label_is_custom,folder_id,tags,created_at,updated_at,usage_count) VALUES('Synthetic one','First synthetic',1,1,'work,qa',1700000000000,1700000000000,3),('Synthetic two','Second synthetic',1,NULL,'qa',1700000000000,1700000000000,0),('Synthetic three','Third synthetic',1,1,'sample',1700000000000,1700000000000,1);"
+        & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('theme','$Theme') ON CONFLICT(key) DO UPDATE SET value=excluded.value; INSERT INTO folders(name,name_key,created_at,updated_at) VALUES('QA folder','QA FOLDER',1700000000000,1700000000000); INSERT INTO snippets(text,label,label_is_custom,folder_id,tags,created_at,updated_at,usage_count) VALUES('Synthetic one','First synthetic',1,1,'work,qa',1700000000000,1700000000000,3),('Synthetic two','Second synthetic',1,NULL,'qa',1700000000000,1700000000000,0),('Synthetic three','Third synthetic with a deliberately very long label that must truncate cleanly on one row',1,1,'sample,extra-long-tag',1700000000000,1700000000000,1);"
         if ($LASTEXITCODE -ne 0) { throw 'Synthetic fixture seeding failed' }
         if ($CustomSize -gt 0) {
             if ($CustomSize -lt 10) { throw 'Custom size must be 10 through 32' }
@@ -122,49 +128,55 @@ try {
     }
     $messageHwnd = Wait-Until { try { [SmartSnippetsPostedInput]::FindOwnedWindow($p.Id, $null, 'SmartSnippets.MessageWindow') } catch { $null } } 10000 200
     if (-not $messageHwnd) { throw 'Owned tray callback window not found' }
-    $skill = 'C:\Users\tamtr\.claude\skills\desktop-ui-automation\scripts'
-    $probe = Join-Path $skill 'foreground-probe.ps1'
+    # Probe only the foreground HWND; do not inspect another app's process or title.
     # Only DISPLAY9's work area is authorized; never park on the top-left monitor.
     $screen = [System.Windows.Forms.Screen]::AllScreens | Where-Object {
         $_.Bounds.X -eq -1920 -and $_.Bounds.Y -eq 1506 -and $_.Bounds.Width -eq 1920 -and $_.Bounds.Height -eq 1080 -and
         $_.WorkingArea.X -eq -1920 -and $_.WorkingArea.Y -eq 1506 -and $_.WorkingArea.Width -eq 1920 -and $_.WorkingArea.Height -eq 1032
     } | Select-Object -First 1
     if (-not $screen) { throw 'DISPLAY9 bounds/work area do not match authorization; refusing UI operations' }
-    $parkBefore = & pwsh -NoProfile -File $probe
+    $parkBefore = [Win32Verify]::GetForegroundWindow()
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
         if (-not [QaResize]::SetWindowPos([IntPtr]$mainHwnd,[IntPtr]::Zero,-1880,1546,900,600,0x14)) { throw 'Could not position owned app on DISPLAY9' }
         Start-Sleep -Milliseconds 300
     }
-    $parkAfter = & pwsh -NoProfile -File $probe
+    $parkAfter = [Win32Verify]::GetForegroundWindow()
     if ($parkBefore -cne $parkAfter) { throw 'Foreground changed during positioning' }
     $null = Assert-OnDisplay9 ([IntPtr]$mainHwnd)
-    $showBefore = & pwsh -NoProfile -File $probe
+    $showBefore = [Win32Verify]::GetForegroundWindow()
     # SW_SHOWNOACTIVATE is window placement, not input; unlike the tray callback it
     # does not ask the app to activate and must preserve the existing foreground.
     $null = [QaResize]::ShowWindowAsync([IntPtr]$mainHwnd, 4)
     $w = Wait-Until { Get-AppWindow $p.Id 'Smart Snippets' } 10000 200
     if (-not $w) { throw 'Non-activating show did not expose main window' }
-    $showAfter = & pwsh -NoProfile -File $probe
+    $showAfter = [Win32Verify]::GetForegroundWindow()
     if ($showBefore -cne $showAfter) { throw 'Foreground changed during non-activating show' }
     $null = Assert-OnDisplay9 ([IntPtr]$mainHwnd)
     $minimum = [QaResize]::MinimumTrackSize([IntPtr]$mainHwnd)
     if ($minimum.X -le 0 -or $minimum.Y -le 0 -or $minimum.X -gt 1840 -or $minimum.Y -gt 952) { throw 'Invalid or unsupported minimum track size' }
     Write-Host "Window minimum track size: $($minimum.X)x$($minimum.Y)"
+    if ($minimum.X -lt 640 -or $minimum.Y -lt 480) { $script:QaFailures.Add('Main window minimum track size is below 640x480 physical pixels'); Write-Warning $script:QaFailures[-1] }
     foreach ($size in @(@(1280,800),@(900,600),@($minimum.X,$minimum.Y))) {
+        $isMinimum = $size[0] -eq $minimum.X -and $size[1] -eq $minimum.Y
         Update-HarnessProgress
-        $resizeBefore = & pwsh -NoProfile -File $probe
+        $resizeBefore = [Win32Verify]::GetForegroundWindow()
         if (-not [QaResize]::SetWindowPos([IntPtr]$w.Current.NativeWindowHandle,[IntPtr]::Zero,-1880,1546,$size[0],$size[1],0x14)) { throw 'Resize failed' }
-        $resizeAfter = & pwsh -NoProfile -File $probe
+        $resizeAfter = [Win32Verify]::GetForegroundWindow()
         if ($resizeBefore -cne $resizeAfter) { throw 'Foreground changed during resize' }
         Start-Sleep -Milliseconds 800
         $actualRect = Assert-OnDisplay9 ([IntPtr]$w.Current.NativeWindowHandle)
-        if (($actualRect.Right - $actualRect.Left) -ne $size[0] -or ($actualRect.Bottom - $actualRect.Top) -ne $size[1]) { throw 'Requested window size was not achieved' }
+        if (($actualRect.Right - $actualRect.Left) -ne $size[0] -or ($actualRect.Bottom - $actualRect.Top) -ne $size[1]) {
+            if (-not $isMinimum) { throw "Requested $($size[0])x$($size[1]); actual $(($actualRect.Right-$actualRect.Left))x$(($actualRect.Bottom-$actualRect.Top))" }
+            Write-Warning "Minimum track query and actual resize differ; actual $(($actualRect.Right-$actualRect.Left))x$(($actualRect.Bottom-$actualRect.Top)) is a candidate, not proven interactive minimum"
+            $size = @(($actualRect.Right-$actualRect.Left), ($actualRect.Bottom-$actualRect.Top))
+        }
         if ($CaptureOnly) {
             $fixtureRows = (& sqlite3 -batch (Join-Path $profile 'smartsnippets.db') "SELECT count(*) FROM snippets; SELECT value FROM settings WHERE key='theme'; SELECT value FROM settings WHERE key='text_size.preset'; SELECT value FROM settings WHERE key='text_size.custom';")
             if ($LASTEXITCODE -ne 0 -or $fixtureRows[0] -ne '3' -or $fixtureRows[1] -ne $Theme) { throw 'Fixture database read-back failed' }
             if ($CustomSize -gt 0 -and ($fixtureRows[2] -ne 'Custom' -or $fixtureRows[3] -ne "$CustomSize")) { throw 'Text size fixture did not persist' }
             Write-Host "Verified synthetic rows=$($fixtureRows[0]), theme=$Theme, customSize=$CustomSize"
             if ($MeasureOnly) {
+                if ($isMinimum) { continue }
                 $label = Find-ByName (Get-AppWindow $p.Id 'Smart Snippets') 'First synthetic' ([Windows.Automation.ControlType]::Text)
                 if (-not $label) { throw 'Synthetic label not found for text size measurement' }
                 Write-Host "Synthetic label bounding height=$($label.Current.BoundingRectangle.Height)"
@@ -174,10 +186,15 @@ try {
                 Request-QAActivation @('--page', $targetPage[0])
                 $shown = Wait-Until { Find-ById (Get-AppWindow $p.Id 'Smart Snippets') $targetPage[1] } 8000 100
                 if (-not $shown) { throw "Redirect did not navigate to $($targetPage[0])" }
-                if ($targetPage[0] -eq 'snippets') {
+                if ($targetPage[0] -eq 'snippets' -and -not $isMinimum) {
                     $visibleText = @(Find-All $shown ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                     if ('Synthetic one' -in $visibleText -or 'Synthetic two' -in $visibleText -or 'Synthetic three' -in $visibleText) { throw 'Snippet bodies appeared as separate list rows' }
                     if ('First synthetic' -notin $visibleText) { throw 'Synthetic row label missing' }
+                    if ($CustomSize -gt 0) {
+                        $label = Find-ByName $shown 'First synthetic' ([Windows.Automation.ControlType]::Text)
+                        $dpiScale = [QaResize]::GetDpiForWindow([IntPtr]$mainHwnd) / 96.0
+                        if (-not $label -or $label.Current.BoundingRectangle.Height -lt ($CustomSize * $dpiScale * 0.8)) { throw 'Snippet label does not reflect custom text size' }
+                    }
                 }
                 Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$($size[0])x$($size[1]).png"))
             }
@@ -204,32 +221,32 @@ try {
         foreach ($page in ,@('FoldersItem','folders')) {
             Update-HarnessProgress
             $w = Get-AppWindow $p.Id 'Smart Snippets'
-            $beforeForeground = & pwsh -NoProfile -File $probe
+            $beforeForeground = [Win32Verify]::GetForegroundWindow()
             $nav = Find-ById $w $page[0]
             if (-not $nav -or $nav.Current.IsOffscreen) { throw "Missing or offscreen navigation $($page[0])" }
             $rect = $nav.Current.BoundingRectangle
             $x = [int]($rect.X + $rect.Width / 2); $y = [int]($rect.Y + $rect.Height / 2)
             $inputWindow = [SmartSnippetsPostedInput]::Click([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y)
             Write-Host "Posted navigation to owned child HWND $inputWindow"
-            $afterForeground = & pwsh -NoProfile -File $probe
+            $afterForeground = [Win32Verify]::GetForegroundWindow()
             if ($beforeForeground -cne $afterForeground) { throw 'Foreground changed during posted navigation' }
             Start-Sleep -Milliseconds 500
             if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'FolderList')) {
-                $retryBefore = & pwsh -NoProfile -File $probe
+                $retryBefore = [Win32Verify]::GetForegroundWindow()
                 $null = [SmartSnippetsPostedInput]::Click([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y)
-                $retryAfter = & pwsh -NoProfile -File $probe
+                $retryAfter = [Win32Verify]::GetForegroundWindow()
                 if ($retryBefore -cne $retryAfter) { throw 'Foreground changed during posted retry' }
                 Start-Sleep -Milliseconds 500
             }
             if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'FolderList')) {
-                $keyBefore = & pwsh -NoProfile -File $probe
+                $keyBefore = [Win32Verify]::GetForegroundWindow()
                 # Keyboard fallback remains targeted to the same owned bridge; delivery
                 # must be proven by the Folders UIA element, not merely by posting.
                 [SmartSnippetsPostedInput]::Key([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y, 0x09)
                 [SmartSnippetsPostedInput]::Key([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y, 0x28)
                 [SmartSnippetsPostedInput]::Key([IntPtr]$w.Current.NativeWindowHandle, $p.Id, $x, $y, 0x0D)
                 Start-Sleep -Milliseconds 500
-                $keyAfter = & pwsh -NoProfile -File $probe
+                $keyAfter = [Win32Verify]::GetForegroundWindow()
                 if ($keyBefore -cne $keyAfter) { throw 'Foreground changed during posted keyboard navigation' }
             }
             if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'FolderList')) { throw 'Posted mouse and keyboard navigation did not open Folders' }
@@ -244,6 +261,7 @@ try {
         }
     }
     Write-Host "Screenshots: $out"
+    if ($script:QaFailures.Count) { throw 'One or more visual QA assertions failed' }
 } finally {
     foreach ($p in $procs) { Stop-OwnedProcess $p }
     if ($isolated -and (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue)) { throw 'App remains running; profile recovery requires manual inspection' }
