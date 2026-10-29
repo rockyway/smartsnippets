@@ -225,7 +225,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
             e.ItemContainer.RightTapped += OnRowRightTapped;
             e.ItemContainer.IsEnabled = item.Kind == PopupItemKind.Snippet;
             e.ItemContainer.IsTabStop = item.Kind == PopupItemKind.Snippet;
-            StyleSelection(e.ItemContainer, ReferenceEquals(e.Item, PopupList.SelectedItem));
         }
     }
     private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -255,19 +254,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
             DispatcherQueue.TryEnqueue(() => { if (_visible && PInvoke.GetForegroundWindow() != _hwnd) ViewModel.OnDeactivated(); });
         };
         menu.ShowAt(container);
-    }
-    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        foreach (var item in e.RemovedItems)
-            if (PopupList.ContainerFromItem(item) is ListViewItem container) StyleSelection(container, false);
-        foreach (var item in e.AddedItems)
-            if (PopupList.ContainerFromItem(item) is ListViewItem container) StyleSelection(container, true);
-    }
-    private void StyleSelection(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, bool selected)
-    {
-        container.Background = selected ? SelectedPalette.Background : null;
-        container.BorderBrush = selected ? SelectedPalette.BorderBrush : null;
-        container.BorderThickness = selected ? new Thickness(3, 0, 0, 0) : new Thickness(0);
     }
     private void OnSortClick(object sender, RoutedEventArgs e)
     {

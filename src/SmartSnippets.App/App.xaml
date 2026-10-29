@@ -36,6 +36,22 @@
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
+            <!-- Native presenter states: neutral when idle/hovered, accent only for selection.
+                 Shared by popup, snippets, and folder/browse lists; theme changes stay live. -->
+            <SolidColorBrush x:Key="ListViewItemBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="{ThemeResource SystemBaseLowColor}" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="{ThemeResource SystemBaseLowColor}" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ListViewItemForegroundSelected" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="ListViewItemForegroundSelectedPointerOver" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="ListViewItemForegroundSelectedPressed" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <Style x:Key="SnippetListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+            </Style>
+
             <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource DangerBackgroundBrush}" />
                 <Setter Property="Foreground" Value="{ThemeResource DangerForegroundBrush}" />
