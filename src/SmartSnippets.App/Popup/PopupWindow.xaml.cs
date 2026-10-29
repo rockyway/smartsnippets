@@ -38,13 +38,14 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private bool _awaitingFrame;
     private MenuFlyout? _contextFlyout;
     private bool _prewarming;
-    private Action? _afterPrewarm;
+    private readonly PopupShowCoordinator _shows;
 
     internal PopupWindow(ITextSizeService textSize, Action openMainWindow, Action<long> editSnippet)
     {
         TextSize = textSize; _openMainWindow = openMainWindow; _editSnippet = editSnippet;
         InitializeComponent();
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus);
         // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
         // Install one explicitly so borderless/topmost settings are not silently skipped.
         var presenter = OverlappedPresenter.Create();
@@ -58,7 +59,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
             if (_viewModel is not null) _viewModel.PropertyChanged -= OnViewModelChanged;
             CompositionTarget.Rendered -= OnRendered;
             RootGrid.LayoutUpdated -= OnPrewarmLayout;
-            _afterPrewarm = null;
+            _shows.Close();
             EditorControl.ViewModel = null;
         };
     }
@@ -106,6 +107,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         if (_prewarming) return;
         _prewarming = true;
+        _shows.BeginWarmup();
         // Keep the compositor surface cloaked until themed content has completed first layout.
         // Showing without activation is needed to create XamlRoot; immediate Hide aborted layout.
         WindowSurface.Cloak(this, true);
@@ -120,24 +122,23 @@ public sealed partial class PopupWindow : Window, IPopupHost
         AppWindow.Hide();
         WindowSurface.Cloak(this, false);
         _prewarming = false;
-        var pending = _afterPrewarm; _afterPrewarm = null;
-        pending?.Invoke();
+        _shows.CompleteWarmup();
     }
-    internal void ShowFor(InsertionTarget target, long hotkeyTimestamp)
+    internal void ShowFor(InsertionTarget target, long hotkeyTimestamp) => _shows.RequestShow(() => ShowForReady(target, hotkeyTimestamp));
+    private PopupShowResult ShowForReady(InsertionTarget target, long hotkeyTimestamp)
     {
-        if (CanShow?.Invoke() == false) return;
-        if (_prewarming) { _afterPrewarm = () => ShowFor(target, hotkeyTimestamp); return; }
+        if (CanShow?.Invoke() == false) return default;
         var mode = ViewModel.Open(target);
-        if (mode == PopupOpenMode.Ignored) { AppLog.Info("popup_open_ignored", "reason=inserting"); return; }
+        if (mode == PopupOpenMode.Ignored) { AppLog.Info("popup_open_ignored", "reason=inserting"); return default; }
         _hotkeyTimestamp = hotkeyTimestamp; _readyPending = true;
         Center(); AppWindow.Show(); SetVisible(true); ReportReady(); Activate(); PInvoke.SetForegroundWindow(_hwnd);
-        Focus(mode == PopupOpenMode.Resumed ? PopupFocusTarget.Editor : PopupFocusTarget.Search);
+        return new(true, mode == PopupOpenMode.Resumed ? PopupFocusTarget.Editor : PopupFocusTarget.Search);
     }
-    internal void ShowPreview(HWND owner, string? query = null, bool activate = true)
+    internal void ShowPreview(HWND owner, string? query = null, bool activate = true) => _shows.RequestShow(() => ShowPreviewReady(owner, query, activate));
+    private PopupShowResult ShowPreviewReady(HWND owner, string? query, bool activate)
     {
-        if (CanShow?.Invoke() == false) return;
-        if (_prewarming) { _afterPrewarm = () => ShowPreview(owner, query, activate); return; }
-        if (ViewModel.OpenPreview() == PopupOpenMode.Ignored) return;
+        if (CanShow?.Invoke() == false) return default;
+        if (ViewModel.OpenPreview() == PopupOpenMode.Ignored) return default;
         if (query is not null) ViewModel.Query = query;
         var monitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
         if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
@@ -146,8 +147,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (activate)
         {
             Activate(); PInvoke.SetForegroundWindow(_hwnd);
-            Focus(PopupFocusTarget.Search);
         }
+        return new(true, activate ? PopupFocusTarget.Search : null);
     }
     private void Center()
     {
@@ -158,32 +159,32 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     public void Hide()
     {
-        _afterPrewarm = null;
+        _shows.Hide();
         if (!AppWindow.IsVisible && !_visible) return;
         CompositionTarget.Rendered -= OnRendered;
         _searchStarted = 0; _awaitingLayout = false; _awaitingFrame = false;
         AppWindow.Hide(); SetVisible(false);
     }
-    public void ShowAgain()
+    public void ShowAgain() => _shows.RequestShow(ShowAgainReady);
+    private PopupShowResult ShowAgainReady()
     {
-        if (CanShow?.Invoke() == false) return;
-        if (_prewarming) { _afterPrewarm = ShowAgain; return; }
+        if (CanShow?.Invoke() == false) return default;
         ViewModel.EnsureCurrent();
         Center(); AppWindow.Show(); SetVisible(true);
         var focused = ForegroundActivation.TryActivate(_hwnd, out var path);
         AppLog.Info("popup_reopened", $"outcome={ViewModel.LastInsertionOutcome} focus={path}");
-        if (focused) Focus(PopupFocusTarget.Search); else NotifyReopenFailure?.Invoke(ViewModel.FooterMessage);
+        if (!focused) NotifyReopenFailure?.Invoke(ViewModel.FooterMessage);
+        return new(true, focused ? PopupFocusTarget.Search : null);
     }
     public void OpenMainWindow() { _openMainWindow(); Hide(); AppLog.Info("popup_closed", "reason=main_window"); }
     public void EditSnippet(long snippetId) { Hide(); _editSnippet(snippetId); AppLog.Info("popup_closed", "reason=edit"); }
-    public void Focus(PopupFocusTarget target)
+    public void Focus(PopupFocusTarget target) => _shows.Focus(target);
+    private void ApplyFocus(PopupFocusTarget target)
     {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (target == PopupFocusTarget.Editor) EditorControl.FocusText();
-            else if (target == PopupFocusTarget.Footer) PasteAnywayButton.Focus(FocusState.Programmatic);
-            else SearchBox.Focus(FocusState.Programmatic);
-        });
+        if (CanShow?.Invoke() == false || !_visible) return;
+        if (target == PopupFocusTarget.Editor) EditorControl.FocusText();
+        else if (target == PopupFocusTarget.Footer) PasteAnywayButton.Focus(FocusState.Programmatic);
+        else SearchBox.Focus(FocusState.Programmatic);
     }
     private void SetVisible(bool value) { if (_visible == value) return; _visible = value; VisibleChanged?.Invoke(this, value); }
     private void OnActivated(object sender, WindowActivatedEventArgs e)

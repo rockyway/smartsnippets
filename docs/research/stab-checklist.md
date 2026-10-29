@@ -13,7 +13,7 @@
 ## Static review fix round (validation pending stab-02)
 
 - [x] Fix 1: NumberBox focus-within walks the focused descendant tree; an edit-session latch and deferred final-value read preserve focus-loss commits. Finite/rebind/session-identity guards retained. Typing, stepping, spin buttons and focus-loss commit still require control-level verification.
-- [ ] Fix 2: preserve recovery focus across asynchronous prewarm and suspended resume; regression tests.
+- [x] Fix 2: shared testable show/focus coordinator carries explicit focus through async prewarm; late Search cannot overwrite Footer, queued focus is invalidated by hide/close/new requests. Added actual VM ClipboardNotPreserved replacement and suspended/resume tests (unrun).
 - [ ] Fix 3: explicit cancel/restart/timeout lifecycle; regression tests and dropped-request sweep.
 - [ ] Fix 4: same-ID search-field and exact usage-sort regression oracles.
 - [ ] Fix 5: narrow cache memory claims to actual cache-size/disposal checks.
