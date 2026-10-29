@@ -1,5 +1,5 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
-param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum, [switch]$ToolbarOnly)
+param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateSet('Default','Ocean','Forest','Plum')][string]$Palette = 'Default', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum, [switch]$ToolbarOnly)
 $ErrorActionPreference = 'Stop'
 if (-not $CaptureOnly) { throw 'Only the no-input capture mode is supported' }
 trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
@@ -74,6 +74,27 @@ function Save-QAScreenshot([IntPtr]$window, [string]$path) {
         try { if (-not [QaResize]::PrintWindow($window,$dc,2)) { throw 'PrintWindow failed' } }
         finally { $graphics.ReleaseHdc($dc) }
         $bitmap.Save($path,[System.Drawing.Imaging.ImageFormat]::Png)
+        # Content-free oracle: custom surface pixels, not fixture text, must appear in
+        # both main and popup captures. Sample every four pixels to keep capture bounded.
+        $fileName = [IO.Path]::GetFileName($path)
+        if ($Palette -ne 'Default' -and $Theme -ne 'System' -and ($fileName -like 'snippets-*' -or $fileName -like 'popup-*')) {
+            $paletteSurfaces = @{
+                'Light:Ocean' = @('F2F8FC','F8FBFE','EAF3FA'); 'Dark:Ocean' = @('101F2B','192D3C','152735')
+                'Light:Forest' = @('F3F8F3','F9FCF9','EAF3EC'); 'Dark:Forest' = @('14241B','1D3225','192C20')
+                'Light:Plum' = @('F9F4FA','FCF9FD','F2EAF5'); 'Dark:Plum' = @('241925','342438','2C1E30')
+            }
+            $expected = $paletteSurfaces["${Theme}:${Palette}"]
+            if ($fileName -like 'popup-*') { $expected = @($expected[0]) }
+            $matches = 0
+            for ($y = 4; $y -lt $bitmap.Height -and $matches -lt 30; $y += 4) {
+                for ($x = 4; $x -lt $bitmap.Width -and $matches -lt 30; $x += 4) {
+                    $pixel = $bitmap.GetPixel($x, $y)
+                    if (('{0:X2}{1:X2}{2:X2}' -f $pixel.R,$pixel.G,$pixel.B) -in $expected) { $matches++ }
+                }
+            }
+            if ($matches -lt 30) { $script:QaFailures.Add("Palette surface not rendered: palette=$Palette theme=$Theme surface=$fileName"); Write-Warning $script:QaFailures[-1] }
+            else { Write-Host "Verified palette surface=$Palette theme=$Theme file=$fileName" }
+        }
         if ([IO.Path]::GetFileName($path) -like 'popup-*-Light-*' -and $bitmap.Width -gt 120 -and $bitmap.Height -gt 180) {
             $pixel = $bitmap.GetPixel([int]($bitmap.Width / 2), $bitmap.Height - 100)
             if ($pixel.R -lt 100 -and $pixel.G -lt 100 -and $pixel.B -lt 100) { $script:QaFailures.Add('Light popup background is dark or PrintWindow could not capture it'); Write-Warning $script:QaFailures[-1] }
@@ -117,13 +138,20 @@ try {
     # Start hidden so the main window cannot appear on an unauthorized monitor.
     $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') @('--background') $procs
     $mainHwnd = Wait-Until { try { [SmartSnippetsPostedInput]::FindOwnedWindow($p.Id, 'Smart Snippets', $null) } catch { $null } } 20000 200
-    if (-not $mainHwnd) { [SmartSnippetsPostedInput]::DescribeOwnedWindows($p.Id) | ForEach-Object { Write-Host $_ }; throw 'Owned hidden main window not found' }
+    if (-not $mainHwnd) {
+        $ownedLog = Join-Path $profile 'logs/app.log'
+        if (Test-Path -LiteralPath $ownedLog) { Copy-Item -LiteralPath $ownedLog -Destination (Join-Path $out 'owned-startup.log') }
+        [SmartSnippetsPostedInput]::DescribeOwnedWindows($p.Id) | ForEach-Object { Write-Host $_ }
+        throw 'Owned hidden main window not found'
+    }
     if ($CaptureOnly) {
         # Seed only the isolated profile while the owned app is stopped.
         Stop-OwnedProcess $p
         $db = Join-Path $profile 'smartsnippets.db'
         & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('theme','$Theme') ON CONFLICT(key) DO UPDATE SET value=excluded.value; INSERT INTO folders(name,name_key,created_at,updated_at) VALUES('QA folder','QA FOLDER',1700000000000,1700000000000); INSERT INTO snippets(text,label,label_is_custom,folder_id,tags,created_at,updated_at,usage_count) VALUES('Synthetic one','First synthetic',1,1,'work,qa',1700000000000,1700000000000,3),('Synthetic two','Second synthetic',1,NULL,'qa',1700000000000,1700000000000,0),('Synthetic three','Third synthetic with a deliberately very long label that must truncate cleanly on one row',1,1,'sample,extra-long-tag',1700000000000,1700000000000,1);"
         if ($LASTEXITCODE -ne 0) { throw 'Synthetic fixture seeding failed' }
+        & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('color_palette','$Palette') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
+        if ($LASTEXITCODE -ne 0) { throw 'Palette fixture seeding failed' }
         if ($CustomSize -gt 0) {
             if ($CustomSize -lt 10) { throw 'Custom size must be 10 through 32' }
             & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('text_size.preset','Custom'),('text_size.custom','$CustomSize') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
@@ -131,10 +159,20 @@ try {
         }
         $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') @('--background') $procs
         $mainHwnd = Wait-Until { try { [SmartSnippetsPostedInput]::FindOwnedWindow($p.Id, 'Smart Snippets', $null) } catch { $null } } 20000 200
-        if (-not $mainHwnd) { throw 'Fixture app main window not found' }
+        if (-not $mainHwnd) {
+            $ownedLog = Join-Path $profile 'logs/app.log'
+            if (Test-Path -LiteralPath $ownedLog) { Copy-Item -LiteralPath $ownedLog -Destination (Join-Path $out 'owned-startup.log') }
+            throw 'Fixture app main window not found'
+        }
     }
     $messageHwnd = Wait-Until { try { [SmartSnippetsPostedInput]::FindOwnedWindow($p.Id, $null, 'SmartSnippets.MessageWindow') } catch { $null } } 10000 200
-    if (-not $messageHwnd) { throw 'Owned tray callback window not found' }
+    if (-not $messageHwnd) {
+        # Preserve only the disposable profile's log for diagnosing owned startup failure.
+        # This contains synthetic fixture data only; do not print raw exception payloads.
+        $ownedLog = Join-Path $profile 'logs/app.log'
+        if (Test-Path -LiteralPath $ownedLog) { Copy-Item -LiteralPath $ownedLog -Destination (Join-Path $out 'owned-startup.log') }
+        throw 'Owned tray callback window not found'
+    }
     # Probe only the foreground HWND; do not inspect another app's process or title.
     # Only DISPLAY9's work area is authorized; never park on the top-left monitor.
     $screen = [System.Windows.Forms.Screen]::AllScreens | Where-Object {
@@ -242,7 +280,7 @@ try {
                 }
                 Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$(if ($isMinimum) {'minimum'} else {'requested'})-$($size[0])x$($size[1]).png"))
             }
-            $queries = if ($ToolbarOnly) { @() } elseif ($SmokeMinimum) { if ($Theme -eq 'Dark' -and -not $isMinimum -and $size[0] -eq 900) { ,'' } else { @() } } else { @('', 'First', 'NoSuchQaResult') }
+            $queries = if ($ToolbarOnly) { @() } elseif ($SmokeMinimum) { if (-not $isMinimum -and $size[0] -eq 900) { ,'' } else { @() } } else { @('', 'First', 'NoSuchQaResult') }
             foreach ($query in $queries) {
                 $activation = @('--preview-popup')
                 if ($query) { $activation += @('--preview-popup-query', $query) }
@@ -251,9 +289,16 @@ try {
                 if (-not $popup) { throw 'Preview popup did not appear' }
                 $popupStyle = [QaResize]::GetWindowStyle([IntPtr]$popup.Current.NativeWindowHandle, -16).ToInt64()
                 $popupExtendedStyle = [QaResize]::GetWindowStyle([IntPtr]$popup.Current.NativeWindowHandle, -20).ToInt64()
-                if ((($popupStyle -band 0x00C00000) -eq 0x00C00000 -or ($popupExtendedStyle -band 8) -eq 0) -and -not $script:PopupCaptionWarned) {
+                Write-Host ('Popup styles: style=0x{0:X8} ex=0x{1:X8}' -f $popupStyle, $popupExtendedStyle)
+                # The popup intentionally keeps a native border for DWM rounding. WS_CAPTION
+                # bits may remain set even when OverlappedPresenter has no visible title bar.
+                # Require both the independent WS_EX_TOPMOST bit and the app's actual presenter policy.
+                $popupLog = Join-Path $profile 'logs/app.log'
+                $popupReceipt = if (Test-Path -LiteralPath $popupLog) { [IO.File]::ReadAllText($popupLog) } else { '' }
+                $policyOk = $popupReceipt -match '(?m) INFO popup_frame_policy border=True titlebar=False topmost=True\s*$'
+                if ((($popupExtendedStyle -band 8) -eq 0 -or -not $policyOk) -and -not $script:PopupCaptionWarned) {
                     $script:PopupCaptionWarned = $true
-                    $script:QaFailures.Add('Popup is not borderless and topmost')
+                    $script:QaFailures.Add('Popup presenter lacks the required border/no-title-bar/topmost policy')
                     Write-Warning $script:QaFailures[-1]
                 }
                 $search = Find-ById $popup 'PopupSearch'
@@ -263,6 +308,26 @@ try {
                 $rows = @(Find-All $list ([Windows.Automation.ControlType]::ListItem))
                 if ($query -eq 'NoSuchQaResult' -and $rows.Count -ne 0) { throw 'Empty preview search returned rows' }
                 if (-not $query -and $rows.Count -ne 3) { throw 'Populated preview did not return exactly three rows' }
+                if (-not $query) {
+                    $label = Find-ByName $rows[0] 'First synthetic' ([Windows.Automation.ControlType]::Text)
+                    $metadata = Find-ByName $rows[0] 'QA folder #work #qa' ([Windows.Automation.ControlType]::Text)
+                    if (-not $label -or -not $metadata) { throw 'Popup font comparison: label or metadata text element missing' }
+                    $labelPattern = $null; $metadataPattern = $null
+                    if (-not $label.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$labelPattern) -or
+                        -not $metadata.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$metadataPattern)) {
+                        throw 'Popup font comparison: TextPattern unavailable; bounds alone do not measure glyph size'
+                    }
+                    $labelSize = $labelPattern.DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontSizeAttribute)
+                    $metadataSize = $metadataPattern.DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontSizeAttribute)
+                    Write-Host "Popup font sizes: label=$labelSize metadata=$metadataSize"
+                    if ($labelSize -isnot [double] -or $metadataSize -isnot [double] -or $metadataSize -le 0 -or
+                        [Math]::Abs($metadataSize - 0.85 * $labelSize) -gt 0.05) {
+                        throw 'Popup metadata font size does not match 85% of the label'
+                    }
+                    if ($CustomSize -gt 0 -and [Math]::Abs($labelSize - $CustomSize) -gt 0.05) {
+                        throw 'Popup label font size does not match the custom setting'
+                    }
+                }
                 if ($query -eq 'First') {
                     if ($rows.Count -ne 1) { throw 'Preview search did not return exactly one row' }
                     $rowText = @(Find-All $rows[0] ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
@@ -319,6 +384,13 @@ try {
             if (-not (Test-Path $file)) { throw 'Screenshot failed' }
         }
     }
+    $ownedLog = Join-Path $profile 'logs/app.log'
+    if (-not (Test-Path -LiteralPath $ownedLog)) { throw 'Owned application log missing' }
+    $events = [IO.File]::ReadAllText($ownedLog)
+    if ($events -notmatch ('(?m) INFO palette_loaded palette=' + [regex]::Escape($Palette) + '\s*$')) {
+        throw 'Owned application did not load the requested palette fixture'
+    }
+    Write-Host "Verified loaded palette=$Palette"
     Write-Host "Screenshots: $out"
     if ($script:QaFailures.Count) { throw 'One or more visual QA assertions failed' }
 } finally {

@@ -11,10 +11,12 @@ internal sealed class DialogService : IDialogService
     private readonly Func<XamlRoot?> _getXamlRoot;
     private readonly Action _showMainWindow;
     private readonly ITextSizeService? _textSize;
+    private readonly ThemeService? _theme;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public DialogService(Func<XamlRoot?> getXamlRoot, Action showMainWindow, ITextSizeService? textSize = null)
+    public DialogService(Func<XamlRoot?> getXamlRoot, Action showMainWindow, ITextSizeService? textSize = null, ThemeService? theme = null)
     {
+        _theme = theme;
         _textSize = textSize;
         _getXamlRoot = getXamlRoot;
         _showMainWindow = showMainWindow;
@@ -102,7 +104,9 @@ internal sealed class DialogService : IDialogService
                 dialog.RequestedTheme = content.RequestedTheme;
             }
 
-            return await dialog.ShowAsync();
+            _theme?.RegisterTransient(dialog);
+            try { return await dialog.ShowAsync(); }
+            finally { _theme?.UnregisterTransient(dialog); }
         }
         finally
         {

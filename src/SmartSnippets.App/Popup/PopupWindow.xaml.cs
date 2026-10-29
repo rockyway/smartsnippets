@@ -65,6 +65,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
         presenter.IsMinimizable = false; presenter.IsMaximizable = false;
         AppWindow.SetPresenter(presenter);
+        AppLog.Info("popup_frame_policy", $"border={presenter.HasBorder} titlebar={presenter.HasTitleBar} topmost={presenter.IsAlwaysOnTop}");
         ExtendsContentIntoTitleBar = true; // lets the OS treat Caption regions as draggable
         RefreshFrame();
         _uiSettings.ColorValuesChanged += OnSystemColorsChanged;
@@ -120,6 +121,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
         PopupFooterState.ConfirmClipboardLoss or PopupFooterState.MaybePasted => InfoBarSeverity.Warning,
         _ => InfoBarSeverity.Informational,
     };
+
+    internal void SetPaletteBackground(SolidColorBrush brush)
+    {
+        RootGrid.Background = brush;
+        PopupContent.Background = brush;
+        EditorOverlay.Background = brush;
+    }
 
     // ThemeService calls this after its native dark-mode/title-bar updates as well.
     internal void RefreshFrame()

@@ -17,6 +17,19 @@ internal static class FlyoutSurface
     private static readonly SolidColorBrush Dark = new(Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B));
     private static readonly SolidColorBrush Light = new(Color.FromArgb(0xFF, 0xF9, 0xF9, 0xF9));
 
+    private static readonly List<WeakReference<MenuFlyoutPresenter>> Presenters = [];
+    internal static Func<ElementTheme, SolidColorBrush>? ResolveMenuBrush { get; set; }
+    internal static Func<ElementTheme>? ResolveRequestedTheme { get; set; }
+
+    internal static void Refresh()
+    {
+        for (var i = Presenters.Count - 1; i >= 0; i--)
+        {
+            if (Presenters[i].TryGetTarget(out var presenter)) MakeSolid(presenter);
+            else Presenters.RemoveAt(i);
+        }
+    }
+
     internal static void KeepSolid(MenuFlyout menu) => menu.Opened += OnOpened;
 
     private static void OnOpened(object? sender, object e)
@@ -31,7 +44,15 @@ internal static class FlyoutSurface
                 if (Find(popup.Child) is { } presenter) { found = presenter; break; }
             }
         }
-        if (found is not null) MakeSolid(found);
+        if (found is not null)
+        {
+            if (!Presenters.Any(reference => reference.TryGetTarget(out var existing) && ReferenceEquals(existing, found)))
+            {
+                Presenters.Add(new(found));
+                found.ActualThemeChanged += OnPresenterThemeChanged;
+            }
+            MakeSolid(found);
+        }
         LogSurface(found);
     }
 
@@ -49,12 +70,19 @@ internal static class FlyoutSurface
         return null;
     }
 
+    private static void OnPresenterThemeChanged(FrameworkElement sender, object args)
+    {
+        if (sender is MenuFlyoutPresenter presenter) MakeSolid(presenter);
+    }
+
     private static void MakeSolid(MenuFlyoutPresenter presenter)
     {
         presenter.SystemBackdrop = null;
-        // High contrast keeps the system window colour from the theme dictionaries.
-        if (presenter.ActualTheme == ElementTheme.Dark) presenter.Background = Dark;
-        else if (presenter.ActualTheme == ElementTheme.Light) presenter.Background = Light;
+        if (ResolveRequestedTheme is { } resolveTheme && presenter.RequestedTheme != resolveTheme())
+            presenter.RequestedTheme = resolveTheme();
+        presenter.Background = ResolveMenuBrush?.Invoke(presenter.ActualTheme)
+            ?? (WindowSurface.IsHighContrast() ? new SolidColorBrush(WindowSurface.SystemColor(5))
+                : presenter.ActualTheme == ElementTheme.Dark ? Dark : Light);
     }
 
     private static void LogSurface(MenuFlyoutPresenter? presenter)

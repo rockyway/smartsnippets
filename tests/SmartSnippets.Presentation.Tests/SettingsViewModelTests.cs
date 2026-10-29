@@ -57,6 +57,44 @@ public sealed class SettingsViewModelTests
         Assert.False(vm.IsStatusVisible);
     }
 
+    [Theory]
+    [InlineData(ColorPalette.Default, 0)]
+    [InlineData(ColorPalette.Ocean, 1)]
+    [InlineData(ColorPalette.Forest, 2)]
+    [InlineData(ColorPalette.Plum, 3)]
+    public void PaletteIndex_RoundTrips(ColorPalette palette, int index)
+    {
+        Assert.Equal(index, SettingsViewModel.PaletteToIndex(palette));
+        Assert.Equal(palette, SettingsViewModel.IndexToPalette(index));
+        Assert.Equal(ColorPalette.Default, SettingsViewModel.IndexToPalette(-1));
+        Assert.Equal(ColorPalette.Default, SettingsViewModel.IndexToPalette(99));
+        Assert.Equal(0, SettingsViewModel.PaletteToIndex((ColorPalette)99));
+    }
+
+    [Fact]
+    public void PaletteInitialization_DoesNotApplyOrPersist()
+    {
+        using var vm = Create(new AppSettings { ColorPalette = ColorPalette.Plum });
+        Assert.Equal(ColorPalette.Plum, vm.SelectedPalette);
+        Assert.Empty(_theme.AppliedPalettes);
+        Assert.Empty(_store.Values);
+        vm.SelectedTheme = ThemeMode.Light;
+        Assert.Equal(ColorPalette.Plum, AppSettings.Load(_store).ColorPalette);
+    }
+
+    [Fact]
+    public void PaletteChange_AppliesAndPersistsIndependently()
+    {
+        using var vm = Create(new AppSettings { Theme = ThemeMode.Dark });
+        _store.Set(SettingsKeys.PopupLayout, PopupLayout.Folder.ToString());
+        vm.SelectedPalette = ColorPalette.Forest;
+        Assert.Equal([ColorPalette.Forest], _theme.AppliedPalettes);
+        var loaded = AppSettings.Load(_store);
+        Assert.Equal(ColorPalette.Forest, loaded.ColorPalette);
+        Assert.Equal(ThemeMode.Dark, loaded.Theme);
+        Assert.Equal(PopupLayout.Folder, loaded.PopupLayout);
+    }
+
     [Fact]
     public void ThemeChange_AppliesAndPersists()
     {

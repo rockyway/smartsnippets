@@ -12,6 +12,12 @@ internal static partial class WindowSurface
     [LibraryImport("user32.dll")]
     private static partial uint GetSysColor(int index);
 
+    internal static Windows.UI.Color SystemColor(int index)
+    {
+        var c = GetSysColor(index);
+        return Windows.UI.Color.FromArgb(255, (byte)c, (byte)(c >> 8), (byte)(c >> 16));
+    }
+
     /// <summary>COLOR_WINDOWTEXT as RGB via plain user32; replaces UISettings.UIElementColor, the suspected source of the 0x80070490 startup failure.</summary>
     internal static (byte R, byte G, byte B) WindowTextColor()
     {

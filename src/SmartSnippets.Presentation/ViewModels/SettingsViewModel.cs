@@ -14,6 +14,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>Theme radio order in the design: Light, Dark, System.</summary>
     private static readonly ThemeMode[] ThemeOrder = [ThemeMode.Light, ThemeMode.Dark, ThemeMode.System];
 
+    private static readonly ColorPalette[] PaletteOrder = [ColorPalette.Default, ColorPalette.Ocean, ColorPalette.Forest, ColorPalette.Plum];
+
     private static readonly string[] ModifierPrefixes = ["Ctrl+", "Alt+", "Shift+", "Win+"];
 
     private readonly ISettingsStore _settingsStore;
@@ -29,6 +31,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ThemeMode _selectedTheme;
+
+    [ObservableProperty]
+    private ColorPalette _selectedPalette;
 
     [ObservableProperty]
     private TextSizePreset _selectedTextSizePreset;
@@ -94,6 +99,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _previewGlobalDialog = previewGlobalDialog;
 
         _selectedTheme = initial.Theme;
+        _selectedPalette = initial.ColorPalette;
         _selectedTextSizePreset = initial.TextSizePreset;
         _customTextSize = TextSizeService.Clamp(initial.CustomTextSize);
         _isCustomTextSize = initial.TextSizePreset == TextSizePreset.Custom;
@@ -130,6 +136,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public static ThemeMode IndexToTheme(int index) =>
         index >= 0 && index < ThemeOrder.Length ? ThemeOrder[index] : ThemeMode.System;
 
+    public static int PaletteToIndex(ColorPalette palette)
+    {
+        var index = Array.IndexOf(PaletteOrder, palette);
+        return index >= 0 ? index : 0;
+    }
+
+    public static ColorPalette IndexToPalette(int index) =>
+        index >= 0 && index < PaletteOrder.Length ? PaletteOrder[index] : ColorPalette.Default;
+
     public bool IsStatusVisible => StatusMessage.Length > 0;
 
     public void Dispose() => _hotkey.StatusChanged -= OnHotkeyStatusChanged;
@@ -162,6 +177,13 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         _theme.Apply(value);
         _settings = _settings with { Theme = value };
+        Persist();
+    }
+
+    partial void OnSelectedPaletteChanged(ColorPalette value)
+    {
+        _theme.ApplyPalette(value);
+        _settings = _settings with { ColorPalette = value };
         Persist();
     }
 

@@ -129,6 +129,19 @@
                 <x:String>System</x:String>
             </RadioButtons>
 
+            <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind PaletteTitle}" />
+            <RadioButtons
+                x:Name="ColorPaletteRadios"
+                automation:AutomationProperties.Name="Color palette"
+                automation:AutomationProperties.AutomationId="ColorPaletteRadios"
+                SelectedIndex="{x:Bind PaletteToIndex(ViewModel.SelectedPalette), Mode=OneWay}"
+                SelectionChanged="OnPaletteSelectionChanged">
+                <RadioButton Content="{x:Bind PaletteDefault}" />
+                <RadioButton Content="{x:Bind PaletteOcean}" />
+                <RadioButton Content="{x:Bind PaletteForest}" />
+                <RadioButton Content="{x:Bind PalettePlum}" />
+            </RadioButtons>
+
             <!-- Start at login -->
             <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Start at login" />
             <ToggleSwitch

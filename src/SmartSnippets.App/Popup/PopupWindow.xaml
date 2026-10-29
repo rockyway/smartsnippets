@@ -8,7 +8,7 @@
     Title="Smart Snippets popup">
     <!-- Full-bleed client surface: DWM alone draws the border and clips rounded corners. -->
     <Grid x:Name="RootGrid" Padding="12" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" KeyDown="OnKeyDown">
-        <ContentControl Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <ContentControl x:Name="PopupContent" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid RowSpacing="8">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid ColumnSpacing="4">
