@@ -11,6 +11,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\SmartSnippets.Core.Tests\Porting\Fixtures\*.json" Link="Porting\Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Source contracts only: inspect layout without referencing WinUI or compiling App on Linux. -->
+    <None Include="..\..\src\SmartSnippets.App\**\*.xaml" Exclude="..\..\src\SmartSnippets.App\obj\**;..\..\src\SmartSnippets.App\bin\**" Link="UiContracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
