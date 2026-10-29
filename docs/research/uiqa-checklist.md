@@ -1,6 +1,8 @@
 # UI QA progress — feature/ui-qa
 
-## Independent review fix round — code only
+## Independent review fix round — build batch completed
+
+BUILD_BATCH_DONE — `uiqa-fixes-06`: solution build succeeded with **0 warnings and 0 errors**; Core tests **426 passed, 0 failed, 0 skipped**; Presentation tests **444 passed, 0 failed, 0 skipped**; one Native AOT publish succeeded with **0 warnings observed**. `DOTNET_PROCESSOR_COUNT=4`, MSBuild `-m:4`, publish `-MaxCpuCount 4`. No app was launched. UI verification remains pending a screen slot.
 
 - [ ] `32ebc19`: main-list insertion dismisses MaybePasted before changing the query or inserting; regression test covers retained target, id and options. `4b6b0d1` / `70b712f`: preview Copy is disabled and guarded against clipboard writes; normal Copy remains covered. Plan 006 records the isolation rule.
 - [ ] `c8c642e`: guarded explicit Edit raises a reveal request even for the current editor; both main and popup Edit use it. Test covers same-selection reveal and dirty-editor cancellation; actual narrow WinUI behavior remains unverified.
@@ -8,7 +10,7 @@
 - [ ] `e21863d` / `dd73ee5`: popup oracle requires exact 3/1/0 rows and checks First synthetic plus QA folder #work #qa in the matching row; returning Second for First now fails. New oracle needs a real run.
 - [ ] `a4b337c`: CRT doubled-quote redirect parsing and initial/redirected equivalence test.
 - [ ] `62ad41a`: Import Download U+E896 and Export Upload U+E898, named constants, tooltips/names/automation IDs preserved, plan 010 amended. Microsoft documents both codepoints in Segoe Fluent Icons and Segoe MDL2 Assets. Screenshot before redesign: `docs/qa/ui/be71038f9ea045f2968e3adf7f1842df/snippets-Light-size0-requested-1280x800.png` (read). New design needs build and actual visual inspection.
-- [ ] All above are unbuilt and untested: no build or UI slot used in this round. Request ONE `uiqa-fixes-06` build/test/publish batch. Subsequent screen slot: read redesigned toolbar screenshots at 1280×800 and 900×600, light/dark, default/10/32, plus full smoke; input-dependent checks remain PENDING-USER.
+- [x] Build and unit tests completed in the single `uiqa-fixes-06` batch above. No UI slot used in this round. Subsequent screen slot: read redesigned toolbar screenshots at 1280×800 and 900×600, light/dark, default/10/32, plus full smoke; input-dependent checks remain PENDING-USER.
 
 DISPLAY9 DPI-fix smoke slot started 2026-10-28 19:35 -0500 and stopped approximately 19:38, before the 19:45 deadline. Preflight/final process checks: zero Smart Snippets processes; no leftover profile backup. Isolated profile hash and registry recovery completed without reported mismatch. No builds or input were sent; foreground checks used HWND only.
 
