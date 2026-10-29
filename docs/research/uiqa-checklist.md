@@ -1,5 +1,14 @@
 # UI QA progress — feature/ui-qa
 
+Review-fixes screen slot started 2026-10-28 19:43 -0500 and completed at approximately 19:46, before the 19:58 deadline. Initial/final `Get-Process SmartSnippets.App` returned zero processes, no profile backup remained; supervisor cleanup/profile hash and registry recovery reported no mismatch. DISPLAY9 only; no input and no builds.
+
+SCREEN_BATCH_DONE — review-fixes screenshot/identity/minimum pass completed; input and display-scale-change acceptance pending.
+
+- [x] Read every PNG in seven new runs indexed in `docs/qa/ui/README.md`. Toolbar checked at 1280×800, 900×600 and minimum, light/dark × default/10/32. Glyphs are distinct down/up arrows with bars (not full boxes), centered, same nominal size and similar thin stroke to New; no tofu or overlap, clear contrast. Buttons visually match neighboring hit-area rectangles; actual pointer hit testing and tooltips remain pending.
+- [x] Default light/dark full page and popup smoke; UIA oracle passed exactly 3/1/0 rows and `First synthetic` plus `QA folder #work #qa` for First. Wrong Second result would fail. Search PrintWindow images do not visibly show row metadata despite UIA reporting it, so visual fidelity of that state is not asserted.
+- [x] Popup style assertions passed borderless/topmost in full runs; 96-DPI WM_GETMINMAXINFO reported 640×480 in each run; `dc207f62d37b48bda278e8e8a121e640` verified 100×100 request clamped to 640×480. Programmatic 900×600 was honored. Stationary scale-change and interactive drag remain PENDING-USER; changing the user's display scaling was not authorized.
+- [ ] Toolbar-only helper initially aborted before capture due to a PowerShell nested-array error; cleanup succeeded, helper was corrected, and all four repeats passed. Input-dependent editor/context menu, hotkey, clipboard, insertion and native picker behavior remains PENDING-USER; review fixes are unit-tested but not interactively exercised.
+
 ## Independent review fix round — build batch completed
 
 BUILD_BATCH_DONE — `uiqa-fixes-06`: solution build succeeded with **0 warnings and 0 errors**; Core tests **426 passed, 0 failed, 0 skipped**; Presentation tests **444 passed, 0 failed, 0 skipped**; one Native AOT publish succeeded with **0 warnings observed**. `DOTNET_PROCESSOR_COUNT=4`, MSBuild `-m:4`, publish `-MaxCpuCount 4`. No app was launched. UI verification remains pending a screen slot.

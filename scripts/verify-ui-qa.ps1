@@ -1,5 +1,5 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
-param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum)
+param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum, [switch]$ToolbarOnly)
 $ErrorActionPreference = 'Stop'
 if (-not $CaptureOnly) { throw 'Only the no-input capture mode is supported' }
 trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
@@ -218,6 +218,7 @@ try {
                 continue
             }
             $targetPages = @(@('snippets','SnippetList'), @('folders','FolderList'), @('settings','TextSizeRadios'))
+            if ($ToolbarOnly) { $targetPages = @(,@('snippets','SnippetList')) }
             if ($SmokeMinimum -and -not $isMinimum) {
                 $targetPages = @()
                 if ($Theme -eq 'Light' -and $size[0] -eq 1280) { $targetPages += ,@('snippets','SnippetList') }
@@ -241,7 +242,7 @@ try {
                 }
                 Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$(if ($isMinimum) {'minimum'} else {'requested'})-$($size[0])x$($size[1]).png"))
             }
-            $queries = if ($SmokeMinimum) { if ($Theme -eq 'Dark' -and -not $isMinimum -and $size[0] -eq 900) { ,'' } else { @() } } else { @('', 'First', 'NoSuchQaResult') }
+            $queries = if ($ToolbarOnly) { @() } elseif ($SmokeMinimum) { if ($Theme -eq 'Dark' -and -not $isMinimum -and $size[0] -eq 900) { ,'' } else { @() } } else { @('', 'First', 'NoSuchQaResult') }
             foreach ($query in $queries) {
                 $activation = @('--preview-popup')
                 if ($query) { $activation += @('--preview-popup-query', $query) }

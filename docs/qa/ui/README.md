@@ -2,6 +2,20 @@
 
 All images are synthetic fixture data. Paths below are run directories under this folder. Historical superseded runs were pruned from the current tree; their original commits remain in git history. The DPI-cropped `ed8ec46e19ef4ae28b51e82226b016d0` run was removed and is not evidence.
 
+## Latest review-fixes verification (build uiqa-fixes-06)
+
+All PNGs in these runs were read. Default-theme runs contain Snippets/Folders/Settings and popup filled/search/empty at 1280×800, 900×600, and 640×480. Custom-size runs contain Snippets at those sizes. Window dimensions in filenames identify the requested main-window iteration; popup images are 640×480.
+
+| Run | Theme | Text size | Scope |
+|---|---|---|---|
+| `7b7fbe2d2e2540e28c09fac4f0eb0202` | Light | Default | Pages and popup states |
+| `c5202fff83a74947851331b183e61861` | Dark | Default | Pages and popup states |
+| `559b579bb93f4cbbba6bdfee3814d322` | Light | 10 | Toolbar / Snippets |
+| `6919483b5df745ac9f1268113cc04d52` | Light | 32 | Toolbar / Snippets |
+| `848a156e1b3c4d6588f5d39c2b1245ac` | Dark | 10 | Toolbar / Snippets |
+| `5b532c7bd8be4ababb32dceb5aedad10` | Dark | 32 | Toolbar / Snippets |
+| `dc207f62d37b48bda278e8e8a121e640` | Light | Default | Below-minimum clamp and minimum pages |
+
 ## Last complete pre-DPI-fix matrix
 
 These runs used the presenter build before the monitor-DPI correction. Requested 900×600 clamped to 960×720; they do **not** show 900×600. Each contains Snippets, Folders, Settings and popup filled/search/empty at 1280×800 and 960×720 (popup itself is 640×480).
