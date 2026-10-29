@@ -196,10 +196,10 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     {
         if (sender is not ListViewItem container || container.Content is not SnippetRowViewModel row) return;
         e.Handled = true;
-        ShowSnippetMenu(container, row);
+        ShowSnippetMenu(container, row, e.GetPosition(container));
     }
 
-    private void ShowSnippetMenu(ListViewItem container, SnippetRowViewModel row)
+    private void ShowSnippetMenu(ListViewItem container, SnippetRowViewModel row, Windows.Foundation.Point? position = null)
     {
         if (_viewModel is not { } vm) return;
         var menu = new MenuFlyout();
@@ -212,7 +212,8 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         edit.Click += async (_, _) => await vm.RequestEditAsync(row.Id);
         delete.Click += async (_, _) => await vm.DeleteRowAsync(row.Id);
         menu.Items.Add(copy); menu.Items.Add(insert); menu.Items.Add(edit); menu.Items.Add(delete);
-        menu.ShowAt(container);
+        if (position is { } point) menu.ShowAt(container, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = point });
+        else menu.ShowAt(container); // Keyboard invocation remains anchored to the selected row.
     }
 
     private void OnListKeyDown(object sender, KeyRoutedEventArgs e)
