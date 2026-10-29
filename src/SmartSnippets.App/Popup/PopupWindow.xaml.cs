@@ -48,6 +48,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         TextSize = textSize; _openMainWindow = openMainWindow;
         InitializeComponent();
+        FlyoutSurface.KeepSolid(SortFlyout);
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
@@ -288,6 +289,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (!ViewModel.CanUseRowActions(item)) return;
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
+        FlyoutSurface.KeepSolid(menu);
         var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = ViewModel.CanCopyRow(item) };
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };

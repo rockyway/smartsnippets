@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using SmartSnippets.App.Services;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using SmartSnippets.Presentation.Navigation;
@@ -203,6 +204,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     {
         if (_viewModel is not { } vm) return;
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
+        FlyoutSurface.KeepSolid(menu);
         var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy };
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = vm.CanInsertRow };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
