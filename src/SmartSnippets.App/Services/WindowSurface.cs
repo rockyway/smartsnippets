@@ -12,7 +12,11 @@ internal static partial class WindowSurface
     internal static void SetDark(Window window, bool dark)
     {
         var value = dark ? 1 : 0;
-        _ = DwmSetWindowAttribute(WinRT.Interop.WindowNative.GetWindowHandle(window), 20, in value, sizeof(int));
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        _ = DwmSetWindowAttribute(hwnd, 20, in value, sizeof(int));
+        // No show/hide transition over an uninitialized native surface.
+        var disableTransitions = 1;
+        _ = DwmSetWindowAttribute(hwnd, 3, in disableTransitions, sizeof(int));
     }
 
     internal static void Cloak(Window window, bool cloak)

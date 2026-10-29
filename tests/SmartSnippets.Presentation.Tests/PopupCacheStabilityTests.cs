@@ -111,6 +111,26 @@ public sealed class PopupCacheStabilityTests(Xunit.Abstractions.ITestOutputHelpe
     }
 
     [Fact]
+    public void SortLayoutAndFilterChangesFlushPendingData()
+    {
+        _store.SeedSnippet("first", "First", "Folder");
+        using var vm = Create();
+        _store.SeedSnippet("second", "Second", "Folder");
+        vm.SetSort(SortField.UsageCount);
+        Assert.Equal(2, vm.CachedRowCount);
+        _store.SeedSnippet("third", "Third", "Folder");
+        vm.ToggleLayoutCommand.Execute(null);
+        Assert.Equal(3, vm.CachedRowCount);
+        Assert.Contains(vm.Items, item => item.Kind == PopupItemKind.Heading);
+        _store.SeedSnippet("fourth", "Fourth", "Folder");
+        vm.Query = "Fourth";
+        Assert.Equal("Fourth", vm.Items.Single(i => i.Kind == PopupItemKind.Snippet).Label);
+        var count = vm.CacheRebuildCount;
+        Drain();
+        Assert.Equal(count, vm.CacheRebuildCount);
+    }
+
+    [Fact]
     public void ThrowingSubscriberCannotPreventPopupInvalidation_QueuedWorkIsSafeAfterDispose()
     {
         _store.Changed += (_, _) => throw new InvalidOperationException("PRIVATE_BODY");

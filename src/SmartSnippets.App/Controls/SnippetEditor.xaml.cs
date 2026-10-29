@@ -42,18 +42,14 @@ public sealed partial class SnippetEditor : UserControl
             _rebinding = true;
             try
             {
-            if (_viewModel is not null)
-            {
-                _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            }
+                if (_viewModel is not null)
+                    _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
-            _viewModel = value;
-            if (_viewModel is not null)
-            {
-                _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-            }
+                _viewModel = value;
+                if (_viewModel is not null)
+                    _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
-            Bindings.Update();
+                Bindings.Update();
             }
             finally { _rebinding = false; }
         }
