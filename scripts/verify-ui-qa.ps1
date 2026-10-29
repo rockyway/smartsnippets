@@ -156,8 +156,14 @@ try {
     $null = Assert-OnDisplay9 ([IntPtr]$mainHwnd)
     $minimum = [QaResize]::MinimumTrackSize([IntPtr]$mainHwnd)
     if ($minimum.X -le 0 -or $minimum.Y -le 0 -or $minimum.X -gt 1840 -or $minimum.Y -gt 952) { throw 'Invalid or unsupported minimum track size' }
-    Write-Host "Window minimum track size: $($minimum.X)x$($minimum.Y)"
-    if ($minimum.X -lt 640 -or $minimum.Y -lt 480) { $script:QaFailures.Add('Main window minimum track size is below 640x480 physical pixels'); Write-Warning $script:QaFailures[-1] }
+    $windowDpi = [QaResize]::GetDpiForWindow([IntPtr]$mainHwnd)
+    Write-Host "Window minimum track size: $($minimum.X)x$($minimum.Y); current DPI=$windowDpi"
+    $expectedMinimumWidth = [int](640 * $windowDpi / 96.0)
+    $expectedMinimumHeight = [int](480 * $windowDpi / 96.0)
+    if ($minimum.X -ne $expectedMinimumWidth -or $minimum.Y -ne $expectedMinimumHeight) {
+        $script:QaFailures.Add("Main window minimum does not match current monitor DPI: expected ${expectedMinimumWidth}x$expectedMinimumHeight")
+        Write-Warning $script:QaFailures[-1]
+    }
     foreach ($size in @(@(1280,800),@(900,600),@($minimum.X,$minimum.Y))) {
         $isMinimum = $size[0] -eq $minimum.X -and $size[1] -eq $minimum.Y
         Update-HarnessProgress
@@ -168,9 +174,11 @@ try {
         Start-Sleep -Milliseconds 800
         $actualRect = Assert-OnDisplay9 ([IntPtr]$w.Current.NativeWindowHandle)
         if (($actualRect.Right - $actualRect.Left) -ne $size[0] -or ($actualRect.Bottom - $actualRect.Top) -ne $size[1]) {
-            if (-not $isMinimum) { throw "Requested $($size[0])x$($size[1]); actual $(($actualRect.Right-$actualRect.Left))x$(($actualRect.Bottom-$actualRect.Top))" }
-            Write-Warning "Minimum track query and actual resize differ; actual $(($actualRect.Right-$actualRect.Left))x$(($actualRect.Bottom-$actualRect.Top)) is a candidate, not proven interactive minimum"
-            $size = @(($actualRect.Right-$actualRect.Left), ($actualRect.Bottom-$actualRect.Top))
+            $actualWidth = $actualRect.Right - $actualRect.Left; $actualHeight = $actualRect.Bottom - $actualRect.Top
+            if (-not $isMinimum -and $size[0] -ge $minimum.X -and $size[1] -ge $minimum.Y) { throw "Requested $($size[0])x$($size[1]); actual ${actualWidth}x$actualHeight" }
+            if (-not $isMinimum) { $script:QaFailures.Add("Requested $($size[0])x$($size[1]) clamped to ${actualWidth}x$actualHeight"); Write-Warning $script:QaFailures[-1] }
+            else { Write-Warning "Minimum track query and actual resize differ; actual ${actualWidth}x$actualHeight is a candidate, not proven interactive minimum" }
+            $size = @($actualWidth, $actualHeight)
         }
         if ($CaptureOnly) {
             $fixtureRows = (& sqlite3 -batch (Join-Path $profile 'smartsnippets.db') "SELECT count(*) FROM snippets; SELECT value FROM settings WHERE key='theme'; SELECT value FROM settings WHERE key='text_size.preset'; SELECT value FROM settings WHERE key='text_size.custom';")
@@ -187,7 +195,7 @@ try {
                     $null = Assert-OnDisplay9 $ph
                     $style = [QaResize]::GetWindowStyle($ph, -16).ToInt64()
                     $extendedStyle = [QaResize]::GetWindowStyle($ph, -20).ToInt64()
-                    Write-Host ("Owned popup WS_CAPTION=$([bool]($style -band 0x00C00000)); WS_EX_TOPMOST=$([bool]($extendedStyle -band 8)); style=0x{0:X}" -f $style)
+                    Write-Host ("Owned popup WS_CAPTION=$(($style -band 0x00C00000) -eq 0x00C00000); WS_EX_TOPMOST=$([bool]($extendedStyle -band 8)); style=0x{0:X}" -f $style)
                     continue
                 }
                 $label = Find-ByName (Get-AppWindow $p.Id 'Smart Snippets') 'First synthetic' ([Windows.Automation.ControlType]::Text)
@@ -219,7 +227,7 @@ try {
                 if (-not $popup) { throw 'Preview popup did not appear' }
                 $popupStyle = [QaResize]::GetWindowStyle([IntPtr]$popup.Current.NativeWindowHandle, -16).ToInt64()
                 $popupExtendedStyle = [QaResize]::GetWindowStyle([IntPtr]$popup.Current.NativeWindowHandle, -20).ToInt64()
-                if ((($popupStyle -band 0x00C00000) -ne 0 -or ($popupExtendedStyle -band 8) -eq 0) -and -not $script:PopupCaptionWarned) {
+                if ((($popupStyle -band 0x00C00000) -eq 0x00C00000 -or ($popupExtendedStyle -band 8) -eq 0) -and -not $script:PopupCaptionWarned) {
                     $script:PopupCaptionWarned = $true
                     $script:QaFailures.Add('Popup is not borderless and topmost')
                     Write-Warning $script:QaFailures[-1]

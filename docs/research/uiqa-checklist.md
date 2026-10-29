@@ -1,5 +1,17 @@
 # UI QA progress — feature/ui-qa
 
+DISPLAY9 presenter recheck slot started 2026-10-28 19:26 -0500 and stopped at approximately 19:32, before the 19:46 deadline. Preflight/final checks: zero Smart Snippets processes; no leftover profile backup. Isolated-profile hash restoration and registry journal cleanup completed without a reported mismatch. No builds or input were sent; foreground checks used HWND only.
+
+SCREEN_BATCH_DONE — popup presenter verified; 900×600 remains blocked by wrong-DPI minimum; candidate fix needs build.
+
+## Latest presenter screen recheck
+
+- [x] `eb66e47` popup presenter verified: owned popup HWND reports `WS_CAPTION=False`, `WS_EX_TOPMOST=True`, style `0x14480000`; screenshot `docs/qa/ui/2792f312c46e487bbad3bd17e5062860/popup-filled-Light-size0-1280x800.png` is visibly borderless. Corrected the harness caption check: WS_CAPTION is the full `0x00C00000` composite, not any individual mask bit; the initial warning was a false positive.
+- [x] `5f0ff45` imposes a minimum: WM_GETMINMAXINFO reports 960×720 and a requested 900×600 programmatic resize clamps to 960×720. Pages at 960×720 are visible, e.g. `docs/qa/ui/2792f312c46e487bbad3bd17e5062860/snippets-Light-size0-960x720.png`; lower Settings content requires scrolling and was not inspected. Full interactive drag and presenter property read-back were not performed.
+- [ ] **DPI defect:** on DISPLAY9 `GetDpiForWindow` reports 96 while minimum remains 960×720 (instead of the intended 640×480 logical minimum at this DPI). 900×600 could not be achieved in this build; matrix test correctly exits nonzero. Candidates `4d9e524` and `fc3a65d` re-read monitor DPI after position changes; they need build and recheck. `BUILD_REQUEST uiqa-dpi-05` pending.
+- [x] Read the PNGs saved in runs `b293c12ed4134f9988f43eac18945e1e` (partial), `2792f312c46e487bbad3bd17e5062860`, `872bdea640574e4f8828fc3b374f591f`, `7da3318226bb4a409ba9423c6171db36`, `f9b96ff389b34d48962c30fc91d43bf9`, `ae8bc93e8cd842c185dc2bf4ca25504e`, `fd787e0b7bc14554afc77d3880835c69` under `docs/qa/ui/`. Pages and popup filled/search/empty were examined at 1280×800 and clamped 960×720, in light/dark and default/10/32. 900×600 was not achieved. Each requested 900 and minimum captured the same filenames, so the latter overwrote the former before review.
+- [ ] Context-menu screenshots and actions, lower Settings, tooltips, real hotkey, tray, native pickers/import-export and owned-target insertion remain PENDING-USER or unverified under no-input rules. No complete acceptance claimed.
+
 DISPLAY9 visual-fix screen slot started 2026-10-28 19:17 -0500 and stopped approximately 19:24, before 19:47 deadline. Preflight and final process checks found zero Smart Snippets processes; no leftover profile backup. No builds or input; foreground probes compare HWNDs only. Each run used an owned copy, supervisor/watchdog, registry journal and hash-checked profile restoration.
 
 SCREEN_BATCH_DONE — visual matrix inspected; native popup presenter and minimum-size fixes still require build and new UI verification.
