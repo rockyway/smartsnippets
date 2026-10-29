@@ -293,7 +293,8 @@ internal sealed class AppHost
         {
             if (options.Page is { } page) await window.ShowPageWithoutActivationAsync(page, showMain);
             if (options.PreviewPopup && !_exiting)
-                EnsurePopup().ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)), options.PreviewQuery, activate: false);
+                EnsurePopup().ShowPreview(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(window)), options.PreviewQuery,
+                    activate: false, openSortMenu: options.PreviewPopupSortMenu);
         }
         catch (Exception)
         {

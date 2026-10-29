@@ -54,6 +54,46 @@ public sealed class LaunchOptionsTests
         Assert.Equal(LaunchOptions.Parse(initial), LaunchOptions.Parse(redirected));
     }
 
+    [Theory]
+    [InlineData("--preview-popup --preview-popup-sort-menu")]
+    [InlineData("--PREVIEW-POPUP-SORT-MENU --PREVIEW-POPUP")]
+    public void SortMenuPreviewMatchesInitialAndRedirectedLaunch(string commandLine)
+    {
+        var initial = LaunchOptions.Parse(commandLine.Split(' '));
+        var redirected = LaunchOptions.Parse(LaunchOptions.SplitCommandLine(commandLine));
+        Assert.True(initial.PreviewPopup);
+        Assert.True(initial.PreviewPopupSortMenu);
+        Assert.True(initial.HasRequest);
+        Assert.Equal(initial, redirected);
+    }
+
+    [Fact]
+    public void SortMenuFlagAloneDoesNotRequestPopup()
+    {
+        var options = LaunchOptions.Parse(["--preview-popup-sort-menu"]);
+        Assert.False(options.HasRequest);
+        Assert.False(options.PreviewPopupSortMenu);
+    }
+
+    [Fact]
+    public void SortMenuFlagDoesNotGetConsumedAsMissingQueryValue()
+    {
+        var options = LaunchOptions.Parse(["--preview-popup", "--preview-popup-query", "--preview-popup-sort-menu"]);
+        Assert.Null(options.PreviewQuery);
+        Assert.True(options.PreviewPopupSortMenu);
+    }
+
+    [Fact]
+    public void SortMenuPreviewRetainsQueryAndPage()
+    {
+        var initial = LaunchOptions.Parse(["--page", "settings", "--preview-popup", "--preview-popup-sort-menu", "--preview-popup-query", "two words"]);
+        var redirected = LaunchOptions.Parse(LaunchOptions.SplitCommandLine("--page settings --preview-popup --preview-popup-sort-menu --preview-popup-query \"two words\""));
+        Assert.Equal(PageKind.Settings, initial.Page);
+        Assert.Equal("two words", initial.PreviewQuery);
+        Assert.True(initial.PreviewPopupSortMenu);
+        Assert.Equal(initial, redirected);
+    }
+
     [Fact]
     public void SplitRetainsQuotedEscapesAndEmptyArguments()
     {
