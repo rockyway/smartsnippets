@@ -17,6 +17,7 @@
 - [x] Fix 3: show coordinator explicitly cancels warmup on hide, resets to cold, restarts on next show and rejects stale layout/timeout generations. Two-second UI timer retries once; repeated failure logs and remains hidden/restartable. Tests cover cancelled exit→next show, timeout/retry/focus retention, stale completion, close and supersession (unrun). Class sweep: hotkey, preview, recovery, main/edit cancellation, late focus callbacks; nonactivating preview now invalidates queued focus from older shows. Standalone hidden Focus intentionally does not show/activate.
 - [x] Fix 4: added hidden-show-barrier and visible-queue regressions using unchanged IDs: old/new body/tag/folder searches, old-match disappearance, current tag projection, AND query, and exact two-row usage-count crossover order plus selected-ID retention (unrun).
 - [x] Fix 5: narrowed T3 evidence to cache-size/disposal/subscriber counts and explicitly excluded retention/collectibility/memory-growth proof.
+- [x] Static-only readiness: reviewed new event signatures, all show/focus entry points, timer cleanup and supersession; `git diff --check` clean. No fix-round build/test/publish/app launch has run. Requesting stab-02; await explicit BUILD GO stab-02.
 - [ ] Granted stab-02 C: snapshot build, sequential tests, AOT gate and final report.
 
 ## Screen grant stab-screen (2026-10-28)
@@ -25,9 +26,9 @@
 - [ ] Screen checks remain PENDING (blocked before launch): first-frame colour/capture, no activation/taskbar entry, synthetic 10k timing logs, Snippets/Settings rendering. Folder behaviour remains PENDING-USER.
 - No windows touched/captured, no candidate launch, no builds/input/profile/registry changes. `docs/qa/ui/stab/README.md` records the refusal; no screenshot evidence exists.
 
-## Evidence (C: only)
+## Historical stab-01 evidence (C: only; does not validate fix-round code)
 
-- Validated source commit: `125a05a`; following commits update small text evidence only.
+- Validated source commit: `125a05a`; `0346d81` recorded that evidence. Review fixes after `2915e18` await stab-02 validation.
 - Build log: `C:\temp\ss-stab-build-build.log` (final successful build).
 - Core log: `C:\temp\ss-stab-core.log`; results `C:\temp\ss-stab-results\core.trx`.
 - Presentation log: `C:\temp\ss-stab-presentation.log`; results `C:\temp\ss-stab-results\presentation.trx` (includes `dirty_open_50000_ms=67.48 rows=50000`).
