@@ -37,6 +37,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private bool _awaitingLayout;
     private bool _awaitingFrame;
     private MenuFlyout? _contextFlyout;
+    private bool _prewarming;
+    private Action? _afterPrewarm;
 
     internal PopupWindow(ITextSizeService textSize, Action openMainWindow, Action<long> editSnippet)
     {
@@ -94,11 +96,29 @@ public sealed partial class PopupWindow : Window, IPopupHost
 
     internal void Prewarm()
     {
-        AppWindow.MoveAndResize(new RectInt32(-32000, -32000, LogicalWidth, LogicalHeight)); AppWindow.Show(false); AppWindow.Hide();
+        if (_prewarming) return;
+        _prewarming = true;
+        // Keep the compositor surface cloaked until themed content has completed first layout.
+        // Showing without activation is needed to create XamlRoot; immediate Hide aborted layout.
+        WindowSurface.Cloak(this, true);
+        RootGrid.LayoutUpdated += OnPrewarmLayout;
+        AppWindow.MoveAndResize(new RectInt32(-32000, -32000, LogicalWidth, LogicalHeight));
+        AppWindow.Show(false);
+    }
+    private void OnPrewarmLayout(object? sender, object e)
+    {
+        if (RootGrid.XamlRoot is null || RootGrid.ActualWidth <= 0) return;
+        RootGrid.LayoutUpdated -= OnPrewarmLayout;
+        AppWindow.Hide();
+        WindowSurface.Cloak(this, false);
+        _prewarming = false;
+        var pending = _afterPrewarm; _afterPrewarm = null;
+        pending?.Invoke();
     }
     internal void ShowFor(InsertionTarget target, long hotkeyTimestamp)
     {
         if (CanShow?.Invoke() == false) return;
+        if (_prewarming) { _afterPrewarm = () => ShowFor(target, hotkeyTimestamp); return; }
         var mode = ViewModel.Open(target);
         if (mode == PopupOpenMode.Ignored) { AppLog.Info("popup_open_ignored", "reason=inserting"); return; }
         _hotkeyTimestamp = hotkeyTimestamp; _readyPending = true;
@@ -107,7 +127,9 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     internal void ShowPreview(HWND owner, string? query = null, bool activate = true)
     {
-        if (CanShow?.Invoke() == false || ViewModel.OpenPreview() == PopupOpenMode.Ignored) return;
+        if (CanShow?.Invoke() == false) return;
+        if (_prewarming) { _afterPrewarm = () => ShowPreview(owner, query, activate); return; }
+        if (ViewModel.OpenPreview() == PopupOpenMode.Ignored) return;
         if (query is not null) ViewModel.Query = query;
         var monitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
         if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
@@ -159,7 +181,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         ReportReady();
     }
     private void OnLayoutUpdated(object? sender, object e) => ReportReady();
-    private void ReportReady() { if (!_readyPending) return; _readyPending = false; AppLog.Info("popup_ready_ms", ((int)Stopwatch.GetElapsedTime(_hotkeyTimestamp).TotalMilliseconds).ToString()); }
+    private void ReportReady() { if (!_readyPending || !_visible) return; _readyPending = false; var ms = (int)Stopwatch.GetElapsedTime(_hotkeyTimestamp).TotalMilliseconds; AppLog.Info("popup_ready_ms", ms.ToString()); AppLog.Info("popup_show_ms=" + ms); }
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (ViewModel.IsEditorOpen) return;
