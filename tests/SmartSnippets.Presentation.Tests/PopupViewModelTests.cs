@@ -40,7 +40,10 @@ public sealed class PopupViewModelTests
         vm.CopyRow(row);
         Assert.Empty(_clipboard.Texts);
         vm.EditRow(row);
-        Assert.Contains($"Edit:{snippet.Id}", _host.Calls);
+        Assert.True(vm.IsEditorOpen);
+        Assert.Equal(snippet.Id, vm.Editor!.SnippetId);
+        Assert.DoesNotContain(_host.Calls, call => call.StartsWith("Edit:", StringComparison.Ordinal));
+        await vm.CancelEditorAsync(false);
         await vm.DeleteRowAsync(row);
         Assert.Single(_dialogs.Confirms);
         Assert.Single(_store.Snippets);

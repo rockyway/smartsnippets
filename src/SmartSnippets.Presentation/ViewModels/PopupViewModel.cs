@@ -45,6 +45,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private bool _isInserting;
     private bool _contextDialogOpen;
     private SnippetEditorViewModel? _editor;
+    private bool _editorWasNew = true;
 
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
         IInsertionService insertion, IClipboardService clipboard, IElevation elevation,
@@ -163,7 +164,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public SnippetEditorViewModel? Editor { get => _editor; private set { if (SetProperty(ref _editor, value)) { OnPropertyChanged(nameof(IsEditorOpen)); OnPropertyChanged(nameof(IsEditorClosed)); } } }
     public bool IsEditorOpen => Editor is not null;
     public bool IsEditorClosed => !IsEditorOpen;
-    public string EditorTitle => UiText.AddSnippet;
+    public string EditorTitle => _editorWasNew ? UiText.AddSnippet : UiText.EditSnippet;
     public string EditorTargetLine => UiText.TargetKept(Target?.DisplayName ?? "the target app");
 
     private void RebuildSearch()
@@ -251,7 +252,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public void EditRow(PopupItemViewModel item)
     {
-        if (CanUseRowActions(item)) _host.EditSnippet(item.SnippetId);
+        if (CanUseRowActions(item)) OpenEditor(item.SnippetId);
     }
     public async Task DeleteRowAsync(PopupItemViewModel item)
     {
@@ -274,13 +275,17 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     [RelayCommand] private void OpenMainWindow() => _host.OpenMainWindow();
     [RelayCommand]
-    private void AddSnippet()
+    private void AddSnippet() => OpenEditor(null);
+    private void OpenEditor(long? snippetId)
     {
-        if (IsEditorOpen || IsInserting) return;
+        if (IsEditorOpen || IsInserting || IsConfirmingClipboardLoss) return;
         _editorQuery = Query; _editorSelection = SelectedId;
-        Editor = new SnippetEditorViewModel(_store, _dialogs, null, IsPreview ? null : _clipboard);
+        _editorWasNew = snippetId is null;
+        Editor = new SnippetEditorViewModel(_store, _dialogs, snippetId, IsPreview ? null : _clipboard);
         Editor.Saved += OnEditorSaved;
-        OnPropertyChanged(nameof(EditorTargetLine)); _host.Focus(PopupFocusTarget.Editor); AppLog.Info("popup_add_opened");
+        OnPropertyChanged(nameof(EditorTitle)); OnPropertyChanged(nameof(EditorTargetLine));
+        _host.Focus(PopupFocusTarget.Editor);
+        AppLog.Info("popup_editor_opened", snippetId is null ? "mode=add" : "mode=edit");
     }
     public async Task SaveEditorAsync() { var editor = Editor; if (editor is not null && !editor.IsSaving) await editor.SaveAsync(); }
     public async Task CancelEditorAsync(bool confirmIfDirty)
@@ -294,15 +299,21 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     private void OnEditorSaved(object? sender, long id)
     {
+        var wasNew = _editorWasNew;
         EnsureCurrent();
         CloseEditor();
-        if (!Items.Any(i => i.Kind == PopupItemKind.Snippet && i.SnippetId == id)) Query = string.Empty;
-        Refresh(id); StatusText = UiText.SnippetAddedReady; _host.Focus(PopupFocusTarget.Search);
-        AppLog.Info("popup_add_saved", $"id={id}");
+        // Internal query repair is not a deliberate query change: do not dismiss a
+        // MaybePasted caution and accidentally arm Enter after editing.
+        if (!Items.Any(i => i.Kind == PopupItemKind.Snippet && i.SnippetId == id))
+            SetProperty(ref _query, string.Empty, nameof(Query));
+        Refresh(id); StatusText = wasNew ? UiText.SnippetAddedReady : UiText.SnippetUpdatedReady;
+        _host.Focus(PopupFocusTarget.Search);
+        AppLog.Info("popup_editor_saved", $"id={id}");
     }
     private void CloseEditor() { if (Editor is not { } editor) return; editor.Saved -= OnEditorSaved; Editor = null; editor.Dispose(); }
     public async Task InsertSelectedAsync()
     {
+        if (IsEditorOpen) return;
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return; }
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=keyboard"); return; }
         if (IsConfirmingClipboardLoss || SelectedId is not { } id) return;
@@ -312,6 +323,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public Task ActivateAsync(PopupItemViewModel item)
     {
+        if (IsEditorOpen) return Task.CompletedTask;
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=row"); return Task.CompletedTask; }
         if (item.Kind != PopupItemKind.Snippet) return Task.CompletedTask;
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return Task.CompletedTask; }

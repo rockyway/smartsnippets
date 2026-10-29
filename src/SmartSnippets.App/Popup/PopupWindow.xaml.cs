@@ -29,7 +29,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private const int LogicalHeight = 480;
     private readonly HWND _hwnd;
     private readonly Action _openMainWindow;
-    private readonly Action<long> _editSnippet;
     private PopupViewModel _viewModel = null!;
     private long _hotkeyTimestamp;
     private bool _readyPending;
@@ -41,9 +40,9 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private readonly PopupShowCoordinator _shows;
     private DispatcherQueueTimer? _prewarmTimer;
 
-    internal PopupWindow(ITextSizeService textSize, Action openMainWindow, Action<long> editSnippet)
+    internal PopupWindow(ITextSizeService textSize, Action openMainWindow)
     {
-        TextSize = textSize; _openMainWindow = openMainWindow; _editSnippet = editSnippet;
+        TextSize = textSize; _openMainWindow = openMainWindow;
         InitializeComponent();
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
@@ -188,7 +187,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
         return new(true, focused ? PopupFocusTarget.Search : null);
     }
     public void OpenMainWindow() { _openMainWindow(); Hide(); AppLog.Info("popup_closed", "reason=main_window"); }
-    public void EditSnippet(long snippetId) { Hide(); _editSnippet(snippetId); AppLog.Info("popup_closed", "reason=edit"); }
+    // Retain the deferred/recoverable host contract, but edit on this surface.
+    public void EditSnippet(long snippetId)
+    {
+        ViewModel.EnsureCurrent();
+        var item = ViewModel.Items.FirstOrDefault(row => row.Kind == PopupItemKind.Snippet && row.SnippetId == snippetId);
+        if (item is not null) ViewModel.EditRow(item);
+    }
     public void Focus(PopupFocusTarget target) => _shows.Focus(target);
     private void ApplyFocus(PopupFocusTarget target)
     {
