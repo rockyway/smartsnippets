@@ -1,5 +1,6 @@
 namespace SmartSnippets.Presentation.Services;
 
+/// <summary>Shown reports acceptance of this request, not current window visibility. False is a no-op.</summary>
 public readonly record struct PopupShowResult(bool Shown, PopupFocusTarget? DefaultFocus);
 
 /// <summary>Orders restartable surface initialization, show and focus without WinUI dependencies.</summary>
@@ -70,8 +71,11 @@ public sealed class PopupShowCoordinator(Action<Action> schedule, Action<PopupFo
         var focus = _pendingFocus;
         _pendingShow = null; _pendingFocus = null;
         var result = show();
-        _visible = result.Shown;
-        if (_visible && (focus ?? result.DefaultFocus) is { } target) QueueFocus(target);
+        // Rejection means no window transition (e.g. preview during an Add session).
+        // RequestShow already invalidated obsolete queued focus; do not invent a Hide.
+        if (!result.Shown) return;
+        _visible = true;
+        if ((focus ?? result.DefaultFocus) is { } target) QueueFocus(target);
     }
 
     public void Focus(PopupFocusTarget target)

@@ -120,6 +120,25 @@ public sealed class PopupShowCoordinatorTests
     }
 
     [Fact]
+    public void VisiblePopup_RejectedPreviewInvalidatesOldFocusButPreservesExplicitFocus()
+    {
+        var surface = new AsyncSurfaceHost(); surface.Ready();
+        surface.ShowAgain(); // Window is visible, with default Search focus still queued.
+        surface.Focus(PopupFocusTarget.Editor);
+        surface.Shows.RequestShow(() => default); // Preview ignored while Add editor stays open.
+        surface.Drain();
+        Assert.Equal(1, surface.ShowCount);
+        Assert.Empty(surface.Applied); // Neither obsolete queued focus callback may run.
+
+        surface.Focus(PopupFocusTarget.Search); // Editor saved/cancelled: window was never hidden.
+        surface.Drain();
+        Assert.Equal(new[] { PopupFocusTarget.Search }, surface.Applied);
+        surface.Hide();
+        surface.Focus(PopupFocusTarget.Editor); surface.Drain();
+        Assert.Single(surface.Applied); // Only a real Hide removes visibility.
+    }
+
+    [Fact]
     public void LaterFocusSupersedesQueuedSearch_AndHideCancelsQueuedFocus()
     {
         var host = new AsyncSurfaceHost(); host.Ready();

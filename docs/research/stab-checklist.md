@@ -22,6 +22,12 @@
 - [x] Fix-round evidence: `C:\temp\ss-stab-02-build.log` (initial), `C:\temp\ss-stab-02-build-final.log`, `C:\temp\ss-stab-02-core.log`, `C:\temp\ss-stab-02-presentation.log`, `C:\temp\ss-stab-results\core-stab02.trx`, `C:\temp\ss-stab-results\presentation-stab02.trx`, `C:\temp\ss-stab-build\publish.log`. AOT output remains only `C:\temp\ss-stab-build\publish`. Current 50k dirty-open VM diagnostic: 69.16 ms, not rendered-frame latency.
 - [ ] PENDING-USER: NumberBox typing/keyboard steps/spin buttons/commit on focus loss, replacement clipboard-loss Footer focus, cancelled-exit/retry behaviour, plus all previously pending folder/first-frame/desktop-timing checks. Pure shared-policy tests are not WinUI event evidence.
 
+## Static review fix round 2 (no runtime validation authorized)
+
+- [x] Fix 1: ignored show requests preserve existing coordinator visibility, while RequestShow still invalidates obsolete queued focus. Added visible→ignored-preview→explicit-Search-focus regression; kept cold/rejected and nonactivating-preview cases. Tests are unrun.
+- [x] Visibility class sweep: PopupWindow only changes its visibility flag after native Show/Hide; all rejected Ready methods return before either transition. Coordinator success marks visible; BeginWarmup/Hide/Close explicitly clear it. Rejection no longer invents a Hide.
+- [ ] Runtime validation of fix-round-2 code remains pending a future explicit grant; no build/test/app launch or BUILD_REQUEST this round.
+
 ## Screen grant stab-screen (2026-10-28)
 
 - [x] Safety preflight: authorized DISPLAY9 geometry exists; refused launch because unowned SmartSnippets.App PID 55600 was running from `D:\sources\demo\smartsnippets\publish\SmartSnippets.App.exe` and remained after a bounded 60-second wait.
