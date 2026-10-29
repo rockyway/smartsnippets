@@ -26,14 +26,18 @@ public sealed class PopupViewModelEditTests
     [Fact]
     public async Task Edit_KeepsSurfaceAndOriginalTarget_InsertionBlockedUntilSave()
     {
-        var snippet = _store.SeedSnippet("before", "Label");
+        var a = _store.SeedSnippet("A original text", "A label");
+        var snippet = _store.SeedSnippet("B original text", "B label");
+        var c = _store.SeedSnippet("C original text", "C label");
         using var vm = Create();
-        var row = Assert.Single(vm.Items);
+        Assert.Equal(3, vm.Items.Count);
+        Assert.NotEqual(snippet.Id, vm.Items[0].SnippetId);
+        var row = Assert.Single(vm.Items, item => item.SnippetId == snippet.Id);
         vm.EditRow(row);
         Assert.True(vm.IsEditorOpen);
         Assert.Equal(snippet.Id, vm.Editor!.SnippetId);
         Assert.Equal(UiText.EditSnippet, vm.EditorTitle);
-        Assert.Equal("before", vm.Editor.Text);
+        Assert.Equal("B original text", vm.Editor.Text);
         Assert.Equal("Focus:Editor", _host.Calls[^1]);
         vm.OnDeactivated();
         Assert.Equal(PopupOpenMode.Resumed, vm.Open(new(9, 8, 7, "other")));
@@ -43,11 +47,20 @@ public sealed class PopupViewModelEditTests
         Assert.Empty(_insertion.Calls);
         Assert.DoesNotContain("Hide", _host.Calls);
         Assert.DoesNotContain(_host.Calls, call => call.StartsWith("Edit:", StringComparison.Ordinal));
-        vm.Editor.Text = "after";
+        vm.Editor.Text = "B changed text";
+        vm.Editor.Label = "B changed label";
         await vm.SaveEditorAsync();
         Assert.False(vm.IsEditorOpen);
-        Assert.Equal("after", _store.Snippets.Single().Snippet.Text);
-        Assert.Equal(snippet.Id, vm.Items[vm.SelectedIndex].SnippetId);
+        Assert.Equal(3, _store.Snippets.Count);
+        Assert.Equal(a, _store.Snippets.Single(s => s.Snippet.Id == a.Id).Snippet);
+        Assert.Equal(c, _store.Snippets.Single(s => s.Snippet.Id == c.Id).Snippet);
+        var saved = _store.Snippets.Single(s => s.Snippet.Id == snippet.Id).Snippet;
+        Assert.Equal("B changed text", saved.Text);
+        Assert.Equal("B changed label", saved.Label);
+        var selected = vm.Items[vm.SelectedIndex];
+        Assert.Equal(PopupItemKind.Snippet, selected.Kind);
+        Assert.Equal(snippet.Id, selected.SnippetId);
+        Assert.Equal("B changed label", selected.Label);
         Assert.Equal("Focus:Search", _host.Calls[^1]);
         Assert.DoesNotContain("Hide", _host.Calls);
         await vm.InsertSelectedAsync();
@@ -62,32 +75,57 @@ public sealed class PopupViewModelEditTests
     [InlineData(false)]
     public async Task Edit_SaveFlushesQueuedCache_RepairsOnlyHiddenQuery(bool hidesResult)
     {
-        _store.SeedSnippet("match", "match");
+        var a = _store.SeedSnippet("A match original", "A match");
+        var b = _store.SeedSnippet("B match original", "B match");
+        var c = _store.SeedSnippet("C match original", "C match");
         var queued = new Queue<Action>();
         using var vm = Create(queued.Enqueue);
         vm.Query = "match";
-        var row = Assert.Single(vm.Items);
+        Assert.Equal(3, vm.Items.Count);
+        Assert.NotEqual(b.Id, vm.Items[0].SnippetId);
+        var row = Assert.Single(vm.Items, item => item.SnippetId == b.Id);
         vm.EditRow(row);
-        vm.Editor!.Label = hidesResult ? "other" : "match updated";
-        vm.Editor.Text = "updated";
+        Assert.Equal(b.Id, vm.Editor!.SnippetId);
+        Assert.Equal("B match original", vm.Editor.Text);
+        var changedLabel = hidesResult ? "B other" : "B match updated";
+        vm.Editor.Label = changedLabel;
+        vm.Editor.Text = "B changed text";
         await vm.SaveEditorAsync();
         Assert.Equal(hidesResult ? "" : "match", vm.Query);
-        Assert.Equal(row.SnippetId, vm.Items[vm.SelectedIndex].SnippetId);
-        Assert.Equal(hidesResult ? "other" : "match updated", vm.Items[vm.SelectedIndex].Label);
+        Assert.Equal(3, _store.Snippets.Count);
+        Assert.Equal(a, _store.Snippets.Single(s => s.Snippet.Id == a.Id).Snippet);
+        Assert.Equal(c, _store.Snippets.Single(s => s.Snippet.Id == c.Id).Snippet);
+        var saved = _store.Snippets.Single(s => s.Snippet.Id == b.Id).Snippet;
+        Assert.Equal("B changed text", saved.Text);
+        Assert.Equal(changedLabel, saved.Label);
+        var selected = vm.Items[vm.SelectedIndex];
+        Assert.Equal(PopupItemKind.Snippet, selected.Kind);
+        Assert.Equal(b.Id, selected.SnippetId);
+        Assert.Equal(changedLabel, selected.Label);
         while (queued.TryDequeue(out var action)) action();
-        Assert.Equal(row.SnippetId, vm.Items[vm.SelectedIndex].SnippetId);
+        Assert.Equal(selected, vm.Items[vm.SelectedIndex]);
+        await vm.InsertSelectedAsync();
+        var insertion = Assert.Single(_insertion.Calls);
+        Assert.Equal(Target, insertion.Target);
+        Assert.Equal(b.Id, insertion.Id);
+        Assert.Equal(default, insertion.Options);
     }
 
     [Fact]
     public async Task Edit_CancelRestoresQuerySelectionAndFocus_WithoutSaving()
     {
-        _store.SeedSnippet("match one", "A");
+        var a = _store.SeedSnippet("match one", "A");
         var b = _store.SeedSnippet("match two", "B");
+        var c = _store.SeedSnippet("match three", "C");
         using var vm = Create();
         vm.Query = "match";
+        Assert.Equal(3, vm.Items.Count);
+        Assert.NotEqual(b.Id, vm.Items[0].SnippetId);
         vm.SelectedIndex = vm.Items.FindIndex(row => row.SnippetId == b.Id);
         vm.EditRow(vm.Items[vm.SelectedIndex]);
-        vm.Editor!.Text = "discard me";
+        Assert.Equal(b.Id, vm.Editor!.SnippetId);
+        Assert.Equal("match two", vm.Editor.Text);
+        vm.Editor.Text = "discard me";
         _dialogs.ConfirmAnswers.Enqueue(false);
         await vm.CancelEditorAsync(true);
         Assert.True(vm.IsEditorOpen);
@@ -95,8 +133,14 @@ public sealed class PopupViewModelEditTests
         await vm.CancelEditorAsync(true);
         Assert.False(vm.IsEditorOpen);
         Assert.Equal("match", vm.Query);
-        Assert.Equal(b.Id, vm.Items[vm.SelectedIndex].SnippetId);
-        Assert.Equal("match two", _store.Snippets.Single(s => s.Snippet.Id == b.Id).Snippet.Text);
+        var selected = vm.Items[vm.SelectedIndex];
+        Assert.Equal(PopupItemKind.Snippet, selected.Kind);
+        Assert.Equal(b.Id, selected.SnippetId);
+        Assert.Equal("B", selected.Label);
+        Assert.Equal(3, _store.Snippets.Count);
+        Assert.Equal(a, _store.Snippets.Single(s => s.Snippet.Id == a.Id).Snippet);
+        Assert.Equal(b, _store.Snippets.Single(s => s.Snippet.Id == b.Id).Snippet);
+        Assert.Equal(c, _store.Snippets.Single(s => s.Snippet.Id == c.Id).Snippet);
         Assert.Equal("Focus:Search", _host.Calls[^1]);
         Assert.DoesNotContain("Hide", _host.Calls);
         Assert.Empty(_insertion.Calls);
