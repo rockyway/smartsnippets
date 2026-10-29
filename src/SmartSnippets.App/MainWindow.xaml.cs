@@ -47,12 +47,18 @@ public sealed partial class MainWindow : Window
         AppWindow.Changed += (_, args) =>
         {
             if (!args.DidPositionChange) return;
-            var currentDpi = PInvoke.GetDpiForWindow(hwnd);
-            var currentScale = currentDpi == 0 ? 1.0 : currentDpi / 96.0;
-            var width = (int)(MinimumLogicalWidth * currentScale);
-            var height = (int)(MinimumLogicalHeight * currentScale);
-            if (presenter.PreferredMinimumWidth != width) presenter.PreferredMinimumWidth = width;
-            if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
+            // Re-read after the move's DPI-change processing, rather than using the
+            // monitor on which the hidden window was originally constructed.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                var currentDpi = PInvoke.GetDpiForWindow(hwnd);
+                if (currentDpi == 0) return;
+                var currentScale = currentDpi / 96.0;
+                var width = (int)(MinimumLogicalWidth * currentScale);
+                var height = (int)(MinimumLogicalHeight * currentScale);
+                if (presenter.PreferredMinimumWidth != width) presenter.PreferredMinimumWidth = width;
+                if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
+            });
         };
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         AppWindow.Closing += OnClosing;
