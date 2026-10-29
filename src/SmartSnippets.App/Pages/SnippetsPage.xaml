@@ -33,7 +33,6 @@
                 <TextBlock
                     Grid.Column="2"
                     VerticalAlignment="Center"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind Count}" />
             </Grid>
