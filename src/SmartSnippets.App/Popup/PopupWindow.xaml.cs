@@ -52,6 +52,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         InitializeComponent();
         FlyoutSurface.KeepSolid(SortFlyout);
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
+        RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnSurfacePointerPressed), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
@@ -346,13 +347,29 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (position is { } point) menu.ShowAt(container, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = point });
         else menu.ShowAt(container); // Keyboard context-menu invocation has no pointer position.
     }
+    private static bool IsEmptySurface(object? source, UIElement root)
+    {
+        for (var node = source as DependencyObject; node is not null && node != root; node = VisualTreeHelper.GetParent(node))
+            if (node is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or Microsoft.UI.Xaml.Controls.Primitives.RangeBase) return false;
+        return true;
+    }
+    // Pressing and dragging any empty area (padding, footer, blank list space) moves the popup,
+    // so it can be shifted off whatever it covers. The native caption move loop is entered
+    // through a non-client press; the popup keeps focus and stays open.
+    private void OnSurfacePointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
+        var point = e.GetCurrentPoint(RootGrid);
+        if (!point.Properties.IsLeftButtonPressed || !IsEmptySurface(e.OriginalSource, RootGrid)) return;
+        PInvoke.ReleaseCapture();
+        PInvoke.SendMessage(_hwnd, PInvoke.WM_NCLBUTTONDOWN, new WPARAM(2 /* HTCAPTION */), default);
+    }
     private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
     {
         if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
         // Observe handled events too (ScrollViewer consumes blank-list presses), but
         // never steal focus from actionable controls, row activation or scrollbars.
-        for (var node = e.OriginalSource as DependencyObject; node is not null && node != RootGrid; node = VisualTreeHelper.GetParent(node))
-            if (node is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or Microsoft.UI.Xaml.Controls.Primitives.RangeBase) return;
+        if (!IsEmptySurface(e.OriginalSource, RootGrid)) return;
         Focus(ViewModel.IsConfirmingClipboardLoss ? PopupFocusTarget.Footer : PopupFocusTarget.Search);
     }
     private void OnSortClick(object sender, RoutedEventArgs e) => UpdateSortChecks();
