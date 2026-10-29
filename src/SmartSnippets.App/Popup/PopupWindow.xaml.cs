@@ -43,11 +43,12 @@ public sealed partial class PopupWindow : Window, IPopupHost
         TextSize = textSize; _openMainWindow = openMainWindow; _editSnippet = editSnippet;
         InitializeComponent();
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
-            presenter.IsMinimizable = false; presenter.IsMaximizable = false;
-        }
+        // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
+        // Install one explicitly so borderless/topmost settings are not silently skipped.
+        var presenter = OverlappedPresenter.Create();
+        presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
+        presenter.IsMinimizable = false; presenter.IsMaximizable = false;
+        AppWindow.SetPresenter(presenter);
         AppWindow.IsShownInSwitchers = false;
         Activated += OnActivated; RootGrid.LayoutUpdated += OnLayoutUpdated; PopupList.LayoutUpdated += OnListLayoutUpdated;
     }
