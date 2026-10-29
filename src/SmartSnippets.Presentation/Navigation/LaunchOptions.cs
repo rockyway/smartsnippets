@@ -46,6 +46,11 @@ public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? Pr
                 {
                     value.Append('\\', slashes / 2);
                     if ((slashes & 1) != 0) value.Append('"');
+                    else if (quoted && i + 1 < commandLine.Length && commandLine[i + 1] == '"')
+                    {
+                        value.Append('"');
+                        i++;
+                    }
                     else quoted = !quoted;
                     i++;
                 }

@@ -46,6 +46,15 @@ public sealed class LaunchOptionsTests
     }
 
     [Fact]
+    public void DoubledQuoteInQuotedArgumentMatchesInitialLaunch()
+    {
+        var initial = new[] { "--preview-popup", "--preview-popup-query", "a\"b" };
+        var redirected = LaunchOptions.SplitCommandLine("--preview-popup --preview-popup-query \"a\"\"b\"");
+        Assert.Equal(initial, redirected);
+        Assert.Equal(LaunchOptions.Parse(initial), LaunchOptions.Parse(redirected));
+    }
+
+    [Fact]
     public void SplitRetainsQuotedEscapesAndEmptyArguments()
     {
         Assert.Equal(new[] { "a", "", "x\"y", @"c:\tmp" },
