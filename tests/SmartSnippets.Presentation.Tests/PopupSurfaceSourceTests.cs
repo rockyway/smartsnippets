@@ -11,7 +11,7 @@ public sealed class PopupSurfaceSourceTests
     public void NativePerimeterHasNoCompetingXamlBorderOrCornerClip()
     {
         var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "UiContracts", "Popup", "PopupWindow.xaml"));
-        var root = Assert.Single(document.Descendants().Where(e => (string?)e.Attribute(Xaml + "Name") == "RootGrid"));
+        var root = Assert.Single(document.Descendants(), e => (string?)e.Attribute(Xaml + "Name") == "RootGrid");
         Assert.Null(root.Attribute("BorderThickness"));
         Assert.Null(root.Attribute("BorderBrush"));
         Assert.Null(root.Attribute("CornerRadius"));

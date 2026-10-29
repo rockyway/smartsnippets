@@ -18,7 +18,7 @@ public sealed class ButtonSpacingSourceTests
         var save = ById(document, "PopupEditorSave");
         Assert.Same(cancel.Parent, save.Parent);
         Assert.Equal(8, Gap(cancel.Parent!, "ColumnSpacing"));
-        var overlay = Assert.Single(document.Descendants().Where(e => (string?)e.Attribute(Xaml + "Name") == "EditorOverlay"));
+        var overlay = Assert.Single(document.Descendants(), e => (string?)e.Attribute(Xaml + "Name") == "EditorOverlay");
         Assert.Equal(8, Gap(overlay, "RowSpacing"));
         var error = ById(document, "PopupFooterError");
         Assert.Equal(8, Gap(error.Parent!, "Spacing"));
@@ -46,7 +46,7 @@ public sealed class ButtonSpacingSourceTests
     }
 
     private static XElement ById(XDocument document, string id)
-        => Assert.Single(document.Descendants().Where(e => (string?)e.Attribute(Automation + "AutomationProperties.AutomationId") == id));
+        => Assert.Single(document.Descendants(), e => (string?)e.Attribute(Automation + "AutomationProperties.AutomationId") == id);
 
     private static double Gap(XElement element, string attribute)
         => double.TryParse((string?)element.Attribute(attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0;
