@@ -5,7 +5,7 @@ using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
-/// <summary>One row of the snippet list. Value equality lets the list skip a rebuild when nothing visible changed.</summary>
+/// <summary>One row of the snippet list. Equality over the visible fields lets the list skip a rebuild when nothing visible changed.</summary>
 public sealed partial record SnippetRowViewModel(long Id, string Label, string Preview, string Meta)
 {
     public const int PreviewMaxLength = 80;
@@ -16,6 +16,15 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
     public string TagsDisplay { get; init; } = string.Empty;
     public bool HasFolder => FolderName.Length != 0;
     public string Details => string.Join(" ", new[] { FolderName, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
+
+    /// <summary>
+    /// Equality covers only what the row shows (label, folder, tags). Usage counts and the text preview change on every
+    /// insertion or silent edit but are not displayed, so including them made each insert rebuild the whole list.
+    /// </summary>
+    public bool Equals(SnippetRowViewModel? other) => other is not null
+        && Id == other.Id && Label == other.Label && FolderName == other.FolderName && TagsDisplay == other.TagsDisplay;
+
+    public override int GetHashCode() => HashCode.Combine(Id, Label, FolderName, TagsDisplay);
 
     // Narrator gets the same label and metadata as the visible row, not snippet text.
     public override string ToString() => string.Join(", ", new[] { Label, FolderName, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));

@@ -302,6 +302,29 @@ public sealed class SnippetListViewModelTests
     }
 
     [Fact]
+    public void RecordingUsageOfAVisibleRow_DoesNotRebuildTheList()
+    {
+        var a = _store.SeedSnippet("x", label: "Alpha");
+        _store.SeedSnippet("x", label: "Beta");
+        var vm = new SnippetListViewModel(_store);
+        vm.SelectedId = a.Id;
+        var before = vm.Items.ToList();
+        var collectionChanges = 0;
+        vm.Items.CollectionChanged += (_, _) => collectionChanges++;
+
+        _store.RecordUsage(a.Id);
+
+        Assert.Equal(0, collectionChanges);
+        Assert.Equal(before.Count, vm.Items.Count);
+        for (var i = 0; i < before.Count; i++)
+        {
+            Assert.Same(before[i], vm.Items[i]);
+        }
+
+        Assert.Equal(a.Id, vm.SelectedId);
+    }
+
+    [Fact]
     public void Dispose_Unsubscribes()
     {
         var vm = new SnippetListViewModel(_store);
