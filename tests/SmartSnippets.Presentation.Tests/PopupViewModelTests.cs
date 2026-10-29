@@ -49,6 +49,17 @@ public sealed class PopupViewModelTests
     }
 
     [Fact]
+    public void NormalPopupRowCopyWritesClipboard()
+    {
+        _store.SeedSnippet("synthetic body");
+        using var vm = Create(); vm.Open(Target);
+        var row = Assert.Single(vm.Items);
+        Assert.True(vm.CanCopyRow(row));
+        vm.CopyRow(row);
+        Assert.Equal("synthetic body", Assert.Single(_clipboard.Texts));
+    }
+
+    [Fact]
     public async Task PreviewRowInsertClosesWithoutInsertion()
     {
         _store.SeedSnippet("body");
