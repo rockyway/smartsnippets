@@ -1,0 +1,14 @@
+# Popup polish design
+
+Scope: plan 006 popup areas and screenshot feedback; no insertion contract/schema changes.
+
+1. Share native ListViewItem theme-state brushes across lists: neutral resting/hover surfaces, accent only when selected (including inactive selection), paired selected foreground, system highlight/highlight-text in high contrast. Remove imperative popup selection styling, which competes with native presenter states. Stretch row content with transparent hit-test surfaces.
+2. Keep borderless presenter; request Windows 11 DWM ROUND corners and suppress its automatic bright border. Draw one 1-DIP neutral theme border with matching rounded XAML content. DWM is best effort on older Windows; verify actual physical-pixel appearance at DPI in UI QA.
+3. MainWindow.BringToFront restores/shows, activates, then uses existing ForegroundActivation direct SetForegroundWindow + bounded AttachThreadInput fallback (always detach in finally). User clicked the foreground popup, so this process has foreground rights; Activate alone is not a Win32 foreground guarantee. No persistent topmost flag or foreground-lock timeout changes. Shared main-window route fixes tray/dialog callers too. Keep nonactivating QA navigation unchanged.
+4. Interpret empty area as full-width rows and unused list/footer/window space, not outside-click dismissal. Preserve existing single-click insertion (and native double-click hit testing); blank clicks return search focus without swallowing buttons, scrollbars or editor input.
+5. Pointer menus use RightTapped.GetPosition(container) + FlyoutShowOptions.Position. Keyboard menus retain default anchoring. Keep popup menu deactivation suppression and restore focus according to editor/footer state after dismissal.
+6. Reuse compact editor for Add/Edit; capture query/selection, preserve original Target/preview and footer interlocks. Save flushes cache, selects edited ID, clears query only if needed, focuses search. Cancel restores previous selection/query. Editor blocks keyboard/row insertion. Preview Edit allowed exactly like existing Add; editor gets no clipboard; preview Enter only closes, never inserts or records usage. Preserve MaybePasted caution across edit/save so first Enter only dismisses it.
+
+Sweep: both row menus, all list templates, activation sites, and popup-to-main Edit references. Retain IPopupHost.EditSnippet/DeferredPopupHost recovery contract but repurpose the App host method to in-popup edit; remove old main-window delegate/route if unused.
+
+Validation: add view-model tests; statically inspect XAML/API paths. No build/test/publish/launch before BUILD GO polish-01. Then copy committed source to C: build mirror, sequential build/tests and one AOT publish per user instructions. Theme/DPI/foreground/cursor UX remain PENDING-USER without authorized interactive QA.
