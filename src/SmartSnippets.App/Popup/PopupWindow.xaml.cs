@@ -16,6 +16,7 @@ using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 using Windows.Graphics;
 using Windows.System;
+using Windows.UI.ViewManagement;
 using CoreVirtualKeyStates = Windows.UI.Core.CoreVirtualKeyStates;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -39,6 +40,10 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private MenuFlyout? _contextFlyout;
     private readonly PopupShowCoordinator _shows;
     private DispatcherQueueTimer? _prewarmTimer;
+    private readonly UISettings _uiSettings = new();
+    private readonly AccessibilitySettings _accessibility = new();
+    private bool _closed;
+    private (int Corner, int Border)? _lastFrameFailure;
 
     internal PopupWindow(ITextSizeService textSize, Action openMainWindow)
     {
@@ -49,16 +54,21 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
         // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
-        // Install one explicitly so borderless/topmost settings are not silently skipped.
+        // Keep a native border so DWM owns both the perimeter and the rounded clip.
         var presenter = OverlappedPresenter.Create();
-        presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
+        presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
         presenter.IsMinimizable = false; presenter.IsMaximizable = false;
         AppWindow.SetPresenter(presenter);
-        WindowSurface.RoundPopup(this);
+        RefreshFrame();
+        _uiSettings.ColorValuesChanged += OnSystemColorsChanged;
+        _accessibility.HighContrastChanged += OnHighContrastChanged;
         AppWindow.IsShownInSwitchers = false;
         Activated += OnActivated; RootGrid.LayoutUpdated += OnLayoutUpdated; PopupList.LayoutUpdated += OnListLayoutUpdated;
         Closed += (_, _) =>
         {
+            _closed = true;
+            _uiSettings.ColorValuesChanged -= OnSystemColorsChanged;
+            _accessibility.HighContrastChanged -= OnHighContrastChanged;
             if (_viewModel is not null) _viewModel.PropertyChanged -= OnViewModelChanged;
             CompositionTarget.Rendered -= OnRendered;
             RootGrid.LayoutUpdated -= OnPrewarmLayout;
@@ -106,6 +116,34 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _ => InfoBarSeverity.Informational,
     };
 
+    // ThemeService calls this after its native dark-mode/title-bar updates as well.
+    internal void RefreshFrame()
+    {
+        if (_closed) return;
+        var text = _uiSettings.UIElementColor(UIElementType.WindowText);
+        var color = PopupFramePolicy.BorderColor(RootGrid.ActualTheme == ElementTheme.Dark,
+            _accessibility.HighContrast, text.R, text.G, text.B);
+        var result = WindowSurface.RoundPopup(this, color);
+        if (result.Corner < 0 || result.Border < 0)
+        {
+            if (_lastFrameFailure != result)
+                AppLog.Info("popup_frame_failed", $"corner_hr=0x{result.Corner:X8} border_hr=0x{result.Border:X8}");
+            _lastFrameFailure = result;
+        }
+        else _lastFrameFailure = null;
+    }
+    private void OnSystemColorsChanged(UISettings sender, object args)
+        => DispatcherQueue.TryEnqueue(() => RefreshFrame());
+    private void OnHighContrastChanged(AccessibilitySettings sender, object args)
+        => DispatcherQueue.TryEnqueue(() => RefreshFrame());
+    private void ShowSurface(bool activate = true)
+    {
+        RefreshFrame();
+        AppWindow.Show(activate);
+        // First Show can initialize/reconfigure the native surface. Reassert before returning.
+        RefreshFrame();
+    }
+
     internal void Prewarm() => _shows.BeginWarmup();
     private void StartWindowWarmup()
     {
@@ -120,7 +158,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _prewarmTimer.Tick += (_, _) => _shows.WarmupTimedOut(generation);
         _prewarmTimer.Start();
         AppWindow.MoveAndResize(new RectInt32(-32000, -32000, LogicalWidth, LogicalHeight));
-        AppWindow.Show(false);
+        ShowSurface(false);
     }
     private void StopWindowWarmup()
     {
@@ -128,6 +166,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         RootGrid.LayoutUpdated -= OnPrewarmLayout;
         AppWindow.Hide();
         WindowSurface.Cloak(this, false);
+        RefreshFrame();
     }
     private void OnPrewarmLayout(object? sender, object e)
     {
@@ -141,7 +180,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         var mode = ViewModel.Open(target);
         if (mode == PopupOpenMode.Ignored) { AppLog.Info("popup_open_ignored", "reason=inserting"); return default; }
         _hotkeyTimestamp = hotkeyTimestamp; _readyPending = true;
-        Center(); AppWindow.Show(); SetVisible(true); ReportReady(); Activate(); PInvoke.SetForegroundWindow(_hwnd);
+        Center(); ShowSurface(); SetVisible(true); ReportReady(); Activate(); PInvoke.SetForegroundWindow(_hwnd);
         return new(true, mode == PopupOpenMode.Resumed ? PopupFocusTarget.Editor : PopupFocusTarget.Search);
     }
     internal void ShowPreview(HWND owner, string? query = null, bool activate = true) => _shows.RequestShow(() => ShowPreviewReady(owner, query, activate));
@@ -153,7 +192,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         var monitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
         if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
             WindowPlacement.CenterOn(AppWindow, PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), LogicalWidth, LogicalHeight);
-        AppWindow.Show(activate); SetVisible(true);
+        ShowSurface(activate); SetVisible(true);
         if (activate)
         {
             Activate(); PInvoke.SetForegroundWindow(_hwnd);
@@ -180,7 +219,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         if (CanShow?.Invoke() == false) return default;
         ViewModel.EnsureCurrent();
-        Center(); AppWindow.Show(); SetVisible(true);
+        Center(); ShowSurface(); SetVisible(true);
         var focused = ForegroundActivation.TryActivate(_hwnd, out var path);
         AppLog.Info("popup_reopened", $"outcome={ViewModel.LastInsertionOutcome} focus={path}");
         if (!focused) NotifyReopenFailure?.Invoke(ViewModel.FooterMessage);
@@ -205,6 +244,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void SetVisible(bool value) { if (_visible == value) return; _visible = value; VisibleChanged?.Invoke(this, value); }
     private void OnActivated(object sender, WindowActivatedEventArgs e)
     {
+        RefreshFrame();
         if (e.WindowActivationState == WindowActivationState.Deactivated) { if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
         ReportReady();
     }

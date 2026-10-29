@@ -87,5 +87,7 @@ internal sealed class ThemeService : IThemeService
         titleBar.ButtonHoverForegroundColor = foreground;
         titleBar.ButtonPressedBackgroundColor = pressedBackground;
         titleBar.ButtonPressedForegroundColor = foreground;
+        // Title-bar/dark-mode updates must not restore the popup's default accent border.
+        if (window is Popup.PopupWindow popup) popup.RefreshFrame();
     }
 }
