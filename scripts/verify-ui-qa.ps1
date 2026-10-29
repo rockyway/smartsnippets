@@ -261,8 +261,12 @@ try {
                 if (-not $list) { throw 'Popup list missing' }
                 $rows = @(Find-All $list ([Windows.Automation.ControlType]::ListItem))
                 if ($query -eq 'NoSuchQaResult' -and $rows.Count -ne 0) { throw 'Empty preview search returned rows' }
-                if (-not $query -and $rows.Count -lt 3) { throw 'Populated preview returned fewer than three rows' }
-                if ($query -eq 'First' -and $rows.Count -ne 1) { throw 'Preview search did not return exactly one row' }
+                if (-not $query -and $rows.Count -ne 3) { throw 'Populated preview did not return exactly three rows' }
+                if ($query -eq 'First') {
+                    if ($rows.Count -ne 1) { throw 'Preview search did not return exactly one row' }
+                    $identity = $rows[0].Current.Name
+                    if ($identity -cne 'First synthetic, QA folder, #work #qa') { throw "Preview search returned wrong row identity: $identity" }
+                }
                 $popupText = @(Find-All $list ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                 if ('Synthetic one' -in $popupText -or 'Synthetic two' -in $popupText -or 'Synthetic three' -in $popupText) { throw 'Snippet bodies appeared in popup rows' }
                 $state = if (-not $query) { 'filled' } elseif ($query -eq 'First') { 'search' } else { 'empty' }
