@@ -53,6 +53,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
         FlyoutSurface.KeepSolid(SortFlyout);
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnSurfacePointerPressed), true);
+        RootGrid.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnSurfacePointerMoved), true);
+        RootGrid.PointerCaptureLost += (_, _) => _dragging = false;
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
@@ -354,18 +356,33 @@ public sealed partial class PopupWindow : Window, IPopupHost
         return true;
     }
     // Pressing and dragging any empty area (padding, footer, blank list space) moves the popup,
-    // so it can be shifted off whatever it covers. The native caption move loop is entered
-    // through a non-client press; the popup keeps focus and stays open.
+    // so it can be shifted off whatever it covers. The move is tracked by hand (pointer capture +
+    // screen cursor) instead of the native caption loop, which kept the busy cursor showing.
+    private bool _dragging;
+    private POINT _dragCursor;
+    private PointInt32 _dragOrigin;
     private void OnSurfacePointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
         var point = e.GetCurrentPoint(RootGrid);
         if (!point.Properties.IsLeftButtonPressed || !IsEmptySurface(e.OriginalSource, RootGrid)) return;
-        PInvoke.ReleaseCapture();
-        PInvoke.SendMessage(_hwnd, PInvoke.WM_NCLBUTTONDOWN, new WPARAM(2 /* HTCAPTION */), default);
+        if (!PInvoke.GetCursorPos(out _dragCursor) || !RootGrid.CapturePointer(e.Pointer)) return;
+        _dragOrigin = AppWindow.Position; _dragging = true;
+    }
+    private void OnSurfacePointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging || !PInvoke.GetCursorPos(out var now)) return;
+        AppWindow.Move(new PointInt32(_dragOrigin.X + now.X - _dragCursor.X, _dragOrigin.Y + now.Y - _dragCursor.Y));
+    }
+    private void OnSurfaceDragEnded(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) return;
+        _dragging = false; RootGrid.ReleasePointerCaptures();
     }
     private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        var wasDragging = _dragging; OnSurfaceDragEnded(sender, e);
+        if (wasDragging) { Focus(ViewModel.IsConfirmingClipboardLoss ? PopupFocusTarget.Footer : PopupFocusTarget.Search); return; }
         if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
         // Observe handled events too (ScrollViewer consumes blank-list presses), but
         // never steal focus from actionable controls, row activation or scrollbars.

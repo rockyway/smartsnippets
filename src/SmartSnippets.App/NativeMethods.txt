@@ -93,6 +93,3 @@ IsIconic
 GetClassName
 GetWindowText
 QueryFullProcessImageName
-ReleaseCapture
-SendMessage
-WM_NCLBUTTONDOWN
