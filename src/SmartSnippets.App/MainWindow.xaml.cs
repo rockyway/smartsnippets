@@ -44,6 +44,16 @@ public sealed partial class MainWindow : Window
         presenter.PreferredMinimumWidth = (int)(MinimumLogicalWidth * scale);
         presenter.PreferredMinimumHeight = (int)(MinimumLogicalHeight * scale);
         AppWindow.SetPresenter(presenter);
+        AppWindow.Changed += (_, args) =>
+        {
+            if (!args.DidPositionChange) return;
+            var currentDpi = PInvoke.GetDpiForWindow(hwnd);
+            var currentScale = currentDpi == 0 ? 1.0 : currentDpi / 96.0;
+            var width = (int)(MinimumLogicalWidth * currentScale);
+            var height = (int)(MinimumLogicalHeight * currentScale);
+            if (presenter.PreferredMinimumWidth != width) presenter.PreferredMinimumWidth = width;
+            if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
+        };
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         AppWindow.Closing += OnClosing;
 
