@@ -11,4 +11,15 @@ Scope: plan 006 popup areas and screenshot feedback; no insertion contract/schem
 
 Sweep: both row menus, all list templates, activation sites, and popup-to-main Edit references. Retain IPopupHost.EditSnippet/DeferredPopupHost recovery contract but repurpose the App host method to in-popup edit; remove old main-window delegate/route if unused.
 
+## Static review record (before BUILD GO)
+
+- App-wide native presenter state overrides also cover Browse/Folders lists. Light/dark use WinUI AccentFillColor + TextOnAccentFillColor pairs; high contrast uses system highlight/highlight-text. Row details inherit selection foreground rather than forcing a low-contrast secondary brush. Semantic folder-colour dots elsewhere are not row backgrounds and remain unchanged.
+- Both mouse menu sites now pass container-relative positions; the only remaining parameterless ShowAt(container) calls are deliberate keyboard fallbacks.
+- All main-window activation callers converge on BringToFront, now using ForegroundActivation. Popup first-show calls retain their coordinator/user-input path; re-show already uses the fallback helper. ClipboardPasteDispatcher's separate target-activation path is insertion-engine policy and was not changed. TrayIcon's foreground call owns a native tray menu, not main-window activation.
+- No EditFromPopupAsync or editor-to-main delegate remains. IPopupHost, DeferredPopupHost, RecoverablePopupHost signatures and TrayStatePolicy unchanged; EditSnippet forwards to local edit when a current visible row exists.
+- Existing Add log events preserved; new edit/activation event names added to harness audit. No snippet content or target titles added to logs.
+- Added 7 edit test cases (including a two-case theory): target/focus/deactivation, queued cache refresh/query repair, discard confirmation/cancel, preview isolation, MaybePasted, clipboard-loss interlock. Existing preview row-action test updated for local Edit. Guarded null clipboard copy also covers direct command execution in preview.
+- XML well-formedness checked for all four changed XAML files; git diff --check clean. Locally cached WinUI 1.8 generic.xaml/API XML inspected for resource keys, Grid border/corner properties, FlyoutBase.IsOpen, FlyoutShowOptions.Position and PointerReleasedEvent. This is NOT XAML compilation or runtime verification.
+- Deliberate compatibility: single-click insertion remains per plan 006; full-width hit testing does not introduce a separate double-click-to-insert mode. Empty-space clicks retain confirmation-footer focus while clipboard-loss confirmation owns keyboard input.
+
 Validation: add view-model tests; statically inspect XAML/API paths. No build/test/publish/launch before BUILD GO polish-01. Then copy committed source to C: build mirror, sequential build/tests and one AOT publish per user instructions. Theme/DPI/foreground/cursor UX remain PENDING-USER without authorized interactive QA.

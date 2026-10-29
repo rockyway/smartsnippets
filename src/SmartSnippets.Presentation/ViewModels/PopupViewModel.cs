@@ -285,7 +285,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         Editor.Saved += OnEditorSaved;
         OnPropertyChanged(nameof(EditorTitle)); OnPropertyChanged(nameof(EditorTargetLine));
         _host.Focus(PopupFocusTarget.Editor);
-        AppLog.Info("popup_editor_opened", snippetId is null ? "mode=add" : "mode=edit");
+        AppLog.Info(snippetId is null ? "popup_add_opened" : "popup_edit_opened");
     }
     public async Task SaveEditorAsync() { var editor = Editor; if (editor is not null && !editor.IsSaving) await editor.SaveAsync(); }
     public async Task CancelEditorAsync(bool confirmIfDirty)
@@ -295,7 +295,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         var dirty = editor.IsDirty;
         if (confirmIfDirty && dirty && !await _dialogs.ConfirmAsync(UiText.DiscardTitle, UiText.DiscardBody, UiText.Discard)) return;
         CloseEditor(); Query = _editorQuery; Refresh(_editorSelection); _host.Focus(PopupFocusTarget.Search);
-        AppLog.Info("popup_add_cancelled", $"dirty={dirty}");
+        AppLog.Info(_editorWasNew ? "popup_add_cancelled" : "popup_edit_cancelled", $"dirty={dirty}");
     }
     private void OnEditorSaved(object? sender, long id)
     {
@@ -308,7 +308,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             SetProperty(ref _query, string.Empty, nameof(Query));
         Refresh(id); StatusText = wasNew ? UiText.SnippetAddedReady : UiText.SnippetUpdatedReady;
         _host.Focus(PopupFocusTarget.Search);
-        AppLog.Info("popup_editor_saved", $"id={id}");
+        AppLog.Info(wasNew ? "popup_add_saved" : "popup_edit_saved", $"id={id}");
     }
     private void CloseEditor() { if (Editor is not { } editor) return; editor.Saved -= OnEditorSaved; Editor = null; editor.Dispose(); }
     public async Task InsertSelectedAsync()
