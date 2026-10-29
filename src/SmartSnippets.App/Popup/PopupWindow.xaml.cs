@@ -52,9 +52,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
         InitializeComponent();
         FlyoutSurface.KeepSolid(SortFlyout);
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
-        RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnSurfacePointerPressed), true);
-        RootGrid.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnSurfacePointerMoved), true);
-        RootGrid.PointerCaptureLost += (_, _) => _dragging = false;
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
@@ -64,6 +61,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         presenter.SetBorderAndTitleBar(true, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
         presenter.IsMinimizable = false; presenter.IsMaximizable = false;
         AppWindow.SetPresenter(presenter);
+        ExtendsContentIntoTitleBar = true; // lets the OS treat Caption regions as draggable
         RefreshFrame();
         _uiSettings.ColorValuesChanged += OnSystemColorsChanged;
         AppWindow.IsShownInSwitchers = false;
@@ -267,6 +265,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnLayoutUpdated(object? sender, object e)
     {
+        UpdateDragRegions();
         ReportReady();
         QueuePreviewSortMenu();
     }
@@ -355,34 +354,46 @@ public sealed partial class PopupWindow : Window, IPopupHost
             if (node is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or Microsoft.UI.Xaml.Controls.Primitives.RangeBase) return false;
         return true;
     }
-    // Pressing and dragging any empty area (padding, footer, blank list space) moves the popup,
-    // so it can be shifted off whatever it covers. The move is tracked by hand (pointer capture +
-    // screen cursor) instead of the native caption loop, which kept the busy cursor showing.
-    private bool _dragging;
-    private POINT _dragCursor;
-    private PointInt32 _dragOrigin;
-    private void OnSurfacePointerPressed(object sender, PointerRoutedEventArgs e)
+    // Dragging any empty area moves the popup. The OS owns the move: the whole client area is a
+    // Caption region (system drag, no per-move XAML work) and every interactive control is
+    // carved out as Passthrough so clicks still reach it.
+    private RectInt32[] _passthrough = [];
+    private void UpdateDragRegions()
     {
-        if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
-        var point = e.GetCurrentPoint(RootGrid);
-        if (!point.Properties.IsLeftButtonPressed || !IsEmptySurface(e.OriginalSource, RootGrid)) return;
-        if (!PInvoke.GetCursorPos(out _dragCursor) || !RootGrid.CapturePointer(e.Pointer)) return;
-        _dragOrigin = AppWindow.Position; _dragging = true;
-    }
-    private void OnSurfacePointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_dragging || !PInvoke.GetCursorPos(out var now)) return;
-        AppWindow.Move(new PointInt32(_dragOrigin.X + now.X - _dragCursor.X, _dragOrigin.Y + now.Y - _dragCursor.Y));
-    }
-    private void OnSurfaceDragEnded(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_dragging) return;
-        _dragging = false; RootGrid.ReleasePointerCaptures();
+        if (_closed || RootGrid.XamlRoot is null || RootGrid.ActualWidth <= 0) return;
+        var scale = RootGrid.XamlRoot.RasterizationScale;
+        var holes = new List<RectInt32>();
+        void Collect(DependencyObject node)
+        {
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+            {
+                var child = VisualTreeHelper.GetChild(node, i);
+                if (child is FrameworkElement { Visibility: Visibility.Visible } fe)
+                {
+                    if (fe is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or ListView)
+                    {
+                        if (fe.ActualWidth <= 0 || fe.ActualHeight <= 0) continue;
+                        var b = fe.TransformToVisual(RootGrid).TransformBounds(new Windows.Foundation.Rect(0, 0, fe.ActualWidth, fe.ActualHeight));
+                        holes.Add(new RectInt32((int)(b.X * scale), (int)(b.Y * scale), (int)Math.Ceiling(b.Width * scale), (int)Math.Ceiling(b.Height * scale)));
+                        continue;
+                    }
+                    Collect(fe);
+                }
+                else if (child is not null) Collect(child);
+            }
+        }
+        // An open editor owns the whole surface; leave it fully interactive.
+        if (ViewModel.IsEditorOpen) holes.Add(new RectInt32(0, 0, (int)Math.Ceiling(RootGrid.ActualWidth * scale), (int)Math.Ceiling(RootGrid.ActualHeight * scale)));
+        else Collect(RootGrid);
+        var rects = holes.ToArray();
+        if (rects.AsSpan().SequenceEqual(_passthrough)) return;
+        _passthrough = rects;
+        var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+        source.SetRegionRects(NonClientRegionKind.Caption, [new RectInt32(0, 0, (int)Math.Ceiling(RootGrid.ActualWidth * scale), (int)Math.Ceiling(RootGrid.ActualHeight * scale))]);
+        source.SetRegionRects(NonClientRegionKind.Passthrough, rects);
     }
     private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        var wasDragging = _dragging; OnSurfaceDragEnded(sender, e);
-        if (wasDragging) { Focus(ViewModel.IsConfirmingClipboardLoss ? PopupFocusTarget.Footer : PopupFocusTarget.Search); return; }
         if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
         // Observe handled events too (ScrollViewer consumes blank-list presses), but
         // never steal focus from actionable controls, row activation or scrollbars.
