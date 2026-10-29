@@ -54,6 +54,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
         presenter.IsMinimizable = false; presenter.IsMaximizable = false;
         AppWindow.SetPresenter(presenter);
+        WindowSurface.RoundPopup(this);
         AppWindow.IsShownInSwitchers = false;
         Activated += OnActivated; RootGrid.LayoutUpdated += OnLayoutUpdated; PopupList.LayoutUpdated += OnListLayoutUpdated;
         Closed += (_, _) =>

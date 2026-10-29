@@ -11,6 +11,7 @@
             <!-- Design tokens (plan 009 T7). Inlined here rather than a separate ms-appx dictionary: the unpackaged app uses no ms-appx URIs elsewhere. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="PopupBorderBrush" Color="#606060" />
                     <SolidColorBrush x:Key="FolderTintBrush" Color="#B8A4F0" />
                     <SolidColorBrush x:Key="FolderTintBackgroundBrush" Color="#2E2650" />
                     <SolidColorBrush x:Key="AccentTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
@@ -19,6 +20,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PopupBorderBrush" Color="#909090" />
                     <SolidColorBrush x:Key="FolderTintBrush" Color="#6B4FBB" />
                     <SolidColorBrush x:Key="FolderTintBackgroundBrush" Color="#EFEAFB" />
                     <SolidColorBrush x:Key="AccentTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
@@ -27,6 +29,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="PopupBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="FolderTintBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="FolderTintBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="AccentTintBrush" Color="{ThemeResource SystemColorHighlightColor}" />
