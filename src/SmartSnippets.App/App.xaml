@@ -11,6 +11,8 @@
             <!-- Design tokens (plan 009 T7). Inlined here rather than a separate ms-appx dictionary: the unpackaged app uses no ms-appx URIs elsewhere. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
+                    <!-- Menus (sort, row context) use a solid surface, not the default translucent acrylic. -->
+                    <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SolidBackgroundFillColorQuarternaryBrush" />
                     <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
                     <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
                     <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
@@ -26,6 +28,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
+                    <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SolidBackgroundFillColorQuarternaryBrush" />
                     <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
                     <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
                     <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
@@ -41,6 +44,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ListViewItemBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="{ThemeResource SystemColorWindowColor}" />
