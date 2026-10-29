@@ -8,6 +8,7 @@ namespace SmartSnippets.App.Pages;
 public sealed partial class SettingsPage : Page
 {
     private SettingsViewModel? _viewModel;
+    private bool _rebinding;
 
     public SettingsPage()
     {
@@ -20,8 +21,9 @@ public sealed partial class SettingsPage : Page
         get => _viewModel!;
         set
         {
-            _viewModel = value;
-            Bindings.Update();
+            _rebinding = true;
+            try { _viewModel = value; Bindings.Update(); }
+            finally { _rebinding = false; }
         }
     }
 
@@ -43,7 +45,7 @@ public sealed partial class SettingsPage : Page
     private void OnThemeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var index = ThemeRadios.SelectedIndex;
-        if (_viewModel is not null && index >= 0)
+        if (!_rebinding && _viewModel is not null && index >= 0)
         {
             _viewModel.SelectedTheme = SettingsViewModel.IndexToTheme(index);
         }
@@ -52,15 +54,21 @@ public sealed partial class SettingsPage : Page
     private void OnTextSizeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var index = TextSizeRadios.SelectedIndex;
-        if (_viewModel is not null && index >= 0)
+        if (!_rebinding && _viewModel is not null && index >= 0)
         {
             _viewModel.SelectedTextSizePreset = (TextSizePreset)index;
         }
     }
 
+    private void OnCustomSizeChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!_rebinding && _viewModel is not null && sender is Slider slider && slider.FocusState != FocusState.Unfocused)
+            _viewModel.CustomTextSize = e.NewValue;
+    }
+
     private void OnStartupToggled(object sender, RoutedEventArgs e)
     {
-        if (_viewModel is not null)
+        if (!_rebinding && _viewModel is not null)
         {
             _viewModel.StartAtLogin = StartupToggle.IsOn;
         }

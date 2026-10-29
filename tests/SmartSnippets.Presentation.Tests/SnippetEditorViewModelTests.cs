@@ -122,11 +122,13 @@ public sealed class SnippetEditorViewModelTests
         // Back in the narrow view only hides the current editor; it does not clear the VM.
         Assert.True(await page.RequestSelectAsync(b.Id));
         var editor = page.Editor!;
-        editor.SelectedFolder = null!; // transient ComboBox SelectedItem feedback
+        editor.SelectFolder(null); // transient ComboBox SelectedItem feedback
         Assert.Equal(b.FolderId, editor.SelectedFolder.Id);
         Assert.False(editor.IsDirty);
         editor.FolderChoices.CollectionChanged += (_, _) => editor.SelectedFolder = null!;
         _store.SeedFolder("Another");
+        _store.RenameFolder(b.FolderId!.Value, "Renamed");
+        Assert.Equal("Renamed", editor.SelectedFolder.Name);
         Assert.Equal(b.FolderId, editor.SelectedFolder.Id);
         Assert.Contains(editor.FolderChoices, choice => ReferenceEquals(choice, editor.SelectedFolder));
         Assert.False(editor.IsDirty);
@@ -136,13 +138,15 @@ public sealed class SnippetEditorViewModelTests
     }
 
     [Fact]
-    public void FolderSelection_ExplicitUnfiled_IsAnEdit()
+    public async Task FolderSelection_ExplicitUnfiled_IsAnEdit()
     {
         var b = _store.SeedSnippet("second", folder: "Second");
         using var editor = Edit(b.Id);
-        editor.SelectedFolder = editor.FolderChoices.Single(c => c.Id is null);
+        editor.SelectFolder(editor.FolderChoices.Single(c => c.Id is null));
         Assert.Null(editor.SelectedFolder.Id);
         Assert.True(editor.IsDirty);
+        Assert.True(await editor.SaveAsync());
+        Assert.Null(_store.Snippets.Single(s => s.Snippet.Id == b.Id).Snippet.FolderId);
     }
 
     [Fact]

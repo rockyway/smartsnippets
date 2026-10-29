@@ -59,6 +59,14 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         }
     }
 
+    /// <summary>Only explicit, current choices are edits; collection reset/null feedback is not.</summary>
+    public void SelectFolder(FolderChoice? choice)
+    {
+        if (_loading || _updatingChoices || choice is null) return;
+        var current = FolderChoices.FirstOrDefault(c => c.Id == choice.Id);
+        if (current is not null) SelectedFolder = current;
+    }
+
     [ObservableProperty]
     private string _tagsInput = string.Empty;
 

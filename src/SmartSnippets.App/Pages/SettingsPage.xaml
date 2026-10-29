@@ -105,7 +105,7 @@
                 Minimum="10"
                 SpinButtonPlacementMode="Inline"
                 ValidationMode="InvalidInputOverwritten"
-                Value="{x:Bind ViewModel.CustomTextSize, Mode=TwoWay}" />
+                Value="{x:Bind ViewModel.CustomTextSize, Mode=OneWay}" ValueChanged="OnCustomSizeChanged" />
             <TextBlock
                 Opacity="0.7"
                 Text="{x:Bind ViewModel.TextSizeHint, Mode=OneWay}"
