@@ -264,8 +264,10 @@ try {
                 if (-not $query -and $rows.Count -ne 3) { throw 'Populated preview did not return exactly three rows' }
                 if ($query -eq 'First') {
                     if ($rows.Count -ne 1) { throw 'Preview search did not return exactly one row' }
-                    $identity = $rows[0].Current.Name
-                    if ($identity -cne 'First synthetic, QA folder, #work #qa') { throw "Preview search returned wrong row identity: $identity" }
+                    $rowText = @(Find-All $rows[0] ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
+                    if ('First synthetic' -cnotin $rowText -or 'QA folder #work #qa' -cnotin $rowText) {
+                        throw "Preview search returned wrong row label or metadata: $($rowText -join ' | ')"
+                    }
                 }
                 $popupText = @(Find-All $list ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                 if ('Synthetic one' -in $popupText -or 'Synthetic two' -in $popupText -or 'Synthetic three' -in $popupText) { throw 'Snippet bodies appeared in popup rows' }
