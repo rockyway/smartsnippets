@@ -202,7 +202,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     private void ShowSnippetMenu(ListViewItem container, SnippetRowViewModel row, Windows.Foundation.Point? position = null)
     {
         if (_viewModel is not { } vm) return;
-        var menu = new MenuFlyout();
+        var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy };
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = vm.CanInsertRow };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };

@@ -63,6 +63,10 @@
 
             <!-- Native presenter states: neutral when idle/hovered, accent only for selection.
                  Shared by popup, snippets, and folder/browse lists; theme changes stay live. -->
+            <!-- The default presenter paints a desktop-acrylic SystemBackdrop that shows the rows behind a menu; menus here are solid. -->
+            <Style x:Key="SolidMenuFlyoutPresenterStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
+                <Setter Property="SystemBackdrop" Value="{x:Null}" />
+            </Style>
             <Style x:Key="SnippetListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
