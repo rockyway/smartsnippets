@@ -6,6 +6,8 @@ SCREEN_BATCH_DONE — captures completed with visual failures and minimum-size l
 
 ## Latest screen findings (supersede older pending notes below)
 
+Build batch `uiqa-visual-03`: solution build succeeded with 0 warnings/0 errors; Core 426 passed, Presentation 439 passed, 0 failed or skipped; one Native AOT publish succeeded with no observed warnings. Candidate visual fixes still need a screen slot and re-screenshot. Foreground checks in `scripts/verify-ui-qa.ps1` compare HWNDs only.
+
 - [x] The font fix `f0e5194` was verified on the main list: UIA label height was 14 px at Custom 10 and 43 px at Custom 32, at both 1280×800 and 900×600. SQLite settings were read back. Dark filled popup screenshots also visibly grow: `docs/qa/ui/a45100a604114373bba6b18d6624c8da/popup-filled-Dark-size10-900x600.png` and `docs/qa/ui/61c9fd48bf12482da5aaf0d125fd8338/popup-filled-Dark-size32-900x600.png`.
 - [x] The redirect seam navigated Snippets/Folders/Settings and opened popup preview without input; UIA query/result checks passed. Main rows and dark filled popup show one label per row and ellipsize the long synthetic label. The popup screenshots have a title-bar artifact/suspected defect; actual borderless appearance remains unverified.
 - [ ] Light popup PrintWindow captures are black and light-theme content unreadable (`docs/qa/ui/3848429df460410dae43f846e19ea772/popup-filled-Light-size0-900x600.png`). Whether this is actual app composition or capture-only is unproven. Explicit theme background candidate `e1bfa76` needs build and re-screenshot. Dark search-state capture is mostly blank even though UIA reports rows (`docs/qa/ui/30fe23038f0d49eca183f88562b0344d/popup-search-Dark-size0-900x600.png`); capture/compositor versus app rendering is unresolved.
