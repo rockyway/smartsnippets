@@ -29,7 +29,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private const int LogicalHeight = 480;
     private readonly HWND _hwnd;
     private readonly Action _openMainWindow;
-    private readonly Action<long> _editSnippet;
     private PopupViewModel _viewModel = null!;
     private long _hotkeyTimestamp;
     private bool _readyPending;
@@ -41,10 +40,11 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private readonly PopupShowCoordinator _shows;
     private DispatcherQueueTimer? _prewarmTimer;
 
-    internal PopupWindow(ITextSizeService textSize, Action openMainWindow, Action<long> editSnippet)
+    internal PopupWindow(ITextSizeService textSize, Action openMainWindow)
     {
-        TextSize = textSize; _openMainWindow = openMainWindow; _editSnippet = editSnippet;
+        TextSize = textSize; _openMainWindow = openMainWindow;
         InitializeComponent();
+        RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
@@ -54,6 +54,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false; presenter.IsAlwaysOnTop = true;
         presenter.IsMinimizable = false; presenter.IsMaximizable = false;
         AppWindow.SetPresenter(presenter);
+        WindowSurface.RoundPopup(this);
         AppWindow.IsShownInSwitchers = false;
         Activated += OnActivated; RootGrid.LayoutUpdated += OnLayoutUpdated; PopupList.LayoutUpdated += OnListLayoutUpdated;
         Closed += (_, _) =>
@@ -186,7 +187,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
         return new(true, focused ? PopupFocusTarget.Search : null);
     }
     public void OpenMainWindow() { _openMainWindow(); Hide(); AppLog.Info("popup_closed", "reason=main_window"); }
-    public void EditSnippet(long snippetId) { Hide(); _editSnippet(snippetId); AppLog.Info("popup_closed", "reason=edit"); }
+    // Retain the deferred/recoverable host contract, but edit on this surface.
+    public void EditSnippet(long snippetId)
+    {
+        ViewModel.EnsureCurrent();
+        var item = ViewModel.Items.FirstOrDefault(row => row.Kind == PopupItemKind.Snippet && row.SnippetId == snippetId);
+        if (item is not null) ViewModel.EditRow(item);
+    }
     public void Focus(PopupFocusTarget target) => _shows.Focus(target);
     private void ApplyFocus(PopupFocusTarget target)
     {
@@ -225,16 +232,15 @@ public sealed partial class PopupWindow : Window, IPopupHost
             e.ItemContainer.RightTapped += OnRowRightTapped;
             e.ItemContainer.IsEnabled = item.Kind == PopupItemKind.Snippet;
             e.ItemContainer.IsTabStop = item.Kind == PopupItemKind.Snippet;
-            StyleSelection(e.ItemContainer, ReferenceEquals(e.Item, PopupList.SelectedItem));
         }
     }
     private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is not ListViewItem container || container.Content is not PopupItemViewModel item || !ViewModel.CanUseRowActions(item)) return;
         e.Handled = true;
-        ShowRowMenu(container, item);
+        ShowRowMenu(container, item, e.GetPosition(container));
     }
-    private void ShowRowMenu(ListViewItem container, PopupItemViewModel item)
+    private void ShowRowMenu(ListViewItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
     {
         if (!ViewModel.CanUseRowActions(item)) return;
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
@@ -252,22 +258,24 @@ public sealed partial class PopupWindow : Window, IPopupHost
         menu.Closed += (_, _) =>
         {
             if (ReferenceEquals(_contextFlyout, menu)) _contextFlyout = null;
-            DispatcherQueue.TryEnqueue(() => { if (_visible && PInvoke.GetForegroundWindow() != _hwnd) ViewModel.OnDeactivated(); });
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_visible) return;
+                if (PInvoke.GetForegroundWindow() != _hwnd) ViewModel.OnDeactivated();
+                else Focus(ViewModel.IsEditorOpen ? PopupFocusTarget.Editor : ViewModel.IsConfirmingClipboardLoss ? PopupFocusTarget.Footer : PopupFocusTarget.Search);
+            });
         };
-        menu.ShowAt(container);
+        if (position is { } point) menu.ShowAt(container, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = point });
+        else menu.ShowAt(container); // Keyboard context-menu invocation has no pointer position.
     }
-    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        foreach (var item in e.RemovedItems)
-            if (PopupList.ContainerFromItem(item) is ListViewItem container) StyleSelection(container, false);
-        foreach (var item in e.AddedItems)
-            if (PopupList.ContainerFromItem(item) is ListViewItem container) StyleSelection(container, true);
-    }
-    private void StyleSelection(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, bool selected)
-    {
-        container.Background = selected ? SelectedPalette.Background : null;
-        container.BorderBrush = selected ? SelectedPalette.BorderBrush : null;
-        container.BorderThickness = selected ? new Thickness(3, 0, 0, 0) : new Thickness(0);
+        if (!_visible || ViewModel.IsEditorOpen || _contextFlyout is not null || SortFlyout.IsOpen) return;
+        // Observe handled events too (ScrollViewer consumes blank-list presses), but
+        // never steal focus from actionable controls, row activation or scrollbars.
+        for (var node = e.OriginalSource as DependencyObject; node is not null && node != RootGrid; node = VisualTreeHelper.GetParent(node))
+            if (node is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or Microsoft.UI.Xaml.Controls.Primitives.RangeBase) return;
+        Focus(ViewModel.IsConfirmingClipboardLoss ? PopupFocusTarget.Footer : PopupFocusTarget.Search);
     }
     private void OnSortClick(object sender, RoutedEventArgs e)
     {

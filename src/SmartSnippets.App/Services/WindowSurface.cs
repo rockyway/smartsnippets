@@ -19,6 +19,16 @@ internal static partial class WindowSurface
         _ = DwmSetWindowAttribute(hwnd, 3, in disableTransitions, sizeof(int));
     }
 
+    /// <summary>Windows 11 rounded borderless popup; XAML owns the single themed border.</summary>
+    internal static void RoundPopup(Window window)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        var round = 2; // DWMWCP_ROUND / DWMWA_WINDOW_CORNER_PREFERENCE
+        _ = DwmSetWindowAttribute(hwnd, 33, in round, sizeof(int));
+        var noBorder = -2; // DWMWA_COLOR_NONE / DWMWA_BORDER_COLOR
+        _ = DwmSetWindowAttribute(hwnd, 34, in noBorder, sizeof(int));
+    }
+
     internal static void Cloak(Window window, bool cloak)
     {
         var value = cloak ? 1 : 0;

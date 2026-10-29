@@ -6,8 +6,7 @@
     xmlns:controls="using:SmartSnippets.App.Controls"
     xmlns:vm="using:SmartSnippets.Presentation.ViewModels"
     Title="Smart Snippets popup">
-    <Grid x:Name="RootGrid" Padding="12" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" KeyDown="OnKeyDown">
-        <Border x:Name="SelectedPalette" Background="{ThemeResource AccentTintBrush}" BorderBrush="{ThemeResource SystemControlHighlightAccentBrush}" Visibility="Collapsed"/>
+    <Grid x:Name="RootGrid" Padding="12" BorderThickness="1" BorderBrush="{ThemeResource PopupBorderBrush}" CornerRadius="8" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" KeyDown="OnKeyDown">
         <ContentControl Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid RowSpacing="8">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -22,7 +21,7 @@
                 <Button Grid.Column="4" automation:AutomationProperties.AutomationId="PopupOpenMainButton" automation:AutomationProperties.Name="{x:Bind MainWindowText}" ToolTipService.ToolTip="{x:Bind MainWindowText}" Command="{x:Bind ViewModel.OpenMainWindowCommand, Mode=OneWay}"><FontIcon Glyph="&#xE8A7;" /></Button>
             </Grid>
             <Grid Grid.Row="1">
-                <ListView x:Name="PopupList" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay}" TabFocusNavigation="Once" automation:AutomationProperties.AutomationId="PopupList" ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}" IsItemClickEnabled="True" ItemClick="OnItemClick" SelectionChanged="OnSelectionChanged" ContainerContentChanging="OnContainerContentChanging">
+                <ListView x:Name="PopupList" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay}" TabFocusNavigation="Once" automation:AutomationProperties.AutomationId="PopupList" ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}" SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}" IsItemClickEnabled="True" ItemClick="OnItemClick" ItemContainerStyle="{StaticResource SnippetListItemStyle}" ContainerContentChanging="OnContainerContentChanging">
                     <ListView.ItemTemplate><DataTemplate x:DataType="vm:PopupItemViewModel"><controls:PopupRow Item="{x:Bind}"/></DataTemplate></ListView.ItemTemplate>
                 </ListView>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind Show(ViewModel.IsEmpty), Mode=OneWay}"><FontIcon Glyph="&#xE721;"/><TextBlock Text="{x:Bind ViewModel.EmptyTitle}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EmptyBody}" TextWrapping="Wrap"/></StackPanel>
@@ -35,7 +34,7 @@
         </ContentControl>
         <Grid x:Name="EditorOverlay" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Visibility="{x:Bind Show(ViewModel.IsEditorOpen), Mode=OneWay}" PreviewKeyDown="OnEditorPreviewKeyDown" automation:AutomationProperties.AutomationId="PopupEditor">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-            <StackPanel><TextBlock Text="{x:Bind ViewModel.EditorTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EditorTargetLine, Mode=OneWay}"/></StackPanel>
+            <StackPanel><TextBlock Text="{x:Bind ViewModel.EditorTitle, Mode=OneWay}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{x:Bind ViewModel.EditorTargetLine, Mode=OneWay}"/></StackPanel>
             <controls:SnippetEditor x:Name="EditorControl" Grid.Row="1" IsCompact="True" ViewModel="{x:Bind ViewModel.Editor, Mode=OneWay}" TextSize="{x:Bind TextSize}" EscapePressed="OnEditorEscape"/>
             <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{x:Bind EditorHint}" VerticalAlignment="Center"/><Button Grid.Column="1" automation:AutomationProperties.AutomationId="PopupEditorCancel" Content="{x:Bind CancelText}" Click="OnEditorCancel"/><Button Grid.Column="2" automation:AutomationProperties.AutomationId="PopupEditorSave" Content="{x:Bind SaveText}" Click="OnEditorSave"/></Grid>
         </Grid>

@@ -326,7 +326,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private void Delete() => DeleteRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand(CanExecute = nameof(CanCopyText))]
-    private void CopyText() => _clipboard!.SetText(Text);
+    private void CopyText() => _clipboard?.SetText(Text);
 
     [RelayCommand]
     private Task CreateFolder() => CreateFolderAsync();

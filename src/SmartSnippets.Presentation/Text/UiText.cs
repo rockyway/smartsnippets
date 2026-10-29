@@ -102,6 +102,8 @@ public static class UiText
     public const string CtrlEnterSaves = "Ctrl+Enter saves";
     public const string Cancel = "Cancel";
     public const string SnippetAddedReady = "Snippet added and ready to insert";
+    public const string SnippetUpdatedReady = "Snippet updated and ready to insert";
+    public const string EditSnippet = "Edit snippet";
     public const string RestartAsAdministrator = "Restart as administrator";
     public const string InsertFailedGeneric = "Couldn't insert the snippet. Nothing was pasted.";
     public const string ClipboardLossPrompt = "Some of what's on your clipboard can't be restored after pasting. Paste anyway?";

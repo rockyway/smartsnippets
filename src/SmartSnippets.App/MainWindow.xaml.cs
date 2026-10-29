@@ -6,6 +6,7 @@ using SmartSnippets.Presentation.Navigation;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace SmartSnippets.App;
 
@@ -93,13 +94,30 @@ public sealed partial class MainWindow : Window
     /// <summary>Shows and activates the window on the page it already displays.</summary>
     public void BringToFront()
     {
+        var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         AppWindow.Show();
-        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
-        {
-            presenter.Restore();
-        }
-
+        PInvoke.ShowWindow(hwnd, PInvoke.IsIconic(hwnd) ? SHOW_WINDOW_CMD.SW_RESTORE : SHOW_WINDOW_CMD.SW_SHOW);
         Activate();
+        // User input in our popup normally grants foreground rights. Never attach
+        // external input queues: a hung foreground app could hang our UI thread.
+        PInvoke.SetForegroundWindow(hwnd);
+        var path = "direct";
+        if (PInvoke.GetForegroundWindow() != hwnd)
+        {
+            // Briefly raise our own window, always removing topmost afterward.
+            const SET_WINDOW_POS_FLAGS flags = SET_WINDOW_POS_FLAGS.SWP_NOMOVE |
+                SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW;
+            try { PInvoke.SetWindowPos(hwnd, new HWND(-1), 0, 0, 0, 0, flags); } // HWND_TOPMOST
+            finally { PInvoke.SetWindowPos(hwnd, new HWND(-2), 0, 0, 0, 0, flags); } // HWND_NOTOPMOST
+            PInvoke.SetForegroundWindow(hwnd);
+            path = "topmost_toggle";
+            if (PInvoke.GetForegroundWindow() != hwnd)
+            {
+                PInvoke.FlashWindow(hwnd, true);
+                path = "denied_flash_requested";
+            }
+        }
+        AppLog.Info("main_window_activation", $"focus={path}");
     }
 
     /// <summary>For tray Exit: true when the current page allows leaving; otherwise the window is brought forward.</summary>

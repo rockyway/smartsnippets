@@ -11,6 +11,14 @@
             <!-- Design tokens (plan 009 T7). Inlined here rather than a separate ms-appx dictionary: the unpackaged app uses no ms-appx URIs elsewhere. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="PopupBorderBrush" Color="#606060" />
+                    <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
                     <SolidColorBrush x:Key="FolderTintBrush" Color="#B8A4F0" />
                     <SolidColorBrush x:Key="FolderTintBackgroundBrush" Color="#2E2650" />
                     <SolidColorBrush x:Key="AccentTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
@@ -19,6 +27,14 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PopupBorderBrush" Color="#909090" />
+                    <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
                     <SolidColorBrush x:Key="FolderTintBrush" Color="#6B4FBB" />
                     <SolidColorBrush x:Key="FolderTintBackgroundBrush" Color="#EFEAFB" />
                     <SolidColorBrush x:Key="AccentTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
@@ -27,6 +43,14 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="PopupBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackground" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="ListViewItemForegroundSelected" Color="{ThemeResource SystemColorHighlightTextColor}" />
                     <SolidColorBrush x:Key="FolderTintBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="FolderTintBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="AccentTintBrush" Color="{ThemeResource SystemColorHighlightColor}" />
@@ -35,6 +59,13 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
+
+            <!-- Native presenter states: neutral when idle/hovered, accent only for selection.
+                 Shared by popup, snippets, and folder/browse lists; theme changes stay live. -->
+            <Style x:Key="SnippetListItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+            </Style>
 
             <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource DangerBackgroundBrush}" />

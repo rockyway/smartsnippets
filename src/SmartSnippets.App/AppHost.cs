@@ -159,7 +159,7 @@ internal sealed class AppHost
         AppLog.Info("porting_ready");
 
         // Step 7: popup, then the main window (created hidden).
-        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets), id => _ = EditFromPopupAsync(id));
+        var popup = new PopupWindow(textSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
         _popup = popup;
         popup.CanShow = () => !_exiting;
 
@@ -268,7 +268,7 @@ internal sealed class AppHost
     private PopupWindow EnsurePopup()
     {
         if (_popup is not null) return _popup;
-        var popup = new PopupWindow(TextSize, () => _mainWindow?.ShowPage(PageKind.Snippets), id => _ = EditFromPopupAsync(id));
+        var popup = new PopupWindow(TextSize, () => _mainWindow?.ShowPage(PageKind.Snippets));
         _popup = popup;
         popup.CanShow = () => !_exiting;
         popup.ViewModel = _popupViewModel!;
@@ -278,14 +278,6 @@ internal sealed class AppHost
         TrackPopupClose(popup);
         popup.Prewarm();
         return popup;
-    }
-
-    private async Task EditFromPopupAsync(long snippetId)
-    {
-        if (_exiting || _mainWindow is not { } window) return;
-        await window.ShowPageWithoutActivationAsync(PageKind.Snippets, show: true);
-        if (window.CurrentPage != PageKind.Snippets || _snippetsViewModel is not { } page) return;
-        if (await page.RequestEditAsync(snippetId)) window.BringToFront();
     }
 
     private async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain)
