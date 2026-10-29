@@ -143,12 +143,34 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnSystemColorsChanged(UISettings sender, object args)
         => DispatcherQueue.TryEnqueue(() => RefreshFrame());
-    private void ShowSurface(bool activate = true)
+    private void ShowSurface(bool activate = true, bool revealAfterFrame = true)
     {
         RefreshFrame();
+        // A hidden window's swap chain is not presented, so the first frames after Show can be the
+        // unpainted (white, then black) surface. Stay cloaked until XAML has produced a frame.
+        if (revealAfterFrame) WindowSurface.Cloak(this, true);
         AppWindow.Show(activate);
         // First Show can initialize/reconfigure the native surface. Reassert before returning.
         RefreshFrame();
+        if (revealAfterFrame) RevealAfterFrame();
+    }
+    private int _revealToken;
+    private void RevealAfterFrame()
+    {
+        var token = ++_revealToken;
+        void Reveal()
+        {
+            if (token != _revealToken) return;
+            _revealToken++; CompositionTarget.Rendered -= OnRevealFrame;
+            if (!_closed && !_shows.IsWarming) WindowSurface.Cloak(this, false);
+        }
+        void OnRevealFrame(object? s, object e) => DispatcherQueue.TryEnqueue(Reveal);
+        CompositionTarget.Rendered += OnRevealFrame;
+        // Safety net: never leave the popup cloaked if no frame is reported.
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(150); timer.IsRepeating = false;
+        timer.Tick += (_, _) => { timer.Stop(); Reveal(); };
+        timer.Start();
     }
 
     internal void Prewarm() => _shows.BeginWarmup();
@@ -165,7 +187,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _prewarmTimer.Tick += (_, _) => _shows.WarmupTimedOut(generation);
         _prewarmTimer.Start();
         AppWindow.MoveAndResize(new RectInt32(-32000, -32000, LogicalWidth, LogicalHeight));
-        ShowSurface(false);
+        ShowSurface(false, revealAfterFrame: false);
     }
     private void StopWindowWarmup()
     {
