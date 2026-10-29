@@ -6,7 +6,7 @@
     xmlns:controls="using:SmartSnippets.App.Controls"
     xmlns:vm="using:SmartSnippets.Presentation.ViewModels"
     Title="Smart Snippets popup">
-    <Grid x:Name="RootGrid" Padding="12" KeyDown="OnKeyDown">
+    <Grid x:Name="RootGrid" Padding="12" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" KeyDown="OnKeyDown">
         <Border x:Name="SelectedPalette" Background="{ThemeResource AccentTintBrush}" BorderBrush="{ThemeResource SystemControlHighlightAccentBrush}" Visibility="Collapsed"/>
         <ContentControl IsEnabled="{x:Bind ViewModel.IsEditorClosed, Mode=OneWay}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid RowSpacing="8">
