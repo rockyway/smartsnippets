@@ -1,6 +1,7 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using SmartSnippets.App.Services;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Navigation;
 using Windows.Graphics;
@@ -100,6 +101,12 @@ public sealed partial class MainWindow : Window
         }
 
         Activate();
+        // Activate alone can leave an already-open window behind other apps. The user
+        // action (popup/tray/dialog) grants this process foreground rights. Try Win32
+        // directly, then the bounded input-queue fallback (detached in finally).
+        var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _ = ForegroundActivation.TryActivate(hwnd, out var path);
+        AppLog.Info("main_window_activation", $"focus={path}");
     }
 
     /// <summary>For tray Exit: true when the current page allows leaving; otherwise the window is brought forward.</summary>
