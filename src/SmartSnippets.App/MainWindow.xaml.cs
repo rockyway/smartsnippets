@@ -38,11 +38,12 @@ public sealed partial class MainWindow : Window
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var dpi = PInvoke.GetDpiForWindow(hwnd);
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.PreferredMinimumWidth = (int)(MinimumLogicalWidth * scale);
-            presenter.PreferredMinimumHeight = (int)(MinimumLogicalHeight * scale);
-        }
+        // Install the presenter explicitly; the pre-show default may not expose
+        // OverlappedPresenter, which otherwise silently skips the size limits.
+        var presenter = OverlappedPresenter.Create();
+        presenter.PreferredMinimumWidth = (int)(MinimumLogicalWidth * scale);
+        presenter.PreferredMinimumHeight = (int)(MinimumLogicalHeight * scale);
+        AppWindow.SetPresenter(presenter);
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         AppWindow.Closing += OnClosing;
 
