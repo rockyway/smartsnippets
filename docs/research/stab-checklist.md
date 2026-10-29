@@ -6,5 +6,6 @@
 - [x] T2: corrected confirmed theme-after-prewarm ordering and immediate-hide-before-layout; cloak offscreen prewarm through first layout, DWM dark attributes before show. Solid root already existed; no backdrop/per-show theme setup found. Visual causality/first-frame verification PENDING-USER.
 - [x] T3: UI-queued coalesced projection rebuilds + show freshness barrier, numeric timing logs, lazy window replacement behind unchanged DeferredPopupHost, subscription disposal. Invalidation/coalescing/50k import/memory/isolation tests added; await granted execution.
 - [x] T4: plan 006 records A/B/C approval, confirmed vs candidate causes, full invalidation matrix and screen limits; AGENTS documents queued cache/recoverable host architecture.
-- [ ] Request single build batch stab-01 only after code and tests are ready; no builds without grant.
+- [x] T5 preparation: code/tests committed and changed compiled bindings statically reviewed. Requesting stab-01; no build/test/publish/app launch has run. Await explicit BUILD GO stab-01.
+- [ ] T5 execution: sequential Core/Presentation tests (-m:4), final AOT gate (-MaxCpuCount 4), record exact counts/warnings and BUILD_FINISHED.
 - [ ] Screen pass and before/after measurements arranged separately.
