@@ -84,6 +84,75 @@ public sealed class PopupCacheStabilityTests(Xunit.Abstractions.ITestOutputHelpe
         Assert.Equal(before + 1, vm.CacheRebuildCount);
     }
 
+    private static void AssertMatches(PopupViewModel vm, string query, params long[] expected)
+    {
+        vm.Query = query;
+        Assert.Equal(expected, vm.Items.Where(row => row.Kind == PopupItemKind.Snippet).Select(row => row.SnippetId));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SameIds_BodyTagsAndRenamedFolderReplaceOldSearchFields(bool visible)
+    {
+        var edited = _store.SeedSnippet("oldbodytoken", "First", "oldfoldertoken", "oldtagtoken");
+        var other = _store.SeedSnippet("neutral", "Second");
+        using var vm = Create();
+        if (visible) vm.OpenPreview();
+        AssertMatches(vm, "oldbodytoken", edited.Id);
+        AssertMatches(vm, "oldtagtoken", edited.Id);
+        AssertMatches(vm, "oldfoldertoken", edited.Id);
+        vm.Query = "";
+
+        _store.UpdateSnippet(edited.Id, new("newbodytoken", "First", true, edited.FolderId, "newtagtoken, currenttag"));
+        if (visible) Drain(); else vm.OpenPreview();
+        Assert.Equal(new[] { edited.Id, other.Id }.Order(), _store.Snippets.Select(s => s.Snippet.Id).Order());
+        AssertMatches(vm, "oldbodytoken");
+        AssertMatches(vm, "newbodytoken", edited.Id);
+        AssertMatches(vm, "oldtagtoken");
+        AssertMatches(vm, "newtagtoken", edited.Id);
+        var current = Assert.Single(vm.Items);
+        Assert.Equal("newtagtoken", current.Tag1);
+        Assert.Equal("currenttag", current.Tag2);
+        Assert.Equal("#newtagtoken #currenttag", current.TagsDisplay);
+
+        vm.Query = "";
+        _store.RenameFolder(edited.FolderId!.Value, "newfoldertoken");
+        if (visible) Drain(); else vm.OpenPreview();
+        AssertMatches(vm, "oldfoldertoken");
+        AssertMatches(vm, "newfoldertoken", edited.Id);
+        Assert.Equal("newfoldertoken", Assert.Single(vm.Items).FolderChip);
+        AssertMatches(vm, "newbodytoken newtagtoken newfoldertoken", edited.Id);
+        Drain();
+        AssertMatches(vm, "oldbodytoken oldtagtoken");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SameIds_UsageCountCrossoverReordersCurrentSearchIndexExactly(bool visible)
+    {
+        var first = _store.SeedSnippet("sharedmatch", "First");
+        var second = _store.SeedSnippet("sharedmatch", "Second");
+        for (var i = 0; i < 3; i++) _store.RecordUsage(first.Id);
+        _store.RecordUsage(second.Id);
+        using var vm = Create(); vm.SetSort(SortField.UsageCount);
+        if (visible) vm.OpenPreview();
+        AssertMatches(vm, "sharedmatch", first.Id, second.Id);
+        vm.SelectedIndex = 0;
+        var before = vm.CacheRebuildCount;
+        for (var i = 0; i < 3; i++) _store.RecordUsage(second.Id); // 1 -> 4, overtaking 3.
+        Assert.Single(_work);
+        Assert.Equal(before, vm.CacheRebuildCount);
+        if (visible) Drain(); else vm.OpenPreview();
+        Assert.Equal(new[] { second.Id, first.Id }, vm.Items.Select(row => row.SnippetId));
+        if (visible) Assert.Equal(first.Id, vm.Items[vm.SelectedIndex].SnippetId);
+        AssertMatches(vm, "sharedmatch", second.Id, first.Id);
+        Assert.Equal(before + 1, vm.CacheRebuildCount);
+        Drain();
+        Assert.Equal(before + 1, vm.CacheRebuildCount);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

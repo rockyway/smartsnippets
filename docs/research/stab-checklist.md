@@ -15,7 +15,7 @@
 - [x] Fix 1: NumberBox focus-within walks the focused descendant tree; an edit-session latch and deferred final-value read preserve focus-loss commits. Finite/rebind/session-identity guards retained. Typing, stepping, spin buttons and focus-loss commit still require control-level verification.
 - [x] Fix 2: shared testable show/focus coordinator carries explicit focus through async prewarm; late Search cannot overwrite Footer, queued focus is invalidated by hide/close/new requests. Added actual VM ClipboardNotPreserved replacement and suspended/resume tests (unrun).
 - [x] Fix 3: show coordinator explicitly cancels warmup on hide, resets to cold, restarts on next show and rejects stale layout/timeout generations. Two-second UI timer retries once; repeated failure logs and remains hidden/restartable. Tests cover cancelled exit→next show, timeout/retry/focus retention, stale completion, close and supersession (unrun). Class sweep: hotkey, preview, recovery, main/edit cancellation, late focus callbacks; nonactivating preview now invalidates queued focus from older shows. Standalone hidden Focus intentionally does not show/activate.
-- [ ] Fix 4: same-ID search-field and exact usage-sort regression oracles.
+- [x] Fix 4: added hidden-show-barrier and visible-queue regressions using unchanged IDs: old/new body/tag/folder searches, old-match disappearance, current tag projection, AND query, and exact two-row usage-count crossover order plus selected-ID retention (unrun).
 - [ ] Fix 5: narrow cache memory claims to actual cache-size/disposal checks.
 - [ ] Granted stab-02 C: snapshot build, sequential tests, AOT gate and final report.
 
