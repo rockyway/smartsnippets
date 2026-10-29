@@ -226,8 +226,9 @@ internal sealed class AppHost
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += OnPopupVisibleChanged;
-        popup.Prewarm();
+        // Apply the saved theme before the prewarm creates the first visible surface.
         theme.Register(popup);
+        popup.Prewarm();
 
         if (!hotkeyStatus.IsRegistered)
         {
