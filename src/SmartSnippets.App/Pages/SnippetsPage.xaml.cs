@@ -65,6 +65,9 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
 
     public Task<bool> CanLeaveAsync() => _viewModel?.CanLeaveAsync() ?? Task.FromResult(true);
 
+    public string ImportGlyph => UiIcons.Import;
+    public string ExportGlyph => UiIcons.Export;
+
     // Instance (not static): x:Bind function bindings call these through the page instance.
     private Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 

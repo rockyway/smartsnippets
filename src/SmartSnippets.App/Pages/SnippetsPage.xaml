@@ -184,14 +184,16 @@
                 <Button Grid.Column="2"
                     Command="{x:Bind ViewModel.Porting.ImportCommand, Mode=OneWay}"
                     ToolTipService.ToolTip="Import snippets from Smart Snippets, TermFlow, Rephlo or InkSpoke (.json)"
+                    automation:AutomationProperties.AutomationId="ImportSnippetsButton"
                     automation:AutomationProperties.Name="Import snippets">
-                    <FontIcon FontSize="14" Glyph="&#xE8B5;" />
+                    <FontIcon FontSize="14" Glyph="{x:Bind ImportGlyph}" />
                 </Button>
                 <Button Grid.Column="3"
                     Command="{x:Bind ViewModel.Porting.ExportCommand, Mode=OneWay}"
                     ToolTipService.ToolTip="Export all snippets and folders to a .json file"
+                    automation:AutomationProperties.AutomationId="ExportSnippetsButton"
                     automation:AutomationProperties.Name="Export snippets">
-                    <FontIcon FontSize="14" Glyph="&#xEDE1;" />
+                    <FontIcon FontSize="14" Glyph="{x:Bind ExportGlyph}" />
                 </Button>
             </Grid>
 
