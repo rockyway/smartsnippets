@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.UI.Input;
-using Microsoft.UI.Dispatching;
+using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
