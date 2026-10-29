@@ -1584,4 +1584,4 @@ change; the engine side of findings 1–2 is 007's.
 | 2026-10-28 | Requirement brief confirmed (G1) | 006–008 brief |
 | 2026-10-28 | Draft written | Awaiting approval (G2), including the §9 design calls |
 | 2026-10-28 | Review (docs/review/006-008-implementation-readiness.md) | Findings 4, 5, 7, 8 + UI for 1–2 addressed; user decisions recorded |
-| 2026-10-28 | User approved compact-row/context-menu amendment | One label row, right-aligned folder/tags, Copy / Insert / Edit / Delete; preview insert is non-inserting. Pending implementation and UI verification. |
+| 2026-10-28 | User approved compact-row/context-menu amendment | One label row, right-aligned folder/tags, Copy / Insert / Edit / Delete; preview has no insertion, clipboard write or usage recording, and Copy is disabled. Pending UI verification. |

@@ -194,9 +194,10 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
     public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
     public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && CanUseRowActions(item);
     public void CopyRow(PopupItemViewModel item)
     {
-        if (!CanUseRowActions(item)) return;
+        if (!CanCopyRow(item)) return;
         var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
         _clipboard.SetText(snippet.Text);
         AppLog.Info("popup_row_copied", $"id={snippet.Id}");

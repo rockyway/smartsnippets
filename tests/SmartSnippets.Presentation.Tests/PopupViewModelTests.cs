@@ -36,8 +36,9 @@ public sealed class PopupViewModelTests
         using var vm = Create(); vm.OpenPreview();
         var row = Assert.Single(vm.Items);
         Assert.True(vm.CanUseRowActions(row));
+        Assert.False(vm.CanCopyRow(row));
         vm.CopyRow(row);
-        Assert.Equal("sensitive synthetic text", Assert.Single(_clipboard.Texts));
+        Assert.Empty(_clipboard.Texts);
         vm.EditRow(row);
         Assert.Contains($"Edit:{snippet.Id}", _host.Calls);
         await vm.DeleteRowAsync(row);
