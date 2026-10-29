@@ -46,8 +46,8 @@ public sealed partial class MainWindow : Window
         AppWindow.SetPresenter(presenter);
         AppWindow.Changed += (_, args) =>
         {
-            if (!args.DidPositionChange) return;
-            // Re-read after the move's DPI-change processing, rather than using the
+            if (!args.DidPositionChange && !args.DidSizeChange) return;
+            // Re-read after move or size/DPI processing, rather than using the
             // monitor on which the hidden window was originally constructed.
             DispatcherQueue.TryEnqueue(() =>
             {
