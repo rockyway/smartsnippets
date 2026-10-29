@@ -242,7 +242,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     {
         if (IsEditorOpen || IsInserting) return;
         _editorQuery = Query; _editorSelection = SelectedId;
-        Editor = new SnippetEditorViewModel(_store, _dialogs, null, _clipboard);
+        Editor = new SnippetEditorViewModel(_store, _dialogs, null, IsPreview ? null : _clipboard);
         Editor.Saved += OnEditorSaved;
         OnPropertyChanged(nameof(EditorTargetLine)); _host.Focus(PopupFocusTarget.Editor); AppLog.Info("popup_add_opened");
     }

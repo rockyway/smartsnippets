@@ -111,6 +111,21 @@ public sealed class PopupViewModelTests
     }
 
     [Fact]
+    public void PreviewAddEditor_HasNoClipboardCopyButNormalAddDoes()
+    {
+        using (var preview = Create())
+        {
+            preview.OpenPreview();
+            preview.AddSnippetCommand.Execute(null);
+            Assert.False(preview.Editor!.CopyTextCommand.CanExecute(null));
+        }
+        using var normal = Create();
+        normal.Open(Target);
+        normal.AddSnippetCommand.Execute(null);
+        Assert.True(normal.Editor!.CopyTextCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void PreviewDoesNotReplaceEditorTarget()
     {
         using var vm = Create();

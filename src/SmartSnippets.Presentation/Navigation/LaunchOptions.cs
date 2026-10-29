@@ -27,6 +27,8 @@ public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? Pr
         return new(page, preview, preview ? query : null);
     }
 
+    private static bool IsDelimiter(char c) => c == ' ' || c == '	';
+
     /// <summary>Split the redirected Windows launch string using the CRT quote/backslash rules.</summary>
     public static string[] SplitCommandLine(string commandLine)
     {
@@ -34,11 +36,11 @@ public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? Pr
         int i = 0;
         while (i < commandLine.Length)
         {
-            while (i < commandLine.Length && char.IsWhiteSpace(commandLine[i])) i++;
+            while (i < commandLine.Length && IsDelimiter(commandLine[i])) i++;
             if (i == commandLine.Length) break;
             var value = new StringBuilder();
             bool quoted = false;
-            while (i < commandLine.Length && (quoted || !char.IsWhiteSpace(commandLine[i])))
+            while (i < commandLine.Length && (quoted || !IsDelimiter(commandLine[i])))
             {
                 int slashes = 0;
                 while (i < commandLine.Length && commandLine[i] == '\\') { slashes++; i++; }
@@ -57,7 +59,7 @@ public sealed record LaunchOptions(PageKind? Page, bool PreviewPopup, string? Pr
                 else
                 {
                     value.Append('\\', slashes);
-                    if (i < commandLine.Length && (quoted || !char.IsWhiteSpace(commandLine[i]))) value.Append(commandLine[i++]);
+                    if (i < commandLine.Length && (quoted || !IsDelimiter(commandLine[i]))) value.Append(commandLine[i++]);
                 }
             }
             args.Add(value.ToString());

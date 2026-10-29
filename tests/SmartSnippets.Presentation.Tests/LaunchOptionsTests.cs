@@ -60,4 +60,10 @@ public sealed class LaunchOptionsTests
         Assert.Equal(new[] { "a", "", "x\"y", @"c:\tmp" },
             LaunchOptions.SplitCommandLine("a \"\" \"x\\\"y\" c:\\tmp"));
     }
+
+    [Fact]
+    public void SplitUsesOnlySpaceAndTabAsDelimiters()
+    {
+        Assert.Equal(new[] { "a b", "c" }, LaunchOptions.SplitCommandLine("a b	c"));
+    }
 }
