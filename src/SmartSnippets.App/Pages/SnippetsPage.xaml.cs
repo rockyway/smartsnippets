@@ -69,6 +69,22 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     public Task<bool> CanLeaveAsync() => _viewModel?.CanLeaveAsync() ?? Task.FromResult(true);
 
     public string ImportGlyph => UiIcons.Import;
+    // Debounced like the hotkey popup: apply the query once typing pauses.
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _searchTimer;
+    private void OnSearchChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_viewModel is null) return;
+        _searchTimer ??= CreateSearchTimer();
+        _searchTimer.Stop();
+        if (SearchBox.Text != _viewModel.List.Query) _searchTimer.Start();
+    }
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer CreateSearchTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(120); timer.IsRepeating = false;
+        timer.Tick += (_, _) => { timer.Stop(); if (_viewModel is not null) _viewModel.List.Query = SearchBox.Text; };
+        return timer;
+    }
     private string LastUsedText => UiText.SortName(SortField.LastUsed);
     private string UsageCountText => UiText.SortName(SortField.UsageCount);
     private string CreatedText => UiText.SortName(SortField.Created);

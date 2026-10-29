@@ -170,7 +170,8 @@
                     x:Name="SearchBox"
                     Grid.Column="0"
                     PlaceholderText="Search"
-                    Text="{x:Bind ViewModel.List.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    Text="{x:Bind ViewModel.List.Query, Mode=OneWay}"
+                    TextChanged="OnSearchChanged"
                     ToolTipService.ToolTip="Search label, text, tags and folder (Ctrl+F)"
                     automation:AutomationProperties.Name="Search snippets" />
                 <Button

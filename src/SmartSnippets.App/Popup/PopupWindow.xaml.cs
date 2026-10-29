@@ -320,7 +320,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
     {
         if (ViewModel.IsEditorOpen) return;
         if (e.Key == VirtualKey.Escape && _contextFlyout is { } flyout) { e.Handled = true; flyout.Hide(); }
-        else if (e.Key == VirtualKey.Escape) { e.Handled = true; ViewModel.Close(); }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            // First Escape clears typed text (including a not-yet-applied debounced edit); the next closes.
+            if (SearchBox.Text.Length > 0 && !ViewModel.IsEditorOpen) { SearchBox.Text = string.Empty; ApplyQuery(); }
+            else ViewModel.Close();
+        }
         else if (e.Key == VirtualKey.Application || (e.Key == VirtualKey.F10 && (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & CoreVirtualKeyStates.Down) != 0))
         {
             if (PopupList.SelectedItem is PopupItemViewModel selected && PopupList.ContainerFromItem(selected) is ListViewItem container)
