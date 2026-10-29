@@ -38,7 +38,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private List<PopupItemViewModel> _items = [];
     private int _selectedIndex = -1;
     private PopupLayout _layout;
-    private SortField _sort;
+    private readonly SortPreference _sortPreference;
     private string _statusText = string.Empty;
     private PopupFooterState _footerState;
     private string _footerMessage = string.Empty;
@@ -49,12 +49,13 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
 
     public PopupViewModel(ISnippetStore store, ISettingsStore settingsStore, AppSettings initial,
         IInsertionService insertion, IClipboardService clipboard, IElevation elevation,
-        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null, ITextSizeService? textSize = null, Action<Action>? schedule = null)
+        IPopupHost host, IDialogService editorDialogs, INotifier notices, Action? requestExit = null, ITextSizeService? textSize = null, Action<Action>? schedule = null, SortPreference? sortPreference = null)
     {
         _store = store; _settings = settingsStore; _insertion = insertion; _clipboard = clipboard;
         _elevation = elevation; _host = host; _dialogs = editorDialogs; _notices = notices; _requestExit = requestExit; _textSize = textSize;
         _schedule = schedule ?? (action => action());
-        _layout = initial.PopupLayout; _sort = initial.PopupSort;
+        _layout = initial.PopupLayout; _sortPreference = sortPreference ?? new SortPreference(settingsStore, initial.PopupSort);
+        _sortPreference.Changed += OnSortPreferenceChanged;
         RebuildSearch(); Refresh(null);
         _store.Changed += OnStoreChanged;
     }
@@ -125,7 +126,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public PopupLayout Layout => _layout;
     public bool IsFolderLayout => Layout == PopupLayout.Folder;
     public string LayoutTooltip => UiText.LayoutTooltip(Layout);
-    public SortField Sort => _sort;
+    public SortField Sort => _sortPreference.Current;
     public string SortTooltip => UiText.SortTooltip(Sort);
     [RelayCommand]
     private void ToggleLayout()
@@ -138,10 +139,12 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public void SetSort(SortField sort)
     {
-        if (_sort == sort) return;
-        _sort = sort; _settings.Set(SettingsKeys.PopupSort, sort.ToString());
+        _sortPreference.Set(sort);
+    }
+    private void OnSortPreferenceChanged(object? sender, EventArgs e)
+    {
         OnPropertyChanged(nameof(Sort)); OnPropertyChanged(nameof(SortTooltip));
-        RebuildSearch(); Refresh(null); AppLog.Info("popup_sort", $"value={sort}");
+        RebuildSearch(); Refresh(null); AppLog.Info("popup_sort", $"value={Sort}");
     }
     public string HintText => FooterState switch { PopupFooterState.ConfirmClipboardLoss => UiText.ConfirmHint, PopupFooterState.MaybePasted => UiText.DismissHint, _ => string.IsNullOrEmpty(StatusText) ? UiText.PopupHint : StatusText };
     public string CountText => UiText.CountOf(Items.Count(i => i.Kind == PopupItemKind.Snippet), _store.Snippets.Count);

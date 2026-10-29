@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using SmartSnippets.App.Services;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Navigation;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Text;
@@ -26,6 +27,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     public SnippetsPage()
     {
         InitializeComponent();
+        FlyoutSurface.KeepSolid(SortFlyout);
     }
 
     /// <summary>Set by the creator right after construction (no DI container).</summary>
@@ -67,6 +69,20 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     public Task<bool> CanLeaveAsync() => _viewModel?.CanLeaveAsync() ?? Task.FromResult(true);
 
     public string ImportGlyph => UiIcons.Import;
+    private string LastUsedText => UiText.SortName(SortField.LastUsed);
+    private string UsageCountText => UiText.SortName(SortField.UsageCount);
+    private string CreatedText => UiText.SortName(SortField.Created);
+    private string UpdatedText => UiText.SortName(SortField.Updated);
+    private void OnSortClick(object sender, RoutedEventArgs e)
+    {
+        var sort = _viewModel?.List.Sort ?? SortField.LastUsed;
+        SortLast.IsChecked = sort == SortField.LastUsed; SortUsage.IsChecked = sort == SortField.UsageCount;
+        SortCreated.IsChecked = sort == SortField.Created; SortUpdated.IsChecked = sort == SortField.Updated;
+    }
+    private void OnSortLast(object sender, RoutedEventArgs e) => _viewModel?.List.SetSort(SortField.LastUsed);
+    private void OnSortUsage(object sender, RoutedEventArgs e) => _viewModel?.List.SetSort(SortField.UsageCount);
+    private void OnSortCreated(object sender, RoutedEventArgs e) => _viewModel?.List.SetSort(SortField.Created);
+    private void OnSortUpdated(object sender, RoutedEventArgs e) => _viewModel?.List.SetSort(SortField.Updated);
     public string ExportGlyph => UiIcons.Export;
 
     // Instance (not static): x:Bind function bindings call these through the page instance.

@@ -39,7 +39,8 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         ISnippetFileService? files = null,
         ITextSizeService? textSize = null,
         Func<long, Task>? insertRow = null,
-        Func<bool>? canInsertRow = null)
+        Func<bool>? canInsertRow = null,
+        SortPreference? sortPreference = null)
     {
         _store = store;
         _dialogs = dialogs;
@@ -48,7 +49,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
         _insertRow = insertRow;
         _canInsertRow = canInsertRow;
         Porting = new SnippetPortingViewModel(store, dialogs, files, time);
-        List = new SnippetListViewModel(store, textSize);
+        List = new SnippetListViewModel(store, textSize, sortPreference);
         List.PropertyChanged += OnListPropertyChanged;
         List.Rebuilt += OnListRebuilt;
     }

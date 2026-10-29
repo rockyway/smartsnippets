@@ -169,6 +169,7 @@ internal sealed class AppHost
         _popup = popup;
         popup.CanShow = () => !_exiting;
 
+        var sortPreference = new SortPreference(settingsStore, settings.PopupSort);
         UIElement CreatePage(PageKind kind) => kind switch
         {
             // Pages are created once (MainWindow caches them); the view-models are kept so exit can dispose them.
@@ -178,7 +179,8 @@ internal sealed class AppHost
                 ViewModel = _snippetsViewModel = new SnippetsPageViewModel(Store, Dialogs, new ClipboardService(),
                     files: new SnippetFileService(() => _mainWindow?.AppWindow.Id), textSize: textSize,
                     insertRow: id => _popupViewModel?.InsertFromMainAsync(id) ?? Task.CompletedTask,
-                    canInsertRow: () => _popupViewModel?.CanInsertFromMain == true),
+                    canInsertRow: () => _popupViewModel?.CanInsertFromMain == true,
+                    sortPreference: sortPreference),
             },
             PageKind.Folders => new FoldersPage
             {
@@ -228,7 +230,7 @@ internal sealed class AppHost
         
         _popupHost = new DeferredPopupHost(new RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
         _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
-            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()), textSize, action => _ui!.Post(action));
+            _popupHost, popupDialogs, Notices, () => _ui!.Post(() => _ = ShutDownAsync()), textSize, action => _ui!.Post(action), sortPreference);
         popup.ViewModel = _popupViewModel;
         popup.NotifyReopenFailure = message => Notices.Notify("Smart Snippets", message);
         popup.VisibleChanged += OnPopupVisibleChanged;

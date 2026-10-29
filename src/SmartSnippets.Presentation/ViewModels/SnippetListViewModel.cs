@@ -4,13 +4,14 @@ using CommunityToolkit.Mvvm.Input;
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Query;
+using SmartSnippets.Core.Settings;
 using SmartSnippets.Core.Store;
 using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.Presentation.ViewModels;
 
-/// <summary>Searchable snippet list: Label A to Z (case-insensitive), then Id. Rebuilds on every store change.</summary>
+/// <summary>Searchable snippet list, ordered by the shared sort (default last used; ties Label A to Z, then Id). Rebuilds on every store change.</summary>
 public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 {
     private readonly ISnippetStore _store;
@@ -22,6 +23,7 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     private bool _rebuilding;
     private bool _syncingBrowse;
     private bool _disposed;
+    private readonly SortPreference? _sortPreference;
 
     [ObservableProperty]
     private string _query = string.Empty;
@@ -49,9 +51,11 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _newFolderError = string.Empty;
 
-    public SnippetListViewModel(ISnippetStore store, ITextSizeService? textSize = null)
+    public SnippetListViewModel(ISnippetStore store, ITextSizeService? textSize = null, SortPreference? sortPreference = null)
     {
         _store = store;
+        _sortPreference = sortPreference;
+        if (_sortPreference is not null) _sortPreference.Changed += OnSortChanged;
         _textSize = textSize;
         _store.Changed += OnStoreChanged;
         Rebuild();
@@ -89,6 +93,7 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _store.Changed -= OnStoreChanged;
+        if (_sortPreference is not null) _sortPreference.Changed -= OnSortChanged;
     }
 
     partial void OnQueryChanged(string value) => Rebuild();
@@ -159,6 +164,16 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedIdChanged(long? value) => OnPropertyChanged(nameof(SelectedItem));
 
+    /// <summary>Same sort fields and order as the hotkey popup (shared preference); the order falls back to label A to Z for ties (e.g. never-used snippets).</summary>
+    public SortField Sort => _sortPreference?.Current ?? SortField.LastUsed;
+    public string SortTooltip => UiText.SortTooltip(Sort);
+    public void SetSort(SortField sort) => _sortPreference?.Set(sort);
+    private void OnSortChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(Sort)); OnPropertyChanged(nameof(SortTooltip));
+        Rebuild();
+    }
+
     private void OnStoreChanged(object? sender, StoreChangedEventArgs e) => Rebuild();
 
     private void Rebuild()
@@ -178,10 +193,7 @@ public sealed partial class SnippetListViewModel : ObservableObject, IDisposable
 
         var scope = SelectedBrowse;
 
-        var rows = _search.Filter(Query)
-            .Where(v => InScope(v, scope))
-            .OrderBy(v => v.Snippet.Label, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(v => v.Snippet.Id)
+        var rows = SnippetSort.Apply(_search.Filter(Query).Where(v => InScope(v, scope)), Sort)
             .Select(view => SnippetRowViewModel.From(view, _textSize))
             .ToList();
 

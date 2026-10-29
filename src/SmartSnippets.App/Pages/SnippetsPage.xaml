@@ -164,6 +164,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox
                     x:Name="SearchBox"
@@ -173,21 +174,38 @@
                     ToolTipService.ToolTip="Search label, text, tags and folder (Ctrl+F)"
                     automation:AutomationProperties.Name="Search snippets" />
                 <Button
+                    x:Name="SortButton"
                     Grid.Column="1"
+                    Click="OnSortClick"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.List.SortTooltip, Mode=OneWay}"
+                    automation:AutomationProperties.AutomationId="SnippetsSortButton"
+                    automation:AutomationProperties.Name="Sort">
+                    <FontIcon FontSize="14" Glyph="&#xE8CB;" />
+                    <Button.Flyout>
+                        <MenuFlyout x:Name="SortFlyout" ShouldConstrainToRootBounds="True" MenuFlyoutPresenterStyle="{StaticResource SolidMenuFlyoutPresenterStyle}">
+                            <RadioMenuFlyoutItem x:Name="SortLast" Text="{x:Bind LastUsedText}" Click="OnSortLast" />
+                            <RadioMenuFlyoutItem x:Name="SortUsage" Text="{x:Bind UsageCountText}" Click="OnSortUsage" />
+                            <RadioMenuFlyoutItem x:Name="SortCreated" Text="{x:Bind CreatedText}" Click="OnSortCreated" />
+                            <RadioMenuFlyoutItem x:Name="SortUpdated" Text="{x:Bind UpdatedText}" Click="OnSortUpdated" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+                <Button
+                    Grid.Column="2"
                     Command="{x:Bind ViewModel.NewCommand, Mode=OneWay}"
                     Style="{StaticResource AccentButtonStyle}"
                     ToolTipService.ToolTip="New snippet (Ctrl+N)"
                     automation:AutomationProperties.Name="New snippet">
                     <FontIcon FontSize="14" Glyph="&#xE710;" />
                 </Button>
-                <Button Grid.Column="2"
+                <Button Grid.Column="3"
                     Command="{x:Bind ViewModel.Porting.ImportCommand, Mode=OneWay}"
                     ToolTipService.ToolTip="Import snippets from Smart Snippets, TermFlow, Rephlo or InkSpoke (.json)"
                     automation:AutomationProperties.AutomationId="ImportSnippetsButton"
                     automation:AutomationProperties.Name="Import snippets">
                     <FontIcon FontSize="14" Glyph="{x:Bind ImportGlyph}" />
                 </Button>
-                <Button Grid.Column="3"
+                <Button Grid.Column="4"
                     Command="{x:Bind ViewModel.Porting.ExportCommand, Mode=OneWay}"
                     ToolTipService.ToolTip="Export all snippets and folders to a .json file"
                     automation:AutomationProperties.AutomationId="ExportSnippetsButton"
