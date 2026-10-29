@@ -14,6 +14,8 @@ public sealed partial class MainWindow : Window
 {
     private const int LogicalWidth = 1000;
     private const int LogicalHeight = 700;
+    private const int MinimumLogicalWidth = 640;
+    private const int MinimumLogicalHeight = 480;
 
     private readonly Func<PageKind, UIElement> _pageFactory;
     private readonly Dictionary<PageKind, UIElement> _pages = [];
@@ -36,6 +38,11 @@ public sealed partial class MainWindow : Window
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var dpi = PInvoke.GetDpiForWindow(hwnd);
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = (int)(MinimumLogicalWidth * scale);
+            presenter.PreferredMinimumHeight = (int)(MinimumLogicalHeight * scale);
+        }
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         AppWindow.Closing += OnClosing;
 
