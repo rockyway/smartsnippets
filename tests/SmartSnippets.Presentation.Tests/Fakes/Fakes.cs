@@ -18,6 +18,16 @@ internal sealed class FakeThemeService : IThemeService
 
     public List<ThemeMode> Applied { get; } = [];
 
+    public ColorPalette CurrentPalette { get; private set; }
+
+    public List<ColorPalette> AppliedPalettes { get; } = [];
+
+    public void ApplyPalette(ColorPalette palette)
+    {
+        CurrentPalette = palette;
+        AppliedPalettes.Add(palette);
+    }
+
     public void Apply(ThemeMode mode)
     {
         Current = mode;

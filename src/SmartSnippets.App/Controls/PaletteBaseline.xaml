@@ -1,0 +1,33 @@
+<UserControl
+    x:Class="SmartSnippets.App.Controls.PaletteBaseline"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Visibility="Collapsed" IsTabStop="False" IsHitTestVisible="False">
+    <!-- These Color keys are never overridden by PaletteResources. Explicit RequestedTheme on
+         this consumer supplies the context, unlike cross-dictionary StaticResource aliases. -->
+    <StackPanel>
+        <Border x:Name="PaletteAcrylic" Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+        <Border x:Name="PaletteBase"><Border.Background><SolidColorBrush Color="{ThemeResource SolidBackgroundFillColorBase}" /></Border.Background></Border>
+        <Border x:Name="PaletteSurface"><Border.Background><SolidColorBrush Color="{ThemeResource SolidBackgroundFillColorQuarternary}" /></Border.Background></Border>
+        <Border x:Name="PaletteLayer"><Border.Background><SolidColorBrush Color="{ThemeResource LayerFillColorDefault}" /></Border.Background></Border>
+        <Border x:Name="PaletteCard"><Border.Background><SolidColorBrush Color="{ThemeResource CardBackgroundFillColorSecondary}" /></Border.Background></Border>
+        <Border x:Name="PaletteControl"><Border.Background><SolidColorBrush Color="{ThemeResource ControlFillColorDefault}" /></Border.Background></Border>
+        <Border x:Name="PaletteControlSecondary"><Border.Background><SolidColorBrush Color="{ThemeResource ControlFillColorSecondary}" /></Border.Background></Border>
+        <Border x:Name="PaletteControlTertiary"><Border.Background><SolidColorBrush Color="{ThemeResource ControlFillColorTertiary}" /></Border.Background></Border>
+        <Border x:Name="PaletteInput"><Border.Background><SolidColorBrush Color="{ThemeResource ControlFillColorInputActive}" /></Border.Background></Border>
+        <Border x:Name="PaletteHover"><Border.Background><SolidColorBrush Color="{ThemeResource SubtleFillColorSecondary}" /></Border.Background></Border>
+        <Border x:Name="PalettePressed"><Border.Background><SolidColorBrush Color="{ThemeResource SubtleFillColorTertiary}" /></Border.Background></Border>
+        <Border x:Name="PaletteAccent"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Border.Background></Border>
+        <Border x:Name="PaletteAccentHover"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="0.9" /></Border.Background></Border>
+        <Border x:Name="PaletteAccentPressed"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="0.8" /></Border.Background></Border>
+        <Border x:Name="PaletteOnAccent"><Border.Background><SolidColorBrush Color="{ThemeResource TextOnAccentFillColorPrimary}" /></Border.Background></Border>
+        <Border x:Name="PaletteOnAccentSecondary"><Border.Background><SolidColorBrush Color="{ThemeResource TextOnAccentFillColorSecondary}" /></Border.Background></Border>
+        <Border x:Name="PaletteAccentText"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Border.Background></Border>
+        <Border x:Name="PaletteAccentTextSecondary"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Border.Background></Border>
+        <Border x:Name="PaletteAccentTextTertiary"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Border.Background></Border>
+        <Border x:Name="PaletteStroke"><Border.Background><SolidColorBrush Color="{ThemeResource ControlStrokeColorDefault}" /></Border.Background></Border>
+        <Border x:Name="PaletteSelection"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Border.Background></Border>
+        <Border x:Name="PaletteTint"><Border.Background><SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="0.12" /></Border.Background></Border>
+        <Border x:Name="PaletteDialogTop"><Border.Background><SolidColorBrush Color="{ThemeResource LayerFillColorAlt}" /></Border.Background></Border>
+    </StackPanel>
+</UserControl>

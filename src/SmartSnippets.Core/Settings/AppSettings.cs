@@ -10,6 +10,8 @@ public sealed record AppSettings
 
     public ThemeMode Theme { get; init; } = ThemeMode.System;
 
+    public ColorPalette ColorPalette { get; init; } = ColorPalette.Default;
+
     public TextSizePreset TextSizePreset { get; init; } = TextSizePreset.Medium;
 
     public double CustomTextSize { get; init; } = 14;
@@ -35,6 +37,7 @@ public sealed record AppSettings
         return new AppSettings
         {
             Theme = ReadEnum(store, SettingsKeys.Theme, d.Theme),
+            ColorPalette = ReadEnum(store, SettingsKeys.ColorPalette, d.ColorPalette),
             TextSizePreset = ReadEnum(store, SettingsKeys.TextSizePreset, d.TextSizePreset),
             CustomTextSize = ReadSize(store, d.CustomTextSize),
             HotkeyModifiers = ReadUInt(store, SettingsKeys.HotkeyModifiers, d.HotkeyModifiers),
@@ -54,6 +57,7 @@ public sealed record AppSettings
     public void SaveShell(ISettingsStore store)
     {
         store.Set(SettingsKeys.Theme, Theme.ToString());
+        store.Set(SettingsKeys.ColorPalette, ColorPalette.ToString());
         store.Set(SettingsKeys.TextSizePreset, TextSizePreset.ToString());
         store.Set(SettingsKeys.TextSizeCustom, Clamp(CustomTextSize, 14).ToString("R", CultureInfo.InvariantCulture));
         store.Set(SettingsKeys.HotkeyModifiers, HotkeyModifiers.ToString(CultureInfo.InvariantCulture));

@@ -13,5 +13,7 @@ public sealed partial class PopupRow : UserControl
         get => _item;
         set { _item = value; Bindings.Update(); }
     }
+    private double MetadataFontSize(double labelFontSize) => labelFontSize * 0.85;
+
     private Visibility HasText(string? value) => string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
 }

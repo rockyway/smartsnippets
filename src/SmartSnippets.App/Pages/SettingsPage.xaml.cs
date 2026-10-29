@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.ViewModels;
+using SmartSnippets.Presentation.Text;
 
 namespace SmartSnippets.App.Pages;
 
@@ -37,6 +38,20 @@ public sealed partial class SettingsPage : Page
     private int ThemeToIndex(ThemeMode mode) => SettingsViewModel.ThemeToIndex(mode);
 
     private int TextSizeToIndex(TextSizePreset preset) => (int)preset;
+
+    private string PaletteTitle => UiText.ColorPaletteTitle;
+    private string PaletteDefault => UiText.PaletteDefault;
+    private string PaletteOcean => UiText.PaletteOcean;
+    private string PaletteForest => UiText.PaletteForest;
+    private string PalettePlum => UiText.PalettePlum;
+    private int PaletteToIndex(ColorPalette palette) => SettingsViewModel.PaletteToIndex(palette);
+
+    private void OnPaletteSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var index = ColorPaletteRadios.SelectedIndex;
+        if (!_rebinding && _viewModel is not null && index >= 0)
+            _viewModel.SelectedPalette = SettingsViewModel.IndexToPalette(index);
+    }
 
     private InfoBarSeverity ToInfoBarSeverity(StatusSeverity severity) => severity switch
     {

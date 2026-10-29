@@ -141,12 +141,13 @@ internal sealed class AppHost
         var textSize = new TextSizeService();
         textSize.Apply(settings.TextSizePreset, settings.CustomTextSize);
         TextSize = textSize;
-        var theme = new ThemeService(settings.Theme);
+        var theme = new ThemeService(settings.Theme, settings.ColorPalette);
         _theme = theme;
 
         // Step 6: Win32 services and the saved hotkey.
         var messageWindow = new MessageWindow();
         _messageWindow = messageWindow;
+        theme.ObserveSystemMessages(messageWindow);
         var pasteDispatcher = new ClipboardPasteDispatcher(messageWindow.Handle);
         _pasteDispatcher = pasteDispatcher;
         _insertionCoordinator = new InsertionShutdownCoordinator(new InsertionService(Store, new Win32TargetProbe(), pasteDispatcher));
@@ -161,7 +162,7 @@ internal sealed class AppHost
 
         var elevation = new ElevationService(() => _mainWindow?.IsHidden ?? true);
         var startup = new StartupRegistration();
-        Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront(), textSize);
+        Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront(), textSize, theme);
         AppLog.Info("porting_ready");
 
         // Step 7: popup, then the main window (created hidden).
@@ -226,7 +227,7 @@ internal sealed class AppHost
         tray.Add();
         Notices = new Notifier(tray);
         UpdateTrayState();
-        var popupDialogs = new DialogService(() => _popup?.ContentXamlRoot, () => { });
+        var popupDialogs = new DialogService(() => _popup?.ContentXamlRoot, () => { }, theme: theme);
         
         _popupHost = new DeferredPopupHost(new RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
         _popupViewModel = new PopupViewModel(Store, settingsStore, settings, Insertion, new ClipboardService(), elevation,
@@ -460,6 +461,7 @@ internal sealed class AppHost
             _snippetsViewModel?.Dispose();
             _foldersViewModel?.Dispose();
             _hotkeyService?.Dispose();
+            _theme?.Dispose();
             _messageWindow?.Dispose();
         }
         catch (Exception ex)

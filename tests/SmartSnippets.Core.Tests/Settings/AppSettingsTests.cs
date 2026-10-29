@@ -19,6 +19,7 @@ public sealed class AppSettingsTests
         var s = AppSettings.Load(new MemoryStore());
 
         Assert.Equal(ThemeMode.System, s.Theme);
+        Assert.Equal(ColorPalette.Default, s.ColorPalette);
         Assert.Equal(TextSizePreset.Medium, s.TextSizePreset);
         Assert.Equal(14, s.CustomTextSize);
         Assert.Equal(0x0006u, s.HotkeyModifiers);
@@ -35,6 +36,7 @@ public sealed class AppSettingsTests
         var saved = new AppSettings
         {
             Theme = ThemeMode.Dark,
+            ColorPalette = ColorPalette.Ocean,
             TextSizePreset = TextSizePreset.Custom,
             CustomTextSize = 17.5,
             HotkeyModifiers = 0x0003,
@@ -77,8 +79,30 @@ public sealed class AppSettingsTests
         new AppSettings().Save(store);
 
         Assert.Equal(
-            ["hotkey.key", "hotkey.modifiers", "popup.layout", "popup.sort", "text_size.custom", "text_size.preset", "theme"],
+            ["color_palette", "hotkey.key", "hotkey.modifiers", "popup.layout", "popup.sort", "text_size.custom", "text_size.preset", "theme"],
             store.Values.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(ColorPalette.Default)]
+    [InlineData(ColorPalette.Ocean)]
+    [InlineData(ColorPalette.Forest)]
+    [InlineData(ColorPalette.Plum)]
+    public void Palette_RoundTrips(ColorPalette palette)
+    {
+        var store = new MemoryStore();
+        new AppSettings { ColorPalette = palette }.SaveShell(store);
+        Assert.Equal(palette, AppSettings.Load(store).ColorPalette);
+    }
+
+    [Theory]
+    [InlineData("invalid")]
+    [InlineData("99")]
+    public void InvalidPalette_FallsBackToDefault(string value)
+    {
+        var store = new MemoryStore();
+        store.Set(SettingsKeys.ColorPalette, value);
+        Assert.Equal(ColorPalette.Default, AppSettings.Load(store).ColorPalette);
     }
 
     [Fact]

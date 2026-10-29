@@ -12,10 +12,10 @@
             Visibility="{x:Bind HasText(Item.Label)}"/>
         <Grid Grid.Column="1" ColumnSpacing="4" HorizontalAlignment="Right" Visibility="{x:Bind HasText(Item.Label)}">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <FontIcon Glyph="&#xE8B7;" FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
+            <FontIcon Glyph="&#xE8B7;" FontSize="{x:Bind MetadataFontSize(Item.TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}"
                 Visibility="{x:Bind Item.HasFolder}"/>
             <TextBlock Grid.Column="1" Text="{x:Bind Item.Details}" TextAlignment="Right"
-                FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
+                FontSize="{x:Bind MetadataFontSize(Item.TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}"
                 TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
         </Grid>
     </Grid>

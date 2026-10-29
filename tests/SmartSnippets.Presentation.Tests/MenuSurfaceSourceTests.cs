@@ -37,7 +37,12 @@ public sealed class MenuSurfaceSourceTests
         Assert.Contains("FromItems(menu)", source);
         Assert.Contains("VisualTreeHelper.GetParent(node)", source);
         Assert.Contains("presenter.SystemBackdrop = null;", source);
-        Assert.Contains("if (found is not null) MakeSolid(found);", source);
+        Assert.Contains("if (found is not null)", source);
+        Assert.Contains("MakeSolid(found);", source);
+        Assert.Contains("ResolveMenuBrush?.Invoke(presenter.ActualTheme)", source);
+        Assert.Contains("WindowSurface.IsHighContrast()", source);
+        Assert.Contains("WeakReference<MenuFlyoutPresenter>", source);
+        Assert.Equal(1, source.Split("LogSurface(found);", StringSplitOptions.None).Length - 1);
         Assert.Contains("LogSurface(found);", source);
         Assert.Contains("AppLog.Info(\"menu_surface\"", source);
     }

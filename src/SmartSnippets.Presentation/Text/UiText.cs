@@ -10,6 +10,12 @@ namespace SmartSnippets.Presentation.Text;
 /// </summary>
 public static class UiText
 {
+    public const string ColorPaletteTitle = "Color palette";
+    public const string PaletteDefault = "Default";
+    public const string PaletteOcean = "Ocean";
+    public const string PaletteForest = "Forest";
+    public const string PalettePlum = "Plum";
+
     // Browse pane and list.
     public const string BrowseAll = "All";
     public const string Unfiled = "Unfiled";
