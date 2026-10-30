@@ -19,12 +19,21 @@
   </PropertyGroup>
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
     <WinAppSdkVersion>1.8.260921001</WinAppSdkVersion>
+    <WinAppSdkBuildToolsVersion>10.0.28000.2705</WinAppSdkBuildToolsVersion>
     <Platform>x64</Platform>
     <Platforms>x64</Platforms>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Diagnostic only: test the documented manual-package path, not an IL suppression. -->
+    <DisableImplicitUnoPackages Condition="'$(ProbeManualWindowsPackages)' == 'true'">true</DisableImplicitUnoPackages>
+    <!-- Uno.Sdk otherwise injects a global using Uno.UI even in manual mode. -->
+    <ImplicitUsings Condition="'$(ProbeManualWindowsPackages)' == 'true'">disable</ImplicitUsings>
   </PropertyGroup>
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' AND '$(ProbeManualWindowsPackages)' == 'true'">
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(WinAppSdkVersion)" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(WinAppSdkBuildToolsVersion)" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/SmartSnippets.Core/SmartSnippets.Core.csproj" />
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />

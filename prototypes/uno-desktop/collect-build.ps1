@@ -4,7 +4,8 @@
 param(
     [Parameter(Mandatory)]
     [ValidateSet('win-x64', 'osx-arm64')]
-    [string] $RuntimeIdentifier
+    [string] $RuntimeIdentifier,
+    [switch] $ManualWindowsPackages
 )
 $ErrorActionPreference = 'Stop'
 # Compiler failure is evidence to collect, not a PowerShell terminating exception.
@@ -19,6 +20,9 @@ if ($onWindows -and [System.Runtime.InteropServices.RuntimeInformation]::OSArchi
 }
 if ($onMac -and [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [System.Runtime.InteropServices.Architecture]::Arm64) {
     throw 'The macOS probe requires Apple Silicon.'
+}
+if ($ManualWindowsPackages -and !$onWindows) {
+    throw 'The manual-package experiment is scoped to the Windows target.'
 }
 $runId = [Guid]::NewGuid().ToString('N')
 $private = Join-Path ([System.IO.Path]::GetTempPath()) "SmartSnippets.Uno018-$runId"
@@ -42,10 +46,11 @@ $log = Join-Path $private 'publish.log'
 # Override vendor IL2121 suppression with only a non-IL compiler warning ID.
 $common = @('-p:Configuration=Release', "-p:RuntimeIdentifier=$RuntimeIdentifier", '-p:NoWarn=1701',
     '-p:SuppressTrimAnalysisWarnings=false', '-p:TrimmerSingleWarn=false')
+if ($ManualWindowsPackages) { $common += '-p:ProbeManualWindowsPackages=true' }
 # PackageFormat=app is an unverified macOS request until tested on Apple Silicon.
 # Do not imply that a CodesignKey property establishes ad-hoc signing under Uno.Sdk.
 if ($onMac) { $common += @('-p:PackageFormat=app') }
-$names = 'TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,WindowsPackageType,NETCoreSdkVersion,MSBuildVersion,UnoVersion,WinAppSdkVersion,TargetPlatformMinVersion'
+$names = 'TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,WindowsPackageType,NETCoreSdkVersion,MSBuildVersion,UnoVersion,WinAppSdkVersion,TargetPlatformMinVersion,ProbeManualWindowsPackages,DisableImplicitUnoPackages'
 & dotnet msbuild $project "-p:TargetFramework=$tfm" -p:_IsPublishing=true @common "-getProperty:$names" 2>&1 | Set-Content -LiteralPath $properties -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'MSBuild property collection failed; evidence is private and not a PASS.' }
 # An ILC invocation may leave an object even when trim diagnostics fail the build.

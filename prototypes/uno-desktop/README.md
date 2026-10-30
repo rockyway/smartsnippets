@@ -2,7 +2,7 @@
 
 **State: BLOCKED at the Windows Native AOT gate (IL2059). Not a production port.**
 
-The multi-target Uno project restores and its Windows XAML compiles, but a **clean** native publish fails in generated `Uno.UI.Toolkit` XAML initialization. No GUI artifact has been launched, no store fixture has been run in the Uno host, and no target/clipboard/shortcut adapter is implemented. Do not read the scaffold or build-validator tests as desktop parity evidence. See [results](../../docs/research/012-uno-desktop-feasibility-results.md).
+The default multi-target Uno project restores and its Windows XAML compiles, but a **clean default-mode** native publish fails in precompiled `Uno.UI.Toolkit` XAML initialization. An **opt-in manual Windows package experiment** now publishes a native artifact; it is not enabled by default or runtime-verified. See [investigation 013](../../docs/research/013-uno-windows-aot-defect-investigation.md). No GUI artifact has been launched, no store fixture has been run in the Uno host, and no target/clipboard/shortcut adapter is implemented. Do not read the scaffold or build-validator tests as desktop parity evidence. See [results](../../docs/research/012-uno-desktop-feasibility-results.md).
 
 ## Pinned, observed tooling
 
@@ -20,7 +20,7 @@ dotnet new install Uno.Templates@6.7.30 --debug:custom-hive <private-temp-hive>
 dotnet new unoapp -n SmartSnippets.UnoProbe -o <private-temp-output> -preset blank -platforms windows desktop -tfm net10.0 -presentation none -markup xaml -tests none -log none -vscode false -rider false -skip --debug:custom-hive <private-temp-hive>
 ```
 
-The checked-in project is deliberately smaller than the generated solution. `UnoDisableHotDesign=true` and `UnoDisableMCPSupport=true` exclude design/MCP tools from this offline probe. Local package-management settings do not affect the production projects' central package versions. Only the Windows host selects the Windows TFM; macOS selection/source inclusion still requires native validation. `Platforms/Desktop/Program.cs` uses the actual generated `UnoPlatformHostBuilder`/`UseMacOS` APIs but has not been compiled on a Mac.
+The checked-in project is deliberately smaller than the generated solution. A scoped `Directory.Packages.props` explicitly stops NuGet inheriting production CPM; setting the local build property alone was insufficient. `UnoDisableHotDesign=true` and `UnoDisableMCPSupport=true` exclude design/MCP tools from this offline probe. Local package-management settings do not affect the production projects' central package versions. Only the Windows host selects the Windows TFM; macOS selection/source inclusion still requires native validation. `Platforms/Desktop/Program.cs` uses the actual generated `UnoPlatformHostBuilder`/`UseMacOS` APIs but has not been compiled on a Mac.
 
 ## Build-only collector (no GUI, Python 3 + PowerShell 7.2+ required)
 
@@ -36,7 +36,17 @@ The effective `NoWarn=1701` command property deliberately **removes** vendor-inj
 
 A future Mac operator may try the matching `-RuntimeIdentifier osx-arm64` collector after prerequisites are established; its macOS bundle layout is unverified and a mismatch must be corrected from actual host evidence, not treated as PASS. `PackageFormat=app` is only an unverified bundle request until tested on Uno's desktop backend; no signing property or resulting ad-hoc signature is assumed. A Mac operator must inspect actual packaging/signature output before accepting any signing evidence. It never launches that bundle.
 
-## Validator tests
+## Opt-in AOT investigation (Windows build only)
+
+```powershell
+pwsh -NoProfile -File prototypes/uno-desktop/collect-build.ps1 -RuntimeIdentifier win-x64 -ManualWindowsPackages
+```
+
+This selects documented manual package management only on the Windows TFM, omits the precompiled Uno helper causing IL2059, and explicitly retains native WinAppSDK/BuildTools using the same version pins. Uno.Sdk injects a `Uno.UI` global using even in manual package mode, so that mode disables implicit usings and the App imports its namespaces explicitly. Desktop still uses implicit Uno packages. No IL suppression, package patch, Skia-on-Windows or JIT fallback is involved.
+
+**Scope limit:** the experiment also omits Uno Windows helper/asset/logging packages. It proves this minimal XAML can compile/publish, not that the full UI can omit these dependencies. The library-specific `DisableImplicitUnoWinAppSdkPackages` switch is not used. The generic `DisableImplicitUnoPackages` path is documented, but this app-head dependency set still requires runtime validation. Keep it opt-in until an owner decision. Both commands clean before compilation; run them sequentially.
+
+## Validator and property-only integration tests
 
 ```text
 python -m unittest discover -s prototypes/uno-desktop/tests -v
@@ -65,4 +75,4 @@ There is **no default GUI mode**: desktop startup returns before host creation w
 
 All future private databases, WAL/backups, profiles, raw logs and recovery journals must remain outside the repository with owner-only permissions. No plaintext operator clipboard recovery file is permitted. Do not register the production instance key/hotkey or mutate HKCU startup/TCC. No live screen/input tests are authorized by implementation approval.
 
-**Stop here:** choose an owner-approved response to IL2059 (e.g. investigate a framework correction or test another pinned Uno release without suppressing IL warnings). Do not start 019 or silently lower the Native AOT requirement.
+**Stop here:** investigation found a build-only workaround, not runtime feasibility. Choose whether to use the opt-in manual Windows package mode for remaining probe steps or pursue an upstream corrected helper. No default switch, 019 start, GUI launch or lower Native AOT requirement is authorized by the experiment.

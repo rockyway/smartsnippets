@@ -170,7 +170,7 @@ All files are reserved now. Only 018 is detailed. Master approval approves decom
 
 | Plan | Objective | Dependencies | Status |
 |---|---|---|---|
-| [018 — Desktop technical feasibility](018-uno-desktop-technical-feasibility.md) | Prove chosen Uno heads, AOT/SQLite/XAML/windowing and native desktop insertion; early mobile strict-AOT/keyboard-host risk check before 019 | 017 approval | Blocked — clean Windows AOT IL2059; [results](../research/012-uno-desktop-feasibility-results.md) |
+| [018 — Desktop technical feasibility](018-uno-desktop-technical-feasibility.md) | Prove chosen Uno heads, AOT/SQLite/XAML/windowing and native desktop insertion; early mobile strict-AOT/keyboard-host risk check before 019 | 017 approval | Blocked — default AOT IL2059; [opt-in build-only workaround](../research/013-uno-windows-aot-defect-investigation.md), runtime/macOS unverified |
 | [019 — Shared shell and platform contracts](019-uno-shared-shell-and-platform-contracts.md) | Shared unpackaged Uno production shell, Windows adapters, compatible platform-neutral boundaries, early AOT CI and data ownership | 018 complete and owner decision on any mobile risk blocker | Placeholder |
 | [020 — macOS desktop integration](020-uno-macos-desktop-integration.md) | Complete Apple Silicon desktop parity and native integrations | 019 complete | Placeholder |
 | [021 — Desktop acceptance and cutover](021-uno-desktop-acceptance-and-cutover.md) | Windows/macOS validation, signing, CI, migration/rollback and Phase 1 release gate | 020 complete | Placeholder |

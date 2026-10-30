@@ -1,7 +1,7 @@
 # 012 — Uno desktop feasibility results (blocked checkpoint)
 
 **Date:** 2026-10-30
-**Status:** BLOCKED — not a completed feasibility gate
+**Status:** Initial blocked checkpoint — default graph still fails; follow-up experiment in [013](013-uno-windows-aot-defect-investigation.md) publishes in opt-in build-only mode, with no runtime gates passed
 **Plan:** [018](../plan/018-uno-desktop-technical-feasibility.md), master [017](../plan/017-master-uno-cross-platform-migration.md)
 **Branch:** `feature/uno-desktop-feasibility` from approved plans at `b5991aa`
 
@@ -27,7 +27,7 @@ No application window was launched. No insertion, clipboard access, profile move
 | macOS target (evaluation only) | `net10.0-desktop`, `osx-arm64`; macOS OS floor not validated (generic SDK property `1.0` is not an OS support claim) |
 | Installed workloads | Only `wasm-tools-net6`; Android/iOS workloads absent |
 
-Root SDK/package settings, production App, Core and Presentation sources, solution and existing CI are untouched. The scoped probe imports root build defaults but disables central package management only for itself and isolates its Uno dependencies. No global template or workload installation was performed.
+Root SDK/package settings, production App, Core and Presentation sources, solution and existing CI are untouched. The scoped probe imported root build defaults and attempted to disable central package management locally. Follow-up 013 exposed root NuGet CPM overriding that build property; a scoped `Directory.Packages.props` now establishes actual probe-only CPM isolation. Production libraries remain centrally managed. No global template or workload installation was performed.
 
 ## 3. Reproduction and actual failure
 

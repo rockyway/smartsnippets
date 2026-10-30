@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using Microsoft.UI.Xaml;
 
 namespace SmartSnippets.UnoProbe;

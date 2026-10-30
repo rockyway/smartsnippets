@@ -1,0 +1,6 @@
+<Project>
+  <!-- Stop NuGet's upward search at the probe, not at production CPM settings. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
