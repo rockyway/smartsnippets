@@ -7,6 +7,7 @@ namespace SmartSnippets.UnoProbe;
 public partial class App : Application
 {
     private Window? _window;
+    private LifecycleProbe? _lifecycle;
 
     public App() => InitializeComponent();
 
@@ -19,7 +20,10 @@ public partial class App : Application
             return;
         }
 
-        _window = new Window { Content = new MainPage() };
+        var page = new MainPage();
+        _window = new Window { Content = page };
+        if (Environment.GetCommandLineArgs().Contains("--probe-ui-lifecycle", StringComparer.Ordinal))
+            _lifecycle = new LifecycleProbe(this, _window, page);
         _window.Activate();
     }
 }

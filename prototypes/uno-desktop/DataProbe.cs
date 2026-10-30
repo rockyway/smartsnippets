@@ -23,6 +23,7 @@ internal static class DataProbe
 
     public static int Run(string[] args)
     {
+        _stage = "setup";
         if (args.Length != 3 || !Guid.TryParseExact(args[2], "N", out var id) ||
             args[1] is not ("seed" or "verify"))
             return 2;

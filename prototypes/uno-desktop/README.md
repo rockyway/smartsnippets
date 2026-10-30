@@ -57,6 +57,12 @@ Validator checks effective AOT/unsuppressed properties, fresh successful native 
 
 The `macos-json-risk` CLI links the overlay's exact generated context and natively verifies four dictionary fixtures plus the distinct navigation-header Key/Value-array wire shape with reflection disabled. It is not a GUI test.
 
+## Built lifecycle fixture (runtime NOT RUN)
+
+During a separately confirmed exclusive desktop slot, add `--lifecycle` to `run_ui_smoke.py` to select `--probe-ui-lifecycle`. The real-host fixture checks live source-to-control compiled editor bindings, exact Unicode/line boundaries with platform UI newline normalization, bound popup row text/font, opposite-theme change, dispatcher-thread real-store checks, native hide/re-show, close/recreate and bounded graceful exit. It does not validate editor-to-model write-back, popup warmup, external hover, keyboard focus, native preview Enter/click or insertion.
+
+The runner requires an owned visible window, exact ordered callback receipts, empty stderr and natural exit code zero. A watchdog kill cannot pass. The native surface adapter avoids macOS's unimplemented `AppWindow.Hide()` without suppressing Uno diagnostics; its macOS enumeration reads only this probe's own synthetic window titles. Both heads compile with Native AOT, and independent pre-live safety review cleared the fixture. No lifecycle run has occurred yet. See research 016 for candidate hashes and remaining permission gate.
+
 ## Remaining / safety
 
 Representative multiwindow main/editor/popup, external hover, focus, target-free preview, native shortcut/target/clipboard adapters, permission/error recovery, full privacy scans and mobile app/keyboard strict-AOT risk checks remain incomplete. Mobile prerequisite restores currently report missing workloads (NETSDK1147); no workload was silently installed. See research 016 and plan 018 for the exact acceptance gates.

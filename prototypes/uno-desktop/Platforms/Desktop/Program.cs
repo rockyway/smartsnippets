@@ -21,6 +21,6 @@ internal static class Program
             .UseMacOS()
             .Build()
             .Run();
-        return 0;
+        return args.Contains("--probe-ui-lifecycle", StringComparer.Ordinal) ? LifecycleProbe.ExitCode : 0;
     }
 }

@@ -18,6 +18,22 @@ import time
 from verify_evidence import inspect_executable
 
 BASE = Path(__file__).resolve().parent
+LIFECYCLE_RECEIPTS = [
+    "ui_lifecycle_started",
+    "ui_main_compiled_bindings_ok",
+    "probe_data_seed_ok migration=ok crud=ok import_export=ok failure_paths=ok",
+    "probe_data_restart_ok persistence=ok privacy_fixture=ok cleanup=ok",
+    "ui_data_serialized_ok",
+    "ui_popup_compiled_rows_ok",
+    "ui_popup_hidden",
+    "ui_popup_reopened",
+    "ui_popup_recreated",
+    "ui_lifecycle_complete managed_closed=3 native_popup_absence=2 store_thread=UI input=NONE",
+]
+
+
+def lifecycle_completed(stdout, stderr, code):
+    return code == 0 and not stderr.strip() and stdout.splitlines() == LIFECYCLE_RECEIPTS
 
 
 def visible_windows(pid):
@@ -115,6 +131,7 @@ def main():
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--authorized-screen-slot", action="store_true")
+    parser.add_argument("--lifecycle", action="store_true", help="Require real-host lifecycle receipts and graceful exit")
     args = parser.parse_args()
     if not args.authorized_screen_slot or sys.platform not in ("win32", "darwin"):
         raise ValueError("An authorized Windows or macOS screen slot is required")
@@ -140,26 +157,38 @@ def main():
     code = None
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
-            process = subprocess.Popen([str(entry), "--authorized-probe-ui"], stdout=stdout, stderr=stderr,
+            arguments = [str(entry), "--authorized-probe-ui"]
+            if args.lifecycle:
+                arguments.append("--probe-ui-lifecycle")
+            process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
                                        cwd=entry.parent, stdin=subprocess.DEVNULL)
-            deadline = time.monotonic() + 15
+            deadline = time.monotonic() + (30 if args.lifecycle else 15)
             while time.monotonic() < deadline:
                 code = process.poll()
                 if code is not None:
                     break
                 # Native enumeration occurs in a disposable helper so a hung OS
                 # call cannot bypass the owner's bounded process cleanup.
-                helper = subprocess.run([sys.executable, str(Path(__file__).resolve()),
-                                         "--window-count", str(process.pid)],
-                                        capture_output=True, text=True,
-                                        timeout=min(3.0, max(0.1, deadline - time.monotonic())), check=True,
-                                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                try:
+                    helper = subprocess.run([sys.executable, str(Path(__file__).resolve()),
+                                             "--window-count", str(process.pid)],
+                                            capture_output=True, text=True, timeout=3, check=True,
+                                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                except subprocess.TimeoutExpired:
+                    break
                 if not helper.stdout.strip().isdigit() or helper.stderr.strip():
                     raise ValueError("Window observer failed")
                 if int(helper.stdout.strip()) > 0:
                     observed = True
+                    if args.lifecycle:
+                        try:
+                            code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
+                        except subprocess.TimeoutExpired:
+                            code = process.poll()
                     break
                 time.sleep(0.1)
+            if code is None:
+                code = process.poll()
         finally:
             if process is not None:
                 if process.poll() is None:
@@ -180,6 +209,13 @@ def main():
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
+    if args.lifecycle:
+        completed = observed and lifecycle_completed(
+            (private / "stdout.log").read_text(errors="replace"),
+            (private / "stderr.log").read_text(errors="replace"), code)
+        print("ui_lifecycle_result=" + ("PASS" if completed else "FAIL") +
+              " graceful_exit=" + str(bool(completed)).lower())
+        return 0 if completed else 1
     return 0 if observed else 1
 
 

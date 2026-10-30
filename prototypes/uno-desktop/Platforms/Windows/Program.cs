@@ -19,6 +19,6 @@ internal static class WindowsProgram
                 new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
             _ = new App();
         });
-        return 0;
+        return args.Contains("--probe-ui-lifecycle", StringComparer.Ordinal) ? LifecycleProbe.ExitCode : 0;
     }
 }
