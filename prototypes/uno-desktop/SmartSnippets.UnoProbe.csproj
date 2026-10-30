@@ -35,6 +35,8 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(WinAppSdkBuildToolsVersion)" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Standalone serializer investigation is not source for the Uno application. -->
+    <Compile Remove="macos-json-risk/**/*.cs" />
     <ProjectReference Include="../../src/SmartSnippets.Core/SmartSnippets.Core.csproj" />
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
   </ItemGroup>

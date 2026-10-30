@@ -14,7 +14,7 @@ ROOT = PROBE.parents[1]
 @unittest.skipUnless(sys.platform == "win32" and shutil.which("dotnet"),
                      "Windows SDK property-evaluation checks require dotnet on Windows")
 class PackageModeTests(unittest.TestCase):
-    def evaluate(self, project, tfm, manual=False, items=False):
+    def evaluate(self, project, tfm, manual=False, items=False, compile_items=False):
         args = ["dotnet", "msbuild", str(project), "-p:Configuration=Release",
                 "-p:TargetFramework=" + tfm,
                 "-getProperty:DisableImplicitUnoPackages,ImplicitUsings,ManagePackageVersionsCentrally,PublishAot"]
@@ -22,6 +22,8 @@ class PackageModeTests(unittest.TestCase):
             args.append("-p:ProbeManualWindowsPackages=true")
         if items:
             args.append("-getItem:PackageReference")
+        if compile_items:
+            args.append("-getItem:Compile")
         result = subprocess.run(args, cwd=project.parent, capture_output=True, text=True, timeout=60)
         self.assertEqual(0, result.returncode, "MSBuild property evaluation failed; inspect locally, not as runtime evidence")
         return json.loads(result.stdout)
@@ -48,6 +50,13 @@ class PackageModeTests(unittest.TestCase):
         self.assertNotEqual("true", p["DisableImplicitUnoPackages"])
         self.assertEqual("enable", p["ImplicitUsings"])
         self.assertEqual("true", p["PublishAot"])
+
+    def test_serializer_risk_sources_are_not_part_of_uno_application(self):
+        document = self.evaluate(PROBE / "SmartSnippets.UnoProbe.csproj", "net10.0-windows10.0.26100",
+                                 manual=True, compile_items=True)
+        sources = [item["Identity"].replace("\\", "/") for item in document["Items"]["Compile"]]
+        self.assertIn("App.xaml.cs", sources)
+        self.assertFalse(any("macos-json-risk/" in path for path in sources))
 
     def test_production_libraries_keep_central_package_management(self):
         for name in ("Core", "Presentation"):

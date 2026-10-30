@@ -60,6 +60,12 @@ To inspect existing **private** build evidence manually:
 python prototypes/uno-desktop/verify_evidence.py --properties <private-properties.json> --log <private-publish.log> --artifact-dir <output> --executable <output-executable> --rid win-x64
 ```
 
+## macOS JSON risk proof (not the Uno application)
+
+[Investigation 015](../../docs/research/015-uno-macos-aot-defect-investigation.md) traces unconditional host callback registration to the vendor reflection serializer. A standalone .NET CLI under `macos-json-risk/` first reproduced IL2026/IL3050 and then successfully published and ran natively on Apple Silicon using a generated JSON contract (four synthetic fixtures, reflection serialization disabled). Its source is excluded from the Uno app's Compile items.
+
+This proves the proposed dictionary serializer correction, **not** a patched Uno package or native GUI startup. The separate navigation-header serializer still needs a vendor-level audit. Only the headless CLI was run; no screen/input permission is implied. Reproduction commands and exact upstream source links are in 015.
+
 ## Mobile prerequisite diagnostic (not keyboard implementation)
 
 ```text
