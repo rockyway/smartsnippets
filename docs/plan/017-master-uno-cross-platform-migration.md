@@ -170,7 +170,7 @@ All files are reserved now. Only 018 is detailed. Master approval approves decom
 
 | Plan | Objective | Dependencies | Status |
 |---|---|---|---|
-| [018 — Desktop technical feasibility](018-uno-desktop-technical-feasibility.md) | Prove chosen Uno heads, AOT/SQLite/XAML/windowing and native desktop insertion; early mobile strict-AOT/keyboard-host risk check before 019 | 017 approval | Approved (2026-10-30) |
+| [018 — Desktop technical feasibility](018-uno-desktop-technical-feasibility.md) | Prove chosen Uno heads, AOT/SQLite/XAML/windowing and native desktop insertion; early mobile strict-AOT/keyboard-host risk check before 019 | 017 approval | Blocked — clean Windows AOT IL2059; [results](../research/012-uno-desktop-feasibility-results.md) |
 | [019 — Shared shell and platform contracts](019-uno-shared-shell-and-platform-contracts.md) | Shared unpackaged Uno production shell, Windows adapters, compatible platform-neutral boundaries, early AOT CI and data ownership | 018 complete and owner decision on any mobile risk blocker | Placeholder |
 | [020 — macOS desktop integration](020-uno-macos-desktop-integration.md) | Complete Apple Silicon desktop parity and native integrations | 019 complete | Placeholder |
 | [021 — Desktop acceptance and cutover](021-uno-desktop-acceptance-and-cutover.md) | Windows/macOS validation, signing, CI, migration/rollback and Phase 1 release gate | 020 complete | Placeholder |
@@ -227,4 +227,4 @@ If the tree contradicts cited constraints, or a task prescribes an unreachable t
 | 2026-10-30 | Independent plan review (gemini-4-argon:medium) | Incorporated blocker corrections; technical assertions still require prototype evidence |
 | 2026-10-30 | Plan approved (G2) | Master decomposition and detailed 018 approved; placeholders 019–025 remain unapproved |
 
-G2 approved. Independent read-only review was requested by the user and incorporated; external framework claims remain unverified until prototype execution. Approval does not authorize implementation or a screen/input test slot.
+G2 approved; user authorized 018 implementation on 2026-10-30. Its first clean Windows Native AOT gate is blocked by IL2059; see [012 results](../research/012-uno-desktop-feasibility-results.md). Dependent plans remain placeholders, not implementation-ready. No screen/input test slot has been authorized.

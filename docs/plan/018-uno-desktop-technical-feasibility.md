@@ -1,7 +1,7 @@
 # 018 — Uno desktop technical feasibility
 
 **Date:** 2026-10-30
-**Status:** Approved (2026-10-30)
+**Status:** Blocked — Windows Native AOT IL2059 (2026-10-30)
 **Size:** L (first detailed subplan of the cross-platform migration)
 **Area:** isolated desktop prototype, tooling, platform boundaries, tests and evidence
 **Requirement brief confirmed:** 2026-10-30 (G1)
@@ -206,5 +206,6 @@ No additional product-scope question blocks G2. Exact Uno package/toolchain pin,
 | 2026-10-30 | Draft produced | No prototype run, app code edits or native test authorization |
 | 2026-10-30 | Independent plan review (gemini-4-argon:medium) | Corrected contradictory DB test, privacy handling, same-PID window oracle, clipboard outcomes, AOT project/evidence gates and early mobile risk |
 | 2026-10-30 | Plan approved (G2) | Prototype plan approved; live screen/input testing still requires a separate authorized slot |
+| 2026-10-30 | Implementation started → blocked | T0/T1 single Uno skeleton compiles Windows XAML but clean AOT publish fails IL2059; no unsafe fallback or downstream migration |
 
-G2 approved. Independent read-only review requested by user and incorporated; the reviewer could not live-fetch external sources, so Uno/mobile compatibility remains a measured gate. Implementation awaits a later instruction.
+G2 approved; implementation authorized on 2026-10-30. T0/T1 reached a reproducible clean Native AOT IL2059 failure in Uno-generated XAML. See [012 — blocked results](../research/012-uno-desktop-feasibility-results.md) for task/gate evidence. No runtime tests or native insertion were performed. Stop for owner decision; do not begin 019. Screen/input testing remains separately gated.

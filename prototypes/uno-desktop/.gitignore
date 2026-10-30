@@ -1,0 +1,3 @@
+# Private profiles/logs/clipboard recovery must live OUTSIDE this repository.
+__pycache__/
+*.pyc

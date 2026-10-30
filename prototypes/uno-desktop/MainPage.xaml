@@ -1,0 +1,11 @@
+<Page
+    x:Class="SmartSnippets.UnoProbe.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Padding="24" Spacing="12">
+        <TextBlock Text="Smart Snippets — isolated feasibility probe" />
+        <TextBox Header="Synthetic label" Text="{x:Bind Label, Mode=TwoWay}" />
+        <TextBox Header="Synthetic text" AcceptsReturn="True" Text="{x:Bind Body, Mode=TwoWay}" />
+        <TextBlock Text="No clipboard, shortcut registration, startup changes or insertion are enabled." TextWrapping="Wrap" />
+    </StackPanel>
+</Page>

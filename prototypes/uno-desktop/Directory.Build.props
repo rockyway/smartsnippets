@@ -1,0 +1,11 @@
+<Project>
+  <Import Project="../../Directory.Build.props" />
+  <PropertyGroup>
+    <!-- Scope Uno's dependencies to this experiment; production CPM is unchanged. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <PublishAot>true</PublishAot>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

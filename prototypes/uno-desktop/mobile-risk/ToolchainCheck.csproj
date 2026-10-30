@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Restore-only prerequisite check, NOT an app or keyboard implementation. -->
+    <TargetFramework>net10.0-android</TargetFramework>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+</Project>
