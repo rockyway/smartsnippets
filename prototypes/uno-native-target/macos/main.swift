@@ -1,0 +1,99 @@
+import AppKit
+import Darwin
+
+// This is an owned native target, not the product app or a keyboard extension.
+// No clipboard, event injection, database, startup or permission API is called.
+let arguments = CommandLine.arguments
+guard arguments.count == 3,
+      arguments[1] == "--authorized-probe-target",
+      let runID = UUID(uuidString: arguments[2]) else { exit(2) }
+
+@MainActor
+final class FixtureDelegate: NSObject, NSApplicationDelegate {
+    private var windows: [NSWindow] = []
+    private let runID: UUID
+
+    init(runID: UUID) {
+        self.runID = runID
+        super.init()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard let screen = NSScreen.screens.sorted(by: {
+            if $0.frame.minX != $1.frame.minX { return $0.frame.minX < $1.frame.minX }
+            return $0.frame.minY < $1.frame.minY // AppKit coordinates increase upward.
+        }).first else { fail() }
+        let area = screen.visibleFrame
+        guard area.width >= 940, area.height >= 400 else { fail() }
+        configureMenus()
+        for index in 0..<2 {
+            let frame = NSRect(x: area.minX + 16 + CGFloat(index * 460),
+                               y: area.maxY - 366, width: 440, height: 350)
+            let window = NSWindow(contentRect: frame,
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                  backing: .buffered, defer: false)
+            window.setFrame(frame, display: false)
+            window.isReleasedWhenClosed = false
+            window.title = "SS-Target018-\(index == 0 ? "A" : "B")-\(runID.uuidString)"
+            let scroll = NSScrollView(frame: NSRect(origin: .zero, size: window.contentLayoutRect.size))
+            scroll.autoresizingMask = [.width, .height]
+            scroll.hasVerticalScroller = true
+            let editor = NSTextView(frame: scroll.bounds)
+            editor.isRichText = false
+            editor.isEditable = true
+            editor.isSelectable = true
+            editor.isAutomaticSpellingCorrectionEnabled = false
+            editor.isContinuousSpellCheckingEnabled = false
+            editor.isAutomaticTextReplacementEnabled = false
+            editor.isAutomaticQuoteSubstitutionEnabled = false
+            editor.isAutomaticDashSubstitutionEnabled = false
+            editor.isAutomaticLinkDetectionEnabled = false
+            editor.isAutomaticDataDetectionEnabled = false
+            editor.isAutomaticTextCompletionEnabled = false
+            editor.smartInsertDeleteEnabled = false
+            editor.autoresizingMask = [.width]
+            editor.minSize = NSSize(width: 0, height: 0)
+            editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            editor.isVerticallyResizable = true
+            editor.isHorizontallyResizable = false
+            editor.textContainer?.widthTracksTextView = true
+            editor.setAccessibilityIdentifier(index == 0 ? "SSFixtureEditorA" : "SSFixtureEditorB")
+            editor.string = ""
+            scroll.documentView = editor
+            window.contentView = scroll
+            window.makeFirstResponder(editor)
+            windows.append(window)
+            window.orderFront(nil) // Do not activate the target application during launch.
+        }
+        print("target_ready pid=\(ProcessInfo.processInfo.processIdentifier) a=\(windows[0].windowNumber) b=\(windows[1].windowNumber)")
+        fflush(nil)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    private func configureMenus() {
+        let menu = NSMenu()
+        let appItem = NSMenuItem()
+        menu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit fixture", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        let editItem = NSMenuItem()
+        menu.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editItem.submenu = editMenu
+        NSApplication.shared.mainMenu = menu
+    }
+
+    private func fail() -> Never {
+        FileHandle.standardError.write(Data("target_setup_failed\n".utf8))
+        exit(1)
+    }
+}
+
+let application = NSApplication.shared
+application.setActivationPolicy(.regular)
+let delegate = FixtureDelegate(runID: runID)
+application.delegate = delegate
+application.run()

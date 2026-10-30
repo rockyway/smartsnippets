@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Input;
 
 namespace SmartSnippets.UnoProbe;
 
@@ -36,6 +37,10 @@ public sealed partial class PopupProbePage : Page
         };
 #endif
     }
+
+    internal bool IsSearchFocused => XamlRoot is not null &&
+        ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), SearchEditor);
+    internal bool FocusSearch() => SearchEditor.Focus(FocusState.Programmatic) && IsSearchFocused;
 
     internal int ReadinessFlags => (IsLoaded ? 1 : 0) | (ActualWidth > 0 ? 2 : 0) |
         (ActualHeight > 0 ? 4 : 0) | (RowsView.Items.Count == 2 ? 8 : 0) |

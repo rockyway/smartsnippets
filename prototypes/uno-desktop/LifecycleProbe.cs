@@ -23,6 +23,7 @@ internal sealed class LifecycleProbe
     private int _stage;
     private int _closed;
     private bool _failed;
+    private bool _expectPopupClose;
     private readonly DateTimeOffset _deadline = DateTimeOffset.UtcNow.AddSeconds(20);
 
     public LifecycleProbe(Application application, Window main, MainPage page)
@@ -150,6 +151,7 @@ internal sealed class LifecycleProbe
     {
         _closedSurfaceAbsent = _surface!.CreateAbsenceCheck(_popupTitle);
         _surface = null; // Do not retain/dereference a closed NSWindow pointer.
+        _expectPopupClose = true;
         _popup!.Close();
     }
 
@@ -158,7 +160,14 @@ internal sealed class LifecycleProbe
         _popupPage = new PopupProbePage();
         _popupTitle = "SS-Probe018-" + Guid.NewGuid().ToString("N");
         _popup = new Window { Title = _popupTitle, Content = _popupPage };
-        _popup.Closed += (_, _) => _closed++;
+        _expectPopupClose = false;
+        _popup.Closed += (_, _) =>
+        {
+            _surface = null;
+            _closed++;
+            if (!_expectPopupClose && !_failed)
+                Fail(new InvalidOperationException("Unexpected probe window close."));
+        };
         _popup.AppWindow.Resize(new SizeInt32 { Width = 520, Height = 400 });
 #if WINDOWS
         ProbeWindowPlacement.Park(_popup, 520, 400, secondary: true);

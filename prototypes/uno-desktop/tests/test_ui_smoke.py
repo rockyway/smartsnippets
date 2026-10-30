@@ -39,7 +39,7 @@ class UiSmokeTests(unittest.TestCase):
         self.private = self.base / "private"
         self.private.mkdir()
 
-    def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None):
+    def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None, coordinator=False):
         process = Mock(pid=12345)
         process.poll.return_value = None
         process.wait.return_value = 0
@@ -48,22 +48,26 @@ class UiSmokeTests(unittest.TestCase):
         output = io.StringIO()
         args = self.args + (["--authorized-screen-slot"] if authorize else [])
         if lifecycle:
-            args.append("--lifecycle")
+            args.append("--coordinator" if coordinator else "--lifecycle")
             if lifecycle == "success":
-                process.poll.side_effect = [None, 0]
+                process.poll.side_effect = [None, 0, 0]
             else:
                 process.wait.side_effect = [subprocess.TimeoutExpired("owned-app", 30), 0]
 
         def start(arguments, **kwargs):
             if lifecycle:
-                kwargs["stdout"].write(("\n".join(smoke.LIFECYCLE_RECEIPTS) + "\n").encode())
+                receipts = smoke.COORDINATOR_RECEIPTS if coordinator else smoke.LIFECYCLE_RECEIPTS
+                kwargs["stdout"].write(("\n".join(receipts) + "\n").encode())
                 kwargs["stdout"].flush()
             return process
+        results = helper or [subprocess.CompletedProcess([], 0, "1\n", "")]
+        if coordinator and helper is None:
+            results.append(subprocess.CompletedProcess([], 0, "owned_focus_prepared\n", ""))
         with patch.object(sys, "argv", args), patch.object(smoke, "BASE", self.base), \
              patch.object(smoke, "inspect_executable", return_value=[]), \
              patch.object(smoke, "private_directory", return_value=self.private), \
              patch.object(subprocess, "Popen", side_effect=start) as launch, \
-             patch.object(subprocess, "run", side_effect=helper or [subprocess.CompletedProcess([], 0, "1\n", "")]), \
+             patch.object(subprocess, "run", side_effect=results), \
              contextlib.redirect_stdout(output):
             try:
                 result = smoke.main()
@@ -104,6 +108,49 @@ class UiSmokeTests(unittest.TestCase):
         process.kill.assert_not_called()
         self.assertEqual(2, process.wait.call_count)
         self.assertIn("ui_lifecycle_result=PASS graceful_exit=true", output)
+
+    def test_coordinator_uses_only_reviewed_scene_flag_and_requires_natural_exit(self):
+        result, process, launch, output = self.invoke(lifecycle="success", coordinator=True)
+        self.assertEqual(0, result)
+        self.assertEqual([str(self.entry), "--authorized-probe-ui", "--probe-ui-coordinator"], launch.call_args.args[0])
+        process.terminate.assert_not_called()
+        process.stdin.write.assert_called_once_with(b"probe_foreground_prepared\n")
+        process.stdin.close.assert_called_once_with()
+        self.assertIn("ui_coordinator_result=PASS graceful_exit=true", output)
+
+    def test_coordinator_refuses_preparation_failure_before_signal(self):
+        responses = [subprocess.CompletedProcess([], 0, "1\n", ""),
+                     subprocess.CompletedProcess([], 1, "", "owned focus refused")]
+        result, process, launch, output = self.invoke(lifecycle="success", coordinator=True, helper=responses)
+        self.assertEqual(1, result)
+        process.stdin.write.assert_not_called()
+        self.assertIn("ui_coordinator_result=FAIL", output)
+        self.assertNotIn("owned focus refused", output)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows mouse-journal backstop")
+    def test_failed_recovery_cannot_pass_complete_native_receipts(self):
+        (self.private / "focus.json").write_text("{}")
+        with patch.object(smoke, "replay_mouse_journal", return_value=False) as replay:
+            result, process, launch, output = self.invoke(lifecycle="success", coordinator=True)
+        self.assertEqual(1, result)
+        replay.assert_called_once()
+        self.assertIn("mouse_recovery=INCOMPLETE", output)
+        self.assertIn("ui_coordinator_result=FAIL", output)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows mouse-journal backstop")
+    def test_interrupted_recovery_still_stops_owned_child(self):
+        (self.private / "focus.json").write_text("{}")
+        with patch.object(smoke, "replay_mouse_journal", side_effect=KeyboardInterrupt):
+            result, process, launch, output = self.invoke(lifecycle="hung", coordinator=True)
+        self.assertIsInstance(result, KeyboardInterrupt)
+        process.terminate.assert_called_once_with()
+        self.assertEqual(2, process.wait.call_count)
+
+    def test_coordinator_receipts_do_not_pass_a_hung_process(self):
+        result, process, launch, output = self.invoke(lifecycle="hung", coordinator=True)
+        self.assertEqual(1, result)
+        process.terminate.assert_called_once_with()
+        self.assertIn("ui_coordinator_result=FAIL graceful_exit=false", output)
 
     def test_all_receipts_without_process_exit_is_failure_and_owned_child_stops(self):
         result, process, launch, output = self.invoke(lifecycle="hung")
@@ -187,6 +234,28 @@ class LifecycleReceiptTests(unittest.TestCase):
                 self.assertFalse(smoke.lifecycle_completed("\n".join(self.lines[:index] + self.lines[index + 1:]), "", 0))
         self.assertFalse(smoke.lifecycle_completed("\n".join(reversed(self.lines)), "", 0))
         self.assertFalse(smoke.lifecycle_completed("\n".join(self.lines + [self.lines[-1]]), "", 0))
+
+
+class CoordinatorReceiptTests(unittest.TestCase):
+    def setUp(self):
+        self.lines = [
+            "ui_coordinator_started", "ui_coordinator_warmup_started", "ui_coordinator_cold_after_cancel",
+            "ui_coordinator_warmup_started", "ui_coordinator_native_layout_ready", "ui_coordinator_ready_show",
+            "ui_coordinator_focus_applied", "ui_coordinator_native_focus_ok", "ui_coordinator_hidden",
+            "ui_coordinator_ready_show", "ui_coordinator_focus_applied", "ui_coordinator_reopen_focus_ok",
+            "ui_coordinator_complete native_focus=2 warmup_starts=2 clipboard=UNTOUCHED keyboard=NONE",
+        ]
+
+    def test_actual_order_and_natural_exit_required(self):
+        self.assertTrue(smoke.coordinator_completed("\n".join(self.lines), "", 0))
+        self.assertFalse(smoke.coordinator_completed("\n".join(self.lines), "", None))
+        self.assertFalse(smoke.coordinator_completed("\n".join(self.lines), "failure", 0))
+        self.assertFalse(smoke.coordinator_completed("\n".join(reversed(self.lines)), "", 0))
+
+    def test_disconnected_warmup_or_focus_callback_cannot_pass(self):
+        for index in range(len(self.lines)):
+            with self.subTest(index=index):
+                self.assertFalse(smoke.coordinator_completed("\n".join(self.lines[:index] + self.lines[index + 1:]), "", 0))
 
 
 if __name__ == "__main__":

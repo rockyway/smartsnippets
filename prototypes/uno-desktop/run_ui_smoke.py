@@ -32,6 +32,27 @@ LIFECYCLE_RECEIPTS = [
 ]
 
 
+COORDINATOR_RECEIPTS = [
+    "ui_coordinator_started",
+    "ui_coordinator_warmup_started",
+    "ui_coordinator_cold_after_cancel",
+    "ui_coordinator_warmup_started",
+    "ui_coordinator_native_layout_ready",
+    "ui_coordinator_ready_show",
+    "ui_coordinator_focus_applied",
+    "ui_coordinator_native_focus_ok",
+    "ui_coordinator_hidden",
+    "ui_coordinator_ready_show",
+    "ui_coordinator_focus_applied",
+    "ui_coordinator_reopen_focus_ok",
+    "ui_coordinator_complete native_focus=2 warmup_starts=2 clipboard=UNTOUCHED keyboard=NONE",
+]
+
+
+def coordinator_completed(stdout, stderr, code):
+    return code == 0 and not stderr.strip() and stdout.splitlines() == COORDINATOR_RECEIPTS
+
+
 def lifecycle_completed(stdout, stderr, code):
     return code == 0 and not stderr.strip() and stdout.splitlines() == LIFECYCLE_RECEIPTS
 
@@ -126,12 +147,31 @@ def private_directory():
         raise
 
 
+def replay_mouse_journal(private, pid, entry, digest):
+    try:
+        result = subprocess.run(
+            [sys.executable, str(BASE / "recover_owned_mouse.py"), "--journal", str(private / "focus.json"),
+             "--pid", str(pid), "--executable", str(entry), "--sha256", digest],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+        (private / "recovery.log").write_text(result.stdout + result.stderr, encoding="utf-8")
+        return result.returncode == 0 and result.stdout.strip() == "owned_mouse_recovery_complete" and not result.stderr.strip()
+    except (OSError, subprocess.SubprocessError):
+        try:
+            (private / "recovery.log").write_text("mouse_recovery_worker_failed\n", encoding="utf-8")
+        except OSError:
+            pass
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--authorized-screen-slot", action="store_true")
-    parser.add_argument("--lifecycle", action="store_true", help="Require real-host lifecycle receipts and graceful exit")
+    scene = parser.add_mutually_exclusive_group()
+    scene.add_argument("--lifecycle", action="store_true", help="Require real-host lifecycle receipts and graceful exit")
+    scene.add_argument("--coordinator", action="store_true", help="Require cloaked native warmup and coordinator-only focus")
     args = parser.parse_args()
     if not args.authorized_screen_slot or sys.platform not in ("win32", "darwin"):
         raise ValueError("An authorized Windows or macOS screen slot is required")
@@ -154,16 +194,22 @@ def main():
     private = private_directory()
     process = None
     observed = False
+    preparation_ok = not args.coordinator
+    recovery_ok = True
+    recovery_required = False
     code = None
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
             arguments = [str(entry), "--authorized-probe-ui"]
-            if args.lifecycle:
+            if args.coordinator:
+                arguments.append("--probe-ui-coordinator")
+            elif args.lifecycle:
                 arguments.append("--probe-ui-lifecycle")
             process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
-                                       cwd=entry.parent, stdin=subprocess.DEVNULL)
-            deadline = time.monotonic() + (30 if args.lifecycle else 15)
-            while time.monotonic() < deadline:
+                                       cwd=entry.parent, stdin=subprocess.PIPE if args.coordinator else subprocess.DEVNULL)
+            deadline = time.monotonic() + (45 if args.coordinator else 30 if args.lifecycle else 15)
+            observe_deadline = min(deadline, time.monotonic() + 10) if args.coordinator else deadline
+            while time.monotonic() < observe_deadline:
                 code = process.poll()
                 if code is not None:
                     break
@@ -180,7 +226,30 @@ def main():
                     raise ValueError("Window observer failed")
                 if int(helper.stdout.strip()) > 0:
                     observed = True
-                    if args.lifecycle:
+                    if args.coordinator:
+                        preparation_budget = min(20.0, deadline - time.monotonic() - 8)
+                        if preparation_budget <= 0:
+                            break
+                        try:
+                            prepared = subprocess.run(
+                                [sys.executable, str(BASE / "prepare_owned_focus.py"), "--pid", str(process.pid),
+                                 "--executable", str(entry), "--sha256", args.sha256,
+                                 "--journal", str(private / "focus.json")],
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=preparation_budget,
+                                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+                        except subprocess.TimeoutExpired:
+                            break
+                        if prepared.returncode or prepared.stdout.strip() != "owned_focus_prepared" or prepared.stderr.strip():
+                            (private / "prepare.log").write_text(prepared.stdout + prepared.stderr, encoding="utf-8")
+                            break
+                        try:
+                            process.stdin.write(b"probe_foreground_prepared\n")
+                            process.stdin.flush()
+                            process.stdin.close()
+                        except OSError:
+                            break
+                        preparation_ok = True
+                    if args.lifecycle or args.coordinator:
                         try:
                             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
@@ -191,29 +260,38 @@ def main():
                 code = process.poll()
         finally:
             if process is not None:
-                if process.poll() is None:
-                    process.terminate()
                 try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=3)
-                except BaseException:
+                    if args.coordinator and sys.platform == "win32" and (private / "focus.json").exists():
+                        recovery_required = True
+                        recovery_ok = replay_mouse_journal(private, process.pid, entry, args.sha256)
+                finally:
                     if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=3)
-                    raise
+                    except BaseException:
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait(timeout=3)
+                        raise
+    interaction = "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
     print("ui_smoke_window=" + ("OBSERVED" if observed else "NOT_OBSERVED") +
-          " owned_process_stopped=true clipboard=UNTOUCHED input=NONE")
+          " owned_process_stopped=true clipboard=UNTOUCHED input=" + interaction)
     print("private_evidence_token=" + private.name)
+    if recovery_required:
+        print("mouse_recovery=" + ("COMPLETE" if recovery_ok else "INCOMPLETE"))
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
-    if args.lifecycle:
-        completed = observed and lifecycle_completed(
+    if args.lifecycle or args.coordinator:
+        validate = coordinator_completed if args.coordinator else lifecycle_completed
+        completed = observed and preparation_ok and recovery_ok and validate(
             (private / "stdout.log").read_text(errors="replace"),
             (private / "stderr.log").read_text(errors="replace"), code)
-        print("ui_lifecycle_result=" + ("PASS" if completed else "FAIL") +
+        print(("ui_coordinator_result=" if args.coordinator else "ui_lifecycle_result=") + ("PASS" if completed else "FAIL") +
               " graceful_exit=" + str(bool(completed)).lower())
         return 0 if completed else 1
     return 0 if observed else 1

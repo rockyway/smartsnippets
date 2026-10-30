@@ -182,8 +182,8 @@ Owner instruction: finish 018; continue through routine implementation/test chec
 | T0 | Pinned toolchain; native validator and clean builds on both hosts | Final effective-property/dependency/OS-floor evidence |
 | T1 | Native GUI startup, ordered lifecycle callbacks and graceful process exit pass on both hosts | Final consolidated evidence/sign-off |
 | T2 | Native real-store seed/restart, denied-file migration/restored-write and actual UI-dispatcher-thread execution pass on both hosts | Remaining query/load/fixture coverage and final isolation/privacy sign-off |
-| T3 | Live compiled editor/typed popup rows, text-size, opposite-theme transition, native hide/re-show/close/recreate pass on both hosts; Windows bottom-left parking verified | Real coordinator/warmup, external hover, keyboard preview/focus/work-area coverage |
-| T4 | Read-only Mac Accessibility/event-posting preflight GRANTED on actual native bundle | Guarded owned-target native adapters, shortcut, permission/error/clipboard matrix and positive dispatch |
+| T3 | Live compiled editor/typed popup rows, text-size, opposite-theme transition, native hide/re-show/close/recreate and real coordinator/cloaked warmup/cancellation/native focus/reopen pass on both hosts; Windows bottom-left parking and guarded mouse recovery verified | External hover, actual keyboard preview and remaining work-area coverage |
+| T4 | Read-only Mac Accessibility/event-posting preflight GRANTED; isolated native two-window target candidates clean-build on both hosts and Mac startup/owned cleanup passes | Windows target runtime, guarded native adapters, shortcut, exact-window identity, permission/error/clipboard matrix and positive dispatch |
 | T5 | Not implemented | Actual entry-point → target dispatch, duplicate/usage/clipboard/preview assertions |
 | T6 | Build/data/basic-GUI report and regression tests | Full negative/privacy/recovery evidence and host manifests |
 | T7 | Missing-workload diagnostics only | Current source verification plus bounded app/keyboard build attempts or precise unavailable-toolchain evidence; flag mobile risk before 019 |
