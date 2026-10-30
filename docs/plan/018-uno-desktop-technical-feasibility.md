@@ -1,7 +1,7 @@
 # 018 — Uno desktop technical feasibility
 
 **Date:** 2026-10-30
-**Status:** Blocked — default Windows AOT IL2059; opt-in build-only workaround awaiting decision, runtime/macOS unverified (2026-10-30)
+**Status:** Blocked — macOS Native AOT IL2026/IL3050; Windows opt-in workaround approved for probe, runtime gates pending (2026-10-30)
 **Size:** L (first detailed subplan of the cross-platform migration)
 **Area:** isolated desktop prototype, tooling, platform boundaries, tests and evidence
 **Requirement brief confirmed:** 2026-10-30 (G1)
@@ -207,5 +207,6 @@ No additional product-scope question blocks G2. Exact Uno package/toolchain pin,
 | 2026-10-30 | Independent plan review (gemini-4-argon:medium) | Corrected contradictory DB test, privacy handling, same-PID window oracle, clipboard outcomes, AOT project/evidence gates and early mobile risk |
 | 2026-10-30 | Plan approved (G2) | Prototype plan approved; live screen/input testing still requires a separate authorized slot |
 | 2026-10-30 | Implementation started → blocked | T0/T1 single Uno skeleton compiles Windows XAML but clean AOT publish fails IL2059; no unsafe fallback or downstream migration |
+| 2026-10-30 | Workaround and Mac access authorized | User approved continuation with opt-in Windows mode and SSH checkout; user unlocked Mac parent directory. Mac restore/C#/XAML compile and 432+599 managed tests pass; clean Native AOT fails IL2026/IL3050 in vendor WebView. No GUI/input authorization |
 
-G2 approved; implementation authorized on 2026-10-30. T0/T1 reached a reproducible clean Native AOT IL2059 failure in Uno-generated XAML. See [012 — blocked results](../research/012-uno-desktop-feasibility-results.md) for task/gate evidence. No runtime tests or native insertion were performed. Authorized investigation produced an opt-in manual Windows package build-only workaround; see [013](../research/013-uno-windows-aot-defect-investigation.md). Default configuration still fails, no runtime gate has passed. Stop for owner decision; do not begin 019. Screen/input testing remains separately gated.
+G2 approved; implementation authorized on 2026-10-30. T0/T1 reached a reproducible clean Native AOT IL2059 failure in Uno-generated XAML. See [012 — blocked results](../research/012-uno-desktop-feasibility-results.md) for task/gate evidence. No runtime tests or native insertion were performed. Authorized investigation produced an opt-in manual Windows package build-only workaround; see [013](../research/013-uno-windows-aot-defect-investigation.md). User approved the opt-in workaround for continued probe work and supplied Mac SSH access. Actual Apple Silicon restore/C#/XAML compilation and 432+599 managed tests pass, but fresh Native AOT now fails IL2026/IL3050 in Uno's macOS native WebView; see [014](../research/014-uno-apple-silicon-first-build.md). No app runtime gate has passed. Stop for a decision on this new blocker; do not begin 019. Screen/input testing remains separately gated.
