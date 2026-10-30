@@ -29,6 +29,16 @@ internal sealed class ThemeService : IThemeService, IDisposable
         _paletteResources.Update(palette, _uiSettings);
         _paletteResources.BaselineChanged += QueueSystemRefresh;
         FlyoutSurface.ResolveMenuBrush = _paletteResources.MenuBrush;
+        Controls.HoverDetailsSurface.ResolveAppearance = (border, text, theme) =>
+        {
+            var highContrast = WindowSurface.IsHighContrast();
+            border.Background = highContrast
+                ? new Microsoft.UI.Xaml.Media.SolidColorBrush(WindowSurface.SystemColor(5))
+                : _paletteResources.BackgroundBrush(theme);
+            var foreground = highContrast ? WindowSurface.SystemColor(8) : theme == ElementTheme.Dark ? Colors.White : Colors.Black;
+            text.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(foreground);
+            border.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(foreground) { Opacity = highContrast ? 1 : 0.35 };
+        };
         FlyoutSurface.ResolveRequestedTheme = () => RequestedTheme;
         _uiSettings.ColorValuesChanged += OnSystemColorsChanged;
     }
@@ -64,6 +74,7 @@ internal sealed class ThemeService : IThemeService, IDisposable
 
     private void RefreshPalette()
     {
+        Controls.HoverDetailsSurface.CancelActive();
         _paletteResources.Update(CurrentPalette, _uiSettings);
         FlyoutSurface.Refresh();
         foreach (var window in _windows.ToArray())
@@ -80,6 +91,8 @@ internal sealed class ThemeService : IThemeService, IDisposable
         _uiSettings.ColorValuesChanged -= OnSystemColorsChanged;
         _paletteResources.BaselineChanged -= QueueSystemRefresh;
         if (_messageWindow is not null) _messageWindow.MessageReceived -= OnSystemMessage;
+        Controls.HoverDetailsSurface.CancelActive();
+        Controls.HoverDetailsSurface.ResolveAppearance = null;
         FlyoutSurface.ResolveMenuBrush = null;
         FlyoutSurface.ResolveRequestedTheme = null;
         _transientSurfaces.Clear();

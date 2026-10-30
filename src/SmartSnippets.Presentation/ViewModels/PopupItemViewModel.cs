@@ -9,6 +9,7 @@ public sealed record PopupItemViewModel(PopupItemKind Kind, long SnippetId, stri
 {
     public ITextSizeService? TextSize { get; init; }
     public string TagsDisplay { get; init; } = string.Empty;
+    public string ContentText { get; init; } = string.Empty;
     public bool HasFolder => !string.IsNullOrEmpty(FolderChip);
     public string Details => string.Join(" ", new[] { FolderChip, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
 

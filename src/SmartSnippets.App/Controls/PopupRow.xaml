@@ -1,22 +1,12 @@
-<UserControl
-    x:Class="SmartSnippets.App.Controls.PopupRow"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Padding="0,4" ColumnSpacing="8" Background="Transparent" HorizontalAlignment="Stretch">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-            Text="{x:Bind Item.HeadingText}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-            Visibility="{x:Bind HasText(Item.HeadingText)}"/>
-        <TextBlock FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-            Text="{x:Bind Item.Label}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-            Visibility="{x:Bind HasText(Item.Label)}"/>
-        <Grid Grid.Column="1" ColumnSpacing="4" HorizontalAlignment="Right" Visibility="{x:Bind HasText(Item.Label)}">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <FontIcon Glyph="&#xE8B7;" FontSize="{x:Bind MetadataFontSize(Item.TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}"
-                Visibility="{x:Bind Item.HasFolder}"/>
-            <TextBlock Grid.Column="1" Text="{x:Bind Item.Details}" TextAlignment="Right"
-                FontSize="{x:Bind MetadataFontSize(Item.TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}"
-                TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-        </Grid>
-    </Grid>
+<UserControl x:Class="SmartSnippets.App.Controls.PopupRow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:controls="using:SmartSnippets.App.Controls">
+ <Grid>
+  <TextBlock Padding="0,4" Text="{x:Bind Item.HeadingText}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+   FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Visibility="{x:Bind HasText(Item.HeadingText)}"/>
+  <controls:SnippetRowDetails Label="{x:Bind Item.Label}" FolderName="{x:Bind Item.FolderChip}"
+   TagsDisplay="{x:Bind Item.TagsDisplay}" ContentText="{x:Bind Item.ContentText}" TextSize="{x:Bind Item.TextSize}"
+   Visibility="{x:Bind HasText(Item.Label)}"/>
+ </Grid>
 </UserControl>

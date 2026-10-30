@@ -63,6 +63,8 @@ public sealed partial class MainWindow : Window
         };
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         AppWindow.Closing += OnClosing;
+        Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot); };
+        Closed += (_, _) => Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
 
         Show(PageKind.Snippets, activate: false);
     }
@@ -123,6 +125,7 @@ public sealed partial class MainWindow : Window
     /// <summary>For tray Exit: true when the current page allows leaving; otherwise the window is brought forward.</summary>
     public async Task<bool> CanExitAsync()
     {
+        Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         if (CurrentGuard() is not { } guard)
         {
             return true;
@@ -140,6 +143,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Really closes the window (the normal X button only hides it).</summary>
     public void CloseForExit()
     {
+        Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         _closingForExit = true;
         Close();
     }
@@ -155,6 +159,7 @@ public sealed partial class MainWindow : Window
 
     private void Navigate(PageKind kind)
     {
+        Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         if (!_pages.TryGetValue(kind, out var page))
         {
             page = _pageFactory(kind);
@@ -184,6 +189,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         _guardInProgress = true;
         try
         {
@@ -248,6 +254,7 @@ public sealed partial class MainWindow : Window
 
     private async Task HideAfterGuardAsync()
     {
+        Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         try
         {
             if (CurrentGuard() is { } guard && !await guard.CanLeaveAsync())

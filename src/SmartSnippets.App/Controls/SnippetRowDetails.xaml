@@ -1,0 +1,24 @@
+<UserControl x:Class="SmartSnippets.App.Controls.SnippetRowDetails"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <Grid Padding="0,4" ColumnSpacing="8" Background="Transparent" HorizontalAlignment="Stretch"
+       PointerEntered="OnRowEntered" PointerExited="OnRowExited" PointerMoved="OnRowPointerMoved">
+  <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <TextBlock x:Name="LabelText" Text="{x:Bind Label, Mode=OneWay}" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
+   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"
+   PointerEntered="OnTargetEntered" PointerExited="OnTargetExited"/>
+  <Grid Grid.Column="1" ColumnSpacing="4" HorizontalAlignment="Stretch">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <FontIcon Glyph="&#xE8B7;" FontSize="{x:Bind MetadataFontSize(TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}"
+    Visibility="{x:Bind HasText(FolderName), Mode=OneWay}" Opacity="{ThemeResource PopupMetadataOpacity}"/>
+   <TextBlock x:Name="FolderText" Grid.Column="1" Text="{x:Bind FolderName, Mode=OneWay}"
+    FontSize="{x:Bind MetadataFontSize(TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}" Opacity="{ThemeResource PopupMetadataOpacity}"
+    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"
+    PointerEntered="OnTargetEntered" PointerExited="OnTargetExited"/>
+   <TextBlock x:Name="TagsText" Grid.Column="2" Text="{x:Bind TagsDisplay, Mode=OneWay}" TextAlignment="Right"
+    FontSize="{x:Bind MetadataFontSize(TextSize.FontSize), Mode=OneWay, FallbackValue=11.9}" Opacity="{ThemeResource PopupMetadataOpacity}"
+    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"
+    PointerEntered="OnTargetEntered" PointerExited="OnTargetExited"/>
+  </Grid>
+ </Grid>
+</UserControl>

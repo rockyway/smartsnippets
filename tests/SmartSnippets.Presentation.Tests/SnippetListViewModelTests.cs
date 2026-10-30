@@ -26,6 +26,23 @@ public sealed class SnippetListViewModelTests
     }
 
     [Fact]
+    public void BodyOnlyEdit_ReplacesHoverContentBeyondPreviewBoundary()
+    {
+        var body = new string('a', 100);
+        var snippet = _store.SeedSnippet(body + " old", label: "Label");
+        using var vm = new SnippetListViewModel(_store);
+        var before = Assert.Single(vm.Items);
+        _store.UpdateSnippet(snippet.Id, new(body + " new", "Label", true, null, ""));
+        var after = Assert.Single(vm.Items);
+        Assert.Equal(before.Preview, after.Preview);
+        Assert.NotEqual(before, after);
+        Assert.Equal(body + " new", after.ContentText);
+        Assert.DoesNotContain(after.ContentText, after.ToString());
+        var equal = after with { ContentText = new string(after.ContentText.ToCharArray()) };
+        Assert.Equal(after, equal); Assert.Equal(after.GetHashCode(), equal.GetHashCode());
+    }
+
+    [Fact]
     public void RowsShareObservableTextSizeAcrossRebuilds()
     {
         var size = new TextSizeService();

@@ -1,0 +1,12 @@
+<UserControl x:Class="SmartSnippets.App.Controls.HoverDetailsSurface"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:automation="using:Microsoft.UI.Xaml.Automation"
+ IsTabStop="False" AllowFocusOnInteraction="False" IsFocusEngagementEnabled="False">
+ <Border x:Name="Surface" Padding="12" BorderThickness="1" CornerRadius="6"
+  PointerEntered="OnSurfaceEntered" PointerExited="OnSurfaceExited">
+  <ScrollViewer x:Name="Scroller" automation:AutomationProperties.AutomationId="HoverDetailsScroll" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+   VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Auto" IsVerticalScrollChainingEnabled="False" IsHorizontalScrollChainingEnabled="False" IsTabStop="False" AllowFocusOnInteraction="False">
+   <TextBlock x:Name="Body" automation:AutomationProperties.AutomationId="HoverDetailsBody" TextWrapping="Wrap" IsTextSelectionEnabled="False"/>
+  </ScrollViewer>
+ </Border>
+</UserControl>

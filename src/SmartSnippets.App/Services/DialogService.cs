@@ -83,6 +83,7 @@ internal sealed class DialogService : IDialogService
 
     private async Task<ContentDialogResult> ShowAsync(ContentDialog dialog)
     {
+        Controls.HoverDetailsSurface.CancelActive();
         await _gate.WaitAsync();
         try
         {
@@ -98,6 +99,7 @@ internal sealed class DialogService : IDialogService
                 return ContentDialogResult.None;
             }
 
+            Controls.HoverDetailsSurface.CancelActive(root);
             dialog.XamlRoot = root;
             if (root.Content is FrameworkElement content)
             {

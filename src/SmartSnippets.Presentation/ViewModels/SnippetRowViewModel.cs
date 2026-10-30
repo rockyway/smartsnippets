@@ -14,17 +14,19 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
     public ITextSizeService? TextSize { get; init; }
     public string FolderName { get; init; } = string.Empty;
     public string TagsDisplay { get; init; } = string.Empty;
+    public string ContentText { get; init; } = string.Empty;
     public bool HasFolder => FolderName.Length != 0;
     public string Details => string.Join(" ", new[] { FolderName, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
 
     /// <summary>
-    /// Equality covers only what the row shows (label, folder, tags). Usage counts and the text preview change on every
-    /// insertion or silent edit but are not displayed, so including them made each insert rebuild the whole list.
+    /// Equality covers visible fields and hover content. Usage and timestamps remain excluded so
+    /// inserting without changing content does not rebuild the list.
     /// </summary>
     public bool Equals(SnippetRowViewModel? other) => other is not null
-        && Id == other.Id && Label == other.Label && FolderName == other.FolderName && TagsDisplay == other.TagsDisplay;
+        && Id == other.Id && Label == other.Label && FolderName == other.FolderName && TagsDisplay == other.TagsDisplay
+        && string.Equals(ContentText, other.ContentText, StringComparison.Ordinal);
 
-    public override int GetHashCode() => HashCode.Combine(Id, Label, FolderName, TagsDisplay);
+    public override int GetHashCode() => HashCode.Combine(Id, Label, FolderName, TagsDisplay, ContentText);
 
     // Narrator gets the same label and metadata as the visible row, not snippet text.
     public override string ToString() => string.Join(", ", new[] { Label, FolderName, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
@@ -36,6 +38,7 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
         UiText.RowMeta(view.FolderName ?? UiText.Unfiled, view.Snippet.UsageCount))
         {
             TextSize = textSize,
+            ContentText = view.Snippet.Text,
             FolderName = view.FolderName ?? string.Empty,
             TagsDisplay = string.Join(" ", view.Snippet.Tags.Select(tag => "#" + tag)),
         };

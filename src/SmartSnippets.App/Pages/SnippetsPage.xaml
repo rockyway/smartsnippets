@@ -6,7 +6,7 @@
     xmlns:controls="using:SmartSnippets.App.Controls"
     xmlns:conv="using:SmartSnippets.App.Converters"
     xmlns:vm="using:SmartSnippets.Presentation.ViewModels"
-    Loaded="OnLoaded">
+    Loaded="OnLoaded" KeyboardAcceleratorPlacementMode="Hidden">
     <Page.Resources>
         <conv:BrowseKindToVisibilityConverter x:Key="FolderDotVisible" />
 
@@ -231,23 +231,8 @@
                     automation:AutomationProperties.Name="Snippets">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:SnippetRowViewModel">
-                            <Grid Padding="0,4" ColumnSpacing="8" Background="Transparent" HorizontalAlignment="Stretch">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock VerticalAlignment="Center"
-                                    FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                                    Text="{x:Bind Label}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                                <Grid Grid.Column="1" ColumnSpacing="4" HorizontalAlignment="Right">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE8B7;" FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                                        Visibility="{x:Bind HasFolder}" />
-                                    <TextBlock Grid.Column="1" Text="{x:Bind Details}" TextAlignment="Right"
-                                        FontSize="{x:Bind TextSize.FontSize, Mode=OneWay, FallbackValue=14}"
-                                        TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                                </Grid>
-                            </Grid>
+                            <controls:SnippetRowDetails Label="{x:Bind Label}" FolderName="{x:Bind FolderName}"
+                                TagsDisplay="{x:Bind TagsDisplay}" ContentText="{x:Bind ContentText}" TextSize="{x:Bind TextSize}" />
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>

@@ -1,5 +1,5 @@
 # Isolated visual smoke test. Does not yet implement the complete UI QA matrix.
-param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateSet('Default','Ocean','Forest','Plum')][string]$Palette = 'Default', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum, [switch]$ToolbarOnly)
+param([string]$HarnessWorkerConfig = '', [int]$WatchdogTimeoutSeconds = 180, [string[]]$Only = @('UI'), [ValidateSet('System','Light','Dark')][string]$Theme = 'System', [ValidateSet('Default','Ocean','Forest','Plum')][string]$Palette = 'Default', [ValidateRange(0,32)][int]$CustomSize = 0, [switch]$CaptureOnly = $true, [switch]$MeasureOnly, [switch]$ProbePopupStyle, [switch]$SmokeMinimum, [switch]$ToolbarOnly, [switch]$HoverDetails)
 $ErrorActionPreference = 'Stop'
 if (-not $CaptureOnly) { throw 'Only the no-input capture mode is supported' }
 trap { Write-Warning ("UI QA worker failed: " + $_.Exception.Message + ' at ' + $_.ScriptStackTrace); break }
@@ -26,6 +26,7 @@ function Update-HarnessProgress {
 . (Join-Path $PSScriptRoot 'lib/Safety.ps1')
 . (Join-Path $PSScriptRoot 'lib/OwnedProcesses.ps1')
 . (Join-Path $PSScriptRoot 'lib/Uia.ps1')
+if ($HoverDetails) { . (Join-Path $PSScriptRoot 'lib/HoverDetailsQa.ps1') }
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -39,6 +40,7 @@ public static class QaResize {
     [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd);
     [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowStyle(IntPtr h, int index);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
     [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
     public static Point MinimumTrackSize(IntPtr hwnd) {
@@ -115,6 +117,19 @@ function Request-QAActivation([string[]]$arguments) {
     $after = [Win32Verify]::GetForegroundWindow()
     if ($before -cne $after) { throw 'Foreground changed during activation redirect' }
 }
+function Assert-QAMainMetadataFonts($list) {
+    $values = @()
+    foreach ($name in @('First synthetic', 'QA folder', '#work #qa')) {
+        $element = Find-ByName $list $name ([Windows.Automation.ControlType]::Text)
+        $pattern = $null
+        if (-not $element -or -not $element.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { throw 'Main row TextPattern unavailable' }
+        $value = $pattern.DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontSizeAttribute)
+        if ($value -isnot [double]) { throw 'Main row font size unavailable' }
+        $values += $value
+    }
+    if ([Math]::Abs($values[1] - .85*$values[0]) -gt .05 -or [Math]::Abs($values[2] - .85*$values[0]) -gt .05) { throw 'Main metadata font size must be 85% of label' }
+    Write-Host "Main font sizes: label=$($values[0]) folder=$($values[1]) tags=$($values[2])"
+}
 function ProfileHash($path) {
     if (-not (Test-Path -LiteralPath $path)) { return 'ABSENT' }
     $items = @(Get-ChildItem -LiteralPath $path -File -Recurse -Force | Sort-Object FullName | ForEach-Object { $_.FullName.Substring($path.Length) + ':' + (Get-HarnessFileHash $_.FullName) })
@@ -152,6 +167,12 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Synthetic fixture seeding failed' }
         & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('color_palette','$Palette') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
         if ($LASTEXITCODE -ne 0) { throw 'Palette fixture seeding failed' }
+        if ($HoverDetails) {
+            $script:HoverFixtureBody = (1..80 | ForEach-Object { 'QA body line {0:D3} actual content distinct from label' -f $_ }) -join "`n"
+            $escapedBody = $script:HoverFixtureBody.Replace("'","''")
+            & sqlite3 -batch $db "UPDATE snippets SET text='$escapedBody' WHERE label='First synthetic';"
+            if ($LASTEXITCODE -ne 0) { throw 'Hover fixture seeding failed' }
+        }
         if ($CustomSize -gt 0) {
             if ($CustomSize -lt 10) { throw 'Custom size must be 10 through 32' }
             & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('text_size.preset','Custom'),('text_size.custom','$CustomSize') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
@@ -256,7 +277,7 @@ try {
                 continue
             }
             $targetPages = @(@('snippets','SnippetList'), @('folders','FolderList'), @('settings','TextSizeRadios'))
-            if ($ToolbarOnly) { $targetPages = @(,@('snippets','SnippetList')) }
+            if ($ToolbarOnly -or $HoverDetails) { $targetPages = @(,@('snippets','SnippetList')) }
             if ($SmokeMinimum -and -not $isMinimum) {
                 $targetPages = @()
                 if ($Theme -eq 'Light' -and $size[0] -eq 1280) { $targetPages += ,@('snippets','SnippetList') }
@@ -272,6 +293,7 @@ try {
                     $visibleText = @(Find-All $shown ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                     if ('Synthetic one' -in $visibleText -or 'Synthetic two' -in $visibleText -or 'Synthetic three' -in $visibleText) { throw 'Snippet bodies appeared as separate list rows' }
                     if ('First synthetic' -notin $visibleText) { throw 'Synthetic row label missing' }
+                    Assert-QAMainMetadataFonts $shown
                     if ($CustomSize -gt 0) {
                         $label = Find-ByName $shown 'First synthetic' ([Windows.Automation.ControlType]::Text)
                         $dpiScale = [QaResize]::GetDpiForWindow([IntPtr]$mainHwnd) / 96.0
@@ -279,6 +301,10 @@ try {
                     }
                 }
                 Save-QAScreenshot ([IntPtr]$mainHwnd) (Join-Path $out ("$($targetPage[0])-$Theme-size$CustomSize-$(if ($isMinimum) {'minimum'} else {'requested'})-$($size[0])x$($size[1]).png"))
+            }
+            if ($HoverDetails -and $size[0] -eq 1280) {
+                if (-not (Find-ById (Get-AppWindow $p.Id 'Smart Snippets') 'SnippetList')) { Request-QAActivation @('--page', 'snippets') }
+                Invoke-HoverDetailsQa (Get-AppWindow $p.Id 'Smart Snippets') $p.Id $script:HoverFixtureBody 'main'
             }
             $queries = if ($ToolbarOnly) { @() } elseif ($SmokeMinimum) { if (-not $isMinimum -and $size[0] -eq 900) { ,'' } else { @() } } else { @('', 'First', 'NoSuchQaResult') }
             foreach ($query in $queries) {
@@ -310,18 +336,22 @@ try {
                 if (-not $query -and $rows.Count -ne 3) { throw 'Populated preview did not return exactly three rows' }
                 if (-not $query) {
                     $label = Find-ByName $rows[0] 'First synthetic' ([Windows.Automation.ControlType]::Text)
-                    $metadata = Find-ByName $rows[0] 'QA folder #work #qa' ([Windows.Automation.ControlType]::Text)
+                    $metadata = Find-ByName $rows[0] 'QA folder' ([Windows.Automation.ControlType]::Text)
+                    $tags = Find-ByName $rows[0] '#work #qa' ([Windows.Automation.ControlType]::Text)
+                    if (-not $tags) { throw 'Popup font comparison: tags text element missing' }
                     if (-not $label -or -not $metadata) { throw 'Popup font comparison: label or metadata text element missing' }
-                    $labelPattern = $null; $metadataPattern = $null
+                    $labelPattern = $null; $metadataPattern = $null; $tagsPattern = $null
                     if (-not $label.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$labelPattern) -or
-                        -not $metadata.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$metadataPattern)) {
+                        -not $metadata.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$metadataPattern) -or
+                        -not $tags.TryGetCurrentPattern([Windows.Automation.TextPattern]::Pattern, [ref]$tagsPattern)) {
                         throw 'Popup font comparison: TextPattern unavailable; bounds alone do not measure glyph size'
                     }
                     $labelSize = $labelPattern.DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontSizeAttribute)
                     $metadataSize = $metadataPattern.DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontSizeAttribute)
-                    Write-Host "Popup font sizes: label=$labelSize metadata=$metadataSize"
-                    if ($labelSize -isnot [double] -or $metadataSize -isnot [double] -or $metadataSize -le 0 -or
-                        [Math]::Abs($metadataSize - 0.85 * $labelSize) -gt 0.05) {
+                    $tagsSize = $tagsPattern.DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontSizeAttribute)
+                    Write-Host "Popup font sizes: label=$labelSize folder=$metadataSize tags=$tagsSize"
+                    if ($labelSize -isnot [double] -or $metadataSize -isnot [double] -or $tagsSize -isnot [double] -or $metadataSize -le 0 -or
+                        [Math]::Abs($metadataSize - 0.85 * $labelSize) -gt 0.05 -or [Math]::Abs($tagsSize - 0.85 * $labelSize) -gt 0.05) {
                         throw 'Popup metadata font size does not match 85% of the label'
                     }
                     if ($CustomSize -gt 0 -and [Math]::Abs($labelSize - $CustomSize) -gt 0.05) {
@@ -331,12 +361,15 @@ try {
                 if ($query -eq 'First') {
                     if ($rows.Count -ne 1) { throw 'Preview search did not return exactly one row' }
                     $rowText = @(Find-All $rows[0] ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
-                    if ('First synthetic' -cnotin $rowText -or 'QA folder #work #qa' -cnotin $rowText) {
+                    if ('First synthetic' -cnotin $rowText -or 'QA folder' -cnotin $rowText -or '#work #qa' -cnotin $rowText) {
                         throw "Preview search returned wrong row label or metadata: $($rowText -join ' | ')"
                     }
                 }
                 $popupText = @(Find-All $list ([Windows.Automation.ControlType]::Text) | ForEach-Object { $_.Current.Name })
                 if ('Synthetic one' -in $popupText -or 'Synthetic two' -in $popupText -or 'Synthetic three' -in $popupText) { throw 'Snippet bodies appeared in popup rows' }
+                if ($HoverDetails -and -not $query -and $size[0] -eq 1280) {
+                    Invoke-HoverDetailsQa $popup $p.Id $script:HoverFixtureBody 'popup'
+                }
                 $state = if (-not $query) { 'filled' } elseif ($query -eq 'First') { 'search' } else { 'empty' }
                 Save-QAScreenshot ([IntPtr]$popup.Current.NativeWindowHandle) (Join-Path $out ("popup-$state-$Theme-size$CustomSize-$(if ($isMinimum) {'minimum'} else {'requested'})-$($size[0])x$($size[1]).png"))
             }
@@ -390,6 +423,7 @@ try {
     if ($events -notmatch ('(?m) INFO palette_loaded palette=' + [regex]::Escape($Palette) + '\s*$')) {
         throw 'Owned application did not load the requested palette fixture'
     }
+    if ($HoverDetails -and $events -match 'QA body line|First synthetic|QA folder|#work #qa') { throw 'Synthetic hover content leaked to app log' }
     Write-Host "Verified loaded palette=$Palette"
     Write-Host "Screenshots: $out"
     if ($script:QaFailures.Count) { throw 'One or more visual QA assertions failed' }
