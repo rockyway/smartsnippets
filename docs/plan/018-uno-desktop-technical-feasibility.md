@@ -180,16 +180,16 @@ Owner instruction: finish 018; continue through routine implementation/test chec
 | Task | Current evidence | Remaining completion obligation |
 |---|---|---|
 | T0 | Pinned toolchain; native validator and clean builds on both hosts | Final effective-property/dependency/OS-floor evidence |
-| T1 | Native GUI window observed on both hosts | Bounded native startup and graceful lifecycle receipts |
-| T2 | Native real-store seed/restart plus actual denied-file migration/restored-write checks on both hosts | UI-thread serialization and remaining fixture checks |
-| T3 | Minimal compiled main/editor binding fixture | Representative popup, coordinator, multiple windows, external hover, preview/focus/theme/placement |
-| T4 | Not implemented | Guarded owned-target native adapters and capability/error matrix |
+| T1 | Native GUI startup, ordered lifecycle callbacks and graceful process exit pass on both hosts | Final consolidated evidence/sign-off |
+| T2 | Native real-store seed/restart, denied-file migration/restored-write and actual UI-dispatcher-thread execution pass on both hosts | Remaining query/load/fixture coverage and final isolation/privacy sign-off |
+| T3 | Live compiled editor/typed popup rows, text-size, opposite-theme transition, native hide/re-show/close/recreate pass on both hosts; Windows bottom-left parking verified | Real coordinator/warmup, external hover, keyboard preview/focus/work-area coverage |
+| T4 | Read-only Mac Accessibility/event-posting preflight GRANTED on actual native bundle | Guarded owned-target native adapters, shortcut, permission/error/clipboard matrix and positive dispatch |
 | T5 | Not implemented | Actual entry-point → target dispatch, duplicate/usage/clipboard/preview assertions |
 | T6 | Build/data/basic-GUI report and regression tests | Full negative/privacy/recovery evidence and host manifests |
 | T7 | Missing-workload diagnostics only | Current source verification plus bounded app/keyboard build attempts or precise unavailable-toolchain evidence; flag mobile risk before 019 |
 | T8 | Checkpoint audits passed | Final wiring audit of completed flows and evidence-backed go/no-go |
 
-The previous basic-GUI slot ended after owned-process cleanup. Noninteractive coding/builds/research may continue; renew desktop availability before further live UI/input/clipboard tests.
+The owner subsequently granted standing preapproval for automatic guarded screen/keyboard/clipboard engagement to finish 018 and advance through reviewed plans, with plan → review → fold findings → implement → review/fix/re-review → verify/all-local-unit-tests → merge to develop when required gates pass. This does not authorize destructive system changes, security-setting weakening, unsafe clipboard loss or false PASS claims. Probe windows on Windows must be parked on the bottom monitor of the leftmost display column, within its work area; move only owned probe windows. Revalidate process/target ownership and recoverability before each native operation; abort an unsafe operation rather than redirecting input.
 
 ## 7. Test strategy and manual runbook
 

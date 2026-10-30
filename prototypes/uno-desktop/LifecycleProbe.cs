@@ -128,7 +128,14 @@ internal sealed class LifecycleProbe
         _failed = true;
         ExitCode = 1;
         _timer.Stop();
-        Console.Error.WriteLine($"ui_lifecycle_failed stage={_stage} kind={error.GetType().Name}");
+        var diagnostics = "readiness=-1";
+        try
+        {
+            if (_popupPage is { } page)
+                diagnostics = $"readiness={page.ReadinessFlags} panels={page.PanelChildCount} rows={page.VisualRowCount} texts={page.VisualTextCount}";
+        }
+        catch (Exception) { } // Diagnostic reads of a closed peer cannot block cleanup.
+        Console.Error.WriteLine($"ui_lifecycle_failed stage={_stage} kind={error.GetType().Name} {diagnostics}");
         // Never let a cleanup exception escape Uno's native dispatcher, which
         // otherwise prints a raw exception. Exit(1) is failure cleanup only:
         // macOS Application.Exit uses NSApplication terminate and exit(0).
@@ -153,6 +160,9 @@ internal sealed class LifecycleProbe
         _popup = new Window { Title = _popupTitle, Content = _popupPage };
         _popup.Closed += (_, _) => _closed++;
         _popup.AppWindow.Resize(new SizeInt32 { Width = 520, Height = 400 });
+#if WINDOWS
+        ProbeWindowPlacement.Park(_popup, 520, 400, secondary: true);
+#endif
         _popup.Activate();
         _popup.Title = _popupTitle; // Reapply after lazy native window creation.
     }

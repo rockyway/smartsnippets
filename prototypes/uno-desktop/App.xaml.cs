@@ -22,6 +22,9 @@ public partial class App : Application
 
         var page = new MainPage();
         _window = new Window { Content = page };
+#if WINDOWS
+        ProbeWindowPlacement.Park(_window, 640, 520);
+#endif
         if (Environment.GetCommandLineArgs().Contains("--probe-ui-lifecycle", StringComparer.Ordinal))
             _lifecycle = new LifecycleProbe(this, _window, page);
         _window.Activate();
