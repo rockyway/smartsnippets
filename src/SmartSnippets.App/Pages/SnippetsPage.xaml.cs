@@ -28,6 +28,9 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     {
         InitializeComponent();
         FlyoutSurface.KeepSolid(SortFlyout);
+        Controls.HoverDetailsSurface.WatchList(SnippetList);
+        SortFlyout.Opening += (_, _) => Controls.HoverDetailsSurface.CancelActive(XamlRoot);
+        Unloaded += (_, _) => Controls.HoverDetailsSurface.CancelActive(XamlRoot);
     }
 
     /// <summary>Set by the creator right after construction (no DI container).</summary>
@@ -66,7 +69,11 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         }
     }
 
-    public Task<bool> CanLeaveAsync() => _viewModel?.CanLeaveAsync() ?? Task.FromResult(true);
+    public Task<bool> CanLeaveAsync()
+    {
+        Controls.HoverDetailsSurface.CancelActive(XamlRoot);
+        return _viewModel?.CanLeaveAsync() ?? Task.FromResult(true);
+    }
 
     public string ImportGlyph => UiIcons.Import;
     // Debounced like the hotkey popup: apply the query once typing pauses.
@@ -183,6 +190,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     /// </summary>
     private void ApplyLayout()
     {
+        Controls.HoverDetailsSurface.CancelActive(XamlRoot);
         if (_isWide)
         {
             BrowseColumn.Width = new GridLength(200);
@@ -230,6 +238,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
 
     private void OnSnippetContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
     {
+        Controls.HoverDetailsSurface.CancelActive(XamlRoot);
         e.ItemContainer.RightTapped -= OnSnippetRightTapped;
         e.ItemContainer.RightTapped += OnSnippetRightTapped;
     }
@@ -244,6 +253,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
     private void ShowSnippetMenu(ListViewItem container, SnippetRowViewModel row, Windows.Foundation.Point? position = null)
     {
         if (_viewModel is not { } vm) return;
+        Controls.HoverDetailsSurface.CancelActive(XamlRoot);
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         FlyoutSurface.KeepSolid(menu);
         var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy };

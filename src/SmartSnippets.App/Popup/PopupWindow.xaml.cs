@@ -51,6 +51,9 @@ public sealed partial class PopupWindow : Window, IPopupHost
         TextSize = textSize; _openMainWindow = openMainWindow;
         InitializeComponent();
         FlyoutSurface.KeepSolid(SortFlyout);
+        Controls.HoverDetailsSurface.WatchList(PopupList);
+        Controls.HoverDetailsSurface.BoundsChanged += UpdateDragRegions;
+        SortFlyout.Opening += (_, _) => Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         RootGrid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
         {
             if (e.Key is VirtualKey.Enter or VirtualKey.Down or VirtualKey.Up or VirtualKey.PageDown or VirtualKey.PageUp or VirtualKey.Tab) ApplyQuery();
@@ -73,6 +76,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
         Activated += OnActivated; RootGrid.LayoutUpdated += OnLayoutUpdated; PopupList.LayoutUpdated += OnListLayoutUpdated;
         Closed += (_, _) =>
         {
+            Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
+            Controls.HoverDetailsSurface.BoundsChanged -= UpdateDragRegions;
             _closed = true;
             _uiSettings.ColorValuesChanged -= OnSystemColorsChanged;
             if (_viewModel is not null) _viewModel.PropertyChanged -= OnViewModelChanged;
@@ -157,6 +162,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         => DispatcherQueue.TryEnqueue(() => RefreshFrame());
     private void ShowSurface(bool activate = true, bool revealAfterFrame = true)
     {
+        Controls.HoverDetailsSurface.CancelActive();
         RefreshFrame();
         // A hidden window's swap chain is not presented, so the first frames after Show can be the
         // unpainted (white, then black) surface. Stay cloaked until XAML has produced a frame.
@@ -256,6 +262,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     public void Hide()
     {
         _previewSortMenuPending = false;
+        Controls.PopupRow.CancelActiveTooltip();
         _searchTimer?.Stop();
         SortFlyout.Hide();
         _shows.Hide();
@@ -295,7 +302,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnActivated(object sender, WindowActivatedEventArgs e)
     {
         RefreshFrame();
-        if (e.WindowActivationState == WindowActivationState.Deactivated) { if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
+        if (e.WindowActivationState == WindowActivationState.Deactivated) { Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot); if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
         ReportReady();
     }
     private void OnLayoutUpdated(object? sender, object e)
@@ -346,6 +353,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnItemClick(object sender, ItemClickEventArgs e) { if (e.ClickedItem is PopupItemViewModel item) _ = ViewModel.ActivateAsync(item); }
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
     {
+        Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         if (e.Item is PopupItemViewModel item)
         {
             e.ItemContainer.RightTapped -= OnRowRightTapped;
@@ -363,6 +371,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void ShowRowMenu(ListViewItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
     {
         if (!ViewModel.CanUseRowActions(item)) return;
+        Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         FlyoutSurface.KeepSolid(menu);
@@ -391,6 +400,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private static bool IsEmptySurface(object? source, UIElement root)
     {
+        if (Controls.HoverDetailsSurface.Owns(source)) return false;
         for (var node = source as DependencyObject; node is not null && node != root; node = VisualTreeHelper.GetParent(node))
             if (node is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.SelectorItem or Microsoft.UI.Xaml.Controls.Primitives.RangeBase) return false;
         return true;
@@ -414,7 +424,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
                     if (fe is TextBox or Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or ListView)
                     {
                         if (fe.ActualWidth <= 0 || fe.ActualHeight <= 0) continue;
-                        var b = fe.TransformToVisual(RootGrid).TransformBounds(new Windows.Foundation.Rect(0, 0, fe.ActualWidth, fe.ActualHeight));
+                        var b = fe.TransformToVisual(RootGrid.XamlRoot.Content).TransformBounds(new Windows.Foundation.Rect(0, 0, fe.ActualWidth, fe.ActualHeight));
                         holes.Add(new RectInt32((int)(b.X * scale), (int)(b.Y * scale), (int)Math.Ceiling(b.Width * scale), (int)Math.Ceiling(b.Height * scale)));
                         continue;
                     }
@@ -424,13 +434,15 @@ public sealed partial class PopupWindow : Window, IPopupHost
             }
         }
         // An open editor owns the whole surface; leave it fully interactive.
-        if (ViewModel.IsEditorOpen) holes.Add(new RectInt32(0, 0, (int)Math.Ceiling(RootGrid.ActualWidth * scale), (int)Math.Ceiling(RootGrid.ActualHeight * scale)));
+        if (ViewModel.IsEditorOpen) holes.Add(new RectInt32(0, 0, (int)Math.Ceiling(RootGrid.XamlRoot.Size.Width * scale), (int)Math.Ceiling(RootGrid.XamlRoot.Size.Height * scale)));
         else Collect(RootGrid);
+        if (Controls.HoverDetailsSurface.TryBounds(RootGrid.XamlRoot, out var hover))
+            holes.Add(new RectInt32((int)(hover.X * scale), (int)(hover.Y * scale), (int)Math.Ceiling(hover.Width * scale), (int)Math.Ceiling(hover.Height * scale)));
         var rects = holes.ToArray();
         if (rects.AsSpan().SequenceEqual(_passthrough)) return;
         _passthrough = rects;
         var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-        source.SetRegionRects(NonClientRegionKind.Caption, [new RectInt32(0, 0, (int)Math.Ceiling(RootGrid.ActualWidth * scale), (int)Math.Ceiling(RootGrid.ActualHeight * scale))]);
+        source.SetRegionRects(NonClientRegionKind.Caption, [new RectInt32(0, 0, (int)Math.Ceiling(RootGrid.XamlRoot.Size.Width * scale), (int)Math.Ceiling(RootGrid.XamlRoot.Size.Height * scale))]);
         source.SetRegionRects(NonClientRegionKind.Passthrough, rects);
     }
     private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
@@ -462,6 +474,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor)) Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         if (e.PropertyName == nameof(PopupViewModel.Items) && _searchStarted != 0) _awaitingLayout = true;
         if (e.PropertyName == nameof(PopupViewModel.SelectedIndex) && ViewModel.SelectedIndex >= 0 && ViewModel.SelectedIndex < ViewModel.Items.Count)
         {

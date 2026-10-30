@@ -11,6 +11,7 @@
             <!-- Design tokens (plan 009 T7). Inlined here rather than a separate ms-appx dictionary: the unpackaged app uses no ms-appx URIs elsewhere. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
+                    <x:Double x:Key="PopupMetadataOpacity">0.8</x:Double>
                     <SolidColorBrush x:Key="MenuSolidBrush" Color="#2B2B2B" />
                     <!-- Menus (sort, row context) use a solid surface, not the default translucent acrylic. -->
                     <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SolidBackgroundFillColorQuarternaryBrush" />
@@ -29,6 +30,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
+                    <x:Double x:Key="PopupMetadataOpacity">0.8</x:Double>
                     <SolidColorBrush x:Key="MenuSolidBrush" Color="#F9F9F9" />
                     <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SolidBackgroundFillColorQuarternaryBrush" />
                     <StaticResource x:Key="ListViewItemBackground" ResourceKey="SubtleFillColorTransparentBrush" />
@@ -46,6 +48,7 @@
                     <SolidColorBrush x:Key="DangerForegroundBrush" Color="#FFFFFF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <x:Double x:Key="PopupMetadataOpacity">1</x:Double>
                     <SolidColorBrush x:Key="MenuSolidBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ListViewItemBackground" Color="{ThemeResource SystemColorWindowColor}" />

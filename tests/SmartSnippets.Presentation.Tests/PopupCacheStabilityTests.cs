@@ -79,6 +79,7 @@ public sealed class PopupCacheStabilityTests(Xunit.Abstractions.ITestOutputHelpe
             Assert.Equal(source.Snippet.Label, row.Label);
             Assert.Equal(source.FolderName ?? "", row.FolderChip);
             Assert.Empty(row.Preview);
+            Assert.Equal(source.Snippet.Text, row.ContentText);
         }
         Drain();
         Assert.Equal(before + 1, vm.CacheRebuildCount);

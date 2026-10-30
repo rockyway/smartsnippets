@@ -115,6 +115,21 @@ public static class SmartSnippetsPostedInput
     {
         if (!PostMessage(hwnd, message, w, l)) throw new InvalidOperationException("Could not post input message");
     }
+    public static IntPtr Move(IntPtr root, uint pid, int screenX, int screenY)
+    {
+        var hwnd = FindInputWindow(root, pid, screenX, screenY);
+        var point = new Point { X=screenX, Y=screenY };
+        if (!ScreenToClient(hwnd, ref point)) throw new InvalidOperationException("ScreenToClient failed");
+        Post(hwnd, 0x200, IntPtr.Zero, new IntPtr(PackClientPoint(point.X, point.Y)));
+        return hwnd;
+    }
+    public static void Wheel(IntPtr root, uint pid, int screenX, int screenY, short delta)
+    {
+        var hwnd = FindInputWindow(root, pid, screenX, screenY);
+        // WM_MOUSEWHEEL packs signed screen coordinates, unlike client mouse messages.
+        var position = unchecked((screenY << 16) | (screenX & 0xffff));
+        Post(hwnd, 0x20A, new IntPtr(unchecked((int)((ushort)delta << 16))), new IntPtr(position));
+    }
     public static IntPtr Click(IntPtr root, uint pid, int screenX, int screenY)
     {
         var hwnd = FindInputWindow(root, pid, screenX, screenY);
