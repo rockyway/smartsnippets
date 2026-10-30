@@ -16,6 +16,7 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishSingleFile>false</PublishSingleFile>
+    <DefaultItemExcludes>$(DefaultItemExcludes);vendor/**;macos-json-risk/**;mobile-risk/**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
     <WinAppSdkVersion>1.8.260921001</WinAppSdkVersion>
@@ -25,6 +26,8 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <StartupObject>SmartSnippets.UnoProbe.WindowsProgram</StartupObject>
     <!-- Diagnostic only: test the documented manual-package path, not an IL suppression. -->
     <DisableImplicitUnoPackages Condition="'$(ProbeManualWindowsPackages)' == 'true'">true</DisableImplicitUnoPackages>
     <!-- Uno.Sdk otherwise injects a global using Uno.UI even in manual mode. -->
@@ -34,6 +37,25 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(WinAppSdkVersion)" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(WinAppSdkBuildToolsVersion)" />
   </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'desktop'">
+    <UnoIcon Include="Assets/Icons/icon.svg" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'desktop' AND '$(ProbePatchedMacOSRuntime)' == 'true'">
+    <ProjectReference Include="vendor/UnoMacOSRuntime/UnoMacOSRuntime.csproj" />
+  </ItemGroup>
+  <Target Name="SelectSourceBuiltMacOSRuntime" AfterTargets="UnoImplicitPackages"
+          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'desktop' AND '$(ProbePatchedMacOSRuntime)' == 'true'">
+    <ItemGroup>
+      <!-- Retain the published native host/build assets; only managed code is
+           replaced by the source-built project, never patched in the cache. -->
+      <_OriginalMacOSPackage Include="@(PackageReference)" Condition="'%(PackageReference.Identity)' == 'Uno.WinUI.Runtime.Skia.MacOS'" />
+      <PackageReference Remove="@(_OriginalMacOSPackage)" />
+      <PackageReference Include="@(_OriginalMacOSPackage)">
+        <ExcludeAssets>compile;runtime</ExcludeAssets>
+      </PackageReference>
+      <_OriginalMacOSPackage Remove="@(_OriginalMacOSPackage)" />
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <!-- Standalone serializer investigation is not source for the Uno application. -->
     <Compile Remove="macos-json-risk/**/*.cs" />

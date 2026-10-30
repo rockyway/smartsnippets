@@ -24,6 +24,11 @@ if ($onMac -and [System.Runtime.InteropServices.RuntimeInformation]::OSArchitect
 if ($ManualWindowsPackages -and !$onWindows) {
     throw 'The manual-package experiment is scoped to the Windows target.'
 }
+if ($onMac) {
+    # Use the tested Native AOT bundle path, not SDK Extras' CoreCLR launcher.
+    & bash (Join-Path $PSScriptRoot 'collect-build.sh')
+    exit $LASTEXITCODE
+}
 $runId = [Guid]::NewGuid().ToString('N')
 $private = Join-Path ([System.IO.Path]::GetTempPath()) "SmartSnippets.Uno018-$runId"
 New-Item -ItemType Directory -Path $private | Out-Null
@@ -47,9 +52,8 @@ $log = Join-Path $private 'publish.log'
 $common = @('-p:Configuration=Release', "-p:RuntimeIdentifier=$RuntimeIdentifier", '-p:NoWarn=1701',
     '-p:SuppressTrimAnalysisWarnings=false', '-p:TrimmerSingleWarn=false')
 if ($ManualWindowsPackages) { $common += '-p:ProbeManualWindowsPackages=true' }
-# PackageFormat=app is an unverified macOS request until tested on Apple Silicon.
-# Do not imply that a CodesignKey property establishes ad-hoc signing under Uno.Sdk.
-if ($onMac) { $common += @('-p:PackageFormat=app') }
+& dotnet restore $project -r $RuntimeIdentifier -p:Configuration=Release @common 2>&1 | Set-Content -LiteralPath (Join-Path $private 'restore.log') -Encoding utf8
+if ($LASTEXITCODE -ne 0) { throw 'Restore failed; property evidence cannot be collected.' }
 $names = 'TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,WindowsPackageType,NETCoreSdkVersion,MSBuildVersion,UnoVersion,WinAppSdkVersion,TargetPlatformMinVersion,ProbeManualWindowsPackages,DisableImplicitUnoPackages'
 & dotnet msbuild $project "-p:TargetFramework=$tfm" -p:_IsPublishing=true @common "-getProperty:$names" 2>&1 | Set-Content -LiteralPath $properties -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'MSBuild property collection failed; evidence is private and not a PASS.' }
@@ -57,7 +61,7 @@ if ($LASTEXITCODE -ne 0) { throw 'MSBuild property collection failed; evidence i
 # Never accept a later incremental link as fresh zero-warning evidence.
 & dotnet clean $project -f $tfm -r $RuntimeIdentifier -c Release @common 2>&1 | Set-Content -LiteralPath (Join-Path $private 'clean.log') -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'Clean failed; a fresh compiler run cannot be established.' }
-& dotnet publish $project -f $tfm -r $RuntimeIdentifier -c Release -o $output @common 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
+& dotnet publish $project -f $tfm -r $RuntimeIdentifier -c Release --no-restore -o $output @common 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
 $publishExit = $LASTEXITCODE
 Add-Content -LiteralPath $log -Value "probe_publish_exit=$publishExit" -Encoding utf8
 $executable = if ($onWindows) {

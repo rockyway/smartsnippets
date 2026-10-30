@@ -14,12 +14,17 @@ ROOT = PROBE.parents[1]
 @unittest.skipUnless(sys.platform == "win32" and shutil.which("dotnet"),
                      "Windows SDK property-evaluation checks require dotnet on Windows")
 class PackageModeTests(unittest.TestCase):
-    def evaluate(self, project, tfm, manual=False, items=False, compile_items=False):
+    def evaluate(self, project, tfm, manual=False, items=False, compile_items=False,
+                 patched=False, resolve_implicit=False):
         args = ["dotnet", "msbuild", str(project), "-p:Configuration=Release",
                 "-p:TargetFramework=" + tfm,
                 "-getProperty:DisableImplicitUnoPackages,ImplicitUsings,ManagePackageVersionsCentrally,PublishAot"]
         if manual:
             args.append("-p:ProbeManualWindowsPackages=true")
+        if patched:
+            args.append("-p:ProbePatchedMacOSRuntime=true")
+        if resolve_implicit:
+            args.append("-t:UnoImplicitPackages")
         if items:
             args.append("-getItem:PackageReference")
         if compile_items:
@@ -57,6 +62,21 @@ class PackageModeTests(unittest.TestCase):
         sources = [item["Identity"].replace("\\", "/") for item in document["Items"]["Compile"]]
         self.assertIn("App.xaml.cs", sources)
         self.assertFalse(any("macos-json-risk/" in path for path in sources))
+
+    def test_source_replacement_excludes_only_original_macos_managed_asset(self):
+        document = self.evaluate(PROBE / "SmartSnippets.UnoProbe.csproj", "net10.0-desktop",
+                                 items=True, patched=True, resolve_implicit=True)
+        packages = {item["Identity"]: item for item in document["Items"]["PackageReference"]}
+        self.assertEqual("compile;runtime", packages["Uno.WinUI.Runtime.Skia.MacOS"]["ExcludeAssets"])
+        self.assertNotIn("compile", packages["Uno.WinUI"].get("ExcludeAssets", "").lower())
+        self.assertNotIn("runtime", packages["Uno.WinUI"].get("ExcludeAssets", "").lower())
+
+    def test_desktop_sources_exclude_all_vendor_and_nested_risk_code(self):
+        document = self.evaluate(PROBE / "SmartSnippets.UnoProbe.csproj", "net10.0-desktop",
+                                 compile_items=True, patched=True)
+        sources = [item["Identity"].replace("\\", "/") for item in document["Items"]["Compile"]]
+        self.assertIn("DataProbe.cs", sources)
+        self.assertFalse(any(path.startswith(("vendor/", "macos-json-risk/", "mobile-risk/")) for path in sources))
 
     def test_production_libraries_keep_central_package_management(self):
         for name in ("Core", "Presentation"):

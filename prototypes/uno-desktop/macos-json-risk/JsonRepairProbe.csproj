@@ -6,4 +6,7 @@
     <IsAotCompatible>true</IsAotCompatible>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../vendor/UnoMacOSRuntime/MacOSWebViewJsonContext.cs" Link="MacOSWebViewJsonContext.cs" />
+  </ItemGroup>
 </Project>

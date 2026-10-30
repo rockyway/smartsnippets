@@ -1,84 +1,64 @@
 # Plan 018 — isolated Uno desktop feasibility probe
 
-**State: BLOCKED — default Windows IL2059 and macOS native WebView IL2026/IL3050. Not a production port.**
+**In progress: clean Native AOT builds and headless native data tests pass on Windows x64 and Apple Silicon. GUI/insertion/mobile feasibility is NOT established. Not a production port.**
 
-The default multi-target Uno project restores and its Windows XAML compiles, but a **clean default-mode** native publish fails in precompiled `Uno.UI.Toolkit` XAML initialization. An **opt-in manual Windows package experiment** now publishes a native artifact; it is not enabled by default or runtime-verified. See [investigation 013](../../docs/research/013-uno-windows-aot-defect-investigation.md). No GUI artifact has been launched, no store fixture has been run in the Uno host, and no target/clipboard/shortcut adapter is implemented. Do not read the scaffold or build-validator tests as desktop parity evidence. See [results](../../docs/research/012-uno-desktop-feasibility-results.md).
+Current evidence, artifact digests, limitations and remaining gates: [research 016](../../docs/research/016-uno-native-aot-repair-and-data-probes.md). Earlier failures remain documented in research 012–015; they describe historical checkpoints, not the current selected configurations.
 
-## Pinned, observed tooling
+## Tooling and isolation
 
-- Uno.Templates **6.7.30**, Uno.Sdk **6.7.30**, resolved Uno framework **6.7.135**.
-- .NET SDK **10.0.403**, MSBuild **18.9.15**, native compiler **10.0.14** on Windows x64.
-- `WinAppSdkVersion=1.8.260921001` (matches the current app), unpackaged `WindowsPackageType=None`.
-- Windows TFM `net10.0-windows10.0.26100`; evaluated minimum OS `10.0.18362.0`. This is **probe-only** and is not approval to raise production's 17763 minimum.
-- macOS TFM `net10.0-desktop`, RID **osx-arm64** only. Actual Mac checkout is `~/sources/demo/smartsnippets`: macOS 26.5.2 / Xcode 26.6 / .NET SDK 10.0.403. Restore and C#/XAML compile pass, but clean native publish fails IL2026/IL3050 in vendor WebView JSON. OS floor, published bundle and launch remain **unverified**; see [014](../../docs/research/014-uno-apple-silicon-first-build.md).
-- No production `global.json`, central packages, source files, solution or CI changes.
+- Uno.Sdk 6.7.30, resolved framework 6.7.135; .NET SDK 10.0.403.
+- Windows native WinAppSDK 1.8.260921001, unpackaged x64. Probe minimum Windows 18362 is not approval to raise production's 17763 floor.
+- macOS `net10.0-desktop` / `osx-arm64` only, tested building on macOS 26.5.2 / Xcode 26.6. Native entry minimum 12.0 is not a tested product-support floor.
+- Independent application identity, scoped NuGet package mode, no HotDesign/MCP servers. Production packages/source/solution/SDK/CI remain untouched.
+- No default GUI launch. Both native entry points handle only explicit headless `--probe-data` before host initialization, or require `--authorized-probe-ui` for GUI mode. **The flag itself is not authorization.**
 
-Template source was generated in OS temp using a **private template hive** (not the global template install):
+## Build and inspect only
 
-```text
-dotnet new install Uno.Templates@6.7.30 --debug:custom-hive <private-temp-hive>
-dotnet new unoapp -n SmartSnippets.UnoProbe -o <private-temp-output> -preset blank -platforms windows desktop -tfm net10.0 -presentation none -markup xaml -tests none -log none -vscode false -rider false -skip --debug:custom-hive <private-temp-hive>
-```
-
-The checked-in project is deliberately smaller than the generated solution. A scoped `Directory.Packages.props` explicitly stops NuGet inheriting production CPM; setting the local build property alone was insufficient. `UnoDisableHotDesign=true` and `UnoDisableMCPSupport=true` exclude design/MCP tools from this offline probe. Local package-management settings do not affect the production projects' central package versions. Only the Windows host selects the Windows TFM; macOS target/source selection has now compiled on Apple Silicon, with native AOT/runtime acceptance still blocked. `Platforms/Desktop/Program.cs` uses the actual generated `UnoPlatformHostBuilder`/`UseMacOS` APIs and compiles on the Mac; the host has not been launched.
-
-## Build-only collector (no GUI, Python 3 + PowerShell 7.2+ required)
-
-From the repository root on Windows:
-
-```powershell
-pwsh -NoProfile -File prototypes/uno-desktop/collect-build.ps1 -RuntimeIdentifier win-x64
-```
-
-The collector creates owner-only evidence storage under the current user's OS temp directory and a unique output under ignored `bin/probe/`. It cleans before publishing and records effective properties, raw compiler output and the exit code privately. **An ILC failure can leave an object file that a subsequent incremental publish links without reprinting diagnostics.** The validator refuses this as fresh evidence: a real native compile receipt is mandatory. No artifact, profile or user's clipboard is executed/accessed by this collector. Do not run other builds concurrently against the shared Core/Presentation output.
-
-The effective `NoWarn=1701` command property deliberately **removes** vendor-injected `IL2121` suppression, rather than adding any IL suppression. `SuppressTrimAnalysisWarnings=false`, `TrimmerSingleWarn=false` and warnings-as-errors stay enabled. The project has a matching Windows publish profile and default language to avoid missing-profile/resource-language warnings without suppressions.
-
-A future Mac operator may try the matching `-RuntimeIdentifier osx-arm64` collector after prerequisites are established; its macOS bundle layout is unverified and a mismatch must be corrected from actual host evidence, not treated as PASS. `PackageFormat=app` is only an unverified bundle request until tested on Uno's desktop backend; no signing property or resulting ad-hoc signature is assumed. A Mac operator must inspect actual packaging/signature output before accepting any signing evidence. It never launches that bundle.
-
-## Opt-in AOT investigation (Windows build only)
+From the repository root on Windows, PowerShell 7.2+ and Python 3:
 
 ```powershell
 pwsh -NoProfile -File prototypes/uno-desktop/collect-build.ps1 -RuntimeIdentifier win-x64 -ManualWindowsPackages
 ```
 
-This selects documented manual package management only on the Windows TFM, omits the precompiled Uno helper causing IL2059, and explicitly retains native WinAppSDK/BuildTools using the same version pins. Uno.Sdk injects a `Uno.UI` global using even in manual package mode, so that mode disables implicit usings and the App imports its namespaces explicitly. Desktop still uses implicit Uno packages. No IL suppression, package patch, Skia-on-Windows or JIT fallback is involved.
+The opt-in manual Windows graph avoids the precompiled Uno helper IL2059 by retaining native WinAppSDK dependencies without Uno helper packages. Default mode still reproduces the defect. This is approved only for continued probe work, not production adoption or full UI dependency parity; see [013](../../docs/research/013-uno-windows-aot-defect-investigation.md).
 
-**Scope limit:** the experiment also omits Uno Windows helper/asset/logging packages. It proves this minimal XAML can compile/publish, not that the full UI can omit these dependencies. The library-specific `DisableImplicitUnoWinAppSdkPackages` switch is not used. The generic `DisableImplicitUnoPackages` path is documented, but this app-head dependency set still requires runtime validation. The owner approved this opt-in mode for remaining probe work; it is not a production dependency decision. Both commands clean before compilation; run them sequentially.
+On Apple Silicon, with .NET on PATH, from `prototypes/uno-desktop`:
 
-## Validator and property-only integration tests
+```sh
+python3 vendor/prepare_source.py --output vendor/obj/upstream
+bash collect-build.sh
+```
+
+The collector selects the pinned source-built macOS managed runtime correction described in [vendor/README.md](vendor/README.md). Two generated JSON contracts replace reflection serializer calls; native callbacks and host code remain. Source verification is mandatory before compilation. SDK Extras' CoreCLR app launcher is not used: `build_native_bundle.py` packages the compiled native entry, preserves resources/notices, ad-hoc signs owned copies and verifies the bundle. No notarization or release-signing claim is made.
+
+Collectors clean before publish and retain private owner-only OS-temp logs/properties. Output is under ignored `bin/probe`. They never execute the app, access clipboard/profile, register hotkeys or alter TCC/HKCU. Run .NET builds/tests sequentially to avoid shared Core output collisions.
+
+`NoWarn=1701` removes vendor IL suppression rather than adding one. Warnings-as-errors, `SuppressTrimAnalysisWarnings=false` and `TrimmerSingleWarn=false` remain. A native compile receipt is required: incremental output left by a failed ILC run cannot silently become fresh successful evidence.
+
+## Explicit headless native data test
+
+After inspecting a collector's native artifact and recording its SHA256:
+
+```text
+python prototypes/uno-desktop/run_data_probe.py --executable <owned-native-entry> --sha256 <recorded-SHA256>
+```
+
+Use `python3` on macOS. The runner accepts only the expected native entry inside this probe's owned output, checks its hash/header, and runs seed then verification as separate bounded processes with content-free receipts. Actual Core SQLite/store/migrations/settings/JSON run in an owner-only synthetic OS-temp profile. Successful verification removes that profile. A failed run retains synthetic data for diagnosis; do not broadly delete temp directories.
+
+Coverage includes migration/backup, missing DB, Unicode/mixed newlines, CRUD/usage/settings, export/import, restart, corrupt/newer-schema refusal and log scan. Inaccessible-path coverage is a directory at the DB path, not ACL denial. No GUI host starts, and no production profile or clipboard is used. These checks do not establish UI-thread access, windowing or insertion.
+
+## Tests / evidence validator
 
 ```text
 python -m unittest discover -s prototypes/uno-desktop/tests -v
 ```
 
-The standard-library-only validator checks effective properties, all visible warnings/errors, a native compiler receipt/successful publish exit, PE/Mach-O architecture/managed-entry characteristics, known JIT payloads and a native SQLite asset. It also binds the expected TFM/backend to each RID and rejects managed apphost layouts, single-file publish settings and known runtime-host bundle markers. It returns **REJECTED** or **BUILD_CHECKS_ONLY**, never runtime PASS. Header fixtures test the parser, not real Native AOT provenance; trusted local build records and target-device validation remain necessary. It does not certify macOS signatures, exact dependencies, runtime execution or clipboard/focus safety. All raw paths/exception output stay out of its JSON summary.
+Validator checks effective AOT/unsuppressed properties, fresh successful native compilation, PE/Mach-O architecture, SQLite native assets, backend/RID correspondence and absence of managed apphost/JIT layouts. Result is REJECTED or BUILD_CHECKS_ONLY, never runtime feasibility PASS. Parser fixtures do not independently prove native provenance.
 
-To inspect existing **private** build evidence manually:
+The `macos-json-risk` CLI links the overlay's exact generated context and natively verifies four dictionary fixtures plus the distinct navigation-header Key/Value-array wire shape with reflection disabled. It is not a GUI test.
 
-```text
-python prototypes/uno-desktop/verify_evidence.py --properties <private-properties.json> --log <private-publish.log> --artifact-dir <output> --executable <output-executable> --rid win-x64
-```
+## Remaining / safety
 
-## macOS JSON risk proof (not the Uno application)
+Representative multiwindow main/editor/popup, external hover, focus, target-free preview, native shortcut/target/clipboard adapters, permission/error recovery, full privacy scans and mobile app/keyboard strict-AOT risk checks remain incomplete. Mobile prerequisite restores currently report missing workloads (NETSDK1147); no workload was silently installed. See research 016 and plan 018 for the exact acceptance gates.
 
-[Investigation 015](../../docs/research/015-uno-macos-aot-defect-investigation.md) traces unconditional host callback registration to the vendor reflection serializer. A standalone .NET CLI under `macos-json-risk/` first reproduced IL2026/IL3050 and then successfully published and ran natively on Apple Silicon using a generated JSON contract (four synthetic fixtures, reflection serialization disabled). Its source is excluded from the Uno app's Compile items.
-
-This proves the proposed dictionary serializer correction, **not** a patched Uno package or native GUI startup. The separate navigation-header serializer still needs a vendor-level audit. Only the headless CLI was run; no screen/input permission is implied. Reproduction commands and exact upstream source links are in 015.
-
-## Mobile prerequisite diagnostic (not keyboard implementation)
-
-```text
-dotnet restore prototypes/uno-desktop/mobile-risk/ToolchainCheck.csproj
-dotnet restore prototypes/uno-desktop/mobile-risk/ToolchainCheck.csproj -p:TargetFramework=net10.0-ios
-```
-
-Both currently fail **NETSDK1147** because Android/iOS workloads are absent. No workload is silently installed. This checks only the first prerequisite: it proves neither mobile Native AOT support nor impossibility. Actual app-plus-keyboard/IME builds, signing, device launch and 10k projection memory remain NOT RUN.
-
-## Safety / next action
-
-There is **no default GUI mode**: desktop startup returns before host creation without `--authorized-probe-ui`; the Windows App also refuses activation without that flag. **The flag is not authorization.** Only use it after a separate approved screen slot and safe isolation procedure. Windowing, external hover, runtime receipts and native insertion adapters are not implemented/verified at this blocked checkpoint. Never call this a non-activating self-test.
-
-All future private databases, WAL/backups, profiles, raw logs and recovery journals must remain outside the repository with owner-only permissions. No plaintext operator clipboard recovery file is permitted. Do not register the production instance key/hotkey or mutate HKCU startup/TCC. No live screen/input tests are authorized by implementation approval.
-
-**Stop here:** the Windows mode is approved for probe work, but first Apple Silicon native publish hit a new vendor JSON AOT blocker. Decide how to correct that macOS vendor path; do not suppress errors. No default Windows switch, 019 start, GUI launch or lower Native AOT requirement is authorized.
+No live GUI/input slot has been authorized. Before those tests, obtain explicit authorization for the machine/time and follow [harness safety](../../docs/guides/002-acceptance-harness-safety.md): owned targets, isolated profiles, watchdog, recoverable state, no plaintext operator-clipboard files, no production hotkey/instance key/startup changes. Do not begin plan 019 or claim desktop parity from this checkpoint.
