@@ -1,6 +1,6 @@
 # 016 — Native AOT repairs and native data probes
 
-**Status:** In progress; build/data evidence only. Plan 018 is not complete. No production migration or live screen/input test.
+**Status:** In progress; native build/data and authorized basic GUI startup evidence. Plan 018 is not complete. No production migration, synthetic input or clipboard test.
 
 ## Authorization and scope
 
@@ -48,7 +48,8 @@ Toolchain: Uno.Sdk 6.7.30 / framework 6.7.135, .NET SDK 10.0.403 / native compil
 | Native entry SHA256 | `50cb2fa4fc9a0036a0dd6e0dbbd85d47a69c40eb1419107b66b7eb5df02984e8` | `4148db87bd858d978d1a16cd45853d5cd5becd5e150ddcf5904bb1f4e0be2948` |
 | Separate native data seed/restart/cleanup | PASS | PASS, bundle entry |
 | Ad-hoc bundle signature verification | N/A | PASS (`--strict --deep`), not notarized |
-| GUI startup/windowing/focus | NOT RUN | NOT RUN |
+| Basic GUI startup (owned visible window) | PASS, bounded smoke only | PASS, bounded smoke only |
+| Representative multiwindow UI/focus | NOT RUN | NOT RUN |
 | Hotkey/target validation/clipboard/insertion | NOT IMPLEMENTED / NOT RUN | NOT IMPLEMENTED / NOT RUN |
 
 Both native data runs emitted only `probe_data_seed_ok`, `probe_data_restart_ok`, `data_probe_native_restart_passed gui=NOT_RUN`. Coverage: missing DB bootstrap; v1→v2 migration and backup; Unicode and mixed-newline persistence; folder/snippet CRUD; exact creation/update/usage timestamps; settings; source-generated export/import and duplicates; corrupt and newer schema refusal; log fixture leakage scan; restart and cleanup. The inaccessible-path case is a directory occupying the DB path, **not** an ACL permission-denial test. No user-supplied copied database, UI-thread dispatcher test, full OS-log scan or clipboard recovery was exercised.
@@ -59,7 +60,7 @@ Regression results: Windows 46 Python tests passed; actual Apple Silicon run exe
 
 ## Remaining Plan 018 gates
 
-- FG1/T1: native GUI host startup and bounded exit on both machines, plus tested OS/toolchain floor and release-signing considerations.
+- FG1/T1: basic GUI host startup/owned-process stop now observed on both machines (see below); graceful shutdown/startup receipts, tested OS/toolchain floor and release-signing considerations remain.
 - FG2/T2: true permission-denial behavior, UI-thread store integration, remaining fixture/query/load checks.
 - FG3/T3: representative main/editor/popup compiled bindings, multiple windows, warmup, external hover surfaces, focus, theme/geometry and preview non-insertion. Not yet implemented/validated sufficiently.
 - FG4/T4–T5: owned target adapters, shortcut capture, permission denial/revocation, same-PID wrong-window rejection, safe pasteboard preservation/contention, exact-once dispatch and usage. Not implemented.
@@ -67,4 +68,20 @@ Regression results: Windows 46 Python tests passed; actual Apple Silicon run exe
 - T7: mobile app/keyboard strict-AOT packaging and bounded memory risk. Workloads absent; previous prerequisite diagnostic is NETSDK1147, not a framework impossibility proof. Mac disk is constrained; no large install or signing change was performed.
 - T6/T8: final evidence matrix and independent audits after these flows pass. Independent review found source-set verification and macOS test-path defects, now corrected with regression coverage; README discrepancies were corrected during that review. Confirming independent re-review (gemini-4-argon:medium) cleared all checkpoint blockers with no further findings. This approves the investigation checkpoint only, not Plan 018 completion.
 
-**Recommendation:** Continue isolated probe implementation; do not adopt the patched dependency in production or start 019. Build blockers are addressed for the selected probe configurations, but runtime feasibility is unresolved. Obtain an explicitly authorized screen/input slot on each machine before any GUI, hotkey, clipboard or target-app experiment. Never weaken Native AOT or mark unexecuted checks PASS to remove a blocker.
+**Recommendation:** Continue isolated probe implementation; do not adopt the patched dependency in production or start 019. Build blockers are addressed for the selected probe configurations, but runtime feasibility is unresolved. The owner subsequently authorized the exclusive desktop test slot used below. No authorization flag alone permits later unattended sessions; confirm the slot remains available before further desktop interaction. Never weaken Native AOT or mark unexecuted checks PASS to remove a blocker.
+
+## Authorized basic GUI smoke
+
+After the owner explicitly approved the exclusive Windows/Mac desktop test slot, `run_ui_smoke.py` launched the exact native artifacts above with `--authorized-probe-ui`. Windows PID-matched `EnumWindows`/visibility metadata and macOS PID-matched on-screen, layer-zero CoreGraphics metadata each observed a window. Neither observer reads titles or captures pixels. A separate bounded helper contains native enumeration calls; the owner terminates/reaps only its own child process on success, timeout or interruption. The Mac runner requires the isolated app bundle and verifies its bundle identifier; flat publish entries are refused for GUI use.
+
+Both runs returned `ui_smoke_window=OBSERVED owned_process_stopped=true clipboard=UNTOUCHED input=NONE`. Private evidence tokens: Windows `ss-uno018-ui-whd96fwq`, macOS `ss-uno018-ui-f3khctre`. Captured stdout/stderr were empty on both machines; fixture-token and error-token scans were empty. This is not a full app/OS diagnostic privacy scan, visual rendering assertion, focus test or graceful-shutdown receipt. The harness forcibly stops the owned probe after observing its window; no user process is terminated.
+
+Pre-launch safety review found and prompted corrections to numerical-SID ACL setup/cleanup, interrupted child cleanup, Mac bundle validation and native API signatures. Regression tests cover those boundaries; actual private-directory setup passed on both hosts. Latest suite: Windows 54 tests (53 passed, one Mac-only skip); Mac 54 tests (47 passed, seven Windows-only skips). Confirming independent safety review (gemini-4-argon:medium) found no further issues and cleared the revised harness for this basic-startup checkpoint only. The completed screen slot is closed; later live desktop tests require renewed availability confirmation.
+
+Reproduce only during an explicitly authorized exclusive slot, from the repository root:
+
+```text
+python prototypes/uno-desktop/run_ui_smoke.py --executable <owned-native-entry> --sha256 <recorded-digest> --authorized-screen-slot
+```
+
+Use `python3` on macOS and the bundle's `Contents/MacOS/SmartSnippets.UnoProbe` entry. The flag records the operator's approval; it is not permission by itself. This smoke has no clipboard, hotkey, profile, registry or TCC mutations, so none are waived by a successful result. Full FG3–FG5 testing still requires guarded fixture adapters and recovery coverage.

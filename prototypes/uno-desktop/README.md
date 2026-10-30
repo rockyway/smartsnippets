@@ -1,6 +1,6 @@
 # Plan 018 — isolated Uno desktop feasibility probe
 
-**In progress: clean Native AOT builds and headless native data tests pass on Windows x64 and Apple Silicon. GUI/insertion/mobile feasibility is NOT established. Not a production port.**
+**In progress: Native AOT builds, headless native data tests and basic GUI startup smoke pass on Windows x64 and Apple Silicon. Full UI/insertion/mobile feasibility is NOT established. Not a production port.**
 
 Current evidence, artifact digests, limitations and remaining gates: [research 016](../../docs/research/016-uno-native-aot-repair-and-data-probes.md). Earlier failures remain documented in research 012–015; they describe historical checkpoints, not the current selected configurations.
 
@@ -61,4 +61,4 @@ The `macos-json-risk` CLI links the overlay's exact generated context and native
 
 Representative multiwindow main/editor/popup, external hover, focus, target-free preview, native shortcut/target/clipboard adapters, permission/error recovery, full privacy scans and mobile app/keyboard strict-AOT risk checks remain incomplete. Mobile prerequisite restores currently report missing workloads (NETSDK1147); no workload was silently installed. See research 016 and plan 018 for the exact acceptance gates.
 
-No live GUI/input slot has been authorized. Before those tests, obtain explicit authorization for the machine/time and follow [harness safety](../../docs/guides/002-acceptance-harness-safety.md): owned targets, isolated profiles, watchdog, recoverable state, no plaintext operator-clipboard files, no production hotkey/instance key/startup changes. Do not begin plan 019 or claim desktop parity from this checkpoint.
+The owner authorized the exclusive slot used for the basic GUI smoke recorded in research 016. `run_ui_smoke.py --executable <owned-entry> --sha256 <digest> --authorized-screen-slot` observes PID-owned visible-window metadata and stops only its started process; it sends no input and never reads titles or screen pixels. On macOS only the isolated bundle entry is accepted. This is not a visual-rendering, focus, graceful-exit or insertion test. Do not assume this authorization extends to later unattended sessions. Before further tests, confirm machine/time availability and follow [harness safety](../../docs/guides/002-acceptance-harness-safety.md): owned targets, isolated profiles, watchdog, recoverable state, no plaintext operator-clipboard files, no production hotkey/instance key/startup changes. Do not begin plan 019 or claim desktop parity from this checkpoint.
