@@ -19,6 +19,10 @@ DestroyWindow
 GetModuleHandle
 PostMessage
 GetCursorPos
+ClientToScreen
+GetWindowRect
+DwmGetWindowAttribute
+DWMWINDOWATTRIBUTE
 MessageBox
 MonitorFromWindow
 GetMonitorInfo

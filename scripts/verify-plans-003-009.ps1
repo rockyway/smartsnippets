@@ -103,7 +103,7 @@ function Archive-Logs {
     }
 }
 
-$exe = Join-Path $root 'publish\SmartSnippets.App.exe'
+$exe = Join-Path $root 'publish\SmartSnippets.exe'
 $appRoot = Join-Path $env:LOCALAPPDATA 'SmartSnippets'
 $dbPath = Join-Path $appRoot 'smartsnippets.db'
 $logPath = Join-Path $appRoot 'logs\app.log'
@@ -124,7 +124,7 @@ if ($ArtifactZip) {
     $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
     try {
         $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-        if (@($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') -or $_ -match '(^|/)\.\.(/|$)' -or $_ -match '\.pdb$' }).Count -gt 0 -or 'SmartSnippets/SmartSnippets.App.exe' -notin $entries) { throw 'Unsafe or invalid release archive layout' }
+        if (@($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') -or $_ -match '(^|/)\.\.(/|$)' -or $_ -match '\.pdb$' }).Count -gt 0 -or 'SmartSnippets/SmartSnippets.exe' -notin $entries -or 'SmartSnippets/Assets/TitleIcon.png' -notin $entries -or 'SmartSnippets/SmartSnippets.App.exe' -in $entries -or 'SmartSnippets/SmartSnippets.App.dll' -in $entries -or 'SmartSnippets/SmartSnippets.dll' -in $entries) { throw 'Unsafe or invalid release archive layout' }
     } finally { $archive.Dispose() }
     $temp = Join-Path ([IO.Path]::GetTempPath()) ('SmartSnippets-verify-' + [guid]::NewGuid())
     try {
@@ -163,7 +163,7 @@ if ($artifactInfo) { Add-Result 'INFO' 'Artifact' 'Downloaded release artifact' 
 # ----------------------------------------------------------------- app + profile helpers
 function Assert-NoForeignApp {
     $ownedIds = @($script:Procs | Where-Object { -not $_.HasExited } | ForEach-Object { $_.Id })
-    if (@(Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $ownedIds }).Count) {
+    if (@(Get-Process -Name 'SmartSnippets.App','SmartSnippets' -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $ownedIds }).Count) {
         throw 'An unowned Smart Snippets process is running. Exit it yourself; no profile mutation or blanket process termination is permitted.'
     }
 }
@@ -188,7 +188,9 @@ function Wait-Log([string]$Pattern, [int]$From = 0, [int]$TimeoutMs = 8000) {
 }
 function Start-App([string[]]$AppArgs = @(), [switch]$NoWait) {
     $from = (Get-LogLines).Count
-    $p = Start-OwnedProcess -Path $exe -ProcessArgs $AppArgs -Owned $script:Procs
+    $p = Start-HarnessRegistryProtectedLaunch $config.RegistryJournal $config.RunId {
+        Start-OwnedProcess -Path $exe -ProcessArgs $AppArgs -Owned $script:Procs
+    }
     if (-not $NoWait) { $null = Wait-Log 'tray_added|second_instance_redirect|hotkey_startup_failed' $from 15000 }
     if (-not $NoWait) { Start-Sleep -Milliseconds 600 }
     return $p
@@ -316,7 +318,7 @@ if (Want 'A') {
         Check 'A3.warnings' 'zero IL2xxx/IL3xxx warnings' (-not ($log -match 'warning IL[23][0-9]{3}'))
     }
     Check 'A3.aot' 'publish has App.exe + e_sqlite3.dll and no App.dll (Native AOT)' `
-        ((Test-Path "$root\publish\SmartSnippets.App.exe") -and (Test-Path "$root\publish\e_sqlite3.dll") -and -not (Test-Path "$root\publish\SmartSnippets.App.dll"))
+        ((Test-Path "$root\publish\SmartSnippets.exe") -and (Test-Path "$root\publish\e_sqlite3.dll") -and (Test-Path "$root\publish\Assets\TitleIcon.png") -and -not (Test-Path "$root\publish\SmartSnippets.dll") -and -not (Test-Path "$root\publish\SmartSnippets.App.exe") -and -not (Test-Path "$root\publish\SmartSnippets.App.dll"))
 
     # static wiring: compiled-binding discipline and layering
     $xaml = Get-ChildItem src\SmartSnippets.App -Recurse -Filter *.xaml | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' }
@@ -329,7 +331,7 @@ if (Want 'A') {
     Check 'A4.logevents' 'every consumed runbook event has an AppLog emitter' ($missing.Count -eq 0) "audited=$($audit.Count); missing=$($missing -join ',')"
 }
 
-if (-not (Test-Path $exe)) { throw "publish\SmartSnippets.App.exe not found; run without -SkipBuild" }
+if (-not (Test-Path $exe)) { throw "publish\SmartSnippets.exe not found; run without -SkipBuild" }
 
 # ================================================================= B. migrations (plan 003 runbook)
 if (Want 'B') {
@@ -449,7 +451,7 @@ if ((Want 'C') -and @($script:Procs | Where-Object { -not $_.HasExited }).Count)
     $secondExited = Wait-OwnedSecondLaunch $second
     Check 'C5.exit' 'second instance exits' $secondExited
     Check 'C5.window' 'existing instance shows its main window again' ([bool](Wait-Main $p 6000))
-    Check 'C5.single' 'only one SmartSnippets process remains' (@(Get-Process -Name SmartSnippets.App).Count -eq 1)
+    Check 'C5.single' 'only one SmartSnippets process remains' (@(Get-Process -Name SmartSnippets).Count -eq 1)
     Stop-Target
 }
 
@@ -498,7 +500,7 @@ if (Want 'C') {
         $state = Get-ToggleState $toggle
         if ($state -eq 'Off') { Toggle-El $toggle; Start-Sleep -Milliseconds 800 }
         $val = (Read-HarnessRegistryValue $runKey 'SmartSnippets').Value
-        Check 'C7.on' 'Start at login ON writes HKCU Run value with --background' ($val -and $val -match '--background' -and $val -match 'SmartSnippets.App.exe') 'registry payload withheld'
+        Check 'C7.on' 'Start at login ON writes HKCU Run value with --background' ($val -and $val -match '--background' -and $val -match 'SmartSnippets\.exe') 'registry payload withheld'
         Toggle-El $toggle; Start-Sleep -Milliseconds 800
         Check 'C7.off' 'Start at login OFF removes the Run value' (-not (Read-HarnessRegistryValue $runKey 'SmartSnippets').Exists)
     } finally { Restore-HarnessRegistryValue $runOriginal }
@@ -593,7 +595,7 @@ if (Want 'C') {
         Send-Chord @([byte]$VK.Up)
         Start-Sleep -Milliseconds 250
         Send-Chord @([byte]$VK.Enter)
-        $exited = Wait-Until { -not (Get-Process -Name SmartSnippets.App -ErrorAction SilentlyContinue) } 6000 200
+        $exited = Wait-Until { -not (Get-Process -Name SmartSnippets -ErrorAction SilentlyContinue) } 6000 200
         Check 'C12.exit' 'tray Exit terminates the process' ([bool]$exited)
         Check 'C12.log' 'exit_unregistered logged' (Log-Has 'exit_unregistered')
         $free = [Win32Verify]::RegisterHotKey([IntPtr]::Zero, 9102, 0x4006, 0x20)
@@ -1013,7 +1015,7 @@ if (Want 'G') {
     $gateDir = Join-Path ([IO.Path]::GetTempPath()) ('ss-fake-aot-' + [guid]::NewGuid())
     try {
         New-Item -ItemType Directory -Path $gateDir | Out-Null
-        [IO.File]::WriteAllText((Join-Path $gateDir 'SmartSnippets.App.dll'), 'not a real assembly')
+        [IO.File]::WriteAllText((Join-Path $gateDir 'SmartSnippets.dll'), 'not a real assembly')
         $shell = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
         $gateOutput = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'publish-aot.ps1') -Output $gateDir 2>&1 | Out-String
         Check 'G8.gate' 'publish gate rejects a managed app DLL' ($LASTEXITCODE -ne 0 -and $gateOutput -match 'Managed app DLL found') "exit=$LASTEXITCODE; gate output withheld"

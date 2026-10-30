@@ -89,7 +89,7 @@ public static class UiText
     // Global popup.
     public const string PopupSearchPlaceholder = "Search label, text, folder, or tag";
     public const string PopupSearchName = "Search snippets";
-    public const string PopupHint = "↑↓ move · Enter insert · Esc close";
+    public const string PopupHint = "↑↓ move · → preview · ← hide · ⌫ search · Enter insert · Esc close";
     public static string CountOf(int n, int m) => $"{n} of {m} {(m == 1 ? "snippet" : "snippets")}";
     public static string FolderHeading(string name, int n) => $"{name} ({n})";
     public const string NoSnippetsMatch = "No snippets match";

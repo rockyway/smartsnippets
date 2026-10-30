@@ -198,6 +198,24 @@ try {
     $themeAddress='Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
     $fakeReader={ param($key,$name) $db=Import-Clixml -LiteralPath $fakeRegPath; $db[$name] }
     $fakeWriter={ param($record) $db=Import-Clixml -LiteralPath $fakeRegPath; $db[$record.Name]=$record; $db | Export-Clixml -LiteralPath $fakeRegPath }
+    $legacy=[pscustomobject]@{ Key=$runAddress; Name='SmartSnippets'; Exists=$true; Kind='String'; Value='"C:\old\SmartSnippets.App.exe" --background' }
+    @{ SmartSnippets=$legacy } | Export-Clixml -LiteralPath $fakeRegPath
+    $script:protectedLaunched=$false
+    $launch={
+        if (-not (Test-Path -LiteralPath $journalPath)) { throw 'launch before journal' }
+        $script:protectedLaunched=$true
+        & $fakeWriter ([pscustomobject]@{ Key=$runAddress; Name='SmartSnippets'; Exists=$true; Kind='String'; Value='migrated' })
+    }
+    Start-HarnessRegistryProtectedLaunch $journalPath 'fake-run' $launch -Reader $fakeReader
+    Start-HarnessRegistryProtectedLaunch $journalPath 'fake-run' $launch -Reader $fakeReader
+    Restore-HarnessRegistryJournal $journalPath 'fake-run' -Writer $fakeWriter
+    $restored=Import-Clixml -LiteralPath $fakeRegPath
+    Assert ($script:protectedLaunched -and $restored.SmartSnippets.Value -ceq $legacy.Value -and $restored.SmartSnippets.Kind -ceq $legacy.Kind) 'protected launch journals before migration and restores first original'
+    Remove-Item -LiteralPath $journalPath -ErrorAction SilentlyContinue
+    $script:protectedLaunched=$false
+    $captureFailed=$false
+    try { Start-HarnessRegistryProtectedLaunch $journalPath 'fake-run' $launch -Reader { throw 'fake capture failure' } } catch { $captureFailed=$true }
+    Assert ($captureFailed -and -not $script:protectedLaunched) 'protected launch refuses start when registry capture fails'
     foreach ($present in @($true,$false)) {
         $runRecord=[pscustomobject]@{ Key=$runAddress; Name='SmartSnippets'; Exists=$present; Kind=$(if ($present) { 'ExpandString' } else { $null }); Value=$(if ($present) { '%LOCALAPPDATA%\private\original.exe' } else { $null }) }
         $themeRecord=[pscustomobject]@{ Key=$themeAddress; Name='SystemUsesLightTheme'; Exists=$present; Kind=$(if ($present) { 'DWord' } else { $null }); Value=$(if ($present) { 1 } else { $null }) }

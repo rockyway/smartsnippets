@@ -60,6 +60,10 @@ function Save-HarnessRegistryOriginal([string]$Path, [string]$RunId, [string]$Ke
     Move-Item -LiteralPath $temp -Destination $Path -Force
     return $original
 }
+function Start-HarnessRegistryProtectedLaunch([string]$Path, [string]$RunId, [scriptblock]$Launch, [scriptblock]$Reader=$null) {
+    $null = Save-HarnessRegistryOriginal $Path $RunId 'Software\Microsoft\Windows\CurrentVersion\Run' 'SmartSnippets' -Reader $Reader
+    return & $Launch
+}
 function Restore-HarnessRegistryJournal([string]$Path, [string]$RunId, [scriptblock]$Writer=$null) {
     $journal=Import-Clixml -LiteralPath $Path
     if ($journal.RunId -cne $RunId) { throw 'Registry journal belongs to another run' }

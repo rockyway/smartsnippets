@@ -7,7 +7,7 @@ namespace SmartSnippets.App.Controls;
 
 public sealed partial class SnippetRowDetails : UserControl
 {
-    private HoverDetailsSurface? _hover;
+    private readonly Dictionary<TextBlock, HoverDetailsSurface> _hovers = [];
     public SnippetRowDetails()
     {
         InitializeComponent();
@@ -49,17 +49,39 @@ public sealed partial class SnippetRowDetails : UserControl
     public ITextSizeService? TextSize { get => (ITextSizeService?)GetValue(TextSizeProperty); set => SetValue(TextSizeProperty, value); }
     private double MetadataFontSize(double size) => size * 0.85;
     private Visibility HasText(string? value) => string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
-    private void Cancel() { _hover?.Dispose(); _hover = null; }
+    private void Cancel()
+    {
+        foreach (var hover in _hovers.Values) hover.Dispose();
+        _hovers.Clear();
+    }
     private void OnTargetEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is not TextBlock target) return;
         var text = ReferenceEquals(target, LabelText) ? ContentText : ReferenceEquals(target, FolderText) ? FolderName : TagsDisplay;
         if (string.IsNullOrEmpty(text)) return;
-        _hover ??= new HoverDetailsSurface(this);
-        _hover.Request(target, text, e.GetCurrentPoint(XamlRoot.Content).Position);
+        if (!_hovers.TryGetValue(target, out var hover))
+        {
+            hover = new HoverDetailsSurface(this);
+            _hovers.Add(target, hover);
+        }
+        hover.Request(target, text, e.GetCurrentPoint(XamlRoot.Content).Position,
+            isMetadata: !ReferenceEquals(target, LabelText));
     }
-    private void OnTargetExited(object sender, PointerRoutedEventArgs e) => _hover?.TargetExited();
-    private void OnRowPointerMoved(object sender, PointerRoutedEventArgs e) => _hover?.UpdatePointer(e.GetCurrentPoint(XamlRoot.Content).Position);
-    private void OnRowEntered(object sender, PointerRoutedEventArgs e) => _hover?.OwnerEntered();
-    private void OnRowExited(object sender, PointerRoutedEventArgs e) => _hover?.OwnerExited();
+    private void OnTargetExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is TextBlock target && _hovers.TryGetValue(target, out var hover)) hover.TargetExited();
+    }
+    private void OnRowPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(XamlRoot.Content).Position;
+        foreach (var hover in _hovers.Values) hover.UpdatePointer(point);
+    }
+    private void OnRowEntered(object sender, PointerRoutedEventArgs e)
+    {
+        foreach (var hover in _hovers.Values) hover.OwnerEntered();
+    }
+    private void OnRowExited(object sender, PointerRoutedEventArgs e)
+    {
+        foreach (var hover in _hovers.Values) hover.OwnerExited();
+    }
 }

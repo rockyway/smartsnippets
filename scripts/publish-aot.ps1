@@ -26,8 +26,11 @@ try {
     $code = $LASTEXITCODE
     if ($code -ne 0) { Fail "dotnet publish failed ($code)" }
     if (Select-String -Path $log -Pattern 'warning IL[23][0-9]{3}' -Quiet) { Fail 'Trim/AOT warnings found' }
-    if (Test-Path (Join-Path $Output 'SmartSnippets.App.dll')) { Fail 'Managed app DLL found; output is not Native AOT' }
-    foreach ($file in @('SmartSnippets.App.exe', 'e_sqlite3.dll')) {
+    if (Test-Path (Join-Path $Output 'SmartSnippets.dll')) { Fail 'Managed app DLL found; output is not Native AOT' }
+    foreach ($legacy in @('SmartSnippets.App.exe', 'SmartSnippets.App.dll')) {
+        if (Test-Path (Join-Path $Output $legacy)) { Fail 'Stale legacy output found; clean the output directory' }
+    }
+    foreach ($file in @('SmartSnippets.exe', 'e_sqlite3.dll', 'Assets/TitleIcon.png')) {
         if (-not (Test-Path (Join-Path $Output $file) -PathType Leaf)) { Fail "Missing $file" }
     }
 } catch { Fail $_.Exception.Message }

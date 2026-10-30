@@ -25,7 +25,7 @@ def render(name, size, color=None):
 
 def tray(size, theme, state):
     # Supersampling the dot keeps the transparent ring smooth at every DPI.
-    name = f'tray-{size}.svg' if size in (16, 20) else 'tray.svg'
+    name = f'tray-{size}.svg' if size in (16, 20, 24) else 'tray.svg'
     image = render(name, size * 4, '#1b1b1b' if theme == 'Light' else '#ffffff')
     if state != 'Ready':
         scale = size * 4 / 24
@@ -35,7 +35,8 @@ def tray(size, theme, state):
         draw = ImageDraw.Draw(image)
         draw.ellipse((x-ring, y-ring, x+ring, y+ring), fill=(0, 0, 0, 0))
         draw.ellipse((x-r, y-r, x+r, y+r), fill='#2f8bff' if state == 'PopupOpen' else '#e5484d')
-    return image.resize((size, size), Image.Resampling.LANCZOS)
+    # BOX preserves pixel-aligned small glyphs while antialiasing the status dot.
+    return image.resize((size, size), Image.Resampling.BOX)
 
 
 def dib(image):
@@ -54,12 +55,12 @@ def dib(image):
     return header + pixels + mask
 
 
-def ico(images):
+def ico(images, png_frames=False):
     entries, payload = [], bytearray()
     offset = 6 + 16 * len(images)
     for image in images:
         size = image.width
-        if size == 256:
+        if png_frames or size == 256:
             stream = io.BytesIO()
             image.save(stream, format='PNG', optimize=False)
             data = stream.getvalue()
@@ -81,7 +82,10 @@ def main():
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
     app = [render('app-16.svg' if s == 16 else 'app.svg', s) for s in APP_SIZES]
-    outputs = {ASSETS / 'SmartSnippets.ico': ico(app)}
+    outputs = {
+        ASSETS / 'SmartSnippets.ico': ico(app, png_frames=True),
+        ASSETS / 'TitleIcon.png': png(render('app.svg', 64)),
+    }
     variants = {}
     for theme in ('Light', 'Dark'):
         for state in ('Ready', 'PopupOpen', 'HotkeyUnavailable'):

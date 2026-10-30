@@ -42,7 +42,7 @@ jobs:
       - name: Check stamped version
         shell: pwsh
         run: |
-          $info = (Get-Item publish/SmartSnippets.App.exe).VersionInfo
+          $info = (Get-Item publish/SmartSnippets.exe).VersionInfo
           if (($info.ProductVersion -split '\+')[0] -ne '0.0.0-ci.${{ github.run_number }}' -or $info.FileVersion -ne '0.0.0.${{ github.run_number }}') { throw 'Version stamp mismatch' }
       - uses: actions/upload-artifact@v7
         with:

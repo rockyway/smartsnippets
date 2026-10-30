@@ -62,6 +62,15 @@ public sealed partial class MainWindow : Window
             });
         };
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
+        var displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
+        if (displayArea is not null)
+        {
+            var workArea = displayArea.WorkArea;
+            var size = AppWindow.Size;
+            AppWindow.Move(new PointInt32(
+                workArea.X + (workArea.Width - size.Width) / 2,
+                workArea.Y + (workArea.Height - size.Height) / 2));
+        }
         AppWindow.Closing += OnClosing;
         Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot); };
         Closed += (_, _) => Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
@@ -80,9 +89,9 @@ public sealed partial class MainWindow : Window
     public PageKind? CurrentPage => _current;
 
     /// <summary>Navigates to the page (asking the current page's guard first), then shows and activates the window.</summary>
-    public void ShowPage(PageKind kind)
+    public void ShowPage(PageKind kind, bool flashOnFocusDenied = true)
     {
-        BringToFront();
+        BringToFront(flashOnFocusDenied);
         _ = NavigateGuardedAsync(kind);
     }
 
@@ -94,9 +103,17 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Shows and activates the window on the page it already displays.</summary>
-    public void BringToFront()
+    public void BringToFront(bool flashOnFocusDenied = true)
     {
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        if (!flashOnFocusDenied)
+        {
+            // Initial startup must not request foreground activation: Windows can
+            // turn a denied request into taskbar attention even without FlashWindow.
+            AppWindow.Show(false);
+            AppLog.Info("main_window_activation", "focus=startup_no_activation");
+            return;
+        }
         AppWindow.Show();
         PInvoke.ShowWindow(hwnd, PInvoke.IsIconic(hwnd) ? SHOW_WINDOW_CMD.SW_RESTORE : SHOW_WINDOW_CMD.SW_SHOW);
         Activate();

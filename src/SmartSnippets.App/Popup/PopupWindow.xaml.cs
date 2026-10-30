@@ -45,6 +45,39 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private bool _previewSortMenuPending;
     private bool _previewSortMenuQueued;
     private (int Corner, int Border)? _lastFrameFailure;
+    private XamlRoot? _hoverRoot;
+    private readonly PopupKeyboardPreviewPolicy _keyboardPreview = new();
+    private Controls.HoverDetailsSurface? _keyboardSurface;
+    private bool _movingKeyboardSelection, _isComposing, _sortMenuOpen;
+
+    private void RegisterHoverOwner(object sender, RoutedEventArgs args)
+    {
+        if (_hoverRoot is not null) UnregisterHoverOwner();
+        if (RootGrid.XamlRoot is not { } root) return;
+        _hoverRoot = root;
+        Controls.HoverDetailsSurface.RegisterExternalOwner(root, () => WindowPlacement.HoverBounds(_hwnd, root.RasterizationScale));
+        root.Changed += OnHoverRootChanged;
+    }
+    private void UnregisterHoverOwner()
+    {
+        if (_hoverRoot is not { } root) return;
+        root.Changed -= OnHoverRootChanged;
+        Controls.HoverDetailsSurface.UnregisterExternalOwner(root);
+        _hoverRoot = null;
+    }
+    private void OnHoverRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
+        ResetKeyboardNavigation();
+        Controls.HoverDetailsSurface.CancelActive(sender);
+    }
+    private void OnHoverWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if ((args.DidPositionChange || args.DidSizeChange) && _hoverRoot is { } root)
+        {
+            ResetKeyboardNavigation();
+            Controls.HoverDetailsSurface.CancelActive(root);
+        }
+    }
 
     internal PopupWindow(ITextSizeService textSize, Action openMainWindow)
     {
@@ -52,14 +85,39 @@ public sealed partial class PopupWindow : Window, IPopupHost
         InitializeComponent();
         FlyoutSurface.KeepSolid(SortFlyout);
         Controls.HoverDetailsSurface.WatchList(PopupList);
+        PopupList.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) => _keyboardSurface?.CloseKeyboard()), true);
+        TextSize.PropertyChanged += OnKeyboardTextSizeChanged;
         Controls.HoverDetailsSurface.BoundsChanged += UpdateDragRegions;
-        SortFlyout.Opening += (_, _) => Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
-        RootGrid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
+        SortFlyout.Opening += (_, _) =>
         {
-            if (e.Key is VirtualKey.Enter or VirtualKey.Down or VirtualKey.Up or VirtualKey.PageDown or VirtualKey.PageUp or VirtualKey.Tab) ApplyQuery();
+            _sortMenuOpen = true; ResetKeyboardNavigation();
+            Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
+        };
+        SortFlyout.Closed += (_, _) => _sortMenuOpen = false;
+        RootGrid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnPreviewKeyDown), true);
+        RootGrid.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler((_, e) =>
+        {
+            if (PreviewKey(e.Key) is { } key) _keyboardPreview.Released(key);
         }), true);
+        RootGrid.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (!Controls.HoverDetailsSurface.Owns(e.OriginalSource)) ResetKeyboardNavigation();
+        }), true);
+        SearchBox.TextCompositionStarted += (_, _) => { _isComposing = true; ResetKeyboardNavigation(); };
+        SearchBox.TextCompositionEnded += (_, _) => _isComposing = false;
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        RootGrid.Loaded += RegisterHoverOwner;
+        RootGrid.Unloaded += (_, _) => UnregisterHoverOwner();
+        AppWindow.Changed += OnHoverWindowChanged;
+        RootGrid.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (_hoverRoot is { } root) Controls.HoverDetailsSurface.TrackExternalPointer(root, e.GetCurrentPoint(root.Content).Position);
+        }), true);
+        RootGrid.PointerExited += (_, _) =>
+        {
+            if (_hoverRoot is { } root) Controls.HoverDetailsSurface.TrackExternalPointer(root, null);
+        };
         _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
         // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
@@ -78,6 +136,12 @@ public sealed partial class PopupWindow : Window, IPopupHost
         {
             Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
             Controls.HoverDetailsSurface.BoundsChanged -= UpdateDragRegions;
+            AppWindow.Changed -= OnHoverWindowChanged;
+            RootGrid.Loaded -= RegisterHoverOwner;
+            UnregisterHoverOwner();
+            ResetKeyboardNavigation(releaseKeys: true);
+            _keyboardSurface?.Dispose(); _keyboardSurface = null;
+            TextSize.PropertyChanged -= OnKeyboardTextSizeChanged;
             _closed = true;
             _uiSettings.ColorValuesChanged -= OnSystemColorsChanged;
             if (_viewModel is not null) _viewModel.PropertyChanged -= OnViewModelChanged;
@@ -162,6 +226,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         => DispatcherQueue.TryEnqueue(() => RefreshFrame());
     private void ShowSurface(bool activate = true, bool revealAfterFrame = true)
     {
+        ResetKeyboardNavigation(releaseKeys: true);
         Controls.HoverDetailsSurface.CancelActive();
         RefreshFrame();
         // A hidden window's swap chain is not presented, so the first frames after Show can be the
@@ -261,6 +326,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     public void Hide()
     {
+        ResetKeyboardNavigation(releaseKeys: true);
+        _isComposing = false;
         _previewSortMenuPending = false;
         Controls.PopupRow.CancelActiveTooltip();
         _searchTimer?.Stop();
@@ -302,7 +369,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnActivated(object sender, WindowActivatedEventArgs e)
     {
         RefreshFrame();
-        if (e.WindowActivationState == WindowActivationState.Deactivated) { Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot); if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
+        if (e.WindowActivationState == WindowActivationState.Deactivated) { ResetKeyboardNavigation(releaseKeys: true); Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot); if (_visible && _contextFlyout is null) ViewModel.OnDeactivated(); return; }
         ReportReady();
     }
     private void OnLayoutUpdated(object? sender, object e)
@@ -331,9 +398,80 @@ public sealed partial class PopupWindow : Window, IPopupHost
         });
     }
     private void ReportReady() { if (!_readyPending || !_visible) return; _readyPending = false; var ms = (int)Stopwatch.GetElapsedTime(_hotkeyTimestamp).TotalMilliseconds; AppLog.Info("popup_ready_ms", ms.ToString()); AppLog.Info(PopupLogFormat.Show(ms)); }
+    private static PopupPreviewKey? PreviewKey(VirtualKey key) => key switch
+    {
+        VirtualKey.Right => PopupPreviewKey.Right, VirtualKey.Left => PopupPreviewKey.Left,
+        VirtualKey.Escape => PopupPreviewKey.Escape, VirtualKey.Back => PopupPreviewKey.Backspace, _ => null,
+    };
+    private PopupItemViewModel? SelectedSnippet => ViewModel.SelectedIndex >= 0 && ViewModel.SelectedIndex < ViewModel.Items.Count
+        && ViewModel.Items[ViewModel.SelectedIndex].Kind == PopupItemKind.Snippet ? ViewModel.Items[ViewModel.SelectedIndex] : null;
+    private void ResetKeyboardNavigation(bool releaseKeys = false)
+    {
+        _keyboardPreview.Reset(releaseKeys);
+        _keyboardSurface?.CloseKeyboard();
+    }
+    private void OnKeyboardTextSizeChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (_keyboardPreview.IsPreviewOpen) ShowKeyboardPreview();
+    }
+    private void ShowKeyboardPreview()
+    {
+        if (!_visible || _closed || ViewModel.IsEditorOpen || SelectedSnippet is not { } selected)
+        { ResetKeyboardNavigation(); return; }
+        if (_keyboardSurface is null)
+        {
+            _keyboardSurface = new Controls.HoverDetailsSurface(RootGrid, keyboardOwner: true);
+            _keyboardSurface.KeyboardClosed += _keyboardPreview.PreviewClosed;
+        }
+        _keyboardSurface.ShowKeyboard(selected.ContentText, TextSize.FontSize);
+        if (!_keyboardSurface.IsKeyboardOpen) _keyboardPreview.PreviewClosed();
+    }
+    private void ApplyKeyboardEffect(PopupPreviewEffect effect)
+    {
+        if ((effect & PopupPreviewEffect.Close) != 0) Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
+        if ((effect & PopupPreviewEffect.Show) != 0) ShowKeyboardPreview();
+        if ((effect & PopupPreviewEffect.ReturnSearch) != 0)
+        {
+            Focus(PopupFocusTarget.Search);
+            SearchBox.Select(Math.Clamp(_keyboardPreview.CaretStart, 0, SearchBox.Text.Length),
+                Math.Clamp(_keyboardPreview.CaretLength, 0, SearchBox.Text.Length - Math.Clamp(_keyboardPreview.CaretStart, 0, SearchBox.Text.Length)));
+        }
+    }
+    private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Handled || !_visible || ViewModel.IsEditorOpen || _isComposing || _contextFlyout is not null || _sortMenuOpen) return;
+        var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as DependencyObject;
+        var inList = false;
+        for (var node = focused; node is not null; node = VisualTreeHelper.GetParent(node))
+            if (ReferenceEquals(node, PopupList)) { inList = true; break; }
+        if (!ReferenceEquals(focused, SearchBox) && !inList) return;
+        static bool Down(VirtualKey key) => (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
+        if (Down(VirtualKey.Control) || Down(VirtualKey.Shift) || Down(VirtualKey.Menu))
+        { ResetKeyboardNavigation(); return; }
+        if (e.Key is VirtualKey.Enter or VirtualKey.Down or VirtualKey.Up or VirtualKey.PageDown or VirtualKey.PageUp or VirtualKey.Tab
+            || e.Key == VirtualKey.Right && _keyboardPreview.IsNavigating) ApplyQuery();
+        if (e.Key is VirtualKey.Up or VirtualKey.Down)
+        {
+            e.Handled = true;
+            _movingKeyboardSelection = true;
+            try { ViewModel.MoveSelection(e.Key == VirtualKey.Up ? -1 : 1); }
+            finally { _movingKeyboardSelection = false; }
+            ApplyKeyboardEffect(_keyboardPreview.Navigated(SelectedSnippet?.SnippetId, SearchBox.SelectionStart, SearchBox.SelectionLength));
+            return;
+        }
+        if (PreviewKey(e.Key) is { } previewKey)
+        {
+            var effect = _keyboardPreview.Handle(previewKey, SelectedSnippet?.SnippetId,
+                Controls.HoverDetailsSurface.HasVisibleContent(RootGrid.XamlRoot));
+            ApplyKeyboardEffect(effect);
+            if ((effect & PopupPreviewEffect.Handled) != 0) { e.Handled = true; return; }
+        }
+        // Ordinary caret edits/Tab/typing return to normal search behavior.
+        if (e.Key != VirtualKey.Enter) ResetKeyboardNavigation();
+    }
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (ViewModel.IsEditorOpen) return;
+        if (e.Handled || ViewModel.IsEditorOpen || _isComposing) return;
         if (e.Key == VirtualKey.Escape && _contextFlyout is { } flyout) { e.Handled = true; flyout.Hide(); }
         else if (e.Key == VirtualKey.Escape)
         {
@@ -347,13 +485,12 @@ public sealed partial class PopupWindow : Window, IPopupHost
             if (PopupList.SelectedItem is PopupItemViewModel selected && PopupList.ContainerFromItem(selected) is ListViewItem container)
             { e.Handled = true; ShowRowMenu(container, selected); }
         }
-        else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && (e.Key == VirtualKey.Up || e.Key == VirtualKey.Down)) { e.Handled = true; ViewModel.MoveSelection(e.Key == VirtualKey.Up ? -1 : 1); }
         else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && e.Key == VirtualKey.Enter && !ViewModel.IsConfirmingClipboardLoss) { e.Handled = true; _ = ViewModel.InsertSelectedAsync(); }
     }
     private void OnItemClick(object sender, ItemClickEventArgs e) { if (e.ClickedItem is PopupItemViewModel item) _ = ViewModel.ActivateAsync(item); }
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
     {
-        Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
+        Controls.HoverDetailsSurface.CancelRowHovers(RootGrid.XamlRoot);
         if (e.Item is PopupItemViewModel item)
         {
             e.ItemContainer.RightTapped -= OnRowRightTapped;
@@ -370,6 +507,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void ShowRowMenu(ListViewItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
     {
+        ResetKeyboardNavigation();
         if (!ViewModel.CanUseRowActions(item)) return;
         Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
@@ -474,12 +612,18 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor)) Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
+        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor))
+        {
+            ResetKeyboardNavigation();
+            Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
+        }
         if (e.PropertyName == nameof(PopupViewModel.Items) && _searchStarted != 0) _awaitingLayout = true;
+        if (e.PropertyName == nameof(PopupViewModel.SelectedIndex) && SelectedSnippet is null) ResetKeyboardNavigation();
         if (e.PropertyName == nameof(PopupViewModel.SelectedIndex) && ViewModel.SelectedIndex >= 0 && ViewModel.SelectedIndex < ViewModel.Items.Count)
         {
             var item = ViewModel.Items[ViewModel.SelectedIndex];
             PopupList.ScrollIntoView(item);
+            if (_keyboardPreview.IsPreviewOpen && !_movingKeyboardSelection) ShowKeyboardPreview();
             var peer = FrameworkElementAutomationPeer.FromElement(SearchBox) ?? FrameworkElementAutomationPeer.CreatePeerForElement(SearchBox);
             peer?.RaiseNotificationEvent(AutomationNotificationKind.Other, AutomationNotificationProcessing.MostRecent, item.ToString(), "PopupSelection");
         }
@@ -487,6 +631,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void OnSearchChanged(object sender, TextChangedEventArgs e)
     {
         if (ViewModel is null || !_visible) return;
+        ResetKeyboardNavigation();
         // Debounce: restart the timer on every keystroke so fast typing searches once, not per character.
         if (SearchBox.Text == ViewModel.Query) { _searchTimer?.Stop(); return; }
         _searchTimer ??= CreateSearchTimer();

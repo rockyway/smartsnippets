@@ -14,11 +14,10 @@
         </Grid.RowDefinitions>
 
         <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
-            <TextBlock
-                Margin="16,0,0,0"
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Smart Snippets" />
+            <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="8">
+                <Image Source="ms-appx:///Assets/TitleIcon.png" Width="16" Height="16" AutomationProperties.AccessibilityView="Raw" />
+                <TextBlock VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Text="Smart Snippets" />
+            </StackPanel>
         </Grid>
 
         <!-- Starts collapsed to icons; the hamburger opens a narrow pane. -->

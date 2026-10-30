@@ -81,6 +81,60 @@ public sealed class PopupViewModelIntegrationTests : IDisposable
     }
 
     [Fact]
+    public void KeyboardPreview_GroupedNavigationUsesCurrentFullBodyWithoutInsertionOrUsage()
+    {
+        var store = OpenStore(); var settings = new SettingsRepository(_factory);
+        var folder = store.CreateFolder("Synthetic folder").Value!;
+        store.CreateSnippet(new("first full body\n" + new string('x', 150), "Alpha", true, folder.Id, ""));
+        store.CreateSnippet(new("second full body", "Beta", true, null, ""));
+        var insertion = new FakeInsertionService(); var clipboard = new FakeClipboardService();
+        using var vm = new PopupViewModel(store, settings, new AppSettings { PopupLayout = PopupLayout.Folder },
+            insertion, clipboard, new FakeElevation(), new FakePopupHost(), new ScriptedDialogService(), new RecordingNotifier());
+        vm.OpenPreview();
+        var policy = new PopupKeyboardPreviewPolicy();
+        // At the boundary Up still arms navigation on the already selected snippet.
+        vm.MoveSelection(-1);
+        var first = vm.Items[vm.SelectedIndex];
+        policy.Navigated(first.SnippetId, 2, 0);
+        Assert.True(policy.Handle(PopupPreviewKey.Right, first.SnippetId).HasFlag(PopupPreviewEffect.Show));
+        Assert.Equal(store.Snippets.Single(v => v.Snippet.Id == first.SnippetId).Snippet.Text, first.ContentText);
+        vm.MoveSelection(1);
+        var second = vm.Items[vm.SelectedIndex];
+        Assert.Equal(PopupItemKind.Snippet, second.Kind); Assert.NotEqual(first.SnippetId, second.SnippetId);
+        Assert.Equal(PopupPreviewEffect.Show, policy.Navigated(second.SnippetId, 2, 0));
+        Assert.Equal(store.Snippets.Single(v => v.Snippet.Id == second.SnippetId).Snippet.Text, second.ContentText);
+        Assert.Empty(insertion.Calls); Assert.Empty(clipboard.Texts);
+        Assert.All(store.Snippets, v => Assert.Equal(0, v.Snippet.UsageCount));
+    }
+
+    [Fact]
+    public void KeyboardPreview_QueryFlushBackspaceAndReopenPreserveSearchContract()
+    {
+        var store = OpenStore(); var settings = new SettingsRepository(_factory);
+        var alpha = store.CreateSnippet(new("alpha full body", "Alpha", true, null, "")).Value!;
+        var beta = store.CreateSnippet(new("beta full body", "Beta", true, null, "")).Value!;
+        using var vm = Create(store, settings, new FakeInsertionService()); vm.OpenPreview();
+        var policy = new PopupKeyboardPreviewPolicy();
+        // WinUI's ApplyQuery flush boundary is represented by committing the current search text.
+        vm.Query = "Beta"; vm.MoveSelection(1);
+        var selected = vm.Items[vm.SelectedIndex]; Assert.Equal(beta.Id, selected.SnippetId);
+        policy.Navigated(selected.SnippetId, 2, 1);
+        Assert.True(policy.Handle(PopupPreviewKey.Right, selected.SnippetId).HasFlag(PopupPreviewEffect.Show));
+        Assert.Equal("beta full body", selected.ContentText);
+        Assert.True(policy.Handle(PopupPreviewKey.Backspace, beta.Id).HasFlag(PopupPreviewEffect.ReturnSearch));
+        Assert.Equal("Beta", vm.Query); Assert.Equal(2, policy.CaretStart); Assert.Equal(1, policy.CaretLength);
+        policy.Released(PopupPreviewKey.Backspace);
+        Assert.Equal(PopupPreviewEffect.None, policy.Handle(PopupPreviewKey.Backspace, beta.Id));
+        vm.Query = "Alpha"; policy.Reset(); vm.MoveSelection(1);
+        selected = vm.Items[vm.SelectedIndex]; Assert.Equal(alpha.Id, selected.SnippetId);
+        policy.Navigated(selected.SnippetId, 1, 0); policy.Handle(PopupPreviewKey.Right, selected.SnippetId);
+        vm.SelectedIndex = -1;
+        Assert.Equal(PopupPreviewEffect.Close, policy.Navigated(null, 1, 0));
+        policy.Reset(true); vm.OpenPreview();
+        Assert.Equal(PopupPreviewEffect.None, policy.Handle(PopupPreviewKey.Right, alpha.Id));
+    }
+
+    [Fact]
     public void LayoutAndSort_SurviveAppSettingsReload()
     {
         var settings = new SettingsRepository(_factory);

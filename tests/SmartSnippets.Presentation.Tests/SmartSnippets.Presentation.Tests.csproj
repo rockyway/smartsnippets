@@ -16,6 +16,10 @@
     <None Include="..\..\src\SmartSnippets.App\**\*.xaml" Exclude="..\..\src\SmartSnippets.App\obj\**;..\..\src\SmartSnippets.App\bin\**" Link="UiContracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\SmartSnippets.App\Services\StartupMigration.cs" Link="StartupMigration.cs" />
+    <None Include="..\..\src\SmartSnippets.App\Services\TrayIcon.cs;..\..\src\SmartSnippets.App\MainWindow.xaml.cs;..\..\src\SmartSnippets.App\SmartSnippets.App.csproj;..\..\src\SmartSnippets.App\Assets\TitleIcon.png" Link="UiContracts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>

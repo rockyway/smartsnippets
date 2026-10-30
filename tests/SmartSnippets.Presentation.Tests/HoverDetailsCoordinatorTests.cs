@@ -64,6 +64,25 @@ public sealed class HoverDetailsCoordinatorTests
         Assert.False(old.IsOpen); Assert.False(next.IsOpen);
         Advance(379); Assert.False(next.IsOpen); Advance(1); Assert.True(next.IsOpen);
     }
+    [Fact] public void CrossingMetadataKeepsExternalContentButSettlingReplacesItAfterFullDelay()
+    {
+        using var content = Create(); content.Enter(new object()); Advance(500);
+        content.OwnerExited(); Advance(60); content.OwnerEntered(); // Root-owned horizontal transit region.
+        using var metadata = new HoverDetailsCoordinator(
+            (delay, run) => _work.Add((_now + (long)delay.TotalMilliseconds, run)),
+            () => { content.Cancel(); _shown++; }, () => _closed++);
+        metadata.Enter(new object()); Advance(499);
+        Assert.True(content.IsOpen); Assert.False(metadata.IsOpen);
+        Advance(1);
+        Assert.False(content.IsOpen); Assert.True(metadata.IsOpen);
+    }
+    [Fact] public void PassingThroughMetadataCancelsOnlyItsPendingClock()
+    {
+        using var content = Create(); content.Enter(new object()); Advance(500);
+        using var metadata = Create(); metadata.Enter(new object()); Advance(100); metadata.TargetExited();
+        content.OwnerExited(); Advance(60); content.SurfaceEntered(); Advance(1000);
+        Assert.True(content.IsOpen); Assert.False(metadata.IsOpen); Assert.Equal(1, _shown);
+    }
     [Fact] public void SwitchingTargetsOnOpenRowRestartsFullDelay()
     {
         using var c = Create(); c.Enter(new object()); Advance(500); c.TargetExited();
@@ -82,13 +101,55 @@ public sealed class HoverDetailsCoordinatorTests
     }
     [Fact] public void PlacementPrefersRightFlipsLeftAndClamps()
     {
-        var right = HoverDetailsPlacement.Place(1000, 700, 100, 100, 480, 320);
-        Assert.Equal(112, right.X); Assert.Equal(76, right.Y);
-        var left = HoverDetailsPlacement.Place(1000, 700, 900, 650, 480, 320);
-        Assert.Equal(408, left.X); Assert.Equal(380, left.Y);
-        var small = HoverDetailsPlacement.Place(200, 100, 190, 95, 480, 320);
-        Assert.Equal(184, small.Width); Assert.Equal(84, small.Height);
-        Assert.InRange(small.X, 0, 16); Assert.InRange(small.Y, 0, 16);
+        var right = HoverDetailsPlacement.Place(1000, 700, 100, 400, 420, 480, 320);
+        Assert.Equal(112, right.X); Assert.Equal(74, right.Y);
+        var left = HoverDetailsPlacement.Place(1000, 700, 900, 640, 660, 480, 320);
+        Assert.Equal(408, left.X); Assert.Equal(314, left.Y);
+        Assert.True(left.Y + left.Height < 640);
+        var small = HoverDetailsPlacement.Place(200, 100, 190, 85, 95, 480, 320);
+        Assert.Equal(184, small.Width); Assert.Equal(79, small.Height);
+        Assert.InRange(small.X, 0, 16); Assert.Equal(0, small.Y);
+    }
+    [Fact] public void PlacementKeepsNarrowMetadataRightOfCursorAndAboveTarget()
+    {
+        var result = HoverDetailsPlacement.Place(1000, 700, 350, 100, 120, 96, 40);
+        Assert.Equal(362, result.X);
+        Assert.Equal(54, result.Y);
+        Assert.Equal(96, result.Width);
+        Assert.Equal(40, result.Height);
+    }
+    [Fact] public void PlacementShrinksToAvailableSpaceWithoutCoveringTarget()
+    {
+        var result = HoverDetailsPlacement.Place(500, 200, 100, 70, 100, 240, 320);
+        Assert.Equal(106, result.Y);
+        Assert.Equal(94, result.Height);
+    }
+    [Fact] public void KeyboardOpenIsImmediateAndRejectsOldHoverTicks()
+    {
+        using var c = Create(); c.Enter(new object()); Advance(400);
+        c.OpenPinned(new object()); Assert.Equal(1, _shown); Assert.True(c.IsOpen);
+        Advance(1000); Assert.Equal(1, _shown);
+    }
+    [Fact] public void KeyboardPinSurvivesPointerExitCaptureAndSelectionUpdate()
+    {
+        using var c = Create(); c.OpenPinned(new object()); c.TargetExited(); c.OwnerExited(); c.SurfaceExited();
+        c.Pressed(); c.Released(); c.CaptureLost(); Advance(1000);
+        Assert.True(c.IsOpen); Assert.Equal(0, _closed);
+        c.OpenPinned(new object()); Assert.Equal(2, _shown); Assert.Equal(0, _closed);
+    }
+    [Fact] public void PointerTakeoverReturnsToDelayedMode()
+    {
+        using var c = Create(); c.OpenPinned(new object()); c.Enter(new object());
+        Assert.False(c.IsOpen); Assert.Equal(1, _closed);
+        Advance(499); Assert.Equal(1, _shown); Advance(1); Assert.Equal(2, _shown);
+        c.OwnerExited(); Advance(120); Assert.False(c.IsOpen);
+    }
+    [Fact] public void HostCloseAndEmptyContentCancelKeyboardPin()
+    {
+        using var c = Create(); c.OpenPinned(new object()); c.Cancel(); Advance(1000);
+        Assert.False(c.IsOpen); Assert.Equal(1, _closed);
+        c.OpenPinned(new object(), false); Assert.False(c.IsOpen); Assert.Equal(1, _shown);
+        c.Dispose(); c.OpenPinned(new object()); Assert.Equal(1, _shown);
     }
     [Fact] public void DisposeRejectsPendingAndFutureRequests()
     {

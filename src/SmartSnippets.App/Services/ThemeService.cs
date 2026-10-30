@@ -29,15 +29,18 @@ internal sealed class ThemeService : IThemeService, IDisposable
         _paletteResources.Update(palette, _uiSettings);
         _paletteResources.BaselineChanged += QueueSystemRefresh;
         FlyoutSurface.ResolveMenuBrush = _paletteResources.MenuBrush;
-        Controls.HoverDetailsSurface.ResolveAppearance = (border, text, theme) =>
+        Controls.HoverDetailsSurface.ResolveAppearance = (border, text, theme, companion) =>
         {
             var highContrast = WindowSurface.IsHighContrast();
             border.Background = highContrast
                 ? new Microsoft.UI.Xaml.Media.SolidColorBrush(WindowSurface.SystemColor(5))
-                : _paletteResources.BackgroundBrush(theme);
+                : companion
+                    ? new Microsoft.UI.Xaml.Media.SolidColorBrush(theme == ElementTheme.Dark
+                        ? Color.FromArgb(255, 32, 32, 32) : Color.FromArgb(255, 243, 243, 243))
+                    : _paletteResources.BackgroundBrush(theme);
             var foreground = highContrast ? WindowSurface.SystemColor(8) : theme == ElementTheme.Dark ? Colors.White : Colors.Black;
             text.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(foreground);
-            border.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(foreground) { Opacity = highContrast ? 1 : 0.35 };
+            border.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(foreground) { Opacity = highContrast ? 1 : companion ? 0.18 : 0.35 };
         };
         FlyoutSurface.ResolveRequestedTheme = () => RequestedTheme;
         _uiSettings.ColorValuesChanged += OnSystemColorsChanged;

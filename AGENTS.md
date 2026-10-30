@@ -17,7 +17,7 @@ dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish           
 ```
 
 - Run test projects sequentially; parallel builds collide on the shared Core output (CS2012).
-- CI (`.github/workflows/ci.yml`, runs on `main` pushes and manually): Core + Presentation tests on Linux and Windows, then the AOT publish gate on Windows. The gate fails on any `warning IL2xxx/IL3xxx`, on `publish/SmartSnippets.App.dll` existing (means non-AOT), or on a missing `SmartSnippets.App.exe` / `e_sqlite3.dll`.
+- CI (`.github/workflows/ci.yml`, runs on `main` pushes and manually): Core + Presentation tests on Linux and Windows, then the AOT publish gate on Windows. The gate fails on any `warning IL2xxx/IL3xxx`, on `publish/SmartSnippets.dll` existing (means non-AOT), a stale `SmartSnippets.App.exe`, or a missing `SmartSnippets.exe` / `e_sqlite3.dll`.
 - `scripts/verify-plans-003-009.ps1` (and `verify-plan002.ps1`) are interactive acceptance scripts: they drive the published exe with real key presses and UI Automation, move the real `%LOCALAPPDATA%\SmartSnippets` profile aside, and need `sqlite3.exe` on PATH. Do not run them while using the machine; steps needing a human are reported as SKIP.
 
 ## Architecture

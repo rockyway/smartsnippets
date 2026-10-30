@@ -162,6 +162,9 @@ internal sealed class AppHost
 
         var elevation = new ElevationService(() => _mainWindow?.IsHidden ?? true);
         var startup = new StartupRegistration();
+        var startupMigration = StartupMigrationCoordinator.Start(
+            new WindowsStartupMigrationRegistry(@"Software\Microsoft\Windows\CurrentVersion\Run"), Environment.ProcessPath,
+            result => AppLog.Info("startup_migration", result));
         Dialogs = new DialogService(() => _mainWindow?.ContentXamlRoot, () => _mainWindow?.BringToFront(), textSize, theme);
         AppLog.Info("porting_ready");
 
@@ -226,6 +229,13 @@ internal sealed class AppHost
         hotkeyManager.StatusChanged += OnHotkeyStatusChanged;
         tray.Add();
         Notices = new Notifier(tray);
+        if (startupMigration == StartupMigrationResult.Failed)
+        {
+            const string message = "Could not update start at login. Open Settings and re-enable it to use the new app location.";
+            _ui!.Post(() => StartupMigrationCoordinator.Deliver(startupMigration,
+                () => tray.ShowBalloon("Start at login", message),
+                () => PInvoke.MessageBox(HWND.Null, message, "Smart Snippets", MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_ICONWARNING)));
+        }
         UpdateTrayState();
         var popupDialogs = new DialogService(() => _popup?.ContentXamlRoot, () => { }, theme: theme);
         
@@ -260,7 +270,7 @@ internal sealed class AppHost
         if (Program.InitialOptions.HasRequest)
             _ = ApplyLaunchOptionsAsync(Program.InitialOptions, showMain: !startInBackground);
         else if (!startInBackground)
-            mainWindow.ShowPage(PageKind.Snippets);
+            mainWindow.ShowPage(PageKind.Snippets, flashOnFocusDenied: false);
     }
 
     private void TrackPopupClose(PopupWindow popup)

@@ -108,7 +108,7 @@ function Request-QAActivation([string[]]$arguments) {
     $before = [Win32Verify]::GetForegroundWindow()
     # Hidden secondary launch carries only a redirect; it must never activate a window.
     $redirectArgs = @('--background') + $arguments
-    $redirect = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') $redirectArgs $procs -Factory {
+    $redirect = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.exe') $redirectArgs $procs -Factory {
         param($path, $items)
         Start-Process -FilePath $path -ArgumentList $items -WindowStyle Hidden -PassThru
     }
@@ -143,7 +143,7 @@ $procs = New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]
 $isolated = $false; $had = Test-Path -LiteralPath $profile; $before = $null
 try {
     if (Test-Path $backup) { throw 'Existing profile backup: manual recovery required' }
-    if (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue) { throw 'Unowned Smart Snippets process: refusing profile isolation' }
+    if (Get-Process -Name 'SmartSnippets.App','SmartSnippets' -ErrorAction SilentlyContinue) { throw 'Unowned Smart Snippets process: refusing profile isolation' }
     $before = ProfileHash $profile
     $null = Save-HarnessRegistryOriginal $config.RegistryJournal $config.RunId 'Software\Microsoft\Windows\CurrentVersion\Run' 'SmartSnippets'
     New-Item -ItemType Directory -Path $copy,$out | Out-Null
@@ -151,7 +151,7 @@ try {
     if ($had) { Move-Item -LiteralPath $profile -Destination $backup }
     $isolated = $true
     # Start hidden so the main window cannot appear on an unauthorized monitor.
-    $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') @('--background') $procs
+    $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.exe') @('--background') $procs
     $mainHwnd = Wait-Until { try { [SmartSnippetsPostedInput]::FindOwnedWindow($p.Id, 'Smart Snippets', $null) } catch { $null } } 20000 200
     if (-not $mainHwnd) {
         $ownedLog = Join-Path $profile 'logs/app.log'
@@ -178,7 +178,7 @@ try {
             & sqlite3 -batch $db "INSERT INTO settings(key,value) VALUES('text_size.preset','Custom'),('text_size.custom','$CustomSize') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
             if ($LASTEXITCODE -ne 0) { throw 'Text size fixture seeding failed' }
         }
-        $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.App.exe') @('--background') $procs
+        $p = Start-OwnedProcess (Join-Path $copy 'SmartSnippets.exe') @('--background') $procs
         $mainHwnd = Wait-Until { try { [SmartSnippetsPostedInput]::FindOwnedWindow($p.Id, 'Smart Snippets', $null) } catch { $null } } 20000 200
         if (-not $mainHwnd) {
             $ownedLog = Join-Path $profile 'logs/app.log'
@@ -429,7 +429,7 @@ try {
     if ($script:QaFailures.Count) { throw 'One or more visual QA assertions failed' }
 } finally {
     foreach ($p in $procs) { Stop-OwnedProcess $p }
-    if ($isolated -and (Get-Process -Name 'SmartSnippets.App' -ErrorAction SilentlyContinue)) { throw 'App remains running; profile recovery requires manual inspection' }
+    if ($isolated -and (Get-Process -Name 'SmartSnippets.App','SmartSnippets' -ErrorAction SilentlyContinue)) { throw 'App remains running; profile recovery requires manual inspection' }
     $action = Get-ProfileCleanupAction $isolated $had (Test-Path $backup) (Test-Path $profile)
     if ($action -eq 'RestoreIsolated') {
         if (Test-Path $profile) { Remove-Item -LiteralPath $profile -Recurse -Force }

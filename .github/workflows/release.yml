@@ -54,7 +54,7 @@ jobs:
       - name: Check stamped version
         shell: pwsh
         run: |
-          $info = (Get-Item publish/SmartSnippets.App.exe).VersionInfo
+          $info = (Get-Item publish/SmartSnippets.exe).VersionInfo
           if (($info.ProductVersion -split '\+')[0] -ne '${{ steps.tag.outputs.version }}' -or $info.FileVersion -ne '${{ steps.tag.outputs.fileversion }}') { throw 'Version stamp mismatch' }
       - name: Package
         shell: pwsh
@@ -68,7 +68,7 @@ jobs:
           $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
           try {
             $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-            if (($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') }).Count -or 'SmartSnippets/SmartSnippets.App.exe' -notin $entries) { throw 'Invalid zip layout' }
+            if (($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') }).Count -or 'SmartSnippets/SmartSnippets.exe' -notin $entries -or 'SmartSnippets/Assets/TitleIcon.png' -notin $entries -or 'SmartSnippets/SmartSnippets.App.exe' -in $entries -or 'SmartSnippets/SmartSnippets.App.dll' -in $entries -or 'SmartSnippets/SmartSnippets.dll' -in $entries) { throw 'Invalid zip layout' }
           } finally { $archive.Dispose() }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText("$zip.sha256", "$hash  $zip`n", [Text.UTF8Encoding]::new($false))

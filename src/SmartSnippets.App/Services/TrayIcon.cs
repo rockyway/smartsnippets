@@ -19,7 +19,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     private const nuint CommandRestartAdmin = 3;
     private const nuint CommandExit = 5;
     private const nuint CommandShowPopup = 6;
-    private const string Tooltip = "Smart Snippets — running in background";
+    private const string Tooltip = "Smart Snippets";
     private const string TooltipHotkeyUnavailable = "Smart Snippets — hotkey unavailable";
 
     private readonly MessageWindow _window;
@@ -149,11 +149,11 @@ internal sealed unsafe class TrayIcon : IDisposable
     }
 
     /// <summary>Shows a tray balloon notification (title up to 63 and text up to 255 characters).</summary>
-    public void ShowBalloon(string title, string text)
+    public bool ShowBalloon(string title, string text)
     {
         if (!_added)
         {
-            return;
+            return false;
         }
 
         var data = CreateData();
@@ -164,7 +164,9 @@ internal sealed unsafe class TrayIcon : IDisposable
         if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, in data))
         {
             AppLog.Info("tray_balloon_failed");
+            return false;
         }
+        return true;
     }
 
     public void Dispose()

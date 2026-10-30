@@ -8,7 +8,7 @@ public sealed class HoverDetailsCoordinator(Action<TimeSpan, Action> schedule, A
     private long _generation;
     private long _leaveGeneration;
     private object? _target;
-    private bool _ownerInside, _targetInside, _surfaceInside, _pressed, _disposed;
+    private bool _ownerInside, _targetInside, _surfaceInside, _pressed, _disposed, _pinned;
     public bool IsOpen { get; private set; }
     public bool IsHandingOff { get; private set; }
 
@@ -27,6 +27,19 @@ public sealed class HoverDetailsCoordinator(Action<TimeSpan, Action> schedule, A
             IsOpen = true;
             show();
         });
+    }
+
+    /// <summary>Immediate root-owned keyboard preview; invalidates pointer timers without a close/reopen cycle.</summary>
+    public void OpenPinned(object target, bool hasContent = true)
+    {
+        if (_disposed) return;
+        if (!hasContent) { Cancel(); return; }
+        _generation++; StopLeave();
+        _target = target;
+        _ownerInside = _targetInside = _surfaceInside = _pressed = false;
+        _pinned = true;
+        IsOpen = true;
+        show();
     }
 
     public void TargetExited()
@@ -48,7 +61,7 @@ public sealed class HoverDetailsCoordinator(Action<TimeSpan, Action> schedule, A
     private void StopLeave() { _leaveGeneration++; IsHandingOff = false; }
     private void Leave()
     {
-        if (_ownerInside || _surfaceInside || _pressed) return;
+        if (_pinned || _ownerInside || _surfaceInside || _pressed) return;
         if (!IsOpen) { Cancel(); return; }
         IsHandingOff = true;
         var leave = ++_leaveGeneration;
@@ -62,7 +75,7 @@ public sealed class HoverDetailsCoordinator(Action<TimeSpan, Action> schedule, A
     {
         _generation++; StopLeave();
         _target = null;
-        _ownerInside = _targetInside = _surfaceInside = _pressed = false;
+        _ownerInside = _targetInside = _surfaceInside = _pressed = _pinned = false;
         var wasOpen = IsOpen;
         IsOpen = false;
         if (wasOpen) close();
