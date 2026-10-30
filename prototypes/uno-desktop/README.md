@@ -81,4 +81,4 @@ There is **no default GUI mode**: desktop startup returns before host creation w
 
 All future private databases, WAL/backups, profiles, raw logs and recovery journals must remain outside the repository with owner-only permissions. No plaintext operator clipboard recovery file is permitted. Do not register the production instance key/hotkey or mutate HKCU startup/TCC. No live screen/input tests are authorized by implementation approval.
 
-**Stop here:** the Windows mode is approved for probe work, but first Apple Silicon native publish hit a new vendor JSON AOT blocker. Decide how to investigate/correct that macOS path; do not suppress errors. No default Windows switch, 019 start, GUI launch or lower Native AOT requirement is authorized.
+**Stop here:** the Windows mode is approved for probe work, but first Apple Silicon native publish hit a new vendor JSON AOT blocker. Decide how to correct that macOS vendor path; do not suppress errors. No default Windows switch, 019 start, GUI launch or lower Native AOT requirement is authorized.
