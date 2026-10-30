@@ -45,7 +45,7 @@ python prototypes/uno-desktop/run_data_probe.py --executable <owned-native-entry
 
 Use `python3` on macOS. The runner accepts only the expected native entry inside this probe's owned output, checks its hash/header, and runs seed then verification as separate bounded processes with content-free receipts. Actual Core SQLite/store/migrations/settings/JSON run in an owner-only synthetic OS-temp profile. Successful verification removes that profile. A failed run retains synthetic data for diagnosis; do not broadly delete temp directories.
 
-Coverage includes migration/backup, missing DB, Unicode/mixed newlines, CRUD/usage/settings, export/import, restart, corrupt/newer-schema refusal and log scan. Inaccessible-path coverage is a directory at the DB path, not ACL denial. No GUI host starts, and no production profile or clipboard is used. These checks do not establish UI-thread access, windowing or insertion.
+Coverage includes migration/backup, missing DB, Unicode/mixed newlines, CRUD/usage/settings, export/import, restart, corrupt/newer-schema refusal and log scan. Failure coverage includes a directory occupying the DB path and actual file-permission denial during a required v1→latest migration. Recovery asserts original permissions, independent OS read/write access and successful migration after restoration; SQLite pools are closed before permission or exclusive-file checks. No GUI host starts, and no production profile or clipboard is used. These checks do not establish UI-thread access, windowing or insertion.
 
 ## Tests / evidence validator
 

@@ -173,6 +173,24 @@ Separate: explicit Copy changes clipboard deliberately, earns no usage; target-f
 
 **Standing instruction:** if a step cites an unsupported API, prescribes an unreachable/compile-failing assertion, or an assertion a wrong implementation can pass, stop and report the plan defect; do not weaken the test. For every new flow test, identify a wrong implementation that would fail and test through the actual host composition, not a hand-built mock graph.
 
+### Execution goal and completion tracker
+
+Owner instruction: finish 018; continue through routine implementation/test checkpoints without treating partial evidence as completion. Do not start 019, weaken Native AOT, or manufacture PASS receipts. Escalate only prerequisites/permission changes, actual blockers requiring an owner decision, or the separately gated live desktop slot.
+
+| Task | Current evidence | Remaining completion obligation |
+|---|---|---|
+| T0 | Pinned toolchain; native validator and clean builds on both hosts | Final effective-property/dependency/OS-floor evidence |
+| T1 | Native GUI window observed on both hosts | Bounded native startup and graceful lifecycle receipts |
+| T2 | Native real-store seed/restart plus actual denied-file migration/restored-write checks on both hosts | UI-thread serialization and remaining fixture checks |
+| T3 | Minimal compiled main/editor binding fixture | Representative popup, coordinator, multiple windows, external hover, preview/focus/theme/placement |
+| T4 | Not implemented | Guarded owned-target native adapters and capability/error matrix |
+| T5 | Not implemented | Actual entry-point → target dispatch, duplicate/usage/clipboard/preview assertions |
+| T6 | Build/data/basic-GUI report and regression tests | Full negative/privacy/recovery evidence and host manifests |
+| T7 | Missing-workload diagnostics only | Current source verification plus bounded app/keyboard build attempts or precise unavailable-toolchain evidence; flag mobile risk before 019 |
+| T8 | Checkpoint audits passed | Final wiring audit of completed flows and evidence-backed go/no-go |
+
+The previous basic-GUI slot ended after owned-process cleanup. Noninteractive coding/builds/research may continue; renew desktop availability before further live UI/input/clipboard tests.
+
 ## 7. Test strategy and manual runbook
 
 - **Unit:** existing Core/Presentation tests; pure policy, evidence validator and adapter decision logic with permission/clipboard failure fakes. Run sequentially.

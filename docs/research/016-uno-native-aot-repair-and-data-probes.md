@@ -61,7 +61,7 @@ Regression results: Windows 46 Python tests passed; actual Apple Silicon run exe
 ## Remaining Plan 018 gates
 
 - FG1/T1: basic GUI host startup/owned-process stop now observed on both machines (see below); graceful shutdown/startup receipts, tested OS/toolchain floor and release-signing considerations remain.
-- FG2/T2: true permission-denial behavior, UI-thread store integration, remaining fixture/query/load checks.
+- FG2/T2: UI-thread store integration and remaining fixture/query/load checks; true permission-denial native checks now pass in the follow-up below.
 - FG3/T3: representative main/editor/popup compiled bindings, multiple windows, warmup, external hover surfaces, focus, theme/geometry and preview non-insertion. Not yet implemented/validated sufficiently.
 - FG4/T4–T5: owned target adapters, shortcut capture, permission denial/revocation, same-PID wrong-window rejection, safe pasteboard preservation/contention, exact-once dispatch and usage. Not implemented.
 - FG5: complete app/process/owned-OS diagnostic privacy and recovery tests after native flows exist.
@@ -70,9 +70,22 @@ Regression results: Windows 46 Python tests passed; actual Apple Silicon run exe
 
 **Recommendation:** Continue isolated probe implementation; do not adopt the patched dependency in production or start 019. Build blockers are addressed for the selected probe configurations, but runtime feasibility is unresolved. The owner subsequently authorized the exclusive desktop test slot used below. No authorization flag alone permits later unattended sessions; confirm the slot remains available before further desktop interaction. Never weaken Native AOT or mark unexecuted checks PASS to remove a blocker.
 
+## Follow-up: actual database permission denial
+
+The owner set the explicit execution goal to finish 018 without stopping at routine checkpoints. Added real file-access denial against a disposable version-1 database requiring migration (not an already-current DB that SQLite may legitimately open read-only). On Windows a current-user deny ACE blocks data writes only, preserving owner DACL recovery; on macOS the owned fixture's mode is temporarily zero. Independent OS-open/read oracles must reject access before the actual Migrator is exercised. Finally restores the exact original ACL/mode and clears owned SQLite pools; the database bytes and schema version remain unchanged. No production directory or permissions are touched.
+
+Fresh native runs with this check pass on both hosts:
+
+| Host | Build token | Native entry SHA256 | Data result |
+|---|---|---|---|
+| Windows x64 | `6cbeeb8bd2bd432e961300546bcf8b18` | `cf2491fb0fdcbea02e68ec85337530b0aaf0a79948ecc44c98a91ec255c17475` | Denial/restored-write/migration/seed/restart/cleanup PASS |
+| Apple Silicon | `BgvoCR` | `9a4a71d445caa12e3d5306db5ff49f1fd387bd95ea50162b9737bb71eb486db2` | Denial/restored-write/migration/seed/restart/cleanup PASS |
+
+These entries have not been GUI-launched; basic GUI evidence below belongs to the earlier explicitly hashed binaries. Initial Windows negative runs exposed two false-oracle traps: a loaded, unmodified `FileSecurity` snapshot persists no changes, and SQLite may open an already-current DB read-only. Independent review caught the DACL restore no-op even after initial seed/restart tests passed; those initial artifacts (`710c044…` / `RbphT2`) are not restoration acceptance evidence. Restoration now imports the original Access-section SDDL into a new modified security descriptor, persists it and asserts exact SDDL equality. Both platforms independently reopen the restored file for read/write and successfully migrate v1→latest; a retained deny ACE or SQLite read-only fallback cannot pass. SQLite pools are closed before the exclusive OS-write oracle. Exact marker-verified failed Windows fixture deny ACEs were removed using numeric-SID `icacls`; access was confirmed, and failed synthetic profiles remain private for diagnosis. No failed/intermediate run is counted PASS in the table above. Confirming independent review (gemini-4-argon:medium) cleared all data-probe checkpoint blockers with no remaining findings; this is not full Plan 018 completion.
+
 ## Authorized basic GUI smoke
 
-After the owner explicitly approved the exclusive Windows/Mac desktop test slot, `run_ui_smoke.py` launched the exact native artifacts above with `--authorized-probe-ui`. Windows PID-matched `EnumWindows`/visibility metadata and macOS PID-matched on-screen, layer-zero CoreGraphics metadata each observed a window. Neither observer reads titles or captures pixels. A separate bounded helper contains native enumeration calls; the owner terminates/reaps only its own child process on success, timeout or interruption. The Mac runner requires the isolated app bundle and verifies its bundle identifier; flat publish entries are refused for GUI use.
+After the owner explicitly approved the exclusive Windows/Mac desktop test slot, `run_ui_smoke.py` launched the original Measured evidence artifacts (Windows `50cb2fa4…`, Mac `4148db87…`) with `--authorized-probe-ui`. Windows PID-matched `EnumWindows`/visibility metadata and macOS PID-matched on-screen, layer-zero CoreGraphics metadata each observed a window. Neither observer reads titles or captures pixels. A separate bounded helper contains native enumeration calls; the owner terminates/reaps only its own child process on success, timeout or interruption. The Mac runner requires the isolated app bundle and verifies its bundle identifier; flat publish entries are refused for GUI use.
 
 Both runs returned `ui_smoke_window=OBSERVED owned_process_stopped=true clipboard=UNTOUCHED input=NONE`. Private evidence tokens: Windows `ss-uno018-ui-whd96fwq`, macOS `ss-uno018-ui-f3khctre`. Captured stdout/stderr were empty on both machines; fixture-token and error-token scans were empty. This is not a full app/OS diagnostic privacy scan, visual rendering assertion, focus test or graceful-shutdown receipt. The harness forcibly stops the owned probe after observing its window; no user process is terminated.
 

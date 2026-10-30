@@ -71,6 +71,7 @@ internal static class DataProbe
 
     private static void Seed(string root)
     {
+        _stage = "bootstrap_migration";
         var factory = Factory(root, "fixture.db");
         Require(!File.Exists(factory.DatabasePath));
         Require(new Migrator(factory, Migrations.All.Take(1).ToArray()).MigrateToLatest() == 1);
@@ -89,6 +90,7 @@ internal static class DataProbe
             command.CommandText = "SELECT text FROM probe";
             Require((string?)command.ExecuteScalar() == "migration_fixture");
         }
+        _stage = "crud_settings";
         var clock = new ProbeClock();
         var store = new SnippetStore(factory, clock);
         store.Load();
@@ -104,6 +106,7 @@ internal static class DataProbe
         new SettingsRepository(factory).Set("probe_key", "probe_value");
         AssertSaved(store);
 
+        _stage = "import_export";
         var exported = NativeExport.Write(store.Folders, store.Snippets, DateTimeOffset.UtcNow);
         Require(exported.Utf8Json is not null && exported.Refusal is null);
         var parsed = ImportParser.Parse(exported.Utf8Json!, DateTimeOffset.UtcNow);
@@ -135,6 +138,8 @@ internal static class DataProbe
         Directory.CreateDirectory(inaccessible.DatabasePath);
         ExpectFailure(() => new Migrator(inaccessible).MigrateToLatest());
         Require(Directory.Exists(inaccessible.DatabasePath));
+        _stage = "permission_denied";
+        VerifyDeniedDatabase(root);
         _stage = "newer_schema";
         var newer = Factory(root, "newer.db");
         using (var connection = newer.Open())
@@ -156,6 +161,7 @@ internal static class DataProbe
 
     private static void VerifyRestart(string root)
     {
+        _stage = "restart_persistence";
         var factory = Factory(root, "fixture.db");
         Require(File.Exists(factory.DatabasePath));
         Require(new Migrator(factory).MigrateToLatest() == Migrations.All.Max(m => m.Version));
@@ -164,6 +170,92 @@ internal static class DataProbe
         AssertSaved(store);
         Require(new SettingsRepository(factory).Get("probe_key") == "probe_value");
         VerifyLog(root);
+    }
+
+    private static void VerifyDeniedDatabase(string root)
+    {
+        var factory = Factory(root, "denied.db");
+        // Force a required write. Opening an already-current SQLite database can
+        // legitimately fall back to read-only and is not a migration-denial oracle.
+        new Migrator(factory, Migrations.All.Take(1).ToArray()).MigrateToLatest();
+        SqliteConnection.ClearAllPools();
+        var original = File.ReadAllBytes(factory.DatabasePath);
+        if (OperatingSystem.IsWindows()) VerifyWindowsDeniedDatabase(factory);
+        else
+        {
+            var mode = File.GetUnixFileMode(factory.DatabasePath);
+            try
+            {
+                _stage = "permission_apply";
+                File.SetUnixFileMode(factory.DatabasePath, UnixFileMode.None);
+                _stage = "permission_os_oracle";
+                // Independent OS-read oracle: a privileged process bypassing
+                // mode bits must fail this test rather than claim denial PASS.
+                ExpectFailure(() => File.ReadAllBytes(factory.DatabasePath));
+                _stage = "permission_migrator";
+                ExpectFailure(() => new Migrator(factory).MigrateToLatest());
+            }
+            finally
+            {
+                SqliteConnection.ClearAllPools();
+                var failedStage = _stage;
+                _stage = "permission_restore";
+                File.SetUnixFileMode(factory.DatabasePath, mode);
+                Require(File.GetUnixFileMode(factory.DatabasePath) == mode);
+                _stage = failedStage;
+            }
+        }
+        _stage = "permission_postcheck";
+        Require(File.ReadAllBytes(factory.DatabasePath).SequenceEqual(original));
+        using (var connection = factory.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT version FROM schema_version";
+            Require(Convert.ToInt64(command.ExecuteScalar()) == 1);
+        }
+        SqliteConnection.ClearAllPools();
+        // A read-only SQLite fallback or retained deny ACE must not pass recovery.
+        using (File.Open(factory.DatabasePath, FileMode.Open, FileAccess.ReadWrite)) { }
+        Require(new Migrator(factory).MigrateToLatest() == Migrations.All.Max(m => m.Version));
+        SqliteConnection.ClearAllPools();
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void VerifyWindowsDeniedDatabase(SqliteConnectionFactory factory)
+    {
+        var file = new FileInfo(factory.DatabasePath);
+        var originalSddl = file.GetAccessControl(AccessControlSections.Access)
+            .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+        var restricted = file.GetAccessControl();
+        var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException();
+        // Deny data access only. The owner retains DACL restoration rights;
+        // never deny WRITE_DAC or touch an inherited/user-profile directory.
+        restricted.AddAccessRule(new FileSystemAccessRule(user,
+            FileSystemRights.WriteData | FileSystemRights.AppendData,
+            AccessControlType.Deny));
+        try
+        {
+            _stage = "permission_apply";
+            file.SetAccessControl(restricted);
+            _stage = "permission_os_oracle";
+            ExpectFailure(() => { using var denied = File.Open(factory.DatabasePath, FileMode.Open, FileAccess.ReadWrite); });
+            _stage = "permission_migrator";
+            ExpectFailure(() => new Migrator(factory).MigrateToLatest());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            var failedStage = _stage;
+            _stage = "permission_restore";
+            // GetAccessControl snapshots are unmodified: persisting one is a
+            // no-op. Importing SDDL marks Access modified so it really restores.
+            var restored = new FileSecurity();
+            restored.SetSecurityDescriptorSddlForm(originalSddl, AccessControlSections.Access);
+            file.SetAccessControl(restored);
+            Require(file.GetAccessControl(AccessControlSections.Access)
+                .GetSecurityDescriptorSddlForm(AccessControlSections.Access) == originalSddl);
+            _stage = failedStage;
+        }
     }
 
     private static void AssertSaved(SnippetStore store)
