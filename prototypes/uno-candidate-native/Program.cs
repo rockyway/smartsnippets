@@ -36,7 +36,7 @@ internal static class Program
     private static async Task<int> RunAsync(Process self, Stream commands, Stream responses, Guid run)
     {
         // Read a fixed-size bootstrap with a deadline. No arbitrary strings or PID attachment.
-        var bytes = new byte[16 + 16 + 16 + 24 + 8 + 2 + 128];
+        var bytes = new byte[16 + 16 + 16 + 24 + 8 + 3 + 128];
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             await commands.ReadExactlyAsync(bytes, deadline.Token);
         using var input = new BinaryReader(new MemoryStream(bytes), Encoding.UTF8);
@@ -48,11 +48,11 @@ internal static class Program
         var popup = (nint)input.ReadInt64();
         var popupMarker = new Guid(input.ReadBytes(16));
         var expires = DateTimeOffset.FromUnixTimeMilliseconds(input.ReadInt64());
-        var allowInsert = input.ReadBoolean(); var allowCopy = input.ReadBoolean();
+        var allowInsert = input.ReadBoolean(); var allowCopy = input.ReadBoolean(); var allowClipboardControl = input.ReadBoolean();
         var workerDigest = Encoding.ASCII.GetString(input.ReadBytes(64));
         var targetDigest = Encoding.ASCII.GetString(input.ReadBytes(64));
         if (expires <= DateTimeOffset.UtcNow || expires > DateTimeOffset.UtcNow.AddMinutes(2) ||
-            (!allowInsert && !allowCopy) || RetainedIdentity.Id(worker) != RetainedIdentity.Parent(self.SafeHandle) ||
+            (!allowInsert && !allowCopy && !allowClipboardControl) || RetainedIdentity.Id(worker) != RetainedIdentity.Parent(self.SafeHandle) ||
             RetainedIdentity.Parent(fixture) != RetainedIdentity.Id(worker)) return 2;
         using var workerImage = PinnedNativeImage.Open(RetainedIdentity.Image(worker), workerDigest, "SmartSnippets.UnoCandidate.exe");
         using var targetImage = PinnedNativeImage.Open(RetainedIdentity.Image(fixture), targetDigest, "SmartSnippets.Target018.exe");
@@ -78,6 +78,10 @@ internal static class Program
                 ? NativeOwnedPopup.QuietAllInput() && (probe.IsTargetForeground(target) ||
                     NativeOwnedPopup.RemoteForegroundReady(popup, RetainedIdentity.Id(worker), popupMarker))
                 : InputPreflight.QuietOwnedTarget(probe, target));
+        bool ControlAdmitted() => leaseWatch.Elapsed < lifetime && DateTimeOffset.UtcNow < expires &&
+            RetainedIdentity.Pinned(worker, workerImage) && RetainedIdentity.OutsideJob(self.SafeHandle) && owner.IsPinned() &&
+            probe.Check(target) == TargetCheck.Ok && NativeOwnedPopup.QuietAllInput() &&
+            NativeDesktop.IsVisibleCurrent();
         var copied = false;
         try
         {
@@ -96,10 +100,13 @@ internal static class Program
                     copied = copied && allowCopy && clipboard.CommitCopy(() => Admitted(copy: true));
                     answer = copied ? "copied" : "refused";
                 }
-                else if (command is "publish-copy" or "publish-insert")
+                else if (command is "publish-copy" or "publish-insert" or "publish-control")
                 {
                     var copy = command == "publish-copy";
-                    var status = clipboard.Publish(() => (copy ? allowCopy : allowInsert) && Admitted(copy));
+                    var control = command == "publish-control";
+                    var status = clipboard.Publish(() => control
+                        ? allowClipboardControl && ControlAdmitted()
+                        : (copy ? allowCopy : allowInsert) && Admitted(copy));
                     copied = copy && status == SwapStatus.Swapped;
                     answer = FormattableString.Invariant($"{status} saved={clipboard.SavedCount} bytes={clipboard.ByteCount}");
                 }

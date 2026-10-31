@@ -53,8 +53,39 @@ public sealed class NativeAcceptanceSessionTests
         Assert.True(await fixture.Session.DrainOwnedRecoveryAsync());
     }
 
+    [Fact]
+    public async Task ClipboardControl_IsNoInputMandatoryRecoveryEvenWithForeignForeground()
+    {
+        using var fixture = new SessionFixture();
+        fixture.Popup.Foreground = 999;
+        Assert.Equal(SwapStatus.Swapped, fixture.Session.PublishClipboardControl());
+        Assert.Equal(AcceptanceOperation.ClipboardControl, fixture.Guardian.LastOperation);
+        Assert.Equal(0, fixture.Popup.FocusCalls);
+        Assert.True(fixture.Session.RecoveryPending);
+        Assert.Equal(SwapStatus.NotPreserved, fixture.Session.PublishClipboardControl());
+        Assert.Equal(1, fixture.Guardian.Publications);
+        Assert.True(await fixture.Session.DrainOwnedRecoveryAsync());
+        Assert.False(fixture.Session.RecoveryPending);
+        Assert.Equal(SwapStatus.NotPreserved, fixture.Session.PublishClipboardControl());
+    }
+
+    [Fact]
+    public void ClipboardControl_RefusesHeldInputRevocationAndUnpinnedPopupBeforePublication()
+    {
+        using var fixture = new SessionFixture();
+        fixture.Popup.Quiet = false;
+        Assert.Equal(SwapStatus.NotPreserved, fixture.Session.PublishClipboardControl());
+        fixture.Popup.Quiet = true; fixture.Allowed = false;
+        Assert.Equal(SwapStatus.NotPreserved, fixture.Session.PublishClipboardControl());
+        fixture.Allowed = true; fixture.Popup.PopupPinned = false;
+        Assert.Equal(SwapStatus.NotPreserved, fixture.Session.PublishClipboardControl());
+        Assert.Equal(0, fixture.Guardian.Publications);
+        Assert.Equal(0, fixture.Popup.FocusCalls);
+    }
+
     private sealed class SessionFixture : IDisposable
     {
+        internal bool Allowed = true;
         internal PopupOs Popup = new();
         internal Channel Guardian = new();
         internal NativeAcceptanceSession Session;
@@ -62,7 +93,7 @@ public sealed class NativeAcceptanceSessionTests
         {
             var owned = new OwnedTargetProbe(new Lease(), new Identity(Popup));
             var closed = false;
-            bool Permitted(AcceptanceOperation _) => !closed;
+            bool Permitted(AcceptanceOperation _) => Allowed && !closed;
             var probe = new GuardedTargetProbe(owned, Permitted);
             var target = probe.Capture("a");
             var focus = new OwnedFocus(probe, target, 30, Popup, () => !closed, () => !closed);
@@ -102,6 +133,8 @@ public sealed class NativeAcceptanceSessionTests
     private sealed class Channel : IGuardianChannel
     {
         internal bool Pending, Closed;
+        internal int Publications;
+        internal AcceptanceOperation LastOperation;
         internal RestoreStatus RestoreResult = RestoreStatus.Restored;
         public string RecoveryControl => "fake";
         public bool IsPinned => true;
@@ -110,7 +143,8 @@ public sealed class NativeAcceptanceSessionTests
         public bool SnapshotAcknowledged => true;
         public int SavedCount => 1;
         public long ByteCount => 4;
-        public SwapStatus Publish(AcceptanceOperation operation) { Pending = true; return SwapStatus.Swapped; }
+        public SwapStatus Publish(AcceptanceOperation operation)
+        { Publications++; LastOperation = operation; Pending = true; return SwapStatus.Swapped; }
         public bool CommitCopy() { Pending = false; return true; }
         public RestoreStatus Restore() { if (RestoreResult == RestoreStatus.Restored) Pending = false; return RestoreResult; }
         public void CloseAdmission() => Closed = true;

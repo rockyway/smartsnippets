@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.TargetIdentity018;
+using Microsoft.Win32.SafeHandles;
 
 namespace SmartSnippets.Uno.Platforms.Windows.AcceptanceNative;
 
@@ -17,6 +18,15 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
     internal InsertionTarget Target => target;
     internal bool RecoveryPending => dispatcher.RecoveryPending;
     internal string RecoveryControl => guardian.RecoveryControl;
+    internal nint DuplicateGuardianHandle(SafeProcessHandle recipient) => guardian.DuplicateGuardianHandle(recipient);
+    internal SwapStatus PublishClipboardControl()
+    {
+        if (closed || !permitted(AcceptanceOperation.ClipboardControl) || !guardian.CanPublish
+            || !guardian.IsPinned || !popup.PopupPinned || owned.Check(target) != TargetCheck.Ok
+            || !(visibleDesktop ?? NativeDesktop.IsVisibleCurrent)()
+            || !(quietInput ?? NativeOwnedPopup.QuietAllInput)()) return SwapStatus.NotPreserved;
+        return guardian.Publish(AcceptanceOperation.ClipboardControl);
+    }
     internal Task<bool> ReadyForAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
     // Invoke ONLY from the existing popup coordinator's ready-surface focus callback.
     internal bool TryFocusOwnedPopup() => !closed && permitted(AcceptanceOperation.Focus) && focus.TryFocusPopup();

@@ -18,6 +18,7 @@ internal interface ICandidatePopupWindow : IPopupHost, IDisposable
     void Prewarm();
     void ShowPreview(string? query, bool openSortMenu);
     // A head without a concrete captured-target surface must not advertise native readiness.
+    nint NativeHandle => 0; // Owned-surface metadata only; not capture or focus permission.
     bool SupportsCapturedPopup => false;
     void ShowCaptured(InsertionTarget target) => throw new NotSupportedException("Captured popup is unavailable.");
 }

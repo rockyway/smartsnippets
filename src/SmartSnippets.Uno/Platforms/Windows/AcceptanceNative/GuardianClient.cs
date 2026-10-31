@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.WindowsInsertion018;
+using Microsoft.Win32.SafeHandles;
 
 namespace SmartSnippets.Uno.Platforms.Windows.AcceptanceNative;
 
@@ -19,15 +20,15 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     private readonly AnonymousPipeServerStream commands, responses;
     private readonly StreamWriter writer;
     private readonly StreamReader reader;
-    private readonly bool allowInsert, allowCopy;
+    private readonly bool allowInsert, allowCopy, allowClipboardControl;
     private readonly object sync = new();
     private bool closed, broken, pending, disposed, spent;
     public string RecoveryControl { get; }
     private GuardianClient(Process process, PinnedNativeImage image, AnonymousPipeServerStream commands,
-        AnonymousPipeServerStream responses, Guid run, bool allowInsert, bool allowCopy)
+        AnonymousPipeServerStream responses, Guid run, bool allowInsert, bool allowCopy, bool allowClipboardControl)
     {
-        (this.process, this.image, this.commands, this.responses, this.allowInsert, this.allowCopy) =
-            (process, image, commands, responses, allowInsert, allowCopy);
+        (this.process, this.image, this.commands, this.responses, this.allowInsert, this.allowCopy, this.allowClipboardControl) =
+            (process, image, commands, responses, allowInsert, allowCopy, allowClipboardControl);
         writer = new(commands, new UTF8Encoding(false), leaveOpen: true);
         reader = new(responses, Encoding.UTF8, false, leaveOpen: true);
         RecoveryControl = "ss-uno019-recovery-" + run.ToString("N");
@@ -40,7 +41,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     public long ByteCount { get; private set; }
 
     internal static GuardianClient Start(AcceptanceFixture fixture, InsertionTarget target, NativeOwnedPopup popup, string path,
-        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy)
+        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false)
     {
         NativeAcceptanceFactory.RequireReviewed();
         using var self = Process.GetCurrentProcess();
@@ -82,12 +83,12 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
                 bootstrap.Write(popup.Window.ToInt64());
                 bootstrap.Write(popup.Marker.ToByteArray());
                 bootstrap.Write(expires.ToUnixTimeMilliseconds());
-                bootstrap.Write(allowInsert); bootstrap.Write(allowCopy);
+                bootstrap.Write(allowInsert); bootstrap.Write(allowCopy); bootstrap.Write(allowClipboardControl);
                 bootstrap.Write(Encoding.ASCII.GetBytes(workerImage.Digest));
                 bootstrap.Write(Encoding.ASCII.GetBytes(fixture.Image.Digest));
                 bootstrap.Flush();
             }
-            var client = new GuardianClient(child, image, commands, responses, run, allowInsert, allowCopy);
+            var client = new GuardianClient(child, image, commands, responses, run, allowInsert, allowCopy, allowClipboardControl);
             if (client.Read() != "ready") throw new InvalidOperationException("Guardian bootstrap refused.");
             return client;
         }
@@ -106,14 +107,15 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     }
     public SwapStatus Publish(AcceptanceOperation operation)
     {
-        if (operation is not (AcceptanceOperation.Copy or AcceptanceOperation.Insert)) return SwapStatus.NotPreserved;
+        if (operation is not (AcceptanceOperation.Copy or AcceptanceOperation.Insert or AcceptanceOperation.ClipboardControl)) return SwapStatus.NotPreserved;
         var copy = operation == AcceptanceOperation.Copy;
+        var control = operation == AcceptanceOperation.ClipboardControl;
         lock (sync)
         {
-            if (!CanPublish || !(copy ? allowCopy : allowInsert)) return SwapStatus.NotPreserved;
+            if (!CanPublish || !(control ? allowClipboardControl : copy ? allowCopy : allowInsert)) return SwapStatus.NotPreserved;
             spent = true;
             pending = true; // A lost acknowledgement must never erase the recovery obligation.
-            var answer = Exchange(copy ? "publish-copy" : "publish-insert");
+            var answer = Exchange(control ? "publish-control" : copy ? "publish-copy" : "publish-insert");
             var fields = answer.Split(' ');
             if (fields.Length != 3 || !Enum.TryParse<SwapStatus>(fields[0], out var status) || !Enum.IsDefined(status) ||
                 !fields[1].StartsWith("saved=", StringComparison.Ordinal) || !fields[2].StartsWith("bytes=", StringComparison.Ordinal) ||
@@ -152,6 +154,17 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
             }
             catch (Exception) { return RestoreStatus.Failed; }
         }
+    }
+    public nint DuplicateGuardianHandle(SafeProcessHandle recipient)
+    {
+        using var self = Process.GetCurrentProcess();
+        var path = Environment.ProcessPath ?? throw new InvalidOperationException("Coordinator identity refused.");
+        using var file = File.OpenRead(path);
+        using var ownImage = PinnedNativeImage.Open(path, Convert.ToHexString(SHA256.HashData(file)), "SmartSnippets.UnoCandidate.exe");
+        if (!IsPinned || RetainedIdentity.Parent(self.SafeHandle) != RetainedIdentity.Id(recipient)
+            || !RetainedIdentity.OutsideJob(recipient) || !RetainedIdentity.Pinned(recipient, ownImage))
+            throw new InvalidOperationException("Coordinator identity refused.");
+        return RetainedIdentity.Duplicate(process.SafeHandle, recipient);
     }
     public void CloseAdmission() => closed = true;
     private string Read() => FixedPipe.ReadAsync(reader, TimeSpan.FromSeconds(5), CancellationToken.None).GetAwaiter().GetResult();

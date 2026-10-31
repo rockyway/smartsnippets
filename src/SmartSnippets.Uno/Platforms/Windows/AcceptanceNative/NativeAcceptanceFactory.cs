@@ -20,18 +20,21 @@ internal static class NativeAcceptanceFactory
 
     internal static NativeAcceptanceSession Create(AcceptanceFixture fixture, string selectedWindow,
         nint ownedPopupWindow, string guardianPath, string guardianDigest, DateTimeOffset expires,
-        bool allowInsert, bool allowCopy, Func<AcceptanceOperation, bool> permitted)
+        bool allowInsert, bool allowCopy, Func<AcceptanceOperation, bool> permitted, bool allowClipboardControl = false)
     {
         RequireReviewed();
         if (expires <= DateTimeOffset.UtcNow || expires > DateTimeOffset.UtcNow.AddMinutes(2) ||
-            !fixture.Lease.IsAliveAndPinned() || (!allowInsert && !allowCopy)) throw new InvalidOperationException("Acceptance session refused.");
+            !fixture.Lease.IsAliveAndPinned() || (!allowInsert && !allowCopy && !allowClipboardControl)) throw new InvalidOperationException("Acceptance session refused.");
         var started = Stopwatch.GetTimestamp();
         var lifetime = expires - DateTimeOffset.UtcNow;
         var closed = false;
         bool Permission(AcceptanceOperation operation) => !closed && Stopwatch.GetElapsedTime(started) < lifetime &&
             DateTimeOffset.UtcNow < expires && permitted(operation) &&
             (operation is not (AcceptanceOperation.Insert or AcceptanceOperation.Input or AcceptanceOperation.Clipboard) || allowInsert) &&
-            (operation != AcceptanceOperation.Copy || allowCopy);
+            (operation != AcceptanceOperation.Copy || allowCopy) &&
+            (operation != AcceptanceOperation.Focus || allowInsert || allowCopy) &&
+            (operation != AcceptanceOperation.Shortcut || allowInsert) &&
+            (operation != AcceptanceOperation.ClipboardControl || allowClipboardControl);
         var owned = fixture.Lease.CreateProbe();
         try
         {
@@ -40,7 +43,7 @@ internal static class NativeAcceptanceFactory
             var popup = new NativeOwnedPopup(ownedPopupWindow);
             try
             {
-                var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy);
+                var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy, allowClipboardControl);
                 var focus = new OwnedFocus(probe, target, ownedPopupWindow, popup,
                     () => Permission(AcceptanceOperation.Capture) || Permission(AcceptanceOperation.Copy) || Permission(AcceptanceOperation.Insert),
                     () => Permission(AcceptanceOperation.Focus));

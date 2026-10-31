@@ -3,10 +3,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.TargetIdentity018;
+using Microsoft.Win32.SafeHandles;
 
 namespace SmartSnippets.Uno.Platforms.Windows.AcceptanceNative;
 
-internal enum AcceptanceOperation { Capture, Insert, Copy, Shortcut, Focus, Input, Clipboard }
+internal enum AcceptanceOperation { Capture, Insert, Copy, Shortcut, Focus, Input, Clipboard, ClipboardControl }
 
 internal interface IGuardianChannel : IDisposable
 {
@@ -21,6 +22,7 @@ internal interface IGuardianChannel : IDisposable
     bool CommitCopy();
     RestoreStatus Restore();
     void CloseAdmission();
+    nint DuplicateGuardianHandle(SafeProcessHandle recipient) => throw new InvalidOperationException("Guardian transfer unavailable.");
 }
 
 internal interface IAcceptanceInput
