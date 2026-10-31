@@ -33,6 +33,8 @@ internal static class Program
 
     private static Task<int> RunRoleAsync(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--authorized-readonly-desktop")
+            return CheckDesktopAsync();
         if (args.Length == 2 && args[0] == "--internal-guardian" && Guid.TryParseExact(args[1], "D", out var guardianRun))
             return ClipboardGuardian.RunAsync(guardianRun);
         if (args.Length == 5 && args[0] == "--internal-worker" && Guid.TryParseExact(args[1], "D", out var workerRun) &&
@@ -43,5 +45,14 @@ internal static class Program
             args[7] is "positive" or "abort-after-swap")
             return InsertionWatchdog.RunAsync(args[3], args[5], args[7] == "positive" ? InsertionScene.Positive : InsertionScene.AbortAfterSwap);
         throw new ProbeFailure("authorization_refused");
+    }
+
+    private static async Task<int> CheckDesktopAsync()
+    {
+        var ready = await ClipboardOnlyWorkerFlow.WaitForDesktopAsync(
+            () => InputPreflight.QuietCurrentDesktop(), () => Task.Delay(100));
+        if (!ready) _ = InputPreflight.QuietCurrentDesktop(FixedPipe.Receipt);
+        FixedPipe.Receipt(ready ? "clipboard_desktop_check=READY" : "clipboard_desktop_check=REFUSED");
+        return ready ? 0 : 2;
     }
 }

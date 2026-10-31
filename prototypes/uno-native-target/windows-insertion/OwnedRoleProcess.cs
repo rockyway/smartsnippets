@@ -16,7 +16,7 @@ internal sealed partial class OwnedRoleProcess : IDisposable
         Process = process;
         stderrSeen = Task.Run(async () => await process.StandardError.ReadAsync(new char[1].AsMemory()) != 0);
     }
-    internal static OwnedRoleProcess Start(string role, Guid run, string? target = null, string? digest = null, InsertionScene scene = InsertionScene.Positive)
+    internal static OwnedRoleProcess Start(string role, Guid run, string temporaryRoot, string? target = null, string? digest = null, InsertionScene scene = InsertionScene.Positive)
     {
         var image = Environment.ProcessPath ?? throw new ProbeFailure("self_path");
         TargetArtifact.RefuseLinks(image);
@@ -26,6 +26,9 @@ internal sealed partial class OwnedRoleProcess : IDisposable
         info.Environment.Clear();
         info.Environment["SystemRoot"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         info.Environment["WINDIR"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        // Never fall back to the Windows directory after clearing inherited env.
+        // The coordinator supplies its already-created owner-only diagnostics root.
+        foreach (var pair in RoleTemporaryEnvironment(temporaryRoot)) info.Environment[pair.Key] = pair.Value;
         info.ArgumentList.Add("--internal-" + role);
         info.ArgumentList.Add(run.ToString("D"));
         if (target is not null && digest is not null)
@@ -33,6 +36,13 @@ internal sealed partial class OwnedRoleProcess : IDisposable
             info.ArgumentList.Add(target); info.ArgumentList.Add(digest); info.ArgumentList.Add(scene.ToString());
         }
         return new OwnedRoleProcess(Process.Start(info) ?? throw new ProbeFailure("role_start"));
+    }
+    internal static IReadOnlyDictionary<string, string> RoleTemporaryEnvironment(string root)
+    {
+        if (!Path.IsPathFullyQualified(root)) throw new ProbeFailure("role_temp_root");
+        TargetArtifact.RefuseLinks(root);
+        if (!Directory.Exists(root)) throw new ProbeFailure("role_temp_root");
+        return new Dictionary<string, string> { ["TEMP"] = root, ["TMP"] = root };
     }
     internal async Task<string> ReadAsync(int seconds = 10)
     {

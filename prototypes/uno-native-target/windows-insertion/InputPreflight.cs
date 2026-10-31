@@ -5,27 +5,37 @@ namespace SmartSnippets.WindowsInsertion018;
 
 internal static partial class InputPreflight
 {
-    internal static unsafe bool QuietOwnedTarget(ITargetProbe probe, InsertionTarget target)
+    // Clipboard-only scenes retain visible/current input-desktop and idle checks,
+    // but have no keyboard/pointer capability and do not inspect/release keys.
+    internal static unsafe bool QuietCurrentDesktop(Action<string>? receipt = null)
     {
+        bool Refuse(string code) { receipt?.Invoke(code); return false; }
         var flags = new ObjectFlags();
-        if (GetUserObjectFlags(GetProcessWindowStation(), 1, ref flags, (uint)sizeof(ObjectFlags), out _) == 0 || (flags.Flags & 1) == 0) return false;
+        if (GetUserObjectFlags(GetProcessWindowStation(), 1, ref flags, (uint)sizeof(ObjectFlags), out _) == 0) return Refuse("desktop_station_query_refused");
+        if ((flags.Flags & 1) == 0) return Refuse("desktop_station_hidden");
         var desktop = OpenInputDesktop(0, 0, 1);
-        if (desktop == 0) return false;
+        if (desktop == 0) return Refuse("desktop_input_open_refused");
         try
         {
             var current = GetThreadDesktop(GetCurrentThreadId());
             var a = stackalloc char[256];
             var b = stackalloc char[256];
             if (current == 0 || GetUserObjectInformationW(desktop, 2, a, 512, out _) == 0 ||
-                GetUserObjectInformationW(current, 2, b, 512, out _) == 0) return false;
+                GetUserObjectInformationW(current, 2, b, 512, out _) == 0) return Refuse("desktop_name_query_refused");
             var lengthA = NullLength(a);
             var lengthB = NullLength(b);
-            if (lengthA <= 0 || lengthB != lengthA || !new ReadOnlySpan<char>(a, lengthA).SequenceEqual(new ReadOnlySpan<char>(b, lengthB))) return false;
+            if (lengthA <= 0 || lengthB != lengthA || !new ReadOnlySpan<char>(a, lengthA).SequenceEqual(new ReadOnlySpan<char>(b, lengthB))) return Refuse("desktop_mismatch");
             var last = new LastInput { Size = (uint)sizeof(LastInput) };
-            if (GetLastInputInfo(ref last) == 0 || unchecked((uint)GetTickCount64() - last.Tick) < 1500) return false;
-            for (var key = 1; key < 256; key++) if ((GetAsyncKeyState(key) & 0x8000) != 0) return false;
+            if (GetLastInputInfo(ref last) == 0) return Refuse("desktop_idle_query_refused");
+            if (unchecked((uint)GetTickCount64() - last.Tick) < 1500) return Refuse("desktop_recent_input");
         }
         finally { CloseDesktop(desktop); }
+        return true;
+    }
+    internal static bool QuietOwnedTarget(ITargetProbe probe, InsertionTarget target)
+    {
+        if (!QuietCurrentDesktop()) return false;
+        for (var key = 1; key < 256; key++) if ((GetAsyncKeyState(key) & 0x8000) != 0) return false;
         // Close our desktop handle BEFORE the final exact owned-window gate.
         return probe.Check(target) == TargetCheck.Ok && probe.IsTargetForeground(target);
     }

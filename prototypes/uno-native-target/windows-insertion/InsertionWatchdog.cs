@@ -22,7 +22,7 @@ internal static class InsertionWatchdog
         var run = Guid.NewGuid();
         FixedPipe.Receipt("private_evidence_token=" + diagnostics.Token);
         FixedPipe.Receipt("recovery_control=ss-insertion018-" + run.ToString("N"));
-        using var guardian = OwnedRoleProcess.Start("guardian", run);
+        using var guardian = OwnedRoleProcess.Start("guardian", run, diagnostics.DirectoryPath);
         OwnedRoleProcess? worker = null;
         WorkerJob? job = null;
         var armSent = false;
@@ -43,7 +43,7 @@ internal static class InsertionWatchdog
                 !Number(fields[2], "owner=", true) || !uint.TryParse(fields[3].AsSpan("sequence=".Length), NumberStyles.None,
                     CultureInfo.InvariantCulture, out _) || !fields[3].StartsWith("sequence=", StringComparison.Ordinal))
                 throw new ProbeFailure("guardian_ready");
-            worker = OwnedRoleProcess.Start("worker", run, target, digest, scene);
+            worker = OwnedRoleProcess.Start("worker", run, diagnostics.DirectoryPath, target, digest, scene);
             job = WorkerJob.Assign(worker); // Before the child can start its native target or swap.
             var workerInGuardian = OwnedRoleProcess.DuplicateInto(worker, guardian);
             var guardianInWorker = OwnedRoleProcess.DuplicateInto(guardian, worker);
