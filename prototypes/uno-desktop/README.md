@@ -7,8 +7,8 @@ Current evidence, artifact digests, limitations and remaining gates: [research 0
 ## Tooling and isolation
 
 - Uno.Sdk 6.7.30, resolved framework 6.7.135; .NET SDK 10.0.403.
-- Windows native WinAppSDK 1.8.260921001, unpackaged x64. Probe minimum Windows 18362 is not approval to raise production's 17763 floor.
-- macOS `net10.0-desktop` / `osx-arm64` only, tested building on macOS 26.5.2 / Xcode 26.6. Native entry minimum 12.0 is not a tested product-support floor.
+- Windows native WinAppSDK 1.8.260921001, unpackaged x64. Explicit probe minimum 17763 preserves the existing product's build floor; runtime on that oldest OS is NOT RUN.
+- macOS `net10.0-desktop` / `osx-arm64` only, tested on macOS 26.5.2 / Xcode 26.6. Bundle launch minimum 15.0 follows current .NET 10 OS support; the entry's lower 12.0 link target is not a vendor-support claim. Runtime on macOS 15 is NOT RUN. See [toolchain/OS evidence](../../docs/research/020-desktop-toolchain-and-support-floors.md).
 - Independent application identity, scoped NuGet package mode, no HotDesign/MCP servers. Production packages/source/solution/SDK/CI remain untouched.
 - No default GUI launch. Both native entry points handle only explicit headless `--probe-data` before host initialization, or require `--authorized-probe-ui` for GUI mode. **The flag itself is not authorization.**
 
@@ -72,6 +72,12 @@ Select `run_ui_smoke.py --coordinator` with the same owned-entry/hash/authorized
 ## Native Enter preview (Windows PASS; Mac held-input blocker)
 
 `run_ui_smoke.py --preview` requires the actual native Enter → routed TextBox handler → production `PopupViewModel.OpenPreview()` selection → owned hide path, with real SQLite reload proving unchanged usage/content/metadata. Compiled label/details bindings must realize before coordinator focus; forbidden insertion/clipboard boundaries count and throw. Read-only clipboard epochs must remain unchanged. Successful cleanup removes the private synthetic profile and requires natural exit zero; receipt-only/watchdog/duplicate output cannot pass. Windows native runs pass, including mouse recovery. macOS reaches native and logical focus but refuses Enter because its OS reports held input, despite long event inactivity. No unowned key-up/reset or safety-guard exemption is implemented. Native row activation, external hover and insertion remain unverified. See research 016 for exact artifacts, reviews and receipts.
+
+## Companion surface fixture (both desktops PASS; partial T3)
+
+Native artifacts, runtime receipts and limits: [research 021](../../docs/research/021-external-companion-surface-feasibility.md).
+
+`run_ui_smoke.py --companion` selects `--probe-ui-companion` without input synthesis, stdin preparation or clipboard access. It exercises actual production `HoverDetailsCoordinator` and `HoverDetailsPlacement.PlaceBesideWindow` against an exterior owned native companion window positioned beside the owned main window within the monitor work area (remaining on the bottom-left monitor on Windows), verifying cloaked warmup before reveal, unchanged foreground token, compiled synthetic multiline Unicode binding, programmatic `ScrollViewer` scrolling, cancel/hide, asynchronous 500 ms `Enter` hover-policy reopen, `SurfaceEntered`/`SurfaceExited` timed handoff, native companion closure/absence and natural process exit. This is partial T3 companion-surface coverage, not real OS pointer-route delivery proof.
 
 ## Private pasteboard probe (macOS PASS; NOT General clipboard acceptance)
 

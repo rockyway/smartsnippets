@@ -19,6 +19,10 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);vendor/**;macos-json-risk/**;macos-pasteboard-risk/**;mobile-risk/**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <!-- Preserve the existing product's Windows 1809 build floor; Uno's
+         default 18362 must not silently raise it during a migration probe. -->
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <WinAppSdkVersion>1.8.260921001</WinAppSdkVersion>
     <WinAppSdkBuildToolsVersion>10.0.28000.2705</WinAppSdkBuildToolsVersion>
     <Platform>x64</Platform>

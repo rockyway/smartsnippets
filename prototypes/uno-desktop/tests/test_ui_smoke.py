@@ -39,26 +39,39 @@ class UiSmokeTests(unittest.TestCase):
         self.private = self.base / "private"
         self.private.mkdir()
 
-    def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None, coordinator=False, preview=False):
+    def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None,
+               coordinator=False, preview=False, companion=False, extra_args=None, stderr=b""):
         process = Mock(pid=12345)
         process.poll.return_value = None
         process.wait.return_value = 0
         if interrupt_wait:
             process.wait.side_effect = [KeyboardInterrupt(), 0]
         output = io.StringIO()
+        err_output = io.StringIO()
         args = self.args + (["--authorized-screen-slot"] if authorize else [])
         if lifecycle:
-            args.append("--preview" if preview else "--coordinator" if coordinator else "--lifecycle")
+            args.append("--companion" if companion else "--preview" if preview else "--coordinator" if coordinator else "--lifecycle")
             if lifecycle == "success":
                 process.poll.side_effect = [None, 0, 0]
+            elif lifecycle == "early_exit":
+                process.poll.return_value = 0
+            elif lifecycle == "stubborn":
+                process.wait.side_effect = [subprocess.TimeoutExpired("owned-app", 30),
+                                            subprocess.TimeoutExpired("owned-app", 3), 0]
             else:
                 process.wait.side_effect = [subprocess.TimeoutExpired("owned-app", 30), 0]
+        if extra_args:
+            args.extend(extra_args)
 
         def start(arguments, **kwargs):
             if lifecycle:
-                receipts = smoke.PREVIEW_RECEIPTS if preview else smoke.COORDINATOR_RECEIPTS if coordinator else smoke.LIFECYCLE_RECEIPTS
+                receipts = (smoke.COMPANION_RECEIPTS if companion else smoke.PREVIEW_RECEIPTS if preview
+                            else smoke.COORDINATOR_RECEIPTS if coordinator else smoke.LIFECYCLE_RECEIPTS)
                 kwargs["stdout"].write(("\n".join(receipts) + "\n").encode())
                 kwargs["stdout"].flush()
+                if stderr:
+                    kwargs["stderr"].write(stderr)
+                    kwargs["stderr"].flush()
             return process
         results = helper or [subprocess.CompletedProcess([], 0, "1\n", "")]
         if (coordinator or preview) and helper is None:
@@ -68,7 +81,7 @@ class UiSmokeTests(unittest.TestCase):
              patch.object(smoke, "private_directory", return_value=self.private), \
              patch.object(subprocess, "Popen", side_effect=start) as launch, \
              patch.object(subprocess, "run", side_effect=results), \
-             contextlib.redirect_stdout(output):
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(err_output):
             try:
                 result = smoke.main()
             except BaseException as error:
@@ -237,6 +250,166 @@ class UiSmokeTests(unittest.TestCase):
         self.assertIsInstance(result, ValueError)
         self.assertEqual("Artifact identity check failed", str(result))
         launch.assert_not_called()
+
+    def test_companion_selects_native_flag_without_input_preparation_or_recovery(self):
+        (self.private / "focus.json").write_text("{}")
+        observer = Mock(return_value=subprocess.CompletedProcess([], 0, "1\n", ""))
+        with patch.object(smoke, "replay_mouse_journal") as replay, \
+             patch.object(subprocess, "run", side_effect=observer):
+            args = self.args + ["--authorized-screen-slot", "--companion"]
+            process = Mock(pid=12345)
+            process.poll.side_effect = [None, 0, 0]
+            process.wait.return_value = 0
+            output = io.StringIO()
+
+            def start(arguments, **kwargs):
+                kwargs["stdout"].write(("\n".join(smoke.COMPANION_RECEIPTS) + "\n").encode())
+                kwargs["stdout"].flush()
+                return process
+
+            with patch.object(sys, "argv", args), patch.object(smoke, "BASE", self.base), \
+                 patch.object(smoke, "inspect_executable", return_value=[]), \
+                 patch.object(smoke, "private_directory", return_value=self.private), \
+                 patch.object(subprocess, "Popen", side_effect=start) as launch, \
+                 contextlib.redirect_stdout(output):
+                result = smoke.main()
+        self.assertEqual(0, result)
+        self.assertEqual([str(self.entry), "--authorized-probe-ui", "--probe-ui-companion"], launch.call_args.args[0])
+        self.assertEqual(self.entry.parent, launch.call_args.kwargs["cwd"])
+        self.assertEqual(subprocess.DEVNULL, launch.call_args.kwargs["stdin"])
+        if sys.platform == "win32":
+            self.assertEqual(subprocess.CREATE_NO_WINDOW, launch.call_args.kwargs["creationflags"])
+        else:
+            self.assertEqual(0, launch.call_args.kwargs["creationflags"])
+        observer.assert_called_once()
+        self.assertEqual("--window-count", observer.call_args.args[0][2])
+        process.stdin.write.assert_not_called()
+        process.stdin.close.assert_not_called()
+        replay.assert_not_called()
+        process.terminate.assert_not_called()
+        process.kill.assert_not_called()
+        text = output.getvalue()
+        self.assertIn("ui_smoke_window=OBSERVED owned_process_stopped=true clipboard=UNTOUCHED input=NONE", text)
+        self.assertNotIn("mouse_recovery=", text)
+        self.assertIn("ui_companion_result=PASS graceful_exit=true", text)
+
+    def test_companion_cross_platform_mac_bundle_and_creationflags(self):
+        bundle_macos = self.base / "bin" / "probe" / "mac-fixture" / "SmartSnippets.UnoProbe.app" / "Contents" / "MacOS"
+        bundle_macos.mkdir(parents=True, exist_ok=True)
+        mac_entry = bundle_macos / "SmartSnippets.UnoProbe"
+        mac_entry.write_bytes(b"synthetic arm64 fixture")
+        digest = hashlib.sha256(mac_entry.read_bytes()).hexdigest()
+        with (bundle_macos.parent / "Info.plist").open("wb") as stream:
+            plistlib.dump({"CFBundleIdentifier": "org.smartsnippets.feasibility018",
+                           "CFBundleExecutable": "SmartSnippets.UnoProbe"}, stream)
+        args = ["run_ui_smoke.py", "--executable", str(mac_entry), "--sha256", digest,
+                "--authorized-screen-slot", "--companion"]
+        process = Mock(pid=23456)
+        process.poll.side_effect = [None, 0, 0]
+        process.wait.return_value = 0
+        output = io.StringIO()
+
+        def start(arguments, **kwargs):
+            kwargs["stdout"].write(("\n".join(smoke.COMPANION_RECEIPTS) + "\n").encode())
+            kwargs["stdout"].flush()
+            return process
+
+        with patch.object(smoke.sys, "platform", "darwin"), patch.object(sys, "argv", args), \
+             patch.object(smoke, "BASE", self.base), patch.object(smoke, "inspect_executable", return_value=[]), \
+             patch.object(smoke, "private_directory", return_value=self.private), \
+             patch.object(subprocess, "Popen", side_effect=start) as launch, \
+             patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "1\n", "")), \
+             contextlib.redirect_stdout(output):
+            result = smoke.main()
+        self.assertEqual(0, result)
+        self.assertEqual([str(mac_entry), "--authorized-probe-ui", "--probe-ui-companion"], launch.call_args.args[0])
+        self.assertEqual(subprocess.DEVNULL, launch.call_args.kwargs["stdin"])
+        self.assertEqual(0, launch.call_args.kwargs["creationflags"])
+        self.assertIn("input=NONE", output.getvalue())
+        self.assertIn("ui_companion_result=PASS graceful_exit=true", output.getvalue())
+
+    def test_companion_cli_rejects_missing_slot_and_conflicting_scene_flags(self):
+        result, _, launch, _ = self.invoke(authorize=False, lifecycle="success", companion=True)
+        self.assertIsInstance(result, ValueError)
+        launch.assert_not_called()
+        for conflict in ("--lifecycle", "--coordinator", "--preview"):
+            with self.subTest(conflict=conflict):
+                result, _, launch, _ = self.invoke(lifecycle="success", companion=True, extra_args=[conflict])
+                self.assertIsInstance(result, SystemExit)
+                self.assertEqual(2, result.code)
+                launch.assert_not_called()
+
+    def test_companion_timeout_and_stubborn_hang_escalate_owned_cleanup(self):
+        result, process, _, output = self.invoke(lifecycle="hung", companion=True)
+        self.assertEqual(1, result)
+        process.terminate.assert_called_once_with()
+        process.kill.assert_not_called()
+        self.assertIn("input=NONE", output)
+        self.assertIn("ui_companion_result=FAIL graceful_exit=false", output)
+
+        result, process, _, output = self.invoke(lifecycle="stubborn", companion=True)
+        self.assertEqual(1, result)
+        process.terminate.assert_called_once_with()
+        process.kill.assert_called_once_with()
+        self.assertEqual(3, process.wait.call_count)
+        self.assertIn("ui_companion_result=FAIL graceful_exit=false", output)
+
+    def test_companion_early_exit_or_stderr_fails_without_echoing_diagnostics(self):
+        result, process, _, output = self.invoke(lifecycle="early_exit", companion=True)
+        self.assertEqual(1, result)
+        process.terminate.assert_not_called()
+        self.assertIn("ui_smoke_window=NOT_OBSERVED", output)
+        self.assertIn("ui_companion_result=FAIL graceful_exit=false", output)
+
+        result, _, _, output = self.invoke(lifecycle="success", companion=True,
+                                           stderr=b"ui_companion_failed stage=3 kind=InvalidOperationException secret")
+        self.assertEqual(1, result)
+        self.assertIn("ui_companion_result=FAIL graceful_exit=false", output)
+        self.assertNotIn("secret", output)
+
+
+class CompanionReceiptTests(unittest.TestCase):
+    def setUp(self):
+        self.lines = [
+            "ui_companion_started",
+            "ui_companion_external_geometry_ok binding=COMPILED foreground=UNCHANGED",
+            "ui_companion_scroll_ok",
+            "ui_companion_hidden",
+            "ui_companion_hover_policy_opened",
+            "ui_companion_handoff_ok",
+            "ui_companion_native_closed",
+            "ui_companion_complete managed_closed=2 native_absence=1 input=NONE clipboard=UNTOUCHED",
+        ]
+
+    def test_every_companion_hop_order_and_clean_exit_required(self):
+        self.assertEqual(self.lines, smoke.COMPANION_RECEIPTS)
+        self.assertTrue(smoke.companion_completed("\n".join(self.lines) + "\n", "", 0))
+        for index in range(len(self.lines)):
+            with self.subTest(index=index):
+                self.assertFalse(smoke.companion_completed("\n".join(self.lines[:index] + self.lines[index + 1:]), "", 0))
+        swapped = list(self.lines)
+        swapped[4], swapped[5] = swapped[5], swapped[4]
+        self.assertFalse(smoke.companion_completed("\n".join(swapped), "", 0))
+        self.assertFalse(smoke.companion_completed("\n".join(reversed(self.lines)), "", 0))
+        self.assertFalse(smoke.companion_completed("\n".join(self.lines + [self.lines[-1]]), "", 0))
+        self.assertFalse(smoke.companion_completed("\n".join(self.lines), "", None))
+        self.assertFalse(smoke.companion_completed("\n".join(self.lines), "", 1))
+        self.assertFalse(smoke.companion_completed("\n".join(self.lines), "", -15))
+        self.assertFalse(smoke.companion_completed("\n".join(self.lines), "ui_companion_failed", 0))
+
+    def test_tampered_safety_or_binding_tokens_rejected(self):
+        for index, replacement in [
+            (1, "ui_companion_external_geometry_ok binding=COMPILED foreground=CHANGED"),
+            (1, "ui_companion_external_geometry_ok binding=REFLECTED foreground=UNCHANGED"),
+            (7, "ui_companion_complete managed_closed=1 native_absence=1 input=NONE clipboard=UNTOUCHED"),
+            (7, "ui_companion_complete managed_closed=2 native_absence=0 input=NONE clipboard=UNTOUCHED"),
+            (7, "ui_companion_complete managed_closed=2 native_absence=1 input=MOUSE clipboard=UNTOUCHED"),
+            (7, "ui_companion_complete managed_closed=2 native_absence=1 input=NONE clipboard=MODIFIED"),
+        ]:
+            with self.subTest(replacement=replacement):
+                candidate = list(self.lines)
+                candidate[index] = replacement
+                self.assertFalse(smoke.companion_completed("\n".join(candidate), "", 0))
 
 
 class PreviewReceiptTests(unittest.TestCase):

@@ -63,6 +63,22 @@ PREVIEW_RECEIPTS = [
 ]
 
 
+COMPANION_RECEIPTS = [
+    "ui_companion_started",
+    "ui_companion_external_geometry_ok binding=COMPILED foreground=UNCHANGED",
+    "ui_companion_scroll_ok",
+    "ui_companion_hidden",
+    "ui_companion_hover_policy_opened",
+    "ui_companion_handoff_ok",
+    "ui_companion_native_closed",
+    "ui_companion_complete managed_closed=2 native_absence=1 input=NONE clipboard=UNTOUCHED",
+]
+
+
+def companion_completed(stdout, stderr, code):
+    return code == 0 and not stderr.strip() and stdout.splitlines() == COMPANION_RECEIPTS
+
+
 def preview_completed(stdout, stderr, code):
     return code == 0 and not stderr.strip() and stdout.splitlines() == PREVIEW_RECEIPTS
 
@@ -192,6 +208,7 @@ def main():
     scene.add_argument("--lifecycle", action="store_true", help="Require real-host lifecycle receipts and graceful exit")
     scene.add_argument("--coordinator", action="store_true", help="Require cloaked native warmup and coordinator-only focus")
     scene.add_argument("--preview", action="store_true", help="Require native Enter through the actual preview view-model")
+    scene.add_argument("--companion", action="store_true", help="Require external companion geometry and real hover-policy handoff, without input")
     args = parser.parse_args()
     interactive = args.coordinator or args.preview
     if not args.authorized_screen_slot or sys.platform not in ("win32", "darwin"):
@@ -222,15 +239,18 @@ def main():
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
             arguments = [str(entry), "--authorized-probe-ui"]
-            if args.preview:
+            if args.companion:
+                arguments.append("--probe-ui-companion")
+            elif args.preview:
                 arguments.append("--probe-ui-preview")
             elif args.coordinator:
                 arguments.append("--probe-ui-coordinator")
             elif args.lifecycle:
                 arguments.append("--probe-ui-lifecycle")
             process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
-                                       cwd=entry.parent, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL)
-            deadline = time.monotonic() + (45 if interactive else 30 if args.lifecycle else 15)
+                                       cwd=entry.parent, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+            deadline = time.monotonic() + (45 if interactive else 30 if args.lifecycle or args.companion else 15)
             observe_deadline = min(deadline, time.monotonic() + 10) if interactive else deadline
             while time.monotonic() < observe_deadline:
                 code = process.poll()
@@ -272,7 +292,7 @@ def main():
                         except OSError:
                             break
                         preparation_ok = True
-                    if args.lifecycle or interactive:
+                    if args.lifecycle or args.companion or interactive:
                         try:
                             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
@@ -309,12 +329,14 @@ def main():
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
-    if args.lifecycle or interactive:
-        validate = preview_completed if args.preview else coordinator_completed if args.coordinator else lifecycle_completed
+    if args.lifecycle or args.companion or interactive:
+        name = "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
+        validate = {"companion": companion_completed, "preview": preview_completed,
+                    "coordinator": coordinator_completed, "lifecycle": lifecycle_completed}[name]
         completed = observed and preparation_ok and recovery_ok and validate(
             (private / "stdout.log").read_text(errors="replace"),
             (private / "stderr.log").read_text(errors="replace"), code)
-        print(("ui_preview_result=" if args.preview else "ui_coordinator_result=" if args.coordinator else "ui_lifecycle_result=") + ("PASS" if completed else "FAIL") +
+        print("ui_" + name + "_result=" + ("PASS" if completed else "FAIL") +
               " graceful_exit=" + str(bool(completed)).lower())
         return 0 if completed else 1
     return 0 if observed else 1

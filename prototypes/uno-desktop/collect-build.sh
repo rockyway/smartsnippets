@@ -17,7 +17,7 @@ bundle="$base/bin/probe/bundle-$run/SmartSnippets.UnoProbe.app"
 common=(-p:ProbePatchedMacOSRuntime=true -p:NoWarn=1701 -p:SuppressTrimAnalysisWarnings=false -p:TrimmerSingleWarn=false)
 python3 vendor/prepare_source.py --verify --output vendor/obj/upstream > "$private/source-verify.log"
 dotnet restore SmartSnippets.UnoProbe.csproj -r osx-arm64 -p:Configuration=Release "${common[@]}" > "$private/restore.log" 2>&1
-names=TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,NETCoreSdkVersion,MSBuildVersion,UnoVersion,ProbePatchedMacOSRuntime
+names=TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,NETCoreSdkVersion,MSBuildVersion,UnoVersion,SupportedOSPlatformVersion,TargetPlatformMinVersion,TargetPlatformVersion,ProbePatchedMacOSRuntime
 dotnet msbuild SmartSnippets.UnoProbe.csproj -p:TargetFramework=net10.0-desktop -p:RuntimeIdentifier=osx-arm64 -p:Configuration=Release -p:_IsPublishing=true "${common[@]}" "-getProperty:$names" > "$private/properties.json" 2>&1
 dotnet clean SmartSnippets.UnoProbe.csproj -f net10.0-desktop -r osx-arm64 -c Release "${common[@]}" > "$private/clean.log" 2>&1
 set +e

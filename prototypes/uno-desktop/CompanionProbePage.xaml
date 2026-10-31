@@ -1,0 +1,10 @@
+<UserControl
+    x:Class="SmartSnippets.UnoProbe.CompanionProbePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <TextBlock x:Name="Body" Text="{x:Bind Details}" FontSize="16" TextWrapping="Wrap" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

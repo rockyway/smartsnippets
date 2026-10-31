@@ -54,7 +54,7 @@ $common = @('-p:Configuration=Release', "-p:RuntimeIdentifier=$RuntimeIdentifier
 if ($ManualWindowsPackages) { $common += '-p:ProbeManualWindowsPackages=true' }
 & dotnet restore $project -r $RuntimeIdentifier -p:Configuration=Release @common 2>&1 | Set-Content -LiteralPath (Join-Path $private 'restore.log') -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'Restore failed; property evidence cannot be collected.' }
-$names = 'TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,WindowsPackageType,NETCoreSdkVersion,MSBuildVersion,UnoVersion,WinAppSdkVersion,TargetPlatformMinVersion,ProbeManualWindowsPackages,DisableImplicitUnoPackages'
+$names = 'TargetFramework,RuntimeIdentifier,PublishAot,PublishTrimmed,PublishSingleFile,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,WindowsPackageType,NETCoreSdkVersion,MSBuildVersion,UnoVersion,WinAppSdkVersion,TargetPlatformMinVersion,SupportedOSPlatformVersion,TargetPlatformVersion,ProbeManualWindowsPackages,DisableImplicitUnoPackages'
 & dotnet msbuild $project "-p:TargetFramework=$tfm" -p:_IsPublishing=true @common "-getProperty:$names" 2>&1 | Set-Content -LiteralPath $properties -Encoding utf8
 if ($LASTEXITCODE -ne 0) { throw 'MSBuild property collection failed; evidence is private and not a PASS.' }
 # An ILC invocation may leave an object even when trim diagnostics fail the build.

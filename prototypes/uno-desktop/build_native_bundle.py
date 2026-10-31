@@ -14,6 +14,17 @@ from verify_evidence import inspect_executable
 ENTRY = "SmartSnippets.UnoProbe"
 
 
+def bundle_info():
+    # Current .NET 10 supported macOS baseline, not the lower Mach-O link floor.
+    # Source: dotnet/core supported-os.md at 44927bc821d37f596e317c4316335632bd38c79b.
+    return {"CFBundleIdentifier": "org.smartsnippets.feasibility018",
+            "CFBundleExecutable": ENTRY, "CFBundleName": "Smart Snippets Feasibility Probe",
+            "CFBundleDisplayName": "Smart Snippets Feasibility Probe", "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "1",
+            "CFBundleIconFile": "ProbeIcon.icns", "NSHighResolutionCapable": True,
+            "NSPrincipalClass": "NSApplication", "LSMinimumSystemVersion": "15.0"}
+
+
 def run(args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=60)
     if result.returncode:
@@ -73,14 +84,7 @@ def main():
                 suffix = "@2x" if scale == 2 else ""
                 shutil.copyfile(source, iconset / f"icon_{size}x{size}{suffix}.png")
         run(["/usr/bin/iconutil", "-c", "icns", str(iconset), "-o", str(resources / "ProbeIcon.icns")])
-    info = {"CFBundleIdentifier": "org.smartsnippets.feasibility018",
-            "CFBundleExecutable": ENTRY, "CFBundleName": "Smart Snippets Feasibility Probe",
-            "CFBundleDisplayName": "Smart Snippets Feasibility Probe", "CFBundlePackageType": "APPL",
-            "CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "1",
-            "CFBundleIconFile": "ProbeIcon.icns", "NSHighResolutionCapable": True,
-            "NSPrincipalClass": "NSApplication", "LSMinimumSystemVersion": "12.0"}
-    # 12.0 matches the inspected Native AOT entry's LC_BUILD_VERSION, not a claim
-    # of acceptance on old OS versions. Platform-wide minimums remain unverified.
+    info = bundle_info()
     with (contents / "Info.plist").open("wb") as stream:
         plistlib.dump(info, stream)
     notices = resources / "ThirdPartyNotices"

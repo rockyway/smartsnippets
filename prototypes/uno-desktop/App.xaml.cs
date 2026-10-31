@@ -10,6 +10,7 @@ public partial class App : Application
     private LifecycleProbe? _lifecycle;
     private CoordinatedPopupProbe? _coordinator;
     private PreviewProbe? _preview;
+    private CompanionSurfaceProbe? _companionProbe;
 
     public App() => InitializeComponent();
 
@@ -27,7 +28,9 @@ public partial class App : Application
 #if WINDOWS
         ProbeWindowPlacement.Park(_window, 640, 520);
 #endif
-        if (Environment.GetCommandLineArgs().Contains("--probe-ui-preview", StringComparer.Ordinal))
+        if (Environment.GetCommandLineArgs().Contains("--probe-ui-companion", StringComparer.Ordinal))
+            _companionProbe = new CompanionSurfaceProbe(this, _window, page);
+        else if (Environment.GetCommandLineArgs().Contains("--probe-ui-preview", StringComparer.Ordinal))
             _preview = new PreviewProbe(this, _window, page);
         else if (Environment.GetCommandLineArgs().Contains("--probe-ui-coordinator", StringComparer.Ordinal))
             _coordinator = new CoordinatedPopupProbe(this, _window, page);
