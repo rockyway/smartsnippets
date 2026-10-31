@@ -38,8 +38,8 @@ class DataRunnerTests(unittest.TestCase):
         return result, execute, output.getvalue()
 
     def test_two_processes_use_only_data_mode_and_same_owned_run(self):
-        results = [subprocess.CompletedProcess([], 0, "probe_data_seed_ok\n", ""),
-                   subprocess.CompletedProcess([], 0, "probe_data_restart_ok\n", "")]
+        results = [subprocess.CompletedProcess([], 0, "probe_data_seed_ok migration=ok crud=ok import_export=ok failure_paths=ok\n", ""),
+                   subprocess.CompletedProcess([], 0, "probe_data_restart_ok persistence=ok privacy_fixture=ok cleanup=ok\n", "")]
         result, execute, output = self.invoke(results)
         self.assertEqual(0, result)
         self.assertEqual(2, execute.call_count)
@@ -51,6 +51,39 @@ class DataRunnerTests(unittest.TestCase):
         if sys.platform == "win32":
             self.assertEqual(subprocess.CREATE_NO_WINDOW, execute.call_args_list[0].kwargs["creationflags"])
         self.assertIn("gui=NOT_RUN", output)
+
+    def test_exact_stage_receipts_reject_wrong_implementations(self):
+        seed = "probe_data_seed_ok migration=ok crud=ok import_export=ok failure_paths=ok\n"
+        verify = "probe_data_restart_ok persistence=ok privacy_fixture=ok cleanup=ok\n"
+        leak = "fabricated_private_payload"
+        cases = [
+            (0, seed + leak, ""),
+            (0, verify, ""),
+            (0, seed + seed, ""),
+            (0, "probe_data_seed_ok\n", ""),
+            (0, seed.rstrip("\n"), ""),
+            (0, seed + "\n", ""),
+            (0, seed, " "),
+            (0, seed, leak),
+            (1, seed, ""),
+        ]
+        for code, stdout, stderr in cases:
+            with self.subTest(code=code, case=cases.index((code, stdout, stderr))):
+                result, execute, output = self.invoke([subprocess.CompletedProcess([], code, stdout, stderr)])
+                self.assertEqual(1, result)
+                self.assertEqual(1, execute.call_count)
+                self.assertNotIn(leak, output)
+                self.assertNotIn("data_probe_native_restart_passed", output)
+        for stdout in (seed, verify + verify, verify + leak):
+            with self.subTest(verify_case=True):
+                result, execute, output = self.invoke([
+                    subprocess.CompletedProcess([], 0, seed, ""),
+                    subprocess.CompletedProcess([], 0, stdout, ""),
+                ])
+                self.assertEqual(1, result)
+                self.assertEqual(2, execute.call_count)
+                self.assertNotIn(leak, output)
+                self.assertNotIn("data_probe_native_restart_passed", output)
 
     def test_wrong_hash_refuses_before_process_launch(self):
         with patch.object(subprocess, "run") as execute:

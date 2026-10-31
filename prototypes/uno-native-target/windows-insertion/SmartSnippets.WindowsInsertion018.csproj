@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn></NoWarn>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <ApplicationManifest>../windows/app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <Target Name="RequireStrictInsertionProbe" BeforeTargets="PrepareForBuild">
+    <!-- Evaluated Windows defaults append IL2121 unless NoWarn is a command-line global.
+         Refuse that default instead of silently inheriting an AOT suppression. -->
+    <Error Condition="'$(NoWarn)' != ''" Text="Strict probe requires command-line -p:NoWarn= (no suppressed warnings)." />
+    <Error Condition="'$(PublishAot)' != 'true' Or '$(IsAotCompatible)' != 'true' Or '$(TreatWarningsAsErrors)' != 'true' Or '$(SuppressTrimAnalysisWarnings)' != 'false' Or '$(TrimmerSingleWarn)' != 'false'" Text="Strict Native AOT probe properties were weakened." />
+    <PropertyGroup><_ProbePackageProps>$([System.IO.Path]::GetFullPath('$(DirectoryPackagesPropsPath)'))</_ProbePackageProps></PropertyGroup>
+    <Error Condition="'$(_ProbePackageProps)' != '$(MSBuildProjectDirectory)\Directory.Packages.props'" Text="Use the prototype-only DirectoryPackagesPropsPath override for the entire build graph." />
+  </Target>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
+    <Compile Include="../../../src/SmartSnippets.App/Services/ClipboardPasteDispatcher.cs" Link="Shipping/ClipboardPasteDispatcher.cs" />
+    <Compile Include="../identity/ChildProtocol.cs;../identity/FocusPreflight.cs;../identity/MacWindowIdentity.cs;../identity/NativeChild.cs;../identity/OwnedFixtureLease.cs;../identity/OwnedTargetProbe.cs;../identity/PrivateDiagnostics.cs;../identity/TargetArtifact.cs;../identity/WindowsWindowIdentity.cs" Link="Identity/%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="SmartSnippets.WindowsInsertion018.Tests" />
+  </ItemGroup>
+</Project>

@@ -40,6 +40,20 @@ public sealed class OwnedFixtureLeaseTests
         Assert.False(child.Alive);
     }
 
+    [Theory]
+    [InlineData(22, true)]
+    [InlineData(21, false)]
+    [InlineData(23, false)]
+    public async Task VerifyMultilineARequiresExactAllowlistedReadbackCount(int count, bool accepted)
+    {
+        using var fixture = new ArtifactFixture();
+        var child = new FakeChild { VerifyCount = count };
+        await using var lease = await OwnedFixtureLease.StartAsync(await fixture.OpenAsync(), (_, _) => child, CancellationToken.None);
+        if (accepted) await lease.VerifyMultilineAAsync(CancellationToken.None);
+        else Assert.Equal("readback_failed", (await Assert.ThrowsAsync<ProbeFailure>(() => lease.VerifyMultilineAAsync(CancellationToken.None))).Token);
+        Assert.Equal(new[] { "verify_multiline_a" }, child.Commands);
+    }
+
     [Fact]
     public async Task SamePidOtherWindowCannotPassActualHarnessComposition()
     {
@@ -206,6 +220,7 @@ public sealed class OwnedFixtureLeaseTests
         internal bool Alive = true, BreakInput, ClosedA;
         internal nint Foreground;
         internal int DisposeCount;
+        internal int VerifyCount = 22;
         public uint Id => 424242;
         public ChildProtocol Protocol { get; }
 
@@ -222,7 +237,7 @@ public sealed class OwnedFixtureLeaseTests
             if (command == "focus_a") Foreground = 1;
             if (command == "focus_b") Foreground = 2;
             if (command == "close_a") ClosedA = true;
-            output.Feed("target_command name=" + command + " ok=1\n");
+            output.Feed("target_command name=" + command + " ok=1" + (command == "verify_multiline_a" ? " utf16_count=" + VerifyCount : "") + "\n");
         }
 
         internal void ExtraOutput() => output.Feed("extra\n");

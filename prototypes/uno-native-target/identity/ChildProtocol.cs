@@ -71,7 +71,7 @@ internal sealed class ChildProtocol : IAsyncDisposable
 
     internal async Task SendAsync(string command, TimeSpan timeout, CancellationToken ct)
     {
-        if (command is not ("empty_a" or "empty_b" or "focus_a" or "focus_b" or "close_a")) throw new ProbeFailure("command_refused");
+        if (command is not ("empty_a" or "empty_b" or "focus_a" or "focus_b" or "close_a" or "verify_multiline_a")) throw new ProbeFailure("command_refused");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(timeout);
         try

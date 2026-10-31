@@ -286,10 +286,23 @@ internal static class DataProbe
     private static void VerifyLog(string root)
     {
         var log = File.ReadAllText(Path.Combine(root, "logs", "app.log"));
-        Require(log.Contains("store_loaded", StringComparison.Ordinal));
-        foreach (var token in new[] { "BODY_U018", Label, "TAG_U018", "FOLDER_U018", "RENAMED_U018" })
-            Require(!log.Contains(token, StringComparison.Ordinal));
+        Require(IsPrivateFixtureLog(log));
+        // Exercise the same scanner with each planted leak, in memory only.
+        // An always-success scanner must fail this native gate. This data-only
+        // trace does not exercise window titles or operator clipboard contents.
+        const string clean = "store_loaded";
+        Require(IsPrivateFixtureLog(clean));
+        foreach (var token in PrivacyCanaries)
+            Require(!IsPrivateFixtureLog(clean + "\n" + token));
+        Require(!IsPrivateFixtureLog(string.Empty));
     }
+
+    private static readonly string[] PrivacyCanaries =
+        { "BODY_U018", Label, "TAG_U018", "FOLDER_U018", "RENAMED_U018" };
+
+    private static bool IsPrivateFixtureLog(string log) =>
+        log.Contains("store_loaded", StringComparison.Ordinal) &&
+        !PrivacyCanaries.Any(token => log.Contains(token, StringComparison.Ordinal));
 
     private sealed class ProbeClock : TimeProvider
     {

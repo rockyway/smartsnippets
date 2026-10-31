@@ -105,6 +105,17 @@ internal sealed class OwnedFixtureLease : IOwnedFixtureLease, IAsyncDisposable
         if (line != "target_command name=" + command + " ok=1" || !IsAliveAndPinned()) throw new ProbeFailure("command_failed");
     }
 
+    internal async Task VerifyMultilineAAsync(CancellationToken ct)
+    {
+        const string command = "verify_multiline_a";
+        if (!IsAliveAndPinned() || child.Protocol.HasUnexpectedOutput) throw new ProbeFailure("child_identity");
+        await child.Protocol.SendAsync(command, TimeSpan.FromSeconds(2), ct);
+        var line = await child.Protocol.ReadAsync(TimeSpan.FromSeconds(4), ct);
+        // Fixed synthetic UTF-16 count; no text readback ever crosses this pipe.
+        if (line != "target_command name=verify_multiline_a ok=1 utf16_count=22" || !IsAliveAndPinned())
+            throw new ProbeFailure("readback_failed");
+    }
+
     internal async Task RequireQuietProtocolAsync(CancellationToken ct)
     {
         await Task.Delay(100, ct);

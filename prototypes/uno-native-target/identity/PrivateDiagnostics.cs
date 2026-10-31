@@ -9,6 +9,7 @@ internal sealed partial class PrivateDiagnostics : IDisposable
 {
     private readonly StreamWriter log;
     internal string Token { get; } = Guid.NewGuid().ToString("N");
+    internal string DirectoryPath { get; }
 
     internal unsafe PrivateDiagnostics()
     {
@@ -39,6 +40,7 @@ internal sealed partial class PrivateDiagnostics : IDisposable
             }
         }
         else throw new ProbeFailure("host_refused");
+        DirectoryPath = directory;
         var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.Read };
         if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         log = new StreamWriter(new FileStream(Path.Combine(directory, "receipts.log"), options), new UTF8Encoding(false)) { AutoFlush = true };

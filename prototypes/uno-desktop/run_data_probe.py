@@ -34,17 +34,20 @@ def main():
         raise ValueError("Expected a native probe artifact")
     run = uuid.uuid4().hex
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    for stage, receipt in [("seed", "probe_data_seed_ok"), ("verify", "probe_data_restart_ok")]:
+    for stage, receipt in [
+        ("seed", "probe_data_seed_ok migration=ok crud=ok import_export=ok failure_paths=ok"),
+        ("verify", "probe_data_restart_ok persistence=ok privacy_fixture=ok cleanup=ok"),
+    ]:
         result = subprocess.run([str(executable), "--probe-data", stage, run],
                                 capture_output=True, text=True, timeout=30, creationflags=flags)
-        if result.returncode or not result.stdout.startswith(receipt) or result.stderr.strip():
+        if result.returncode or result.stdout != receipt + "\n" or result.stderr:
             # Payloads and private roots are never echoed; the synthetic profile
             # is retained on failure rather than deleted under a surviving owner.
             print("data_probe_failed stage=" + stage + " synthetic_run=" + run)
             if re.fullmatch(r"probe_data_failed stage=[a-z_]+ kind=[A-Za-z0-9]+ synthetic_profile_retained\s*", result.stderr):
                 print(result.stderr.strip())
             return 1
-        print(receipt)
+        print(receipt.split()[0])
     if (Path(tempfile.gettempdir()) / ("SmartSnippets.Uno018-" + run)).exists():
         raise ValueError("Synthetic profile cleanup incomplete")
     print("data_probe_native_restart_passed gui=NOT_RUN")
