@@ -6,6 +6,7 @@ param([Parameter(Mandatory=$true)][int]$OwnedPid,
       [Parameter(Mandatory=$true)][string]$Artifact)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$stage = 'bootstrap'
 try {
     if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'sta' }
     [void][Reflection.Assembly]::Load('UIAutomationClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35')
@@ -75,9 +76,20 @@ public static class Owned019 {
             [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$type))
         if ($id) { $conditions += [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$id) }
         $condition = [Windows.Automation.AndCondition]::new([Windows.Automation.Condition[]]$conditions)
-        $items = $r.FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
-        if ($items.Count -ne 1 -or $items[0].Current.ProcessId -ne $OwnedPid -or $items[0].Current.IsOffscreen -or -not $items[0].Current.IsEnabled) { throw 'schema' }
-        return $items[0]
+        $until = [DateTime]::UtcNow.AddSeconds(4)
+        while ([DateTime]::UtcNow -lt $until) {
+            Guard
+            $r = [Windows.Automation.AutomationElement]::FromHandle($h)
+            if ($r.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+            $items = $r.FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
+            if ($items.Count -gt 1) { throw 'schema' }
+            if ($items.Count -eq 1) {
+                if ($items[0].Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+                if (-not $items[0].Current.IsOffscreen -and $items[0].Current.IsEnabled) { Guard; return $items[0] }
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        throw 'control_timeout'
     }
     function Invoke([string]$key) {
         $e = Find $key
@@ -110,16 +122,23 @@ public static class Owned019 {
         $file = [IO.File]::Open((Join-Path $root ($phase+'.continue')), [IO.FileMode]::CreateNew)
         try { $bytes=[Text.Encoding]::ASCII.GetBytes("continue`n"); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
     }
-    WaitPhase 'ui-ready'
+    $stage = 'ready'; WaitPhase 'ui-ready'
     # Focus only this retained owned window before invoking callbacks.
     $e=Find 'new'; Guard; $e.SetFocus(); $script:focused=$true; Guard
-    Invoke 'new'; Start-Sleep -Milliseconds 400; Ack 'ui-ready'
+    $stage = 'new'; Invoke 'new'; Start-Sleep -Milliseconds 400; Ack 'ui-ready'
     WaitPhase 'ui-new'
-    Value 'ui019 synthetic saved'; Invoke 'save'; Start-Sleep -Milliseconds 700; Ack 'ui-new'
+    $stage = 'edit_saved'; Value 'ui019 synthetic saved'
+    $stage = 'save'; Invoke 'save'; Start-Sleep -Milliseconds 700; Ack 'ui-new'
     WaitPhase 'ui-saved'
-    Value 'ui019 synthetic dirty'; Invoke 'new'; Start-Sleep -Milliseconds 400
-    Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
-    WaitPhase 'ui-cancel'
-    Ack 'ui-cancel'
+    $stage = 'edit_dirty'; Value 'ui019 synthetic dirty'
+    $stage = 'dirty_new'; Invoke 'new'; Start-Sleep -Milliseconds 400
+    $stage = 'cancel'; Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
+    $stage = 'finish'; WaitPhase 'ui-cancel'; Ack 'ui-cancel'
     [Console]::Out.WriteLine('ui_callbacks_observed')
-} catch { [Console]::Error.WriteLine('ui_helper_failed'); exit 1 }
+} catch {
+    $reason = 'operation'
+    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout')
+    if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
+    [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason")
+    exit 1
+}

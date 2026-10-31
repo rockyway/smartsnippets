@@ -3,6 +3,7 @@ import importlib.util
 import io
 from pathlib import Path
 import unittest
+import tempfile
 from unittest.mock import Mock, patch
 
 SPEC = importlib.util.spec_from_file_location('rendered_management', Path(__file__).resolve().parents[1] / 'run_uno_candidate_ui.py')
@@ -39,6 +40,19 @@ class UiManagementTests(unittest.TestCase):
                                (0,b'ui_callbacks_observed\n',b'warning'), (0,b'',b'')):
             with self.assertRaisesRegex(ValueError, 'ui_helper_protocol'):
                 s.validate_helper_output(code, out, err)
+
+    def test_helper_diagnostics_are_bounded_and_never_overwrite_existing_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            s.save_helper_diagnostics(root, b'', b'ui_helper_failed stage=cancel reason=schema\n')
+            self.assertEqual(b'', (root / 'ui-helper-stdout.log').read_bytes())
+            with self.assertRaises(FileExistsError):
+                s.save_helper_diagnostics(root, b'replacement', b'')
+            self.assertEqual(b'', (root / 'ui-helper-stdout.log').read_bytes())
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, 'ui_helper_output_limit'):
+                s.save_helper_diagnostics(Path(tmp), b'x' * 65537, b'')
+            self.assertFalse(list(Path(tmp).iterdir()))
 
     def test_job_assignment_before_permit_and_zero_before_cleanup(self):
         events=[]

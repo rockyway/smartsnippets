@@ -88,6 +88,14 @@ def retain_window(process, private, desktop, work, visible_windows, initial, epo
     raise ValueError('ui_ready')
 
 
+def save_helper_diagnostics(private, out, err):
+    if any(not isinstance(value, bytes) or len(value) > 65536 for value in (out, err)):
+        raise ValueError('ui_helper_output_limit')
+    for name, value in (('ui-helper-stdout.log', out), ('ui-helper-stderr.log', err)):
+        with (private / name).open('xb') as file:
+            file.write(value)
+
+
 def worker(entry, digest, private, work, stream=sys.stdin.buffer):
     if stream.readline(64) != startup.PERMIT:
         raise ValueError('permit')
@@ -97,6 +105,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
     ui = startup.repo_module('rendered_ui_windows', 'prototypes/uno-desktop/run_ui_smoke.py')
     desktop = startup.Desktop(ui.visible_windows)
     process = helper = None
+    helper_diagnostics_saved = False
     try:
         desktop.enable_dpi()
         desktop.validate_work_area(work)
@@ -128,6 +137,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
                     raise ValueError('ui_timeout')
                 time.sleep(.05)
             out, err = helper.communicate(timeout=2)
+            helper_diagnostics_saved = True
+            save_helper_diagnostics(private, out, err)
             validate_helper_output(helper.returncode, out, err)
             for phase in ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel'):
                 if not base.receipt(private, phase, process.pid):
@@ -149,15 +160,26 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
             canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', str(private))
             privacy.verify_negative_controls(canaries)
             records = [base.owned_bytes(p, private) for p in
-                       (private / 'stdout.log', private / 'stderr.log', private / 'fixture-profile/logs/app.log')]
+                       (private / 'stdout.log', private / 'stderr.log', private / 'fixture-profile/logs/app.log',
+                        private / 'ui-helper-stdout.log', private / 'ui-helper-stderr.log')]
             if privacy.scan_evidence(records, canaries)['privacy'] != 'CLEAN':
                 raise ValueError('privacy')
+    except BaseException as error:
+        base.record_failure(private, error)
+        raise
     finally:
-        if helper is not None and helper.poll() is None:
-            startup.stop_app(helper)
-        if process is not None and process.poll() is None:
-            startup.stop_app(process)
-        desktop.close()
+        try:
+            if helper is not None and helper.poll() is None:
+                startup.stop_app(helper)
+            if helper is not None and not helper_diagnostics_saved:
+                out, err = helper.communicate(timeout=2)
+                save_helper_diagnostics(private, out, err)
+        finally:
+            try:
+                if process is not None and process.poll() is None:
+                    startup.stop_app(process)
+            finally:
+                desktop.close()
     print('ui_management_observed', flush=True)
 
 
