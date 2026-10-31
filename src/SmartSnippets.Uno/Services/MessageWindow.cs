@@ -22,8 +22,8 @@ internal sealed unsafe class MessageWindow : IDisposable
     internal event WindowMessageHandler? MessageReceived;
     public void Dispose()
     {
-        _lifetime.Dispose();
-        if (ReferenceEquals(s_instance, this)) s_instance = null;
+        try { _lifetime.Dispose(); }
+        finally { if (ReferenceEquals(s_instance, this)) s_instance = null; }
     }
     private sealed class Native : ICandidateMessageWindowNative
     {

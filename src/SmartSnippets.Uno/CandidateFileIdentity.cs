@@ -21,8 +21,13 @@ internal static unsafe partial class CandidateFileIdentity
     {
         if (!OperatingSystem.IsWindows()) return;
         using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        RejectHardLink(handle);
+    }
+    internal static void RejectHardLink(SafeFileHandle handle)
+    {
+        if (!OperatingSystem.IsWindows()) return;
         var info = default(FileInformation);
-        if (GetFileInformationByHandle(handle, &info) == 0 || info.Links != 1)
+        if (GetFileInformationByHandle(handle, &info) == 0 || info.Links != 1 || (info.Attributes & 0x400) != 0)
             throw new IOException("Candidate files must have a single verified owner path.");
     }
     [StructLayout(LayoutKind.Sequential)]

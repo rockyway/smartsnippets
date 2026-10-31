@@ -28,7 +28,10 @@ public sealed class CandidateWiringAuditTests
         var tray = File.ReadAllText(Path.Combine(Candidate, "Services", "TrayIcon.cs"));
         Assert.Contains("Tooltip = \"Smart Snippets — Uno candidate\"", tray);
         Assert.Contains("TooltipHotkeyUnavailable = \"Smart Snippets — Uno candidate — hotkey unavailable\"", tray);
-        Assert.Contains("d0351d61-c130-481c-8398-e0cb2d42e019", tray);
+        Assert.Contains("private const uint IconId = 2019;", tray);
+        Assert.Contains("data.hWnd = _window.Handle;", tray);
+        Assert.DoesNotContain("NIF_GUID", tray);
+        Assert.DoesNotContain("guidItem", tray);
         Assert.DoesNotContain("PreviousAppWindow", tray);
         Assert.DoesNotContain("GetTopWindow", tray);
         Assert.Contains("_onShowPopup();", tray);

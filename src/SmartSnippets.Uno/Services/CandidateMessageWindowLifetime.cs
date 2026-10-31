@@ -29,15 +29,14 @@ internal sealed class CandidateMessageWindowLifetime : IDisposable
     }
     public void Dispose()
     {
-        if (Handle != 0)
-        {
-            if (!_native.DestroyWindow(Handle)) throw new InvalidOperationException("Candidate message window cleanup failed.");
-            Handle = 0;
-        }
-        if (_registered)
-        {
-            if (!_native.UnregisterClass()) throw new InvalidOperationException("Candidate message class cleanup failed.");
-            _registered = false;
-        }
+        var handle = Handle;
+        var registered = _registered;
+        Handle = 0; _registered = false;
+        var failed = false;
+        try { if (handle != 0 && !_native.DestroyWindow(handle)) failed = true; }
+        catch { failed = true; }
+        try { if (registered && !_native.UnregisterClass()) failed = true; }
+        catch { failed = true; }
+        if (failed) throw new InvalidOperationException("Candidate message cleanup failed; native cleanup is not verified.");
     }
 }

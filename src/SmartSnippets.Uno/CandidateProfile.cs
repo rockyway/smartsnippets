@@ -12,36 +12,54 @@ internal sealed class CandidateProfile : IDisposable
     internal static CandidateProfile OpenDefault() => OpenOwnedRoot(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Identity));
 
-    // External test boundary only; no CLI or environment profile override.
-    internal static CandidateProfile OpenOwnedRoot(string root)
+    // In-process test boundary only; neither root has a CLI/environment override.
+    internal static CandidateProfile OpenOwnedRoot(string root, string? productionRoot = null)
     {
-        root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        var production = Path.TrimEndingDirectorySeparator(Path.GetFullPath(new AppPaths().Root));
-        if (root.Equals(production, StringComparison.OrdinalIgnoreCase)
-            || root.StartsWith(production + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Production profiles are not candidate profiles.");
+        root = Normalize(root);
+        var production = Normalize(productionRoot ?? new AppPaths().Root);
+        RefuseOverlap(root, production);
         RejectReparseAncestors(root);
         Directory.CreateDirectory(root);
         RejectReparseAncestors(root);
-        var canonical = CandidateFileIdentity.CanonicalDirectory(root);
-        var local = CandidateFileIdentity.CanonicalDirectory(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
-        var canonicalProduction = Path.Combine(local, "SmartSnippets");
-        if (canonical.Equals(canonicalProduction, StringComparison.OrdinalIgnoreCase)
-            || canonical.StartsWith(canonicalProduction + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Production aliases are not candidate profiles.");
-        // Inspect each directory before descending: never follow a nested reparse path.
-        var pending = new Stack<string>(); pending.Push(root);
-        while (pending.TryPop(out var directory))
-            foreach (var path in Directory.EnumerateFileSystemEntries(directory))
-            {
-                var attributes = File.GetAttributes(path);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidOperationException("Candidate profile cannot contain reparse points.");
-                if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
-                else CandidateFileIdentity.RejectHardLink(path);
-            }
-        return new CandidateProfile(root, new FileStream(Path.Combine(root, ".candidate-owner"),
-            FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+        var canonical = Normalize(CandidateFileIdentity.CanonicalDirectory(root));
+        var canonicalProduction = Directory.Exists(production)
+            ? Normalize(CandidateFileIdentity.CanonicalDirectory(production))
+            : Path.Combine(CandidateFileIdentity.CanonicalDirectory(Path.GetDirectoryName(production)!), Path.GetFileName(production));
+        RefuseOverlap(canonical, canonicalProduction);
+        var ownerPath = Path.Combine(root, ".candidate-owner");
+        if (File.Exists(ownerPath) && (File.GetAttributes(ownerPath) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidOperationException("Candidate ownership file cannot use reparse points.");
+        // Lock before inspecting any profile data. Inspect the locked handle itself,
+        // rather than reopening it with permissive sharing during the tree walk.
+        var lease = new FileStream(ownerPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        try
+        {
+            RejectReparseAncestors(root);
+            if ((File.GetAttributes(ownerPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("Candidate ownership file cannot use reparse points.");
+            CandidateFileIdentity.RejectHardLink(lease.SafeFileHandle);
+            var pending = new Stack<string>(); pending.Push(root);
+            while (pending.TryPop(out var directory))
+                foreach (var path in Directory.EnumerateFileSystemEntries(directory))
+                {
+                    var attributes = File.GetAttributes(path);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidOperationException("Candidate profile cannot contain reparse points.");
+                    if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
+                    else if (!path.Equals(ownerPath, StringComparison.OrdinalIgnoreCase)) CandidateFileIdentity.RejectHardLink(path);
+                }
+            return new CandidateProfile(root, lease);
+        }
+        catch { lease.Dispose(); throw; }
+    }
+    private static string Normalize(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+    private static void RefuseOverlap(string root, string production)
+    {
+        static bool Contains(string parent, string child) => child.Equals(parent, StringComparison.OrdinalIgnoreCase)
+            || child.StartsWith(Path.EndsInDirectorySeparator(parent) ? parent : parent + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+        if (Contains(root, production) || Contains(production, root))
+            throw new InvalidOperationException("Production profiles and their ancestors are not candidate profiles.");
     }
     private static void RejectReparseAncestors(string root)
     {

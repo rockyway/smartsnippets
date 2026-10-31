@@ -13,7 +13,7 @@ namespace SmartSnippets.Uno.Services;
 internal sealed unsafe class TrayIcon : IDisposable
 {
     private const uint CallbackMessage = PInvoke.WM_APP + 1;
-    private const uint IconId = 1;
+    private const uint IconId = 2019;
     private const nuint CommandOpen = 1;
     private const nuint CommandSettings = 2;
     private const nuint CommandRestartAdmin = 3;
@@ -90,7 +90,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     public bool Add()
     {
         var data = CreateData();
-        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_GUID | NOTIFY_ICON_DATA_FLAGS.NIF_MESSAGE | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
+        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_MESSAGE | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
         data.uCallbackMessage = CallbackMessage;
         data.hIcon = GetIcon();
         data.szTip = TooltipFor(_state);
@@ -141,7 +141,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     {
         if (!_added) return;
         var data = CreateData();
-        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_GUID | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
+        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP;
         data.hIcon = GetIcon();
         data.szTip = TooltipFor(_state);
         if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, in data)) AppLog.Info("tray_icon_update_failed");
@@ -157,7 +157,7 @@ internal sealed unsafe class TrayIcon : IDisposable
         }
 
         var data = CreateData();
-        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_GUID | NOTIFY_ICON_DATA_FLAGS.NIF_INFO;
+        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_INFO;
         data.szInfoTitle = Truncate(title, 63);
         data.szInfo = Truncate(text, 255);
         data.dwInfoFlags = NOTIFY_ICON_INFOTIP_FLAGS.NIIF_INFO;
@@ -189,8 +189,8 @@ internal sealed unsafe class TrayIcon : IDisposable
         data.cbSize = (uint)sizeof(NOTIFYICONDATAW);
         data.hWnd = _window.Handle;
         data.uID = IconId;
-        data.uFlags = NOTIFY_ICON_DATA_FLAGS.NIF_GUID;
-        data.guidItem = new Guid("d0351d61-c130-481c-8398-e0cb2d42e019");
+        // HWND + candidate-local ID is stable for this owned window. A fixed
+        // Explorer GUID would bind to the first tokenized executable path.
         return data;
     }
 
