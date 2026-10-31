@@ -1,5 +1,6 @@
 """Review-closed native fixture. NEVER wrap coordinator/guardian in a kill Job or timeout-kill."""
 import argparse
+from dataclasses import dataclass
 import hashlib
 import importlib.util
 import json
@@ -19,6 +20,8 @@ POSITIVE_SCENES = ('posted-enter', 'posted-row', 'posted-main', 'copy', 'preview
 INSERT_SCENES = ('posted-enter', 'posted-row', 'posted-main')
 INPUT_CAPABILITY_SCENES = (*INSERT_SCENES, 'expired')
 POSITIVE_PERMIT = b'owned_positive_row6_verified_operator_recopied_baseline\n'
+PRIOR_POSITIVE_PERMIT = b'owned_positive_row6_verified_settled_baseline_v2\n'
+PRIOR_CONTROL_PERMIT = b'owned_clipboard_controls_settled_baseline_v2\n'
 ENTRY = 'SmartSnippets.UnoCandidate.exe'
 ROOT = REPO / 'scripts/uno_candidate_native_fixture'
 spec = importlib.util.spec_from_file_location('native_nonmutating_helpers', REPO / 'scripts/run_uno_candidate_acceptance.py')
@@ -147,7 +150,92 @@ def verify_result(private, data, expected, positive=False):
         raise ValueError('native_privacy')
 
 
-def main(argv=None):
+@dataclass(frozen=True)
+class RestorativeSessionObservation:
+    """Trusted parent memory witness, never deserialized from evidence/CLI/environment."""
+    session: Path
+    scene: str
+    source_sha256: str
+    entry_sha256: str
+    target_sha256: str
+    guardian_sha256: str
+    parent_exit_code: int
+    parent_stderr: bytes
+    result: str
+    private_evidence_token: str
+
+
+def require_owner_private(path, protected=False):
+    """Fail closed unless the Windows owner and every DACL grant are this user only."""
+    if sys.platform != 'win32':
+        raise ValueError('native_ledger_owner_acl')
+    # Fixed script, literal path via stdin, no token and no diagnostic persistence.
+    script = (
+        "$p=[Console]::In.ReadToEnd();$s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
+        "$a=Get-Acl -LiteralPath $p -ErrorAction Stop;"
+        "$o=$a.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;"
+        "$r=@($a.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]));"
+        "if($o -ne $s -or $r.Count -eq 0){exit 2};"
+        "foreach($e in $r){if($e.IdentityReference.Value -ne $s -or $e.AccessControlType -ne 'Allow'){exit 2}};"
+        "if(" + ('$true' if protected else '$false') + " -and -not $a.AreAccessRulesProtected){exit 2}"
+    )
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
+                            input=str(path).encode('utf-8'), capture_output=True, timeout=10,
+                            creationflags=subprocess.CREATE_NO_WINDOW)
+    if result.returncode or result.stdout or result.stderr:
+        raise ValueError('native_ledger_owner_acl')
+
+
+def verified_prior_token(observation):
+    if type(observation) is not RestorativeSessionObservation:
+        raise ValueError('native_ledger_witness')
+    allowed = {'restore': ('clipboard_control_settled', b'native_result=regular_restored'),
+               'abort': ('clipboard_control_settled', b'native_result=abort_restored'),
+               'owner-refusal': ('clipboard_control_settled', b'native_result=owner_refusal_restored'),
+               **{scene: ('positive_scene_settled', ('native_result=' + scene + '_settled').encode())
+                  for scene in INSERT_SCENES}}
+    if (observation.scene not in allowed or observation.parent_exit_code != 0 or observation.parent_stderr or
+            observation.result != allowed[observation.scene][0] or
+            any(not re.fullmatch('[0-9a-f]{64}', digest) for digest in
+                (observation.source_sha256, observation.entry_sha256, observation.target_sha256, observation.guardian_sha256))):
+        raise ValueError('native_ledger_completion')
+    private = observation.session
+    if (not isinstance(private, Path) or not private.is_absolute() or '..' in private.parts or
+            not re.fullmatch('ss-uno019-native-[0-9a-f]{32}', private.name) or
+            not re.fullmatch('ss-uno018-ui-[a-zA-Z0-9_-]+', private.parent.name) or
+            observation.private_evidence_token != private.parent.name + '/' + private.name):
+        raise ValueError('native_ledger_path')
+    # No discovery or resolve(): reject aliases instead of turning them into authority.
+    paths = [private.parent, private, private / 'stdout.log', private / 'stderr.log',
+             private / 'recovery-control.txt', private / 'native-fixture-profile',
+             private / 'native-fixture-profile/logs', private / 'native-fixture-profile/logs/app.log']
+    for path in paths:
+        for item in (path, *path.parents):
+            info = item.lstat()
+            if item.is_symlink() or getattr(info, 'st_file_attributes', 0) & 0x400:
+                raise ValueError('native_ledger_alias')
+        require_owner_private(path, protected=path == private.parent)
+    data = [helpers.owned_bytes(private / name, private, 65536) for name in ('stdout.log', 'stderr.log')]
+    verify_result(private, data, allowed[observation.scene][1], observation.scene in INSERT_SCENES)
+    control = helpers.owned_bytes(private / 'recovery-control.txt', private, 128)
+    match = re.fullmatch(rb'ss-uno019-recovery-([0-9a-f]{32})\r?\n', control)
+    if not match:
+        raise ValueError('native_ledger_recovery')
+    token = uuid.UUID(hex=match[1].decode('ascii'))
+    if not token.int:
+        raise ValueError('native_ledger_recovery')
+    return token.bytes_le
+
+
+def launch_permit(positive, prior_token=None):
+    if prior_token is None:
+        return POSITIVE_PERMIT if positive else b'owned_clipboard_controls_only\n'
+    if len(prior_token) != 16 or not any(prior_token):
+        raise ValueError('native_baseline_token')
+    return (PRIOR_POSITIVE_PERMIT if positive else PRIOR_CONTROL_PERMIT) + prior_token
+
+
+def main(argv=None, *, prior_restorative_session=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--capture-source', type=Path)
     parser.add_argument('--validate-build', nargs=2, metavar=('ENTRY', 'SHA256'))
@@ -170,7 +258,8 @@ def main(argv=None):
         print('BUILD_CHECKS_ONLY')
         return
     require_authorization(args.authorized_screen_slot)  # Before artifact inspection or process/private-root creation.
-    require_positive_authorization(args.scene, args.row6_controls_verified, args.operator_recopied_baseline)
+    prior_token = verified_prior_token(prior_restorative_session) if prior_restorative_session is not None else None
+    require_positive_authorization(args.scene, args.row6_controls_verified, args.operator_recopied_baseline or prior_token is not None)
     if not all((args.executable, args.sha256, args.target, args.target_sha256, args.guardian, args.guardian_sha256, args.scene)):
         raise ValueError('native_arguments')
     entry = validate_build(args.executable, args.sha256)
@@ -187,7 +276,7 @@ def main(argv=None):
         if not foreground:
             raise ValueError('native_foreground_unavailable')
         positive = args.scene in POSITIVE_SCENES
-        (private / 'native-launch-permit').write_bytes(POSITIVE_PERMIT if positive else b'owned_clipboard_controls_only\n')
+        (private / 'native-launch-permit').write_bytes(launch_permit(positive, prior_token))
         if positive:
             print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
         paths = [private / 'stdout.log', private / 'stderr.log']
@@ -209,6 +298,12 @@ def main(argv=None):
                           'actionProof': 'native_enter' if args.scene == 'posted-enter' else 'vm_callback' if positive else
                                          'owned_hwnd_change_refusal' if args.scene == 'owner-refusal' else 'clipboard_control',
                           'operatorReCopyRequiredBeforeNextSession': True}))
+        if args.scene in ('restore', 'abort', 'owner-refusal', *INSERT_SCENES):
+            return RestorativeSessionObservation(private, args.scene, source_fingerprint(), args.sha256.lower(),
+                args.target_sha256.lower(), args.guardian_sha256.lower(), process.returncode, data[1],
+                'positive_scene_settled' if positive else 'clipboard_control_settled',
+                private.parent.name + '/' + private.name)
+
     finally:
         desktop.close()  # Never terminates the coordinator or guardian.
 

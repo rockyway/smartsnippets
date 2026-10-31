@@ -48,7 +48,7 @@ public partial class App : Application
             session = NativeAcceptanceFactory.Create(fixture, "a", boundary.Popup.NativeHandle, config[3], config[4],
                 DateTimeOffset.UtcNow.AddSeconds(55), isPositive && PositiveProtocol.RequiresInputReview(config[0]), isPositive && !PositiveProtocol.Inserts(config[0]),
                 operation => operation == AcceptanceOperation.Capture || (lease && (isPositive || operation == AcceptanceOperation.ClipboardControl)),
-                allowClipboardControl: !isPositive, ownedMainWindow: isPositive ? boundary.Main.NativeHandle : 0);
+                allowClipboardControl: !isPositive, ownedMainWindow: isPositive ? boundary.Main.NativeHandle : 0, knownPriorToken: Program.KnownPriorToken);
             broker.Bind(session, session.SessionId);
             using var self = Process.GetCurrentProcess();
             if (!RetainedIdentity.OutsideJob(self.SafeHandle)) throw new InvalidOperationException("native_premature_job");

@@ -36,7 +36,7 @@ internal static class Program
     private static async Task<int> RunAsync(Process self, Stream commands, Stream responses, Guid run)
     {
         // Read a fixed-size bootstrap with a deadline. No arbitrary strings or PID attachment.
-        var bytes = new byte[16 + 16 + 16 + 24 + 24 + 8 + 8 + 3 + 128];
+        var bytes = new byte[16 + 16 + 16 + 24 + 24 + 8 + 8 + 3 + 128 + 1 + 16];
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             await commands.ReadExactlyAsync(bytes, deadline.Token);
         using var input = new BinaryReader(new MemoryStream(bytes), Encoding.UTF8);
@@ -55,6 +55,10 @@ internal static class Program
         var allowInsert = input.ReadBoolean(); var allowCopy = input.ReadBoolean(); var allowClipboardControl = input.ReadBoolean();
         var workerDigest = Encoding.ASCII.GetString(input.ReadBytes(64));
         var targetDigest = Encoding.ASCII.GetString(input.ReadBytes(64));
+        var hasPriorToken = input.ReadByte();
+        var priorToken = new Guid(input.ReadBytes(16));
+        if (hasPriorToken > 1 || (hasPriorToken == 0 && priorToken != Guid.Empty) ||
+            (hasPriorToken == 1 && (priorToken == Guid.Empty || priorToken == run))) return 2;
         if (expires <= DateTimeOffset.UtcNow || expires > DateTimeOffset.UtcNow.AddMinutes(2) ||
             (!allowInsert && !allowCopy && !allowClipboardControl) || RetainedIdentity.Id(worker) != RetainedIdentity.Parent(self.SafeHandle) ||
             RetainedIdentity.Parent(fixture) != RetainedIdentity.Id(worker)) return 2;
@@ -71,7 +75,7 @@ internal static class Program
         using var owner = new GuardianWindow(run);
         var publication = new OwnClipboardPublication(run);
         var clipboard = new GuardianClipboard(new NativeClipboardOs(owner.Handle, publication.MarkerFormat, publication.PrivacyFormats),
-            publication.MarkerFormat, publication.Token, publication.PrivacyFormats, publication.Expected);
+            publication.MarkerFormat, publication.Token, publication.PrivacyFormats, publication.Expected, hasPriorToken == 1 ? priorToken.ToByteArray() : null);
         using var reader = new StreamReader(commands, Encoding.UTF8, false, leaveOpen: true);
         using var writer = new StreamWriter(responses, new UTF8Encoding(false), leaveOpen: true);
         var lifetime = expires - DateTimeOffset.UtcNow;

@@ -32,7 +32,7 @@ internal sealed class ClipboardImage(Dictionary<uint, byte[]> entries, bool comp
 
 /// <summary>Runs only in the independent guardian. RAM is never disposed on an unsettled exit.</summary>
 internal sealed class GuardianClipboard(IGuardianClipboardOs os, uint marker, byte[] token,
-    IReadOnlySet<uint> privacy, IReadOnlyDictionary<uint, byte[]> publication)
+    IReadOnlySet<uint> privacy, IReadOnlyDictionary<uint, byte[]> publication, byte[]? knownPriorToken = null)
 {
     internal const string SyntheticText = "AΩ中🙂e\u0301\r\nsecond line\r\n";
     private ClipboardImage? original;
@@ -47,13 +47,17 @@ internal sealed class GuardianClipboard(IGuardianClipboardOs os, uint marker, by
     internal SwapStatus Publish(Func<bool> admitted)
     {
         if (original is not null || Settled || marker == 0 || token.Length != 16 || privacy.Count != 3 ||
-            privacy.Contains(0) || publication.Count == 0 || !admitted()) return SwapStatus.NotPreserved;
+            privacy.Contains(0) || publication.Count == 0 ||
+            (knownPriorToken is not null && (knownPriorToken.Length != 16 || knownPriorToken.All(b => b == 0) || Exact(knownPriorToken, token))) ||
+            !admitted()) return SwapStatus.NotPreserved;
         if (!os.TryOpen()) return SwapStatus.Busy;
         try
         {
             originalOwner = os.Owner;
             original = os.Read();
-            if (!original.Complete || original.Entries.ContainsKey(marker) ||
+            var hasPriorMarker = original.Entries.TryGetValue(marker, out var oldMarker);
+            if (!original.Complete || (hasPriorMarker && (knownPriorToken is null || originalOwner != 0 ||
+                !Exact(oldMarker!, knownPriorToken) || !original.Entries.Keys.Any(k => k != marker && !privacy.Contains(k)))) ||
                 original.Entries.Any(e => privacy.Contains(e.Key) && (e.Value.Length != 4 || e.Value.Any(b => b != 0))) ||
                 os.Owner != originalOwner || !admitted())
             { Settle(); return SwapStatus.NotPreserved; }
@@ -61,6 +65,12 @@ internal sealed class GuardianClipboard(IGuardianClipboardOs os, uint marker, by
             using (var current = os.Read())
                 if (!Same(current, original) || os.Owner != originalOwner || !admitted())
                 { Settle(); return SwapStatus.NotPreserved; }
+            // Both reads include the old marker. It must never enter the new recovery image.
+            if (hasPriorMarker)
+            {
+                CryptographicOperations.ZeroMemory(oldMarker!);
+                original.Entries.Remove(marker);
+            }
             // Refuse allocator rounding before destroying the baseline. Write rechecks every handle.
             if (publication.Values.Concat(original.Entries.Values).Select(b => b.Length).Append(token.Length).Append(4)
                 .Distinct().Any(length => !os.CanAllocateExact(length)))

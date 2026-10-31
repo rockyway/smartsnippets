@@ -18,6 +18,17 @@ public static class Program
     internal static string PrivateRoot { get; private set; } = "";
     internal static string ProfileRoot => Path.Combine(PrivateRoot, "native-fixture-profile");
     internal static string[] Configuration { get; private set; } = [];
+    // One bounded private-file read, cached immutably; never a CLI/environment/settings grant.
+    private static readonly Lazy<Guid?> priorBaseline = new(() =>
+    {
+        var path = Path.Combine(PrivateRoot, "native-launch-permit");
+        using var permit = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (permit.Length > 128) throw new InvalidOperationException("native_baseline_permit");
+        var bytes = new byte[(int)permit.Length];
+        permit.ReadExactly(bytes);
+        return PositiveProtocol.ReadPriorToken(bytes, PositiveProtocol.IsPositive(Configuration[0]));
+    });
+    internal static Guid? KnownPriorToken => priorBaseline.Value;
     internal static AnonymousPipeClientStream Commands { get; private set; } = null!;
     internal static AnonymousPipeClientStream Responses { get; private set; } = null!;
     internal static SafeProcessHandle CoordinatorHandle { get; private set; } = null!;
@@ -41,11 +52,11 @@ public static class Program
             if (!RetainedIdentity.OutsideJob(self.SafeHandle)) throw new InvalidOperationException("native_outer_job");
             var sceneIndex = args.Length == 6 && args[0] == "--coordinate" ? 1 : args.Length == 9 && args[0] == "--internal-worker" ? 4 : -1;
             if (sceneIndex < 0) throw new InvalidOperationException("native_arguments");
+            Configuration = args[sceneIndex..];
+            _ = KnownPriorToken;
             if (PositiveProtocol.IsPositive(args[sceneIndex]))
             {
                 PositiveProtocol.RequireReviewed(args[sceneIndex]);
-                if (File.ReadAllText(Path.Combine(PrivateRoot, "native-launch-permit")) != PositiveProtocol.Permit)
-                    throw new InvalidOperationException("native_positive_baseline");
             }
             if (args.Length == 6 && args[0] == "--coordinate") return Coordinator.RunAsync(args[1..]).GetAwaiter().GetResult();
             if (args.Length != 9 || args[0] != "--internal-worker" || Directory.Exists(ProfileRoot) || File.Exists(ProfileRoot)) throw new InvalidOperationException("native_arguments");

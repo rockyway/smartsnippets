@@ -1,10 +1,13 @@
 """Pure bootstrap/build/protocol tests: never start a native process."""
+from dataclasses import fields, replace
 import importlib.util
 import io
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import uuid
+import os
 import unittest
 from unittest.mock import patch
 
@@ -163,6 +166,91 @@ class NativeBootstrapTests(unittest.TestCase):
             native.main(['--capture-source', str(output)])
             self.assertEqual(native.source_fingerprint() + '\n', output.read_text())
         self.assertFalse(native.NATIVE_SCENES_SOURCE_REVIEWED)
+
+
+class PriorRestorativeLedgerTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='ss-uno018-ui-')
+        self.addCleanup(self.temporary.cleanup)
+        self.private = Path(self.temporary.name) / ('ss-uno019-native-' + 'a' * 32)
+        self.private.mkdir()
+        self.stdout = self.private / 'stdout.log'
+        self.stdout.write_bytes(b'native_phase=guardian_ready\nnative_phase=published\nnative_result=regular_restored\n')
+        (self.private / 'stderr.log').write_bytes(b'')
+        self.control = self.private / 'recovery-control.txt'
+        self.control.write_bytes(b'ss-uno019-recovery-00112233445566778899aabbccddeeff\n')
+        self.log = self.private / 'native-fixture-profile/logs/app.log'
+        self.log.parent.mkdir(parents=True)
+        self.log.write_bytes(b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n')
+        self.witness = native.RestorativeSessionObservation(self.private, 'restore', *(['a' * 64] * 4), 0, b'',
+                       'clipboard_control_settled', self.private.parent.name + '/' + self.private.name)
+        self.acl = patch.object(native, 'require_owner_private')
+        self.acl.start()
+        self.addCleanup(self.acl.stop)
+
+    def test_known_token_has_exact_dotnet_guid_endianness_and_immutable_witness(self):
+        self.assertEqual(bytes.fromhex('33221100554477668899aabbccddeeff'), native.verified_prior_token(self.witness))
+        for field in fields(self.witness):
+            with self.subTest(field=field.name), self.assertRaises(AttributeError):
+                setattr(self.witness, field.name, None)
+
+    def test_handoff_is_keyword_only_and_cannot_be_supplied_by_cli(self):
+        with self.assertRaises(TypeError):
+            native.main([], self.witness)
+        with patch.object(native.sys, 'stderr', io.StringIO()), self.assertRaises(SystemExit):
+            native.main(['--prior-restorative-session', str(self.private)])
+
+    def test_untrusted_or_incomplete_parent_observations_never_grant(self):
+        for changes in ({'scene': 'copy'}, {'scene': 'preview'}, {'scene': 'expired'}, {'parent_exit_code': 2},
+                        {'parent_stderr': b'failure'}, {'result': 'failed'}, {'source_sha256': ''},
+                        {'entry_sha256': 'bad'}, {'private_evidence_token': 'other/session'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                native.verified_prior_token(replace(self.witness, **changes))
+        with self.assertRaises(ValueError):
+            native.verified_prior_token(self.private)
+
+    def test_ordered_receipts_pending_failure_stderr_and_privacy_rejected(self):
+        original = self.stdout.read_bytes()
+        for receipt in (original + b'RECOVERY_PENDING\n', original.replace(b'regular_restored', b'failed'),
+                        original.replace(b'published', b'awaiting_owned_a'), original[::-1]):
+            self.stdout.write_bytes(receipt)
+            with self.assertRaises(ValueError): native.verified_prior_token(self.witness)
+        self.stdout.write_bytes(original)
+        (self.private / 'stderr.log').write_bytes(b'error')
+        with self.assertRaises(ValueError): native.verified_prior_token(self.witness)
+        (self.private / 'stderr.log').write_bytes(b'')
+        self.log.write_bytes(self.log.read_bytes() + b'second line')
+        with self.assertRaisesRegex(ValueError, 'privacy'): native.verified_prior_token(self.witness)
+
+    def test_recovery_token_exact_frame_zero_and_malformed_rejected(self):
+        for control in (b'ss-uno019-recovery-' + b'0' * 32 + b'\n',
+                        b'ss-uno019-recovery-' + b'a' * 32, self.control.read_bytes() + b'extra',
+                        b'ss-uno019-recovery-' + b'A' * 32 + b'\n'):
+            self.control.write_bytes(control)
+            with self.assertRaises(ValueError): native.verified_prior_token(self.witness)
+
+    def test_hardlinks_and_alias_spelling_rejected(self):
+        alias = self.private / 'hardlink'
+        os.link(self.control, alias)
+        with self.assertRaises(ValueError): native.verified_prior_token(self.witness)
+        alias.unlink()
+        with self.assertRaises(ValueError):
+            native.verified_prior_token(replace(self.witness, session=self.private / '..' / self.private.name))
+
+    def test_owner_acl_failure_does_not_fall_back_to_directory_trust(self):
+        with patch.object(native, 'require_owner_private', side_effect=ValueError('native_ledger_owner_acl')):
+            with self.assertRaisesRegex(ValueError, 'owner_acl'): native.verified_prior_token(self.witness)
+
+    def test_legacy_and_prior_permit_frames_have_exact_sizes(self):
+        token = uuid.UUID('00112233-4455-6677-8899-aabbccddeeff').bytes_le
+        self.assertEqual(b'owned_clipboard_controls_only\n', native.launch_permit(False))
+        self.assertEqual(native.POSITIVE_PERMIT, native.launch_permit(True))
+        for positive, header in ((True, native.PRIOR_POSITIVE_PERMIT), (False, native.PRIOR_CONTROL_PERMIT)):
+            frame = native.launch_permit(positive, token)
+            self.assertEqual(header + token, frame)
+            self.assertEqual(len(header) + 16, len(frame))
+        for invalid in (b'', b'1' * 15, b'1' * 17, bytes(16)):
+            with self.assertRaises(ValueError): native.launch_permit(True, invalid)
 
 
 if __name__ == '__main__':

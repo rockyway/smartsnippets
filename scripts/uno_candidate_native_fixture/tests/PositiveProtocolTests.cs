@@ -7,6 +7,23 @@ namespace SmartSnippets.Uno;
 public sealed class PositiveProtocolTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PositiveProtocol_PriorPermitIsVersionedExactAndUsesDotNetGuidBytes(bool positive)
+    {
+        var token = new Guid("00112233-4455-6677-8899-aabbccddeeff");
+        var legacy = System.Text.Encoding.ASCII.GetBytes(positive ? PositiveProtocol.Permit : PositiveProtocol.ControlPermit);
+        Assert.Null(PositiveProtocol.ReadPriorToken(legacy, positive));
+        var header = System.Text.Encoding.ASCII.GetBytes(positive ? PositiveProtocol.PriorPositivePermit : PositiveProtocol.PriorControlPermit);
+        var frame = header.Concat(token.ToByteArray()).ToArray();
+        Assert.Equal(token, PositiveProtocol.ReadPriorToken(frame, positive));
+        foreach (var malformed in new[] { frame[..^1], frame.Concat(new byte[1]).ToArray(),
+            header.Concat(new byte[16]).ToArray(), legacy.Concat(token.ToByteArray()).ToArray() })
+            Assert.Throws<InvalidOperationException>(() => PositiveProtocol.ReadPriorToken(malformed, positive));
+        Assert.Throws<InvalidOperationException>(() => PositiveProtocol.ReadPriorToken(frame, !positive));
+    }
+
+    [Theory]
     [InlineData("posted-enter")] [InlineData("posted-row")] [InlineData("posted-main")]
     [InlineData("copy")] [InlineData("preview")] [InlineData("expired")]
     public void PositiveProtocol_ReviewGatesStayClosedEvenForKnownScenes(string scene)

@@ -41,7 +41,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     public long ByteCount { get; private set; }
 
     internal static GuardianClient Start(AcceptanceFixture fixture, InsertionTarget target, NativeOwnedPopup popup, string path,
-        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false, NativeOwnedPopup? main = null)
+        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false, NativeOwnedPopup? main = null, Guid? knownPriorToken = null)
     {
         NativeAcceptanceFactory.RequireReviewed();
         using var self = Process.GetCurrentProcess();
@@ -90,6 +90,8 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
                 bootstrap.Write(allowInsert); bootstrap.Write(allowCopy); bootstrap.Write(allowClipboardControl);
                 bootstrap.Write(Encoding.ASCII.GetBytes(workerImage.Digest));
                 bootstrap.Write(Encoding.ASCII.GetBytes(fixture.Image.Digest));
+                bootstrap.Write(knownPriorToken.HasValue);
+                bootstrap.Write((knownPriorToken ?? Guid.Empty).ToByteArray());
                 bootstrap.Flush();
             }
             var client = new GuardianClient(child, image, commands, responses, run, allowInsert, allowCopy, allowClipboardControl);

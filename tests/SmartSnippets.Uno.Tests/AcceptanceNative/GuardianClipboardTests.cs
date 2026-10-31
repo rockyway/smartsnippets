@@ -227,11 +227,86 @@ public sealed class GuardianClipboardTests
         Assert.Equal(clears, os.EmptyCalls);
     }
 
+    private static readonly byte[] Prior = new Guid("00112233-4455-6677-8899-aabbccddeeff").ToByteArray();
+
+    [Theory]
+    [InlineData(0)] // Wrong token.
+    [InlineData(1)] // Guid network byte order is not ToByteArray order.
+    [InlineData(2)] // Live prior owner, even if it disappears later.
+    [InlineData(3)] // Second read changed marker.
+    [InlineData(4)] // Unsupported representation.
+    [InlineData(5)] // Metadata without user representation.
+    [InlineData(6)] // Nonzero privacy.
+    [InlineData(7)] // Malformed privacy.
+    [InlineData(8)] // Representation changed on second read.
+    public void VerifiedPriorBaseline_RejectsUnprovenImageWithoutEmpty(int failure)
+    {
+        var os = new FakeClipboard { Owner = 0 };
+        os.Data[Marker] = Prior.ToArray();
+        byte[] known = Prior.ToArray();
+        switch (failure)
+        {
+            case 0: known[0] ^= 1; break;
+            case 1: known = Convert.FromHexString("00112233445566778899aabbccddeeff"); break;
+            case 2: os.Owner = 10; os.BeforeRead = n => { if (n == 2) os.Owner = 0; }; break;
+            case 3: os.BeforeRead = n => { if (n == 2) os.Data[Marker][0] ^= 1; }; break;
+            case 4: os.Data[999] = [1]; os.Complete = false; break;
+            case 5: os.Data.Remove(13); break;
+            case 6: os.Data[501] = [1, 0, 0, 0]; break;
+            case 7: os.Data[501] = [0]; break;
+            case 8: os.BeforeRead = n => { if (n == 2) os.Data[13] = [9]; }; break;
+        }
+        var engine = new GuardianClipboard(os, Marker, Token, Privacy, Publication(), known);
+        Assert.Equal(SwapStatus.NotPreserved, engine.Publish(() => true));
+        Assert.Equal(0, os.EmptyCalls);
+        Assert.False(engine.HasBackup);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void InvalidPriorToken_RefusesBeforeOpen(int invalid)
+    {
+        var os = new FakeClipboard();
+        var prior = invalid == 0 ? new byte[15] : invalid == 1 ? new byte[16] : Token.ToArray();
+        Assert.Equal(SwapStatus.NotPreserved, new GuardianClipboard(os, Marker, Token, Privacy, Publication(), prior).Publish(() => true));
+        Assert.Equal(0, os.OpenCalls);
+        Assert.Equal(0, os.EmptyCalls);
+    }
+
+    [Fact]
+    public void VerifiedPriorBaseline_StripsOnlyOldMarkerAndRestoresEveryOriginalByteWithCurrentToken()
+    {
+        var os = new FakeClipboard { Owner = 0 };
+        os.Data[Marker] = Prior.ToArray();
+        os.Data[1] = [65, 0]; os.Data[7] = [66, 0]; os.Data[16] = [9, 4, 0, 0];
+        foreach (var format in Privacy) os.Data[format] = new byte[4];
+        var expected = os.Data.Where(e => e.Key != Marker).ToDictionary(e => e.Key, e => e.Value.ToArray());
+        var engine = new GuardianClipboard(os, Marker, Token, Privacy, Publication(), Prior);
+        Assert.Equal(SwapStatus.Swapped, engine.Publish(() => true));
+        Assert.False(os.ReadImages[0].Entries.ContainsKey(Marker));
+        Assert.Equal(expected.Count, engine.SavedCount);
+        // Neither owner zero nor the prior token grants recovery or copy commit authority.
+        os.Owner = 0;
+        Assert.False(engine.CommitCopy(() => true));
+        Assert.Equal(RestoreStatus.ClipboardChanged, engine.Restore());
+        os.Owner = os.Window; os.Data[Marker] = Prior.ToArray();
+        Assert.False(engine.CommitCopy(() => true));
+        Assert.Equal(RestoreStatus.ClipboardChanged, engine.Restore());
+        os.Data[Marker] = Token.ToArray();
+        Assert.Equal(RestoreStatus.Restored, engine.Restore());
+        Assert.Equal(Token, os.Data[Marker]);
+        Assert.Equal(expected.Count + 1, os.Data.Count);
+        foreach (var entry in expected) Assert.Equal(entry.Value, os.Data[entry.Key]);
+        Assert.Equal(Prior, new Guid("00112233-4455-6677-8899-aabbccddeeff").ToByteArray());
+    }
+
     private sealed class FakeClipboard : IGuardianClipboardOs
     {
         internal Dictionary<uint, byte[]> Data = new() { [13] = [65, 0, 0, 0] };
         internal List<ClipboardImage> ReadImages = [];
-        internal int EmptyCalls, WriteCalls, ReadCalls, FailWrite;
+        internal int EmptyCalls, WriteCalls, ReadCalls, FailWrite, OpenCalls;
         internal bool Complete = true, Open, Busy, ThrowWrite;
         internal Action<int>? BeforeRead;
         internal bool ExactAllocation = true;
@@ -239,7 +314,7 @@ public sealed class GuardianClipboardTests
         public bool CanAllocateExact(int byteCount) { AfterAllocation?.Invoke(); return ExactAllocation; }
         public nint Window => 20;
         public nint Owner { get; set; } = 10;
-        public bool TryOpen() { Assert.False(Open); if (Busy) return false; Open = true; return true; }
+        public bool TryOpen() { OpenCalls++; Assert.False(Open); if (Busy) return false; Open = true; return true; }
         public void Close() { Assert.True(Open); Open = false; }
         public ClipboardImage Read()
         {

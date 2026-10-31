@@ -8,6 +8,20 @@ internal static class PositiveProtocol
     internal static readonly bool SourceReviewed = false;
     internal static readonly bool InputSourceReviewed = false;
     internal const string Permit = "owned_positive_row6_verified_operator_recopied_baseline\n";
+    internal const string ControlPermit = "owned_clipboard_controls_only\n";
+    internal const string PriorPositivePermit = "owned_positive_row6_verified_settled_baseline_v2\n";
+    internal const string PriorControlPermit = "owned_clipboard_controls_settled_baseline_v2\n";
+    internal static Guid? ReadPriorToken(byte[] bytes, bool positive)
+    {
+        var legacy = System.Text.Encoding.ASCII.GetBytes(positive ? Permit : ControlPermit);
+        if (bytes.AsSpan().SequenceEqual(legacy)) return null;
+        var header = System.Text.Encoding.ASCII.GetBytes(positive ? PriorPositivePermit : PriorControlPermit);
+        if (bytes.Length != header.Length + 16 || !bytes.AsSpan(0, header.Length).SequenceEqual(header))
+            throw new InvalidOperationException("native_baseline_permit");
+        var token = new Guid(bytes.AsSpan(header.Length, 16));
+        if (token == Guid.Empty) throw new InvalidOperationException("native_baseline_token");
+        return token;
+    }
     internal static bool IsPositive(string scene) => scene is "posted-enter" or "posted-row" or "posted-main" or "copy" or "preview" or "expired";
     internal static bool Inserts(string scene) => scene is "posted-enter" or "posted-row" or "posted-main";
     internal static bool RequiresInputReview(string scene) => Inserts(scene) || scene == "expired";
