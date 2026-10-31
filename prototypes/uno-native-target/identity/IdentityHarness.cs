@@ -4,30 +4,37 @@ using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.TargetIdentity018;
 
-internal readonly record struct HarnessOptions(string Executable, string Digest)
+internal readonly record struct HarnessOptions(string Executable, string Digest, bool NativeCallback = false)
 {
     internal static HarnessOptions Parse(string[] args)
     {
-        if (args.Length != 6 || args.Count(a => a == "--authorized-screen-slot") != 1 || args.Count(a => a == "--watchdog-stdin") != 1)
+        var callback = args.Contains("--inprocess-native-callback");
+        if (args.Length != (callback ? 8 : 6) || args.Count(a => a == "--inprocess-native-callback") != (callback ? 1 : 0) ||
+            args.Count(a => a == "--authorized-native-hotkey") != (callback ? 1 : 0) ||
+            args.Count(a => a == "--authorized-screen-slot") != 1 || args.Count(a => a == "--watchdog-stdin") != 1)
             throw new ProbeFailure("authorization_refused");
         string? executable = null, digest = null;
         for (var index = 0; index < args.Length; index++)
         {
             switch (args[index])
             {
-                case "--authorized-screen-slot": case "--watchdog-stdin": break;
+                case "--authorized-screen-slot": case "--watchdog-stdin":
+                case "--inprocess-native-callback": case "--authorized-native-hotkey": break;
                 case "--executable" when executable is null && index + 1 < args.Length: executable = args[++index]; break;
                 case "--sha256" when digest is null && index + 1 < args.Length: digest = args[++index]; break;
                 default: throw new ProbeFailure("arguments_refused");
             }
         }
-        return executable is not null && digest is not null ? new(executable, digest) : throw new ProbeFailure("arguments_refused");
+        return executable is not null && digest is not null ? new(executable, digest, callback) : throw new ProbeFailure("arguments_refused");
     }
 }
 
 internal static class IdentityHarness
 {
-    internal static async Task<int> Main(string[] args)
+    internal static int Main(string[] args) => args.Contains("--inprocess-native-callback")
+        ? CallbackHarness.Run(args) : RunIdentityAsync(args).GetAwaiter().GetResult();
+
+    private static async Task<int> RunIdentityAsync(string[] args)
     {
         PrivateDiagnostics? diagnostics = null;
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(45));
@@ -103,7 +110,7 @@ internal static class IdentityHarness
         receipt("closed_a_surviving_b");
     }
 
-    private static async Task<string> ReadWatchdogPermitAsync(Stream input, CancellationToken ct)
+    internal static async Task<string> ReadWatchdogPermitAsync(Stream input, CancellationToken ct)
     {
         var bytes = new byte[64];
         var count = 0;
@@ -117,7 +124,7 @@ internal static class IdentityHarness
         throw new ProbeFailure("watchdog_refused");
     }
 
-    private static void CancelOnWatchdogEof(Stream input, CancellationTokenSource stop)
+    internal static void CancelOnWatchdogEof(Stream input, CancellationTokenSource stop)
     {
         // Console.In's synchronized ReadLineAsync can block synchronously. A
         // dedicated background read avoids blocking the composition thread.
@@ -125,7 +132,7 @@ internal static class IdentityHarness
         catch (Exception) { try { stop.Cancel(); } catch (ObjectDisposedException) { } }
     }
 
-    private static TargetPlatform HostPlatform()
+    internal static TargetPlatform HostPlatform()
     {
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763) && RuntimeInformation.ProcessArchitecture == Architecture.X64)
             return TargetPlatform.Windows;
@@ -150,7 +157,7 @@ internal static class IdentityHarness
 
     private static void Require(bool value, string fixedToken) { if (!value) throw new ProbeFailure(fixedToken); }
 
-    private static async Task VerifySignatureAsync(string bundle, CancellationToken ct)
+    internal static async Task VerifySignatureAsync(string bundle, CancellationToken ct)
     {
         var info = new ProcessStartInfo("/usr/bin/codesign") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { "--verify", "--strict", "--deep", bundle }) info.ArgumentList.Add(argument);

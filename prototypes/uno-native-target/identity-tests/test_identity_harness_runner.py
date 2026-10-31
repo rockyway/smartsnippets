@@ -83,8 +83,20 @@ class ArtifactTests(unittest.TestCase):
             run.assert_not_called()
 
 
+    def test_callback_requires_explicit_authorization_and_excludes_identity_mode(self):
+        basic = ['runner', '--harness', 'harness', '--harness-sha256', 'a' * 64,
+                 '--executable', 'target', '--sha256', 'a' * 64, '--authorized-screen-slot']
+        for extra in (['--inprocess-native-callback'], ['--authorized-native-hotkey'],
+                      ['--inprocess-native-callback', '--authorized-native-hotkey', '--identity-only']):
+            with patch.object(sys, 'argv', basic + extra), patch.object(runner, 'validate_harness') as validate, patch.object(runner, 'run') as run:
+                with self.assertRaises(ValueError):
+                    runner.main()
+                validate.assert_not_called()
+                run.assert_not_called()
+
+
 class WatchdogTests(unittest.TestCase):
-    def invoke(self, process, windows=False):
+    def invoke(self, process, windows=False, native_callback=False):
         job = Mock()
         process.stdin.write.side_effect = lambda _: process.events.append('permit')
         def assign(child):
@@ -101,16 +113,29 @@ class WatchdogTests(unittest.TestCase):
              patch.object(runner.os, 'killpg', side_effect=kill_group, create=True), \
              patch.object(runner.signal, 'SIGKILL', 9, create=True):
             try:
-                return runner.run(Path('/owned/harness'), Path('/owned/target'), 'a' * 64, windows)
+                return runner.run(Path('/owned/harness'), Path('/owned/target'), 'a' * 64, windows, native_callback)
             finally:
                 options = start.call_args.kwargs
                 self.assertEqual(not windows, options['start_new_session'])
                 self.assertNotIn('shell', options)
-                self.assertEqual(['--authorized-screen-slot', '--watchdog-stdin', '--executable', str(Path('/owned/target')), '--sha256', 'a' * 64], start.call_args.args[0][1:])
+                expected = ['--authorized-screen-slot', '--watchdog-stdin', '--executable', str(Path('/owned/target')), '--sha256', 'a' * 64]
+                if native_callback:
+                    expected += ['--inprocess-native-callback', '--authorized-native-hotkey']
+                self.assertEqual(expected, start.call_args.args[0][1:])
                 if windows:
                     job.close.assert_called_once()
                 else:
                     self.assertLess(process.events.index('kill_group'), process.events.index('reap'))
+
+    def test_callback_receipt_is_strict_and_never_accepted_in_default_mode(self):
+        callback = b'private_evidence_token=' + b'a' * 32 + b'\n' + runner.CALLBACK_RESULT.encode('ascii') + b'\n'
+        for windows in (False, True):
+            self.assertEqual(0, self.invoke(FakeProcess(callback), windows, native_callback=True))
+            for output in (VALID, callback.replace(b'NOT_RUN', b'PASS'), callback + b'extra\n'):
+                with self.assertRaises(ValueError):
+                    self.invoke(FakeProcess(output), windows, native_callback=True)
+        with self.assertRaises(ValueError):
+            self.invoke(FakeProcess(callback))
 
     def test_valid_owned_mac_group_lifecycle_never_polls_or_attaches(self):
         process = FakeProcess()

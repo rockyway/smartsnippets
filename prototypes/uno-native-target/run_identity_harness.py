@@ -201,13 +201,19 @@ def await_natural_exit(process, windows):
             raise ValueError('Native exit was not observed')
 
 
-def run(harness, target, digest, windows):
+CALLBACK_RESULT = 'owned_callback=OBSERVED delivery=INPROCESS_NATIVE_EVENT physical_shortcut=NOT_RUN cleanup=STOPPED input=NONE clipboard=UNTOUCHED'
+
+
+def run(harness, target, digest, windows, native_callback=False):
     process = job = None
     messages, refused = queue.Queue(maxsize=2), threading.Event()
     threads = []
     receipts = []
     try:
-        process = subprocess.Popen([str(harness), '--authorized-screen-slot', '--watchdog-stdin', '--executable', str(target), '--sha256', digest],
+        arguments = [str(harness), '--authorized-screen-slot', '--watchdog-stdin', '--executable', str(target), '--sha256', digest]
+        if native_callback:
+            arguments += ['--inprocess-native-callback', '--authorized-native-hotkey']
+        process = subprocess.Popen(arguments,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    cwd=harness.parent, creationflags=subprocess.CREATE_NO_WINDOW if windows else 0,
                                    start_new_session=not windows)
@@ -230,7 +236,7 @@ def run(harness, target, digest, windows):
             thread.join(timeout=1)
         while not messages.empty():
             receipts.append(messages.get_nowait())
-        if refused.is_set() or any(t.is_alive() for t in threads) or len(receipts) != 2 or not re.fullmatch(r'private_evidence_token=[0-9a-f]{32}', receipts[0]) or receipts[1] != 'owned_identity=OBSERVED cleanup=STOPPED input=NONE clipboard=UNTOUCHED':
+        if refused.is_set() or any(t.is_alive() for t in threads) or len(receipts) != 2 or not re.fullmatch(r'private_evidence_token=[0-9a-f]{32}', receipts[0]) or receipts[1] != (CALLBACK_RESULT if native_callback else 'owned_identity=OBSERVED cleanup=STOPPED input=NONE clipboard=UNTOUCHED'):
             raise ValueError('Native owned identity refused')
         await_natural_exit(process, windows)
     finally:
@@ -246,7 +252,7 @@ def run(harness, target, digest, windows):
     if process.returncode != 0:
         raise ValueError('Native owned identity refused')
     print(receipts[0])
-    print('owned_identity_harness=OBSERVED watchdog=REAPED input=NONE clipboard=UNTOUCHED')
+    print('owned_callback_harness=OBSERVED delivery=INPROCESS_NATIVE_EVENT physical_shortcut=NOT_RUN watchdog=REAPED input=NONE clipboard=UNTOUCHED' if native_callback else 'owned_identity_harness=OBSERVED watchdog=REAPED input=NONE clipboard=UNTOUCHED')
     return 0
 
 
@@ -262,7 +268,13 @@ def main():
     parser.add_argument('--executable', required=True, type=Path)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--authorized-screen-slot', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--inprocess-native-callback', action='store_true')
+    mode.add_argument('--identity-only', action='store_true')
+    parser.add_argument('--authorized-native-hotkey', action='store_true')
     args = parser.parse_args()
+    if args.inprocess_native_callback != args.authorized_native_hotkey:
+        raise ValueError('Explicit native hotkey authorization required')
     windows = sys.platform == 'win32'
     if not args.authorized_screen_slot or (not windows and sys.platform != 'darwin') or platform.machine().lower() not in (('amd64', 'x86_64') if windows else ('arm64',)):
         raise ValueError('Authorized native host required')
@@ -271,6 +283,8 @@ def main():
     if not 32 <= args.executable.stat().st_size <= 134217728:
         raise ValueError('Target size refused')
     target = validate_entry(args.executable, args.sha256, windows)
+    if args.inprocess_native_callback:
+        return run(harness, target, args.sha256, windows, native_callback=True)
     return run(harness, target, args.sha256, windows)
 
 

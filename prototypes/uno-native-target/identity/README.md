@@ -3,8 +3,9 @@
 **Composed and natively observed on both desktops; not T4/FG4 PASS.**
 See [research 023](../../../docs/research/023-composed-native-target-identity.md) for exact artifacts, failures corrected, runtime receipts and confirming safety review.
 The Native AOT console harness calls the actual Presentation `ITargetProbe` adapter
-against only its own direct child. There is no arbitrary-PID attach, paste, input
-posting, clipboard, shortcut registration, permission prompt or production wiring.
+against only its own direct child. Default identity mode has no shortcut registration.
+Neither mode performs arbitrary-PID attach, paste, HID input synthesis, clipboard
+access, permission prompts or production wiring.
 
 ## Ownership and bounded execution
 
@@ -141,3 +142,52 @@ No OS permission changes are performed. Existing AX denial produces a refusal,
 not a request to change TCC. A successful result is `owned_identity=OBSERVED` /
 `owned_identity_harness=OBSERVED`, not T4 PASS. Native identity runtime and strict Native AOT publishing now pass on both hosts; permission-denied/revoked runtime acceptance, popup handoff and insertion remain open. All C# flow/factory tests replace only native process,
 window and focus-preflight boundaries; they do not substitute runtime evidence.
+
+## Optional in-process native callback prerequisite (both desktops observed; partial T4)
+
+Append **both** `--inprocess-native-callback --authorized-native-hotkey` to the
+watchdog command above, only in a separately authorized exclusive screen slot.
+`--identity-only` explicitly selects the existing default and is mutually exclusive
+with callback mode. The additional authorization is refused without callback mode;
+neither mode can bypass the watchdog or artifact/native-header/hash guards.
+
+This mode briefly leases Win+Ctrl+Alt+Shift+F24 (Windows, NOREPEAT) or
+Ctrl+Option+Shift+F20 (Mac, Carbon exclusive), using the same native registration
+mechanism as the prior registration-only experiment. It installs a real owned
+message-only HWND/WndProc or Carbon application event handler. Windows posts only
+`WM_HOTKEY` to that owned HWND and pumps/dispatches its queue. Mac creates a Carbon
+keyboard/hotkey event, sets its `EventHotKeyID`, posts it to the main Carbon queue,
+pulls that exact event with a bounded `ReceiveNextEvent`, and calls
+`SendEventToEventTarget` through the installed native handler table. These are
+**in-process native events, NOT physical/global HID shortcut proof**. There is no
+keyboard/mouse synthesis, event tap, AX action or paste.
+
+The existing asynchronous identity flow can resume on pool threads. Callback mode
+therefore has a dedicated synchronous entry head **inside the same executable**,
+not `Task.Run` pretending to be the main thread. Only bounded protocol/validation IO
+is synchronously awaited; native installation, callback dispatch, exact-target
+probing and deterministic release stay on the original entry thread. Mac additionally
+requires `pthread_main_np()`. Both unmanaged entrypoints have typed unmanaged ABIs
+and contain exceptions. There is no UI dispatcher, popup or production activation.
+
+Actual `OwnedFixtureLease.CreateProbe` / Presentation `ITargetProbe` provenance is
+reused. Original A/B are captured for comparison. After quiet session/desktop,
+idle/modifier/pointer/chord preflight, only fixture `focus_a` / `focus_b` commands
+change focus. Registration and release must leave exact A foreground. Each real
+callback checks the native signature/ID and generation, freshly validates exact
+original owned A foreground and records that previously captured identity before any subsequent fixture activation. Same-PID sibling B
+must not capture. Unknown IDs, old generations and delivery after release cannot
+capture. A second conflicting native registration must fail without override. Two
+full install/acquire/release/dispose cycles test reacquisition with fresh generation
+IDs, with old-generation rejection against the new callback table. Missing valid
+callback delivery fails the receipt gate. Headless tests are policy/runner tests,
+not substitutes for these native assertions.
+
+Success has a separate strictly checked receipt:
+`owned_callback=OBSERVED delivery=INPROCESS_NATIVE_EVENT physical_shortcut=NOT_RUN cleanup=STOPPED input=NONE clipboard=UNTOUCHED`.
+The wrapper emits `owned_callback_harness=OBSERVED` with the same delivery boundary
+and `watchdog=REAPED`; default identity receipts are unchanged and cannot satisfy
+callback mode (nor vice versa). Private diagnostic tokens contain no window titles
+or snippet contents.
+
+Strict Native AOT publishing, 67 C# tests, 14 runner tests and separately authorized native callback observations now succeed on both desktops. See [research 026](../../../docs/research/026-native-callback-target-validation.md) for hashes, native receipt tokens and the Carbon LP64 fix verified before Mac execution. Physical shortcut delivery, generic foreground capture, popup handoff, insertion/clipboard and the rest of T4/FG4 remain unverified. Do not mark T4 PASS from these bounded callback receipts.
