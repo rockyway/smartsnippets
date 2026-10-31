@@ -62,9 +62,14 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         tray.Add();
         return new TraySurface(tray);
     }
-    internal override void ReportStartupFailure() => Windows.Win32.PInvoke.MessageBox(default,
-        "The Uno candidate could not start. No production profile or registration was changed.",
-        "Smart Snippets — Uno candidate", Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_OK);
+    // Automated QA uses existing --page/preview options and must exit without
+    // modal focus changes. Preserve actionable error UI for interactive launches.
+    internal override void ReportStartupFailure() => CandidateUiPolicy.ReportStartupFailure(
+        Program.StartInBackground, Program.InitialOptions.HasRequest,
+        () => Windows.Win32.PInvoke.MessageBox(default,
+            "The Uno candidate could not start. No production profile or registration was changed.",
+            "Smart Snippets — Uno candidate", Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_OK),
+        () => Console.Error.WriteLine("candidate_startup_failed"));
     internal override void Exit() { Program.StopActivations(); Application.Current.Exit(); }
     private sealed class MainSurface(MainWindow window) : ICandidateMainWindow
     {

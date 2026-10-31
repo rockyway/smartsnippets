@@ -35,7 +35,12 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Contains("_main?.BringToFront()", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("if (await NavigateGuardedAsync(kind) && show)", Read("MainWindow.xaml.cs"));
         Assert.Contains("Services.WindowPlacement.ParkBottomLeft(AppWindow", Read("MainWindow.xaml.cs"));
-        Assert.Contains("CandidateUiPolicy.BottomLeftMonitorIndex(", Read("Services/WindowPlacement.cs"));
+        Assert.Contains("CandidateUiPolicy.IsBetterBottomLeft(", Read("Services/WindowPlacement.cs"));
+        Assert.Contains("EnumDisplayMonitors", Read("Services/WindowPlacement.cs"));
+        Assert.DoesNotContain("DisplayArea.FindAll", Read("Services/WindowPlacement.cs"));
+        var failure = Read("WindowsCandidateBoundary.cs");
+        Assert.Contains("CandidateUiPolicy.ReportStartupFailure(", failure);
+        Assert.Contains("Program.StartInBackground, Program.InitialOptions.HasRequest", failure);
         Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("legacy active hint", ""));
         Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved"));
     }

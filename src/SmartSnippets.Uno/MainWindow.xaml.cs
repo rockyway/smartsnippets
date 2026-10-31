@@ -37,14 +37,16 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
 
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        // Park without primary-monitor minimums: otherwise the presenter may
+        // clamp a lower-DPI monitor's requested bounds before WM_DPICHANGED.
+        var presenter = OverlappedPresenter.Create();
+        AppWindow.SetPresenter(presenter);
+        if (!Services.WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
+            throw new InvalidOperationException("Candidate bottom-left placement could not be verified.");
         var dpi = PInvoke.GetDpiForWindow(hwnd);
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
-        // Install the presenter explicitly; the pre-show default may not expose
-        // OverlappedPresenter, which otherwise silently skips the size limits.
-        var presenter = OverlappedPresenter.Create();
-        presenter.PreferredMinimumWidth = (int)(MinimumLogicalWidth * scale);
-        presenter.PreferredMinimumHeight = (int)(MinimumLogicalHeight * scale);
-        AppWindow.SetPresenter(presenter);
+        presenter.PreferredMinimumWidth = Math.Min(AppWindow.Size.Width, (int)(MinimumLogicalWidth * scale));
+        presenter.PreferredMinimumHeight = Math.Min(AppWindow.Size.Height, (int)(MinimumLogicalHeight * scale));
         AppWindow.Changed += (_, args) =>
         {
             if (!args.DidPositionChange && !args.DidSizeChange) return;
@@ -61,7 +63,6 @@ public sealed partial class MainWindow : Window
                 if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
             });
         };
-        AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
         if (!Services.WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
             throw new InvalidOperationException("Candidate bottom-left placement could not be verified.");
         AppWindow.Closing += OnClosing;

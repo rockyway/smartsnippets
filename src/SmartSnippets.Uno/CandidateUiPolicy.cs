@@ -36,10 +36,18 @@ internal static class CandidateUiPolicy
         {
             if (monitors[i].Width <= 0 || monitors[i].Height <= 0)
                 throw new InvalidOperationException("Invalid candidate display geometry.");
-            if (monitors[i].Left < monitors[selected].Left
-                || (monitors[i].Left == monitors[selected].Left && monitors[i].Top > monitors[selected].Top)) selected = i;
+            if (IsBetterBottomLeft(monitors[i], monitors[selected])) selected = i;
         }
         return selected;
+    }
+
+    internal static bool IsBetterBottomLeft(SmartSnippets.Core.Layout.PixelRect candidate, SmartSnippets.Core.Layout.PixelRect selected)
+        => candidate.Left < selected.Left || (candidate.Left == selected.Left && candidate.Top > selected.Top);
+
+    internal static void ReportStartupFailure(bool background, bool qaRequest, Action showInteractiveDialog, Action reportQuietFailure)
+    {
+        if (!background && !qaRequest) showInteractiveDialog();
+        else reportQuietFailure();
     }
 
     internal const string PreviewHint = "Preview only — selection closes; clipboard unavailable";

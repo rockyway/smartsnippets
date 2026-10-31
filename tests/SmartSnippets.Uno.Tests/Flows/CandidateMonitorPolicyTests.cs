@@ -4,6 +4,19 @@ namespace SmartSnippets.Uno.Tests.Flows;
 
 public sealed class CandidateMonitorPolicyTests
 {
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    public void StartupFailure_OnlyExplicitInteractiveLaunchShowsModal(bool background, bool qa, bool interactive)
+    {
+        int dialogs = 0, quiet = 0;
+        CandidateUiPolicy.ReportStartupFailure(background, qa, () => dialogs++, () => quiet++);
+        Assert.Equal(interactive ? 1 : 0, dialogs);
+        Assert.Equal(interactive ? 0 : 1, quiet);
+    }
+
     [Fact]
     public void BottomLeft_ChoosesBottomOfLeftmostColumn_NotLowestOverallOrPrimary()
     {

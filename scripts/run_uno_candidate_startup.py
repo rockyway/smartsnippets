@@ -135,6 +135,8 @@ def observe(process, snapshot, windows, initial, work, clock=time.monotonic, sle
         if rects:
             if not all(inside(rect, work) for rect in rects):
                 raise ValueError('geometry')
+            if snapshot() != initial:
+                raise ValueError('desktop_changed')
             return
         sleep(.05)
     raise ValueError('missing_window')
@@ -147,6 +149,8 @@ class Desktop:
         self.dwm = C.WinDLL('dwmapi', use_last_error=True)
         for name, args, result in (
             ('GetForegroundWindow', [], W.HWND),
+            ('IsWindowVisible', [W.HWND], W.BOOL),
+            ('GetWindowThreadProcessId', [W.HWND, C.POINTER(W.DWORD)], W.DWORD),
             ('GetClipboardSequenceNumber', [], W.DWORD),
             ('GetWindowRect', [W.HWND, C.POINTER(W.RECT)], W.BOOL)):
             fn = getattr(self.user, name)
@@ -219,17 +223,34 @@ class Desktop:
         return value
 
     def windows(self, pid):
+        def current_visible(hwnd):
+            owner = W.DWORD()
+            return (self.user.GetWindowThreadProcessId(hwnd, C.byref(owner))
+                    and owner.value == pid and self.user.IsWindowVisible(hwnd))
         rects = []
         for hwnd in self.visible_windows(pid, identities=True):
+            if not current_visible(hwnd):
+                continue
             cloak = W.DWORD()
             if self.dwm.DwmGetWindowAttribute(hwnd, 14, C.byref(cloak), C.sizeof(cloak)):
+                if not current_visible(hwnd):
+                    continue
                 raise ValueError('cloak')
             if cloak.value:
                 continue
             rect = W.RECT()
             if not self.user.GetWindowRect(hwnd, C.byref(rect)):
+                if not current_visible(hwnd):
+                    continue
                 raise ValueError('rect')
-            rects.append((rect.left, rect.top, rect.right, rect.bottom))
+            if not current_visible(hwnd):  # Prewarm may hide/uncloak after enumeration.
+                continue
+            if self.dwm.DwmGetWindowAttribute(hwnd, 14, C.byref(cloak), C.sizeof(cloak)):
+                if not current_visible(hwnd):
+                    continue
+                raise ValueError('cloak')
+            if not cloak.value and current_visible(hwnd):
+                rects.append((rect.left, rect.top, rect.right, rect.bottom))
         return rects
 
 
@@ -265,7 +286,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
         process = None
         with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
             try:
-                process = subprocess.Popen([str(entry)], cwd=entry.parent, stdin=subprocess.DEVNULL,
+                process = subprocess.Popen([str(entry), '--page', 'snippets'], cwd=entry.parent, stdin=subprocess.DEVNULL,
                                            stdout=out, stderr=err)
                 observe(process, desktop.snapshot, desktop.windows, initial, work)
             finally:

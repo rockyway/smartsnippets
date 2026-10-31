@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
 using Windows.Win32;
@@ -8,20 +10,40 @@ using SmartSnippets.Core.Layout;
 
 namespace SmartSnippets.Uno.Services;
 
-internal static class WindowPlacement
+internal static unsafe partial class WindowPlacement
 {
+    private struct Selection
+    {
+        internal nint Handle;
+        internal Windows.Win32.Foundation.RECT Bounds;
+        internal int Found, Failed;
+    }
     internal static bool ParkBottomLeft(AppWindow window, int logicalWidth, int logicalHeight)
     {
-        var displays = DisplayArea.FindAll().ToArray();
-        var selected = CandidateUiPolicy.BottomLeftMonitorIndex(displays.Select(display =>
-        {
-            var bounds = display.OuterBounds;
-            return new PixelRect(bounds.X, bounds.Y, bounds.X + bounds.Width, bounds.Y + bounds.Height);
-        }).ToArray());
-        var work = displays[selected].WorkArea;
-        var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(work.X, work.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
-        return CenterOn(window, monitor, logicalWidth, logicalHeight);
+        var selected = new Selection();
+        if (EnumDisplays(0, 0, &VisitMonitor, (nint)(&selected)) == 0 || selected.Failed != 0 || selected.Found == 0)
+            return false;
+        return CenterOn(window, new HMONITOR(selected.Handle), logicalWidth, logicalHeight);
     }
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static int VisitMonitor(nint monitor, nint dc, Windows.Win32.Foundation.RECT* clip, nint context)
+    {
+        var info = new MONITORINFO { cbSize = (uint)sizeof(MONITORINFO) };
+        var selected = (Selection*)context;
+        if (!PInvoke.GetMonitorInfo(new HMONITOR(monitor), ref info)
+            || info.rcMonitor.right <= info.rcMonitor.left || info.rcMonitor.bottom <= info.rcMonitor.top)
+        { selected->Failed = 1; return 0; }
+        var bounds = info.rcMonitor;
+        var previous = selected->Bounds;
+        if (selected->Found == 0 || CandidateUiPolicy.IsBetterBottomLeft(
+                new(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                new(previous.left, previous.top, previous.right, previous.bottom)))
+        { selected->Handle = monitor; selected->Bounds = bounds; selected->Found = 1; }
+        return 1;
+    }
+    [LibraryImport("user32.dll", EntryPoint = "EnumDisplayMonitors")]
+    private static partial int EnumDisplays(nint dc, nint clip,
+        delegate* unmanaged[Stdcall]<nint, nint, Windows.Win32.Foundation.RECT*, nint, int> callback, nint context);
 
     // Return monitor/window bounds in owner-client logical coordinates, including negative origins.
     public static unsafe (Windows.Foundation.Rect Window, Windows.Foundation.Rect WorkArea)? HoverBounds(
@@ -67,10 +89,13 @@ internal static class WindowPlacement
         var bounds = new RectInt32(origin.X, origin.Y, Math.Min(width, work.Width), Math.Min(height, work.Height));
         window.MoveAndResize(bounds);
         // A mixed-DPI transition can apply the suggested WM_DPICHANGED size after the move.
-        if (window.Size.Width != bounds.Width || window.Size.Height != bounds.Height)
+        if (window.Position.X != bounds.X || window.Position.Y != bounds.Y
+            || window.Size.Width != bounds.Width || window.Size.Height != bounds.Height)
         {
             window.MoveAndResize(bounds);
         }
-        return true;
+        return window.Position.X >= work.Left && window.Position.Y >= work.Top
+            && window.Position.X + window.Size.Width <= work.Right
+            && window.Position.Y + window.Size.Height <= work.Bottom;
     }
 }

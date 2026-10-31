@@ -100,6 +100,54 @@ class StartupTests(unittest.TestCase):
                 s.observe(Mock(), lambda: snapshot, windows, (1, 2), (0, 0, 20, 20))
             windows.assert_not_called()
 
+    def test_foreground_change_after_visible_enumeration_is_not_masked_by_stop(self):
+        process = Mock(pid=123); process.poll.return_value = None
+        snapshots = iter([(1, 2), (9, 2)])
+        with self.assertRaisesRegex(ValueError, 'desktop_changed'):
+            s.observe(process, lambda: next(snapshots), lambda pid: [(0, 0, 10, 10)], (1, 2), (0, 0, 20, 20))
+
+    def desktop_fixture(self):
+        desktop = s.Desktop.__new__(s.Desktop)
+        desktop.visible_windows = Mock(return_value=[42])
+        desktop.user, desktop.dwm = Mock(), Mock()
+        def owner(hwnd, pointer):
+            pointer._obj.value = 123
+            return 1
+        def rect(hwnd, pointer):
+            value = pointer._obj
+            value.left, value.top, value.right, value.bottom = -32000, -32000, -31000, -31000
+            return True
+        desktop.user.GetWindowThreadProcessId.side_effect = owner
+        desktop.user.IsWindowVisible.return_value = True
+        desktop.user.GetWindowRect.side_effect = rect
+        desktop.dwm.DwmGetWindowAttribute.return_value = 0
+        return desktop
+
+    def test_warmup_hide_race_skips_stale_visible_entry(self):
+        for fail in ('cloak', 'rect', 'after_rect'):
+            desktop = self.desktop_fixture()
+            desktop.user.IsWindowVisible.side_effect = [True, False]
+            if fail == 'cloak': desktop.dwm.DwmGetWindowAttribute.return_value = 1
+            if fail == 'rect': desktop.user.GetWindowRect.side_effect = lambda *a: False
+            self.assertEqual([], desktop.windows(123))
+
+    def test_visible_native_errors_are_not_silently_ignored(self):
+        desktop = self.desktop_fixture()
+        desktop.dwm.DwmGetWindowAttribute.return_value = 1
+        with self.assertRaisesRegex(ValueError, 'cloak'): desktop.windows(123)
+        desktop = self.desktop_fixture()
+        desktop.user.GetWindowRect.side_effect = lambda *a: False
+        with self.assertRaisesRegex(ValueError, 'rect'): desktop.windows(123)
+
+    def test_reused_window_owner_is_rechecked_before_receipt(self):
+        desktop = self.desktop_fixture()
+        owners = iter([123, 999])
+        def owner(hwnd, pointer):
+            pointer._obj.value = next(owners)
+            return 1
+        desktop.user.GetWindowThreadProcessId.side_effect = owner
+        self.assertEqual([], desktop.windows(123))
+
     def test_missing_window_bounded(self):
         process = Mock()
         process.poll.return_value = None
@@ -193,6 +241,7 @@ class StartupTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     s.worker(entry, 'digest', private, (0, 0, 20, 20), io.BytesIO(s.PERMIT))
                 stop.assert_called_once_with(process)
+                self.assertEqual([str(entry), '--page', 'snippets'], s.subprocess.Popen.call_args.args[0])
                 desktop.enable_dpi.assert_called_once()
                 desktop.close.assert_called_once()
                 self.assertTrue((private / 'stdout.log').exists())

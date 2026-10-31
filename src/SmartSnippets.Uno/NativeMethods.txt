@@ -21,7 +21,6 @@ DwmGetWindowAttribute
 DWMWINDOWATTRIBUTE
 MessageBox
 MonitorFromWindow
-MonitorFromPoint
 GetMonitorInfo
 GetDpiForMonitor
 CloseHandle
