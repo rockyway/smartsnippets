@@ -13,6 +13,7 @@ public static class Program
     internal static LaunchOptions InitialOptions => new(PageKind.Snippets, false, null);
     internal static string PrivateRoot { get; private set; } = "";
     internal static string ProfileRoot => Path.Combine(PrivateRoot, "fixture-profile");
+    internal static bool RenderedUiMode { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
@@ -27,6 +28,15 @@ public static class Program
         for (var directory = new DirectoryInfo(PrivateRoot); directory is not null; directory = directory.Parent)
             if ((directory.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidOperationException("fixture_alias");
+        var uiPermit = Path.Combine(PrivateRoot, "fixture-rendered-ui-permit");
+        if (File.Exists(uiPermit))
+        {
+            var info = new FileInfo(uiPermit);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0 || info.Length != 22
+                || File.ReadAllText(uiPermit) != "owned_rendered_ui_019\n")
+                throw new InvalidOperationException("fixture_ui_permit");
+            RenderedUiMode = true;
+        }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         _instance = AppInstance.FindOrRegisterForKey("SmartSnippets.UnoAcceptanceFixture019." + name);
         if (!_instance.IsCurrent) throw new InvalidOperationException("fixture_instance");

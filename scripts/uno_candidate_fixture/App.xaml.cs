@@ -16,6 +16,22 @@ public partial class App : Application
             _host = new UnoAppHost(_boundary, () => CandidateProfile.OpenOwnedRoot(Program.ProfileRoot));
             await _host.StartAsync(Program.StartInBackground, Program.InitialOptions);
             CandidateAcceptanceFlow.RequireReady(_host, Program.ProfileRoot);
+            if (Program.RenderedUiMode)
+            {
+                UiAssertDriver.RequireFresh(_host);
+                Program.Receipt("ui-ready"); await Program.WaitAsync("ui-ready");
+                UiAssertDriver.RequireNew(_host);
+                Program.Receipt("ui-new"); await Program.WaitAsync("ui-new");
+                UiAssertDriver.RequireSaved(_host);
+                Program.Receipt("ui-saved"); await Program.WaitAsync("ui-saved");
+                UiAssertDriver.RequireCancelled(_host);
+                Program.Receipt("ui-cancel"); await Program.WaitAsync("ui-cancel");
+                // Cancellation deliberately leaves a dirty editor. Disposing the host is cleanup,
+                // not a second navigation/exit confirmation callback under test.
+                _host.Dispose();
+                _boundary.Exit();
+                return;
+            }
             Program.Receipt("ready"); await Program.WaitAsync("ready");
             var id = await CandidateAcceptanceFlow.ManagementAsync(_host);
             Program.Receipt("management"); await Program.WaitAsync("management");
