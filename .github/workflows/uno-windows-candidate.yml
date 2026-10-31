@@ -7,6 +7,9 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - 'prototypes/uno-native-target/identity/**'
+      - 'prototypes/uno-native-target/windows-insertion/**'
+      - 'prototypes/uno-candidate-native/**'
       - 'Directory.*'
       - 'SmartSnippets.slnx'
       - '.github/workflows/uno-windows-candidate.yml'
@@ -35,6 +38,9 @@ jobs:
       - name: Candidate composition tests (pinned SDK cwd)
         working-directory: src/SmartSnippets.Uno
         run: dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
+      - name: Native fixture protocol tests (no native launch)
+        working-directory: src/SmartSnippets.Uno
+        run: dotnet test ../../scripts/uno_candidate_native_fixture/tests -c Release
       - name: Candidate build and startup-observer negative controls (no native launch)
         run: python -B -m unittest discover -s scripts/tests -p 'test_uno_candidate*.py' -q
       - name: Candidate fresh strict Native AOT gate

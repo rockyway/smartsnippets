@@ -201,6 +201,33 @@ All projects ran sequentially on Windows, with no Mac connection or device run:
 The Python suites include mocked native outcomes; their printed fixture receipts
 are not additional live native or Mac evidence.
 
+## Continued implementation: restore graph and privacy controls
+
+The SDK's implicit `RuntimeIdentifiers` expanded to x86/x64/ARM64 despite the
+candidate's x64 `RuntimeIdentifier`. The candidate now restricts the plural property
+after SDK imports, and the build gate checks both. A preexisting local lock delta
+containing the two extra architectures was preserved in the owner-private build
+evidence directory (token `970f4814a1774e50b6aad52f78dc66e7`) before controlled
+regeneration. Comparison verified that only unsupported architecture sections were
+removed; every retained dependency/version/hash was unchanged, and the resulting
+lock matches the committed baseline. The initial locked restore correctly refused
+with NU1004; no artifact from that attempt was used.
+
+Fresh strict candidate build after this correction: token
+`8ef851ae9440473bab2f4f725dac5060`, executable SHA256
+`d996e1ec010511c5c887e93225d1a7c87d1d7337af6af437b9d0c937622262a6`.
+Native compilation, effective-property and artifact checks passed; not launched.
+Build/observer/privacy Python controls: 50 passed. New IO-free privacy scanning
+checks synthetic content/label/tag/title/query/path canaries in UTF-8 and both
+UTF-16 byte orders; planted controls use the same scanner and cannot establish a
+native flow PASS by themselves.
+
+A subsequent aggregate Windows read-only preflight observed zero held input,
+idle >=1500ms, four clipboard formats with zero custom formats, and successful
+OpenClipboard/EnumClipboardFormats/CloseClipboard. No clipboard content was read
+or changed and no input was posted. This is current prerequisite metadata, not
+post-publication recovery or proof that every representation is preservable.
+
 ## Remaining gates
 
 Beyond the bounded owned-window observation above, candidate UI/manual acceptance

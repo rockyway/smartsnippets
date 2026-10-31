@@ -255,11 +255,11 @@ See [research 031](../research/031-windows-uno-candidate-implementation.md) for 
 | Area | Current evidence | Still required |
 |---|---|---|
 | T0 candidate graph | Integrated Windows-only SDK/project/lock; parent fresh strict native artifact gate passes | Candidate source review and final compatibility audit |
-| T1 shared privacy | Shared fixes and diagnostic-preservation corrections; 436 Core / 615 Presentation tests, confirming review clear | Full candidate/native privacy evidence and final regression |
-| T2–T4 host and UI | Actual host/store/VM/lifecycle composition with 58 headless tests; compiled management/popup views; source reviews clear; one owned-window startup observation | Full initialization receipt absent before forced stop; management/UI-event/lifecycle/coexistence acceptance remains pending |
-| T5 clipboard/gate | Additive shared Copy result/availability and legacy source tests pass; candidate gate always denies | No candidate authorization/native adapter exists yet; guarded positive/expired/dispatch/recovery paths unimplemented/unaccepted |
-| T6 build-only CI | Additive workflow/scripts; 19 build-gate and 25 startup-observer tests; source reviews clear; fresh local gate passes | Hosted CI and final integrated evidence |
-| T7–T8 | Single reviewed startup-only trial: owned visible window in bottom-left work area; sampled foreground/epoch unchanged; forced stop, zero active job, new profile retained | `candidate_started` receipt absent: no full readiness/render/interaction or graceful-exit proof. Observer restored closed; do not repeat absent-profile trial against retained profile. Native acceptance/final audit remain open; no completion or release claim |
+| T1 shared privacy | Shared fixes and diagnostic-preservation corrections; 436 Core / 616 Presentation tests; confirming reviews and planted runtime evidence scan pass | Final integrated regression/privacy audit |
+| T2–T4 host and UI | 201 candidate tests; real compiled host/store/VMs; full native initialization, programmatic management/settings, observed preview warmup/recreation and graceful exit with pre-kill JobZero in a fresh private fixture (research 032) | Actual rendered event/dialog/picker/tray/hover/coexistence acceptance remains pending; programmatic VM flow is not rendered callback proof |
+| T5 clipboard/gate | Internal bounded/revocable operation capability, exact-target native adapters and independent guardian implemented; critical reviews folded; expired/preview/Copy/recovery/single-flight tests pass; ordinary candidate stays denied | Actual shortcut/Enter/row/main/Copy and negative native evidence; no ordinary runtime unlock |
+| T6 build-only CI | Additive workflow/scripts; strict local candidate/helper/fixture artifacts and negative controls pass; linked prototype-source triggers and no-launch protocol tests included | Hosted CI and final integrated candidate/legacy builds |
+| T7–T8 | Full-host private session and actual clipboard-only post-publication ordinary restoration observed (research 032); source gates restored closed; no input/focus/Copy mutation | Operator must recopy harmless unmarked text before abort test; stopped-worker/changed-owner, rendered UI/native input, final matrix and audit remain open. Retained default candidate profile remains untouched; no completion/release claim |
 
 ## 7. Test strategy
 
