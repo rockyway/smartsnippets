@@ -52,6 +52,7 @@ internal sealed class PreviewModelSession : IPopupHost, IInsertionService, IClip
         fresh.Load();
         var saved = fresh.Snippets.Single().Snippet;
         Require(saved.Id == _original.Id && saved.Text == _original.Text && saved.Label == _original.Label &&
+            saved.IsLabelCustom == _original.IsLabelCustom && saved.FolderId == _original.FolderId &&
             saved.UsageCount == 0 && saved.LastUsedAt is null && saved.CreatedAt == _original.CreatedAt &&
             saved.UpdatedAt == _original.UpdatedAt && saved.Tags.SequenceEqual(_original.Tags));
     }

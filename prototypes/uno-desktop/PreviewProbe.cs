@@ -12,6 +12,7 @@ namespace SmartSnippets.UnoProbe;
 internal sealed class PreviewProbe
 {
     internal static int ExitCode { get; private set; } = 1;
+    private readonly bool _rowMode;
     private readonly Application _app;
     private readonly Window _main;
     private readonly MainPage _mainPage;
@@ -29,9 +30,11 @@ internal sealed class PreviewProbe
     private long _deadline = Stopwatch.GetTimestamp() + 60 * Stopwatch.Frequency;
     private long _clipboardBefore;
 
-    public PreviewProbe(Application app, Window main, MainPage mainPage)
+    public PreviewProbe(Application app, Window main, MainPage mainPage, bool rowMode = false)
     {
         ExitCode = 1;
+        _rowMode = rowMode;
+        _prepared = rowMode;
         _app = app; _main = main; _mainPage = mainPage;
         _queue = DispatcherQueue.GetForCurrentThread();
         _timer = _queue.CreateTimer();
@@ -52,9 +55,9 @@ internal sealed class PreviewProbe
             Console.WriteLine("ui_preview_layout_ready");
             _shows.CompleteWarmup(_shows.WarmupGeneration);
         });
-        Console.WriteLine("ui_preview_started");
+        Console.WriteLine(rowMode ? "ui_preview_row_started" : "ui_preview_started");
         _timer.Start();
-        _ = Task.Run(AwaitPreparationAsync);
+        if (!rowMode) _ = Task.Run(AwaitPreparationAsync);
     }
 
     private async Task AwaitPreparationAsync()
@@ -79,17 +82,24 @@ internal sealed class PreviewProbe
         switch (_stage)
         {
             case 0 when _prepared && _mainPage.IsLoaded:
-                if (!ProbeWindowSurface.Bind(_main, _main.Title).IsForeground) break;
+                if (!_rowMode && !ProbeWindowSurface.Bind(_main, _main.Title).IsForeground) break;
                 _stage = 1;
                 _shows.RequestShow(() =>
                 {
                     Require(_page!.IsReady && !_surface!.IsWarmupCloaked);
-                    _surface!.Show(_popup!);
+                    if (_rowMode) _surface!.ShowWarmup(_popup!);
+                    else _surface!.Show(_popup!);
                     Console.WriteLine("ui_preview_ready_show");
-                    return new(true, PopupFocusTarget.Search);
+                    return new(true, _rowMode ? null : PopupFocusTarget.Search);
                 });
                 break;
-            case 1 when _focuses == 1 && _surface!.IsForeground && _page!.IsSearchFocused:
+            case 1 when _rowMode && _page!.IsReady:
+                Require(_focuses == 0 && !_surface!.IsForeground);
+                _clipboardBefore = OwnedPreviewEnter.ClipboardEpoch;
+                _stage = 2;
+                _ = _page.ActivateSelectedRowAsync();
+                break;
+            case 1 when !_rowMode && _focuses == 1 && _surface!.IsForeground && _page!.IsSearchFocused:
                 _ = OwnedPreviewEnter.TryPost(_surface, () => _page!.IsSearchFocused, () =>
                 {
                     _clipboardBefore = OwnedPreviewEnter.ClipboardEpoch;
@@ -97,8 +107,8 @@ internal sealed class PreviewProbe
                     Console.WriteLine("ui_preview_native_enter_requested");
                 });
                 break;
-            case 2 when _page is { EnterCompleted: true } && _session!.Hides == 1:
-                Require(_page.EnterEvents == 1 && !_surface!.IsVisible);
+            case 2 when (_rowMode ? _page!.RowCompleted : _page!.EnterCompleted) && _session!.Hides == 1:
+                Require((_rowMode ? _page!.RowEvents == 1 && _page.EnterEvents == 0 : _page!.EnterEvents == 1) && !_surface!.IsVisible);
                 Require(OwnedPreviewEnter.ClipboardEpoch == _clipboardBefore);
                 _session!.VerifyUnchanged();
                 Console.WriteLine("ui_preview_no_dispatch_or_usage clipboard_epoch=UNCHANGED forbidden_calls=0");
@@ -154,7 +164,7 @@ internal sealed class PreviewProbe
 
     private void HidePreview()
     {
-        Require(_stage == 2 && _page!.EnterEvents == 1);
+        Require(_stage == 2 && (_rowMode ? _page!.RowEvents == 1 : _page!.EnterEvents == 1));
         _shows.Hide();
         _surface!.Hide();
     }
@@ -164,7 +174,7 @@ internal sealed class PreviewProbe
         Require(_stage == 4 && _closed && _absence!());
         _timer.Stop();
         ExitCode = 0;
-        Console.WriteLine("ui_preview_complete native_enter=1 insertion_calls=0 clipboard_writes=0 usage=0");
+        Console.WriteLine(_rowMode ? "ui_preview_row_complete shared_handler=1 native_pointer=NOT_TESTED uia=NOT_TESTED input=NONE insertion_calls=0 clipboard_writes=0 usage=0" : "ui_preview_complete native_enter=1 insertion_calls=0 clipboard_writes=0 usage=0");
         Console.Out.Flush();
         Require(_queue.TryEnqueue(() => Guard(() => _app.Exit())));
     }

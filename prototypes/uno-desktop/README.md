@@ -108,3 +108,30 @@ Build `hO5yjg`, SHA256 `79273479026c674b5a253d8de8ac7df22292b0d97473d9dce7c679fc
 External hover, target-free keyboard preview, native shortcut/target/clipboard adapters, permission/error recovery, full privacy scans and mobile app/keyboard strict-AOT risk checks remain incomplete. Mobile prerequisite restores currently report missing workloads (NETSDK1147); no workload was silently installed. See research 016 and plan 018 for the exact acceptance gates.
 
 The owner authorized the exclusive slot used for the basic GUI smoke recorded in research 016. `run_ui_smoke.py --executable <owned-entry> --sha256 <digest> --authorized-screen-slot` observes PID-owned visible-window metadata and stops only its started process; it sends no input and never reads titles or screen pixels. On macOS only the isolated bundle entry is accepted. This is not a visual-rendering, focus, graceful-exit or insertion test. The owner subsequently granted standing preapproval for automatic guarded tests needed to finish 018 and advance reviewed plans; OS security weakening, destructive changes, unsafe clipboard loss and unowned input remain prohibited. Keep Windows probe windows on the bottom-left monitor (bottom of the leftmost column) within its work area, moving only owned windows. Follow [harness safety](../../docs/guides/002-acceptance-harness-safety.md): owned targets, isolated profiles, watchdog, recoverable state, no plaintext operator-clipboard files, no production hotkey/instance key/startup changes. Do not begin plan 019 or claim desktop parity from this checkpoint.
+
+### T3 programmatic preview-row checkpoint
+
+`run_ui_smoke.py --preview-row` (with the existing hash/executable and explicit
+screen-slot arguments) selects an isolated, non-interactive scene. The app still
+requires exact `--authorized-probe-ui`; `--preview-row` is exclusive with the other
+scenes. Secondary construction waits for the main page to load. No stdin focus
+preparation, focus request or key posting is used by this scene. Real ListView
+ItemClick and programmatic activation share the same row method, which validates
+realized/selected/model identity before calling actual `InsertRowAsync` in preview
+mode. Successful completion requires hide, fresh SQLite metadata/usage equality,
+zero forbidden boundary calls, unchanged clipboard epoch and graceful cleanup.
+This is **not native pointer or UIA delivery evidence**. Native Enter remains a
+separate mode. Lifecycle now asserts the probe-owned theme-resource background
+brush before and after opposite-theme switching; no production palette parity is
+claimed.
+
+Post-fix native lifecycle and programmatic preview-row runs pass on both desktops:
+Windows build `e64d53f9fa254f95a6ddb6ac724849e2`, SHA-256
+`5b646025d9a8117503a4692d305b7947a6ddf3a2fc2ef1b3d5b9eecb72bf9acf`;
+macOS build `O6c1RB`, SHA-256
+`2f07a92fee6b5c535f9aa7e62ce4e088572a05bc91ae82cdff388bc2de7db2c8`.
+Both native collectors report zero warnings/errors; separately authorized runtime
+scenes exit naturally with matching receipts. Both hosts run 159 Python tests
+with platform-specific skips. See [research 022](../../docs/research/022-preview-row-and-palette-probe.md)
+for the initial palette failure, correction, runtime tokens and boundaries.
+Plan 018 remains incomplete.

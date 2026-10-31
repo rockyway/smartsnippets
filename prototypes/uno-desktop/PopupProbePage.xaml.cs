@@ -25,6 +25,16 @@ public sealed partial class PopupProbePage : Page
 
     public PopupProbePage()
     {
+        // Construct concrete managed brushes at the supported resource seam so
+        // Native AOT retains their WinRT projection rather than a base Brush RCW.
+        Resources.ThemeDictionaries["Light"] = new ResourceDictionary
+        {
+            ["ProbePaletteBackground"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 244, 244, 244))
+        };
+        Resources.ThemeDictionaries["Dark"] = new ResourceDictionary
+        {
+            ["ProbePaletteBackground"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 32, 32, 32))
+        };
         InitializeComponent();
 #if WINDOWS
         // The native list creates containers internally. Under Native AOT an
@@ -64,8 +74,23 @@ public sealed partial class PopupProbePage : Page
         RowsView.SelectedIndex = 1;
         if (!ReferenceEquals(RowsView.SelectedItem, Rows[1]))
             throw new InvalidOperationException("Popup selection failed.");
+        VerifyPalette();
         TargetTheme = ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
         RequestedTheme = TargetTheme;
+    }
+
+    // Probe-owned palette only: this does not assert production palette parity.
+    internal void VerifyPalette()
+    {
+        var expected = ActualTheme == ElementTheme.Dark ? (byte)0x20 : (byte)0xF4;
+        if (PaletteSurface.Background is not SolidColorBrush brush ||
+            brush.Color.A != 255 || brush.Color.R != expected ||
+            brush.Color.G != expected || brush.Color.B != expected || brush.Opacity != 1)
+        {
+            var color = (PaletteSurface.Background as SolidColorBrush)?.Color;
+            Console.Error.WriteLine($"ui_palette_mismatch theme={(int)ActualTheme} surface_theme={(int)PaletteSurface.ActualTheme} a={color?.A ?? 0} r={color?.R ?? 0} g={color?.G ?? 0} b={color?.B ?? 0}");
+            throw new InvalidOperationException("Probe theme resource brush mismatch.");
+        }
     }
 
     private static int CountVisualRows(DependencyObject parent)

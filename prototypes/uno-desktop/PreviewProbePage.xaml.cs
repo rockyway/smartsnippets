@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -50,6 +51,36 @@ public sealed partial class PreviewProbePage : Page
             Console.WriteLine("ui_preview_enter_routed");
         }
         catch (Exception error) { _fail(error); }
+    }
+
+    public int RowEvents { get; private set; }
+    public bool RowCompleted { get; private set; }
+
+    private async void RowClicked(object sender, ItemClickEventArgs args)
+    {
+        try { await ActivateRowAsync(args.ClickedItem); }
+        catch (Exception error) { _fail(error); }
+    }
+
+    internal async Task ActivateSelectedRowAsync()
+    {
+        try { await ActivateRowAsync(RowsView.SelectedItem); }
+        catch (Exception error) { _fail(error); }
+    }
+
+    // Shared by real ItemClick delivery and the explicitly programmatic scene.
+    private async Task ActivateRowAsync(object item)
+    {
+        if (!IsReady || item is not PopupItemViewModel row ||
+            !ReferenceEquals(item, RowsView.SelectedItem) ||
+            !ReferenceEquals(item, Model.Items[Model.SelectedIndex]) ||
+            RowsView.ContainerFromItem(item) is not ListViewItem { ActualHeight: > 0 } ||
+            !Model.IsPreview || Model.Target is not null || ++RowEvents != 1)
+            throw new InvalidOperationException("Preview row identity failed.");
+        await Model.InsertRowAsync(row);
+        if (!_hidden()) throw new InvalidOperationException("Preview row did not hide.");
+        RowCompleted = true;
+        Console.WriteLine("ui_preview_row_shared_handler");
     }
 
     private static bool ContainsText(DependencyObject parent, string expected)

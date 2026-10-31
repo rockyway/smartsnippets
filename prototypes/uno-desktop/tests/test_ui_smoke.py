@@ -40,7 +40,7 @@ class UiSmokeTests(unittest.TestCase):
         self.private.mkdir()
 
     def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None,
-               coordinator=False, preview=False, companion=False, extra_args=None, stderr=b""):
+               coordinator=False, preview=False, companion=False, preview_row=False, extra_args=None, stderr=b""):
         process = Mock(pid=12345)
         process.poll.return_value = None
         process.wait.return_value = 0
@@ -50,7 +50,7 @@ class UiSmokeTests(unittest.TestCase):
         err_output = io.StringIO()
         args = self.args + (["--authorized-screen-slot"] if authorize else [])
         if lifecycle:
-            args.append("--companion" if companion else "--preview" if preview else "--coordinator" if coordinator else "--lifecycle")
+            args.append("--preview-row" if preview_row else "--companion" if companion else "--preview" if preview else "--coordinator" if coordinator else "--lifecycle")
             if lifecycle == "success":
                 process.poll.side_effect = [None, 0, 0]
             elif lifecycle == "early_exit":
@@ -65,7 +65,7 @@ class UiSmokeTests(unittest.TestCase):
 
         def start(arguments, **kwargs):
             if lifecycle:
-                receipts = (smoke.COMPANION_RECEIPTS if companion else smoke.PREVIEW_RECEIPTS if preview
+                receipts = (smoke.PREVIEW_ROW_RECEIPTS if preview_row else smoke.COMPANION_RECEIPTS if companion else smoke.PREVIEW_RECEIPTS if preview
                             else smoke.COORDINATOR_RECEIPTS if coordinator else smoke.LIFECYCLE_RECEIPTS)
                 kwargs["stdout"].write(("\n".join(receipts) + "\n").encode())
                 kwargs["stdout"].flush()
@@ -87,6 +87,25 @@ class UiSmokeTests(unittest.TestCase):
             except BaseException as error:
                 return error, process, launch, output.getvalue()
         return result, process, launch, output.getvalue()
+
+    def test_preview_row_no_focus_preparation_or_stdin(self):
+        result, process, launch, output = self.invoke(lifecycle="success", preview_row=True)
+        self.assertEqual(0, result)
+        self.assertEqual([str(self.entry), "--authorized-probe-ui", "--preview-row"], launch.call_args.args[0])
+        self.assertEqual(subprocess.DEVNULL, launch.call_args.kwargs["stdin"])
+        self.assertIn("input=NONE", output)
+        self.assertIn("ui_preview_row_result=PASS", output)
+        process.terminate.assert_not_called()
+
+    def test_preview_row_mutually_exclusive(self):
+        result, _, launch, _ = self.invoke(extra_args=["--preview-row", "--preview"])
+        self.assertIsInstance(result, SystemExit)
+        launch.assert_not_called()
+
+    def test_preview_row_receipts_reject_native_enter_and_missing_proof(self):
+        self.assertFalse(smoke.preview_row_completed("\n".join(smoke.PREVIEW_RECEIPTS), "", 0))
+        self.assertFalse(smoke.preview_row_completed("\n".join(smoke.PREVIEW_ROW_RECEIPTS[:-1]), "", 0))
+        self.assertFalse(smoke.preview_row_completed("\n".join(smoke.PREVIEW_ROW_RECEIPTS), "error", 0))
 
     def test_refuses_without_explicit_screen_slot(self):
         result, process, launch, _ = self.invoke(authorize=False)

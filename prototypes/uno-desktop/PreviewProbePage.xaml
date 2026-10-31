@@ -10,7 +10,7 @@
         </Grid.RowDefinitions>
         <TextBox x:Name="SearchEditor" Text="{x:Bind Model.Query, Mode=TwoWay}" KeyDown="SearchKeyDown" PlaceholderText="Target-free native Enter fixture" />
         <ListView x:Name="RowsView" Grid.Row="1" ItemsSource="{x:Bind Model.Items, Mode=OneWay}"
-                  SelectedIndex="{x:Bind Model.SelectedIndex, Mode=TwoWay}">
+                  IsItemClickEnabled="True" ItemClick="RowClicked" SelectedIndex="{x:Bind Model.SelectedIndex, Mode=TwoWay}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:PopupItemViewModel">
                     <StackPanel Padding="8">

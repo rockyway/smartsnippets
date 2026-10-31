@@ -63,6 +63,19 @@ PREVIEW_RECEIPTS = [
 ]
 
 
+PREVIEW_ROW_RECEIPTS = [
+    "ui_preview_row_started", "ui_preview_layout_ready", "ui_preview_ready_show",
+    "ui_preview_row_shared_handler",
+    "ui_preview_no_dispatch_or_usage clipboard_epoch=UNCHANGED forbidden_calls=0",
+    "ui_preview_profile_removed",
+    "ui_preview_row_complete shared_handler=1 native_pointer=NOT_TESTED uia=NOT_TESTED input=NONE insertion_calls=0 clipboard_writes=0 usage=0",
+]
+
+
+def preview_row_completed(stdout, stderr, code):
+    return code == 0 and not stderr.strip() and stdout.splitlines() == PREVIEW_ROW_RECEIPTS
+
+
 COMPANION_RECEIPTS = [
     "ui_companion_started",
     "ui_companion_external_geometry_ok binding=COMPILED foreground=UNCHANGED",
@@ -207,6 +220,7 @@ def main():
     scene = parser.add_mutually_exclusive_group()
     scene.add_argument("--lifecycle", action="store_true", help="Require real-host lifecycle receipts and graceful exit")
     scene.add_argument("--coordinator", action="store_true", help="Require cloaked native warmup and coordinator-only focus")
+    scene.add_argument("--preview-row", action="store_true", help="Programmatic shared row handler only; no pointer/UIA input")
     scene.add_argument("--preview", action="store_true", help="Require native Enter through the actual preview view-model")
     scene.add_argument("--companion", action="store_true", help="Require external companion geometry and real hover-policy handoff, without input")
     args = parser.parse_args()
@@ -239,7 +253,9 @@ def main():
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
             arguments = [str(entry), "--authorized-probe-ui"]
-            if args.companion:
+            if args.preview_row:
+                arguments.append("--preview-row")
+            elif args.companion:
                 arguments.append("--probe-ui-companion")
             elif args.preview:
                 arguments.append("--probe-ui-preview")
@@ -250,7 +266,7 @@ def main():
             process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
                                        cwd=entry.parent, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL,
                                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
-            deadline = time.monotonic() + (45 if interactive else 30 if args.lifecycle or args.companion else 15)
+            deadline = time.monotonic() + (45 if interactive else 30 if args.lifecycle or args.companion or args.preview_row else 15)
             observe_deadline = min(deadline, time.monotonic() + 10) if interactive else deadline
             while time.monotonic() < observe_deadline:
                 code = process.poll()
@@ -292,7 +308,7 @@ def main():
                         except OSError:
                             break
                         preparation_ok = True
-                    if args.lifecycle or args.companion or interactive:
+                    if args.lifecycle or args.companion or args.preview_row or interactive:
                         try:
                             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
@@ -329,9 +345,9 @@ def main():
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
-    if args.lifecycle or args.companion or interactive:
-        name = "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
-        validate = {"companion": companion_completed, "preview": preview_completed,
+    if args.lifecycle or args.companion or args.preview_row or interactive:
+        name = "preview_row" if args.preview_row else "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
+        validate = {"preview_row": preview_row_completed, "companion": companion_completed, "preview": preview_completed,
                     "coordinator": coordinator_completed, "lifecycle": lifecycle_completed}[name]
         completed = observed and preparation_ok and recovery_ok and validate(
             (private / "stdout.log").read_text(errors="replace"),

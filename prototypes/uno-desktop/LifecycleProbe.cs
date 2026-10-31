@@ -68,6 +68,7 @@ internal sealed class LifecycleProbe
                     _stage = 2;
                     break;
                 case 2 when _popupPage!.ActualTheme == _popupPage.TargetTheme:
+                    _popupPage.VerifyPalette();
                     _surface!.Hide();
                     Require(!_surface.IsVisible);
                     Console.WriteLine("ui_popup_hidden");
