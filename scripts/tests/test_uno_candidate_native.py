@@ -126,7 +126,7 @@ class NativeBootstrapTests(unittest.TestCase):
     def test_input_has_separate_source_gate_even_after_positive_review(self):
         with patch.object(native, 'POSITIVE_SCENES_SOURCE_REVIEWED', True):
             native.require_positive_authorization('copy', True, True)
-            for scene in native.INSERT_SCENES:
+            for scene in native.INPUT_CAPABILITY_SCENES:
                 with self.assertRaisesRegex(ValueError, 'positive_review'):
                     native.require_positive_authorization(scene, True, True)
 

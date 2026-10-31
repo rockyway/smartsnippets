@@ -17,6 +17,7 @@ POSITIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_INPUT_SOURCE_REVIEWED = False
 POSITIVE_SCENES = ('posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
 INSERT_SCENES = ('posted-enter', 'posted-row', 'posted-main')
+INPUT_CAPABILITY_SCENES = (*INSERT_SCENES, 'expired')
 POSITIVE_PERMIT = b'owned_positive_row6_verified_operator_recopied_baseline\n'
 ENTRY = 'SmartSnippets.UnoCandidate.exe'
 ROOT = REPO / 'scripts/uno_candidate_native_fixture'
@@ -90,7 +91,7 @@ def require_authorization(authorized):
 
 def require_positive_authorization(scene, row6, recopied):
     if scene in POSITIVE_SCENES and (not POSITIVE_SCENES_SOURCE_REVIEWED or not row6 or not recopied
-                                    or (scene in INSERT_SCENES and not POSITIVE_INPUT_SOURCE_REVIEWED)):
+                                    or (scene in INPUT_CAPABILITY_SCENES and not POSITIVE_INPUT_SOURCE_REVIEWED)):
         raise ValueError('native_positive_review_row6_and_operator_recopy_required')
 
 
