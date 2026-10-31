@@ -47,7 +47,10 @@ public sealed class CandidateWiringAuditTests
             Assert.StartsWith("SmartSnippets.Uno.", (string?)xml.Root!.Attribute(ns + "Class"));
         }
         var popup = File.ReadAllText(Path.Combine(Candidate, "Popup", "PopupWindow.xaml.cs"));
-        Assert.Contains("new PopupShowCoordinator(", popup);
+        Assert.Contains("new CandidatePopupLifecycle(", popup);
+        var lifecycle = File.ReadAllText(Path.Combine(Candidate, "CandidateUiPolicy.cs"));
+        Assert.Contains("internal PopupShowCoordinator Shows", lifecycle);
+        Assert.Contains("Shows.RequestShow(", lifecycle);
         Assert.Contains("_shows.Close();", popup);
         Assert.Contains("private void CancelReveal()", popup);
         Assert.Contains("CompositionTarget.Rendered -= handler", popup);

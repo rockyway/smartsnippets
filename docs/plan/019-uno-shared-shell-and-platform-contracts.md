@@ -248,6 +248,19 @@ All new tests below are planned names, not claimed existing/passing tests. Imple
 - **Verify:** match every AC to actual test/native receipts; audit missing receipts as failure, not PASS. Keep 018 In progress and 020/021/022–025 gates intact. Unmet accepted candidate criteria block 019 Complete even if a shell checkpoint is merged under the approved process.
 - **Mutation-catching tests:** `EveryCandidateAction_ReachesRegisteredConsumerOrTruthfulRefusal`, `MissingNativeEvidence_CannotPromoteCandidateOr018ToComplete`, `EvidenceScanner_DetectsPlantedFixtureLeak`. Disconnect a registration/binding and confirm its actual flow test fails, not only that its source spelling exists.
 
+### Implementation checkpoint (not task or acceptance closure)
+
+See [research 031](../research/031-windows-uno-candidate-implementation.md) for source commits and artifact hashes.
+
+| Area | Current evidence | Still required |
+|---|---|---|
+| T0 candidate graph | Integrated Windows-only SDK/project/lock; parent fresh strict native artifact gate passes | Candidate source review and final compatibility audit |
+| T1 shared privacy | Shared fixes and diagnostic-preservation corrections; 436 Core / 615 Presentation tests, confirming review clear | Full candidate/native privacy evidence and final regression |
+| T2–T4 host and UI | Actual host/store/VM/lifecycle composition with 51 headless tests after review fixes; compiled management/popup views | Confirming source review; actual Windows UI/event/lifecycle/coexistence acceptance |
+| T5 clipboard/gate | Additive shared Copy result/availability and legacy source tests pass; candidate gate always denies | No candidate authorization/native adapter exists yet; guarded positive/expired/dispatch/recovery paths unimplemented/unaccepted |
+| T6 build-only CI | Additive workflow/scripts and 19 negative-control tests; gate source review clear; fresh local gate passes | Hosted CI and final integrated evidence |
+| T7–T8 | Named runbook and evidence boundaries retained | Native acceptance and final wiring/privacy audit; no completion or release claim |
+
 ## 7. Test strategy
 
 **Unit:** retain Core/Presentation suites; test gate/identity/build properties/privacy and compatibility. No test count claim in this draft. New candidate test project uses actual candidate composition/handler code; only external OS/window/file-picker boundaries are substituted. UI stubs/static XML checks cannot establish compiled XAML/native event delivery.
