@@ -10,11 +10,12 @@ public static class Program
 {
     private static AppInstance? _instance;
     internal static bool StartInBackground => false;
-    internal static LaunchOptions InitialOptions => new(FolderScene ? PageKind.Folders : PageKind.Snippets, false, null);
+    internal static LaunchOptions InitialOptions => new(SettingsScene ? PageKind.Settings : FolderScene ? PageKind.Folders : PageKind.Snippets, false, null);
     internal static string PrivateRoot { get; private set; } = "";
     internal static string ProfileRoot => Path.Combine(PrivateRoot, "fixture-profile");
     internal static bool RenderedUiMode { get; private set; }
     internal static bool FolderScene { get; private set; }
+    internal static bool SettingsScene { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
@@ -46,6 +47,15 @@ public static class Program
                 || info.Length != 20 || File.ReadAllText(folderPermit) != "owned_folder_ui_019\n")
                 throw new InvalidOperationException("fixture_folder_permit");
             FolderScene = true;
+        }
+        var settingsPermit = Path.Combine(PrivateRoot, "fixture-settings-scene-permit");
+        if (File.Exists(settingsPermit))
+        {
+            var info = new FileInfo(settingsPermit);
+            if (!RenderedUiMode || FolderScene || (info.Attributes & FileAttributes.ReparsePoint) != 0
+                || info.Length != 22 || File.ReadAllText(settingsPermit) != "owned_settings_ui_019\n")
+                throw new InvalidOperationException("fixture_settings_permit");
+            SettingsScene = true;
         }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         _instance = AppInstance.FindOrRegisterForKey("SmartSnippets.UnoAcceptanceFixture019." + name);

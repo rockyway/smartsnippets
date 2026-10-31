@@ -1,8 +1,52 @@
+using SmartSnippets.Core;
+using SmartSnippets.Core.Data;
+using SmartSnippets.Core.Settings;
+using SmartSnippets.Presentation.Services;
+
 namespace SmartSnippets.Uno;
 
 /// <summary>Read-only postconditions for observer-acknowledged rendered callbacks; never performs CRUD.</summary>
 internal static class UiAssertDriver
 {
+    internal static void RequireSettingsFresh(UnoAppHost host)
+    {
+        RequireFresh(host);
+        RequireSettingsState(host, ThemeMode.System, TextSizePreset.Medium, TextSizeService.MediumSize);
+        if (host.SettingsStore.Get(SettingsKeys.Theme) is not null
+            || host.SettingsStore.Get(SettingsKeys.TextSizePreset) is not null)
+            throw new InvalidOperationException("ui_settings_not_fresh");
+    }
+
+    internal static void RequireSettingsTheme(UnoAppHost host) =>
+        RequireSettingsState(host, ThemeMode.Dark, TextSizePreset.Medium, TextSizeService.MediumSize);
+
+    internal static void RequireSettingsTextSize(UnoAppHost host) =>
+        RequireSettingsState(host, ThemeMode.Dark, TextSizePreset.Large, TextSizeService.LargeSize);
+
+    internal static void RequireSettingsReloaded(UnoAppHost host, string profileRoot)
+    {
+        RequireSettingsTextSize(host);
+        // Fresh repository/connection read only: no Save, Set, migration or VM mutation.
+        var database = new AppPaths(profileRoot).DatabasePath;
+        if (!File.Exists(database)) throw new InvalidOperationException("ui_settings_reload_missing");
+        var repository = new SettingsRepository(new SqliteConnectionFactory(database));
+        var loaded = AppSettings.Load(repository);
+        if (repository.Get(SettingsKeys.Theme) != "Dark" || repository.Get(SettingsKeys.TextSizePreset) != "Large"
+            || loaded.Theme != ThemeMode.Dark || loaded.TextSizePreset != TextSizePreset.Large
+            || loaded.CustomTextSize != 14 || loaded.ColorPalette != ColorPalette.Default)
+            throw new InvalidOperationException("ui_settings_reload");
+    }
+
+    private static void RequireSettingsState(UnoAppHost host, ThemeMode theme, TextSizePreset size, double fontSize)
+    {
+        var loaded = AppSettings.Load(host.SettingsStore);
+        if (host.SettingsPage.SelectedTheme != theme || host.SettingsPage.SelectedTextSizePreset != size
+            || host.TextSize.FontSize != fontSize || host.SettingsPage.TextSize.FontSize != fontSize
+            || loaded.Theme != theme || loaded.TextSizePreset != size || host.Gate.IsAvailable
+            || host.Store.Snippets.Count != 0 || host.Store.Folders.Count != 0)
+            throw new InvalidOperationException("ui_settings_state");
+    }
+
     internal const string FolderName = "ui019 synthetic folder";
     internal const string RenamedFolderName = "ui019 synthetic renamed";
     internal const string FolderSnippetText = "ui019 synthetic attached";

@@ -1,4 +1,4 @@
-param([ValidateSet('snippets','folders')][string]$Scene = 'snippets',
+param([ValidateSet('snippets','folders','settings')][string]$Scene = 'snippets',
       [Parameter(Mandatory=$true)][int]$OwnedPid,
       [Parameter(Mandatory=$true)][long]$OwnedHwnd,
       [Parameter(Mandatory=$true)][long]$InitialForeground,
@@ -23,6 +23,7 @@ public static class Owned019 {
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder b, int n);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);
+ [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
  [DllImport("user32.dll")] public static extern IntPtr OpenInputDesktop(uint f, bool i, uint a);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool GetUserObjectInformation(IntPtr h, int i, StringBuilder b, uint n, out uint needed);
  [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr h);
@@ -38,9 +39,13 @@ public static class Owned019 {
     if ([Owned019]::Epoch() -ne $epoch) { throw 'input' }
     $focused = $false
     $script:invokes = 0; $script:values = 0; $script:focuses = 0
+    $script:scrolls = 0; $script:selections = 0
+    $clipboardSequence = [Owned019]::GetClipboardSequenceNumber()
+    if ($clipboardSequence -eq 0) { throw 'clipboard' }
     $ownedProcess = [Diagnostics.Process]::GetProcessById($OwnedPid)
     try { $started = $ownedProcess.StartTime.ToUniversalTime().Ticks } finally { $ownedProcess.Dispose() }
     function Guard {
+        if ([Owned019]::GetClipboardSequenceNumber() -ne $clipboardSequence) { throw 'clipboard' }
         if (-not [Owned019]::IsWindow($h) -or -not [Owned019]::IsWindowVisible($h)) { throw 'window' }
         [uint32]$owner = 0
         [void][Owned019]::GetWindowThreadProcessId($h, [ref]$owner)
@@ -128,6 +133,63 @@ public static class Owned019 {
         }
         throw 'control_timeout'
     }
+    function FindSettingsRadio([string]$key, [bool]$requireVisible) {
+        # Only these two fixed group/radio identities. No global or fallback discovery.
+        switch -CaseSensitive ($key) {
+            'settings-dark' { $groupId='ThemeRadios'; $groupName='Theme'; $radioName='Dark' }
+            'settings-large' { $groupId='TextSizeRadios'; $groupName='Text size'; $radioName='Large' }
+            default { throw 'schema' }
+        }
+        $groupCondition = [Windows.Automation.AndCondition]::new([Windows.Automation.Condition[]]@(
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$groupId),
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$groupName),
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Group)))
+        $radioCondition = [Windows.Automation.AndCondition]::new([Windows.Automation.Condition[]]@(
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$radioName),
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::RadioButton)))
+        $until = [DateTime]::UtcNow.AddSeconds(4)
+        while ([DateTime]::UtcNow -lt $until) {
+            Guard
+            $r = [Windows.Automation.AutomationElement]::FromHandle($h)
+            if ($r.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+            $groups = $r.FindAll([Windows.Automation.TreeScope]::Descendants,$groupCondition)
+            if ($groups.Count -gt 1) { throw 'schema' }
+            if ($groups.Count -eq 1) {
+                if ($groups[0].Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+                $items = $groups[0].FindAll([Windows.Automation.TreeScope]::Descendants,$radioCondition)
+                if ($items.Count -gt 1) { throw 'schema' }
+                if ($items.Count -eq 1) {
+                    $e = $items[0]
+                    if ($e.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+                    if ($e.Current.IsEnabled -and (-not $requireVisible -or -not $e.Current.IsOffscreen)) {
+                        Guard; return $e
+                    }
+                }
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        throw 'control_timeout'
+    }
+    function SelectSettingsRadio([string]$key) {
+        $e = FindSettingsRadio $key $false
+        $scroll = [Windows.Automation.ScrollItemPattern]$e.GetCurrentPattern([Windows.Automation.ScrollItemPattern]::Pattern)
+        Guard
+        # One UI scroll only, not a settings mutation. Missing pattern/refusal is BLOCKED.
+        $scroll.ScrollIntoView()
+        $script:scrolls++
+        Guard
+        $e = FindSettingsRadio $key $true
+        $selection = [Windows.Automation.SelectionItemPattern]$e.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
+        Guard
+        if ($e.Current.IsOffscreen -or -not $e.Current.IsEnabled -or $selection.Current.IsSelected) { throw 'selection' }
+        $selection.Select() # Exactly once; no mutation retries or focus/input fallback.
+        $script:selections++
+        Guard
+        Start-Sleep -Milliseconds 400
+        $e = FindSettingsRadio $key $true
+        Guard
+        if (-not ([Windows.Automation.SelectionItemPattern]$e.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Current.IsSelected) { throw 'selection' }
+    }
     function Invoke([string]$key) {
         $e = Find $key
         Guard
@@ -163,7 +225,22 @@ public static class Owned019 {
         try { $bytes=[Text.Encoding]::ASCII.GetBytes("continue`n"); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
     }
     $stage = 'ready'; WaitPhase 'ui-ready'
-    if ($Scene -ceq 'folders') {
+    if ($Scene -ceq 'settings') {
+        $stage = 'settings_theme'
+        SelectSettingsRadio 'settings-dark'; Ack 'ui-ready'
+        WaitPhase 'ui-settings-theme'
+        $stage = 'settings_size'
+        SelectSettingsRadio 'settings-large'; Ack 'ui-settings-theme'
+        WaitPhase 'ui-settings-size'
+        # Read-only repository reload is a separate fixture checkpoint, not a UI mutation.
+        Ack 'ui-settings-size'; WaitPhase 'ui-settings-reloaded'; Guard
+        if ($script:scrolls -ne 2 -or $script:selections -ne 2 -or $script:invokes -ne 0 -or $script:values -ne 0 -or $script:focuses -ne 0) { throw 'actions' }
+        $file = [IO.File]::Open((Join-Path $root 'ui-settings-actions.receipt'), [IO.FileMode]::CreateNew)
+        try {
+            $bytes = [Text.Encoding]::ASCII.GetBytes("scroll=$script:scrolls`nselect=$script:selections`n")
+            $file.Write($bytes,0,$bytes.Length)
+        } finally { $file.Dispose() }
+    } elseif ($Scene -ceq 'folders') {
         # Fixed scene only: no selectors, names or mutation payloads supplied by the caller.
         $stage = 'folder_create'
         Value 'ui019 synthetic folder' 'folder-new-name'
@@ -208,7 +285,7 @@ public static class Owned019 {
     [Console]::Out.WriteLine('ui_callbacks_observed')
 } catch {
     $reason = 'operation'
-    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions')
+    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions','clipboard','selection')
     if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
     [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason")
     exit 1

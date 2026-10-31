@@ -96,7 +96,7 @@ production native capability remains null. This fixture is not production parity
 
 ## Fixed rendered scenes
 
-`scripts/run_uno_candidate_ui.py --scene snippets|folders` selects only a fixed
+`scripts/run_uno_candidate_ui.py --scene snippets|folders|settings` selects only a fixed
 scene in the observer, never arbitrary selectors or mutation text. All source
 execution gates remain false. **All visible tests remain PAUSED pending operator
 remaining-monitor authorization and independent review.** No scene was executed
@@ -135,11 +135,44 @@ is not diagnostic evidence to scan.
 
 ## Remaining unproven paths
 
-Rendered execution of both scenes is NOT RUN. Settings theme/text-size and
-persist/reload are not implemented in this bounded folder checkpoint. Folder
+Rendered execution of all scenes is NOT RUN. The bounded settings scene below
+adds theme/text-size/repository reload checks, not executed evidence. Folder
 unsaved rename Save/Discard/Cancel, validation/failure paths, rendered snippet
 assignment, file pickers/import/export, row selection, tray/close/background,
 legacy coexistence, hover/DPI/oldest runtime and all positive native clipboard,
 hotkey/input/recovery acceptance remain open. The existing non-rendered full-host
 management/preview/recreation fixture remains available, but its VM/store calls
 are not rendered-event proof. Plan019 remains incomplete.
+
+## Fixed rendered settings checkpoint (review closed)
+
+The test-only `fixture-settings-scene-permit` must contain exactly
+`owned_settings_ui_019\n`, accompany the rendered permit, and cannot coexist with
+the folder permit. No production CLI, environment or profile override is added.
+The fixture initially navigates to Settings; it seeds no settings values.
+
+| Phase | Required evidence |
+|---|---|
+| ui-ready | Fresh System/Medium defaults, unset theme/size keys, zero folders/snippets, native gate denied |
+| ui-settings-theme | Exact ThemeRadios/Theme group and Dark radio; SelectionItemPattern.Select once, actual SelectionChanged handler/shared VM; repository reads Dark/Medium and fixture checks actual theme service Current |
+| ui-settings-size | Exact TextSizeRadios/Text size group and Large radio; Select once, actual handler/shared VM; repository reads Dark/Large, shared text-size service is 18 |
+| ui-settings-reloaded | Fresh SettingsRepository/SQLite connection and AppSettings.Load verify persisted Dark/Large, default palette/custom size; no setting writes in assertion driver |
+| actions | Exclusive receipt with exactly 2 ScrollItemPattern.ScrollIntoView calls and 2 SelectionItemPattern.Select calls; no Invoke/SetValue/SetFocus calls |
+
+The separately approved narrow scroll exception permits one ScrollIntoView on each
+uniquely identified owned radio, even if initially offscreen. Immediately afterward,
+all guards and exact group/radio identity are revalidated, and the target must be
+onscreen/enabled before the single Select. Discovery/layout waiting is read-only;
+scrolls and selections never retry. No generic tree scrolling, coordinate fallback,
+foreign focus or input synthesis exists. Missing ScrollItemPattern, unsupported
+native UIA group/radio identity, refusal or timeout is BLOCKED, never bypassed.
+Scroll counts describe UI scrolling, not additional settings mutations.
+
+The existing immutable quiet/input epoch, foreground, ownership, clipboard sequence,
+geometry observer and monotonic shutdown remain enforced. The helper additionally
+checks its captured clipboard sequence at every guard. All source execution flags
+remain false and all visible execution remains PAUSED pending operator authorization
+and consolidated independent review. Headless VM setup in assertion unit tests is
+not native/rendered evidence. Repository reload is **not process relaunch**, visual
+pixel/theme comparison or proof of the custom-size/palette/System/Light paths.
+File pickers and dirty-folder dialogs are not part of this settings batch.

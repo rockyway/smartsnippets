@@ -18,6 +18,21 @@ public partial class App : Application
             CandidateAcceptanceFlow.RequireReady(_host, Program.ProfileRoot);
             if (Program.RenderedUiMode)
             {
+                if (Program.SettingsScene)
+                {
+                    UiAssertDriver.RequireSettingsFresh(_host);
+                    Program.Receipt("ui-ready"); await Program.WaitAsync("ui-ready");
+                    UiAssertDriver.RequireSettingsTheme(_host);
+                    if (_boundary.Theme?.Current != ThemeMode.Dark)
+                        throw new InvalidOperationException("ui_settings_theme_surface");
+                    Program.Receipt("ui-settings-theme"); await Program.WaitAsync("ui-settings-theme");
+                    UiAssertDriver.RequireSettingsTextSize(_host);
+                    Program.Receipt("ui-settings-size"); await Program.WaitAsync("ui-settings-size");
+                    UiAssertDriver.RequireSettingsReloaded(_host, Program.ProfileRoot);
+                    Program.Receipt("ui-settings-reloaded"); await Program.WaitAsync("ui-settings-reloaded");
+                    await _host.ExitAsync();
+                    return;
+                }
                 if (Program.FolderScene)
                 {
                     UiAssertDriver.RequireFresh(_host);
@@ -80,8 +95,9 @@ internal sealed class FixtureBoundary : CandidateHostBoundary
     private readonly WindowsCandidateBoundary _native = new();
     internal ICandidatePopupWindow? Popup;
     internal int PopupCreations;
+    internal IThemeService? Theme;
     internal override IUiDispatcher Dispatcher => _native.Dispatcher;
-    internal override IThemeService CreateTheme(AppSettings settings) => _native.CreateTheme(settings);
+    internal override IThemeService CreateTheme(AppSettings settings) => Theme = _native.CreateTheme(settings);
     internal override IDisposable CreateMessageWindow() => _native.CreateMessageWindow();
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => _native.CreateDialogs(popup, textSize);
     internal override ISnippetFileService CreateFiles() => _native.CreateFiles();

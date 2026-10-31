@@ -43,12 +43,19 @@ def scene_phases(scene):
         return ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel')
     if scene == 'folders':
         return ('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted')
+    if scene == 'settings':
+        return ('ui-ready', 'ui-settings-theme', 'ui-settings-size', 'ui-settings-reloaded')
     raise ValueError('ui_scene')
 
 
 def validate_folder_actions(value):
     if value != b'invoke=5\nvalue=2\nfocus=2\n':
         raise ValueError('ui_folder_actions')
+
+
+def validate_settings_actions(value):
+    if value != b'scroll=2\nselect=2\n':
+        raise ValueError('ui_settings_actions')
 
 
 def system_powershell():
@@ -191,6 +198,9 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
         if scene == 'folders':
             with (private / 'fixture-folder-scene-permit').open('xb') as permit:
                 permit.write(b'owned_folder_ui_019\n')
+        if scene == 'settings':
+            with (private / 'fixture-settings-scene-permit').open('xb') as permit:
+                permit.write(b'owned_settings_ui_019\n')
         with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
             process = subprocess.Popen([str(entry)], cwd=private, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
             hwnd = retain_window(process, private, desktop, work, ui.visible_windows, initial)
@@ -229,6 +239,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                     raise ValueError('ui_receipt')
             if scene == 'folders':
                 validate_folder_actions(base.owned_bytes(private / 'ui-folder-actions.receipt', private))
+            if scene == 'settings':
+                validate_settings_actions(base.owned_bytes(private / 'ui-settings-actions.receipt', private))
             # Release shutdown only after helper exit and every actual callback postcondition.
             quiet_input(desktop, epoch)
             fg, clip = observe_desktop(desktop)
@@ -304,7 +316,7 @@ def supervise(command, job_factory, popen=subprocess.Popen):
 
 def main():
     parser = startup.Parser(allow_abbrev=False)
-    parser.add_argument('--scene', choices=('snippets', 'folders'), default='snippets')
+    parser.add_argument('--scene', choices=('snippets', 'folders', 'settings'), default='snippets')
     parser.add_argument('--executable', required=True, type=Path)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--authorized-screen-slot', action='store_true')
@@ -334,7 +346,10 @@ def main():
                            {'foregroundAfterClose': 'other'}):
         raise ValueError('ui_receipt')
     return {**after_close, 'renderedNewEditSaveDirtyCancel': 'OBSERVED' if args.scene == 'snippets' else 'NOT_RUN',
-            'folders': 'OBSERVED' if args.scene == 'folders' else 'NOT_RUN', 'settings': 'NOT_RUN',
+            'folders': 'OBSERVED' if args.scene == 'folders' else 'NOT_RUN',
+            'settings': 'OBSERVED' if args.scene == 'settings' else 'NOT_RUN',
+            'settingsReload': 'REPOSITORY_READ' if args.scene == 'settings' else 'NOT_RUN',
+            'settingsRelaunch': 'NOT_RUN',
             'folderSnippetAssignment': 'FIXTURE_SEED_ONLY' if args.scene == 'folders' else 'NOT_RUN',
             'rowSelection': 'NOT_RUN', 'dirtySaveDiscard': 'NOT_RUN', 'filePicker': 'NOT_RUN',
             'nativeAdapters': 'DEFAULT_DENIED', 'stop': 'GRACEFUL', 'job': 'ZERO_ACTIVE',

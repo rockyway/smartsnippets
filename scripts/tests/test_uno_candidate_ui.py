@@ -25,7 +25,9 @@ class UiManagementTests(unittest.TestCase):
         self.assertEqual(('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted'),
                          s.scene_phases('folders'))
         self.assertEqual('ui-cancel', s.scene_phases('snippets')[-1])
-        for value in ('settings', '', '../folders', 'Folders'):
+        self.assertEqual(('ui-ready', 'ui-settings-theme', 'ui-settings-size', 'ui-settings-reloaded'),
+                         s.scene_phases('settings'))
+        for value in ('', '../folders', 'Folders', 'Settings'):
             with self.assertRaisesRegex(ValueError, 'ui_scene'):
                 s.scene_phases(value)
         s.validate_folder_actions(b'invoke=5\nvalue=2\nfocus=2\n')
@@ -40,7 +42,7 @@ class UiManagementTests(unittest.TestCase):
         self.assertIn('fixture-folder-scene-permit', program)
         self.assertIn('!RenderedUiMode', program)
         self.assertIn('FileAttributes.ReparsePoint', program)
-        self.assertIn("[ValidateSet('snippets','folders')]", helper)
+        self.assertIn("[ValidateSet('snippets','folders','settings')]", helper)
         for key in ('folder-new-name', 'folder-create', 'folder-rename', 'folder-name',
                     'folder-save', 'folder-delete', 'folder-confirm'):
             self.assertIn("'" + key + "' {", helper)
@@ -48,6 +50,36 @@ class UiManagementTests(unittest.TestCase):
         self.assertIn('$script:invokes++', helper)
         self.assertIn('$script:values++', helper)
         self.assertNotIn('SendKeys', helper)
+
+    def test_settings_receipt_counts_scroll_separately_and_requires_exact_actions(self):
+        s.validate_settings_actions(b'scroll=2\nselect=2\n')
+        for value in (b'', b'scroll=1\nselect=2\n', b'scroll=2\nselect=3\n',
+                      b'scroll=2\nselect=2\nextra', b'invoke=2\n'):
+            with self.assertRaisesRegex(ValueError, 'ui_settings_actions'):
+                s.validate_settings_actions(value)
+
+    def test_settings_scene_has_fixed_group_radio_scroll_select_and_no_fallback(self):
+        helper = s.HELPER.read_text()
+        program = (s.REPO / 'scripts/uno_candidate_fixture/Program.cs').read_text()
+        driver = (s.REPO / 'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs').read_text()
+        self.assertIn('fixture-settings-scene-permit', program)
+        self.assertIn('!RenderedUiMode || FolderScene', program)
+        self.assertIn('info.Length != 22', program)
+        for identity in ("$groupId='ThemeRadios'", "$groupId='TextSizeRadios'",
+                         "$radioName='Dark'", "$radioName='Large'"):
+            self.assertIn(identity, helper)
+        select = helper.split('    function SelectSettingsRadio', 1)[1].split('    function Invoke', 1)[0]
+        self.assertEqual(1, select.count('$scroll.ScrollIntoView()'))
+        self.assertEqual(1, select.count('$selection.Select()'))
+        self.assertNotIn('SetFocus', select)
+        self.assertNotIn('while', select)
+        self.assertIn('FindSettingsRadio $key $true', select)
+        self.assertIn('GetClipboardSequenceNumber() -ne $clipboardSequence', helper)
+        settings = driver.split('    internal const string FolderName', 1)[0]
+        self.assertNotIn('.Set(', settings)
+        self.assertNotIn('.Save(', settings)
+        self.assertNotIn('SelectedTheme =', settings)
+        self.assertIn('new SettingsRepository(new SqliteConnectionFactory(database))', settings)
 
     def test_slot_required_even_after_source_review(self):
         with patch.object(s, 'UI_SOURCE_REVIEWED', True), patch.object(s.sys, 'platform', 'win32'):

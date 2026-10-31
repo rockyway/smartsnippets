@@ -1,3 +1,4 @@
+using SmartSnippets.Core.Settings;
 using SmartSnippets.Uno.Tests.Composition;
 
 namespace SmartSnippets.Uno.Tests.Acceptance;
@@ -42,6 +43,32 @@ public sealed class UiAssertDriverTests
         UiAssertDriver.RequireFolderDeleted(host, snippetId);
         Assert.True(host.Store.RecordUsage(host.Store.Snippets.Single().Snippet.Id).Success);
         Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireFolderDeleted(host, snippetId));
+    }
+
+    [Fact]
+    public async Task SettingsAssertionsRejectMissingThemeSizeAndPersistedState()
+    {
+        using var fixture = new HostFixture(); await fixture.Start();
+        var host = fixture.Host;
+        UiAssertDriver.RequireSettingsFresh(host);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsTheme(host));
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsTextSize(host));
+        Assert.Null(host.SettingsStore.Get(SettingsKeys.Theme));
+        // Headless assertion tests only; these VM calls are never rendered acceptance evidence.
+        host.SettingsPage.SelectedTheme = ThemeMode.Dark;
+        UiAssertDriver.RequireSettingsTheme(host);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsFresh(host));
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsTextSize(host));
+        host.SettingsPage.SelectedTextSizePreset = TextSizePreset.Large;
+        UiAssertDriver.RequireSettingsTextSize(host);
+        UiAssertDriver.RequireSettingsReloaded(host, fixture.Root);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsReloaded(host, Path.Combine(fixture.Root, "missing")));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "missing")));
+        host.SettingsStore.Set(SettingsKeys.TextSizePreset, "Small");
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsTextSize(host));
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsReloaded(host, fixture.Root));
+        Assert.Equal(TextSizePreset.Large, host.SettingsPage.SelectedTextSizePreset);
+        Assert.Equal("Small", host.SettingsStore.Get(SettingsKeys.TextSizePreset));
     }
 
     [Fact]
