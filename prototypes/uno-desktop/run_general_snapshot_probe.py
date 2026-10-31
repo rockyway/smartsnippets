@@ -32,15 +32,8 @@ def observed(stdout, stderr, code):
     return None
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--executable', type=Path, required=True)
-    parser.add_argument('--sha256', required=True)
-    parser.add_argument('--authorized-clipboard-read', action='store_true')
-    args = parser.parse_args()
-    if sys.platform != 'darwin' or not args.authorized_clipboard_read:
-        raise ValueError('Authorized Mac clipboard read required')
-    entry = args.executable.resolve(strict=True)
+def validate_entry(entry, digest):
+    entry = entry.resolve(strict=True)
     if not entry.is_relative_to((BASE / 'bin/probe').resolve()) or entry.name != 'SmartSnippets.UnoProbe':
         raise ValueError('Owned native probe required')
     if entry.parent.name != 'MacOS' or entry.parents[1].name != 'Contents' or entry.parents[2].name != 'SmartSnippets.UnoProbe.app':
@@ -50,8 +43,20 @@ def main():
     if info.get('CFBundleIdentifier') != 'org.smartsnippets.feasibility018' or info.get('CFBundleExecutable') != entry.name:
         raise ValueError('Bundle identity mismatch')
     data = entry.read_bytes()
-    if hashlib.sha256(data).hexdigest() != args.sha256.lower() or inspect_executable(data, 'osx-arm64'):
+    if hashlib.sha256(data).hexdigest() != digest.lower() or inspect_executable(data, 'osx-arm64'):
         raise ValueError('Native artifact identity mismatch')
+    return entry
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executable', type=Path, required=True)
+    parser.add_argument('--sha256', required=True)
+    parser.add_argument('--authorized-clipboard-read', action='store_true')
+    args = parser.parse_args()
+    if sys.platform != 'darwin' or not args.authorized_clipboard_read:
+        raise ValueError('Authorized Mac clipboard read required')
+    entry = validate_entry(args.executable, args.sha256)
     private = private_directory()
     print('private_evidence_token=' + private.name)
     code = None

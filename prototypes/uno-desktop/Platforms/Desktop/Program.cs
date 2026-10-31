@@ -14,6 +14,9 @@ internal static class Program
         if (args.Length == 1 && args[0] == "--probe-private-pasteboard") return MacPrivatePasteboardProbe.Run();
         if (args.Length == 2 && args[0] == "--probe-general-snapshot" && args[1] == "--authorized-probe-clipboard")
             return MacGeneralSnapshotProbe.Run();
+        if (args.Length == 3 && args[1] == "--authorized-probe-clipboard" &&
+            (args[0] == "--probe-private-watchdog-owner" || args[0] == "--probe-private-watchdog-worker"))
+            return MacPrivatePasteboardProbe.RunWatchdog(args[2], args[0] == "--probe-private-watchdog-owner");
         // Guard before constructing a native host. This probe has no implicit GUI mode.
         if (args.Length == 2 && args[0] == "--probe-shortcut-register" && args[1] == "--authorized-probe-shortcut")
             return NativeShortcutRegistrationProbe.Run();

@@ -18,6 +18,7 @@ internal sealed unsafe partial class MacPrivatePasteboardProbe : IDisposable
     private const string Plain = PasteboardSeedPolicy.Plain;
     private const string Utf16External = PasteboardSeedPolicy.Utf16External;
     private readonly nint _general, _board, _name;
+    private readonly bool _releaseOwnedBoard = true;
     private bool _disposed;
     private static string _stage = "setup";
     private static string _captureState = "none";
@@ -352,7 +353,7 @@ internal sealed unsafe partial class MacPrivatePasteboardProbe : IDisposable
     {
         if (_disposed) return;
         CheckPrivate();
-        SendVoid(_board, Sel("releaseGlobally"));
+        if (_releaseOwnedBoard) SendVoid(_board, Sel("releaseGlobally"));
         _disposed = true;
     }
 
