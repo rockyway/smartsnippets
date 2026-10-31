@@ -45,6 +45,7 @@
     <ProjectReference Include="../SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
     <Content Update="Assets/*.ico;Assets/TitleIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Import Project="Platforms/Windows/AcceptanceNative/AcceptanceNative.links.projitems" />
   <Import Project="Sdk.targets" Sdk="Uno.Sdk" Version="6.7.30" />
   <PropertyGroup>
     <!-- Restrict the SDK's default multi-architecture restore to this x64-only head. -->

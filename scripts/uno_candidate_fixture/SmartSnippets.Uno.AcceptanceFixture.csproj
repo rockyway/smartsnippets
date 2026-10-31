@@ -51,6 +51,7 @@
     <AdditionalFiles Include="../../src/SmartSnippets.Uno/NativeMethods.txt;../../src/SmartSnippets.Uno/NativeMethods.json" />
     <Content Include="../../src/SmartSnippets.Uno/Assets/*" Link="Assets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Import Project="../../src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative/AcceptanceNative.links.projitems" />
   <Import Project="Sdk.targets" Sdk="Uno.Sdk" Version="6.7.30" />
   <PropertyGroup>
     <!-- Remove the inherited ILLink IL2121 suppression after all SDK imports. -->
