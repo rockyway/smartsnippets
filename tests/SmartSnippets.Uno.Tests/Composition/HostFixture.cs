@@ -22,12 +22,15 @@ internal sealed class HostFixture : IDisposable
 }
 internal sealed class TestBoundary : CandidateHostBoundary
 {
+    internal Platforms.Windows.CandidateNativeCapability? Capability;
+    internal override Platforms.Windows.CandidateNativeCapability? NativeCapability => Capability;
     internal TestDialogs Dialogs { get; } = new();
     internal TestFiles Files { get; } = new();
     internal MainSurface Main { get; private set; } = null!;
     internal List<PopupSurface> Popups { get; } = [];
     internal int Reports, Exits, Messages, MessageDisposals, TrayDisposals;
     internal bool FailWindow;
+    internal bool PopupAutoReady = true;
     internal Action? TrayPreview, TrayOpen, TraySettings, TrayExit;
     internal Queue<Action> Posted { get; } = new();
     internal void Drain() { while (Posted.TryDequeue(out var action)) action(); }
@@ -43,7 +46,7 @@ internal sealed class TestBoundary : CandidateHostBoundary
     }
     internal override ICandidatePopupWindow CreatePopup(UnoAppHost host)
     {
-        var surface = new PopupSurface(host); Popups.Add(surface); return surface;
+        var surface = new PopupSurface(host) { AutoReady = PopupAutoReady }; Popups.Add(surface); return surface;
     }
     internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
     {
@@ -95,6 +98,14 @@ internal sealed class PopupSurface : ICandidatePopupWindow
     public void ShowPreview(string? query, bool openSortMenu)
     {
         Lifecycle.Preview(host.Popup, query, () => { Shows++; return new(true, null); });
+        CompleteIfReady();
+    }
+    public bool SupportsCapturedPopup => true;
+    internal Action<InsertionTarget>? CapturedShown;
+    public void ShowCaptured(InsertionTarget target)
+    {
+        Lifecycle.Captured(host.Popup, target, () => host.Gate.CanInsert,
+            () => { CapturedShown?.Invoke(target); Shows++; return new(true, null); });
         CompleteIfReady();
     }
     public void Hide() { Hides++; Lifecycle.Shows.Hide(); }

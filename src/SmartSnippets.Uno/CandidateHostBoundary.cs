@@ -17,6 +17,9 @@ internal interface ICandidatePopupWindow : IPopupHost, IDisposable
     event EventHandler? Closed;
     void Prewarm();
     void ShowPreview(string? query, bool openSortMenu);
+    // A head without a concrete captured-target surface must not advertise native readiness.
+    bool SupportsCapturedPopup => false;
+    void ShowCaptured(InsertionTarget target) => throw new NotSupportedException("Captured popup is unavailable.");
 }
 internal interface ICandidateTray : INotifier, IDisposable { }
 
@@ -24,6 +27,7 @@ internal interface ICandidateTray : INotifier, IDisposable { }
 internal abstract class CandidateHostBoundary
 {
     internal abstract IUiDispatcher Dispatcher { get; }
+    internal virtual Platforms.Windows.CandidateNativeCapability? NativeCapability => null;
     internal abstract IThemeService CreateTheme(AppSettings settings);
     internal abstract IDisposable CreateMessageWindow();
     internal abstract IDialogService CreateDialogs(bool popup, ITextSizeService textSize);

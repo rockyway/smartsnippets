@@ -22,6 +22,13 @@ internal sealed class CandidatePopupLifecycle(Action<Action> schedule, Action<Po
             return reveal();
         });
 
+    internal void Captured(PopupViewModel model, InsertionTarget target, Func<bool> canShow, Func<PopupShowResult> reveal)
+        => Shows.RequestShow(() =>
+        {
+            if (!canShow() || model.Open(target) == PopupOpenMode.Ignored) return default;
+            return reveal();
+        });
+
     internal void Reopen(PopupViewModel model, Func<PopupShowResult> reveal)
         => Shows.RequestShow(() => { model.EnsureCurrent(); return reveal(); });
 }

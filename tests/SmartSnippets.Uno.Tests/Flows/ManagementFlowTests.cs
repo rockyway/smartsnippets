@@ -73,7 +73,7 @@ public sealed class ManagementFlowTests
         Assert.Equal(23, f.Host.TextSize.FontSize);
     }
     [Fact]
-    public async Task ImportExport_RealJsonCancelAndFailedPublicationLeaveOriginal()
+    public Task ImportExport_RealJsonCancelAndFailedPublicationLeaveOriginal() => CandidateHostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); await f.Start();
         Assert.Null(await f.Host.Snippets.Porting.ImportAsync());
@@ -105,5 +105,5 @@ public sealed class ManagementFlowTests
         f.Boundary.Files.ImportPath = oversized;
         Assert.NotNull((await f.Host.Snippets.Porting.ImportAsync())?.Failure);
         Assert.Single(f.Host.Store.Snippets);
-    }
+    });
 }

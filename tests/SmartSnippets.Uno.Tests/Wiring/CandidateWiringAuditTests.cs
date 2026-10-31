@@ -8,16 +8,21 @@ public sealed class CandidateWiringAuditTests
 {
     private static string Candidate => Path.Combine(CandidateBuildGraphTests.RepoRoot, "src", "SmartSnippets.Uno");
     [Fact]
-    public void CandidateSources_HaveNoNativeMutationAdaptersOrRuntimeUnlock()
+    public void CandidateSources_OnlyComposeInsertionBehindGuardedBoundaryWithoutRuntimeUnlock()
     {
         var source = string.Join(Environment.NewLine, Directory.GetFiles(Candidate, "*.cs", SearchOption.AllDirectories)
             .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) && !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
             .Select(File.ReadAllText));
-        foreach (var forbidden in new[] { "StartupMigrationCoordinator", "Registry.CurrentUser", "new ClipboardService(", "new InsertionService(",
+        foreach (var forbidden in new[] { "StartupMigrationCoordinator", "Registry.CurrentUser", "new ClipboardService(",
             "PInvoke.RegisterHotKey(", "PInvoke.OpenClipboard(", "PInvoke.SetClipboardData(", "PInvoke.SendInput(", "PInvoke.OpenProcess(",
             "PInvoke.GetWindowText(", "TargetCapture.", "PreviousAppWindow(", "PInvoke.SetForegroundWindow(", "AttachThreadInput(", "GetEnvironmentVariable(", "--after-pid", "--profile" })
             Assert.DoesNotContain(forbidden, source);
         Assert.DoesNotContain("SmartSnippets.App", source);
+        var gatePath = Path.Combine(Candidate, "Platforms", "Windows", "CandidateNativeGate.cs");
+        Assert.Contains("new InsertionService(store, this, this)", File.ReadAllText(gatePath));
+        foreach (var path in Directory.GetFiles(Candidate, "*.cs", SearchOption.AllDirectories)
+            .Where(path => path != gatePath))
+            Assert.DoesNotContain("new InsertionService(", File.ReadAllText(path));
         var host = File.ReadAllText(Path.Combine(Candidate, "UnoAppHost.cs"));
         Assert.Contains("new DeferredPopupHost(", host); Assert.Contains("new Popup.RecoverablePopupHost(", host);
         Assert.False(File.Exists(Path.Combine(Candidate, "Services", "DeferredPopupHost.cs")));
