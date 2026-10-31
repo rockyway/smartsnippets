@@ -6,6 +6,8 @@ Status: design risk discovered during Plan 018 T4; not an approved requirement a
 
 After checkpoint e0fe206, a new metadata-only input query still reports `keys_held=1 buttons_held=0`. The current complete held-key guard therefore continues to refuse native key posting. No key identity was logged and no unowned key-up/reset was sent.
 
+A later read-only classification against the installed public HIToolbox virtual-key definitions found 120 declared values in the queried range. Both combined-session and HID-system sources reported `valid_held=1 undefined_held=0`, modifier flags active, no mouse buttons held and at least 1.5 seconds idle. This is not an undefined-keycode false positive. It does not justify exempting a key or weakening the guard; the OS-reported held-input prerequisite remains. Only aggregate counts/booleans were returned, never individual keycodes, names, characters or masks.
+
 A separately authorized read-only General snapshot attempt against native build `2xe7Kl` (SHA256 `891c2119daafd069e1993713c109b6061dbe15017a9fa43ebffb4b721cdfd987`) again reports conservative REFUSED, private token `ss-uno018-ui-aiknpb1r`. It performs no mutation or restore. This is not permission to discard unsupported contents.
 
 ## Ownership counterexample
