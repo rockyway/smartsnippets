@@ -7,6 +7,7 @@ namespace SmartSnippets.Uno;
 
 internal interface ICandidateMainWindow : IDisposable
 {
+    nint NativeHandle => 0; // Only the exact candidate-owned surface, never an external target.
     event EventHandler? HiddenByClose;
     Task NavigateAsync(PageKind page, bool show);
     Task<bool> CanExitAsync();

@@ -78,6 +78,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     internal override void Exit() { Program.StopActivations(); Application.Current.Exit(); }
     private sealed class MainSurface(MainWindow window) : ICandidateMainWindow
     {
+        public nint NativeHandle => WinRT.Interop.WindowNative.GetWindowHandle(window);
         public event EventHandler? HiddenByClose { add => window.HiddenByClose += value; remove => window.HiddenByClose -= value; }
         public Task NavigateAsync(PageKind page, bool show) => window.ShowPageWithoutActivationAsync(page, show);
         public Task<bool> CanExitAsync() => window.CanExitAsync();
