@@ -165,12 +165,24 @@ class RestorativeSessionObservation:
     private_evidence_token: str
 
 
+def system_powershell():
+    kernel = helpers.startup.C.WinDLL('kernel32')
+    kernel.GetSystemDirectoryW.argtypes = [helpers.startup.W.LPWSTR, helpers.startup.W.UINT]
+    kernel.GetSystemDirectoryW.restype = helpers.startup.W.UINT
+    value = helpers.startup.C.create_unicode_buffer(32768)
+    count = kernel.GetSystemDirectoryW(value, len(value))
+    if not count or count >= len(value):
+        raise ValueError('native_ledger_system_tool')
+    return Path(value.value) / 'WindowsPowerShell/v1.0/powershell.exe'
+
+
 def require_owner_private(path, protected=False):
     """Fail closed unless the Windows owner and every DACL grant are this user only."""
     if sys.platform != 'win32':
         raise ValueError('native_ledger_owner_acl')
     # Fixed script, literal path via stdin, no token and no diagnostic persistence.
     script = (
+        "[Console]::InputEncoding=[Text.Encoding]::UTF8;"
         "$p=[Console]::In.ReadToEnd();$s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
         "$a=Get-Acl -LiteralPath $p -ErrorAction Stop;"
         "$o=$a.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;"
@@ -179,7 +191,7 @@ def require_owner_private(path, protected=False):
         "foreach($e in $r){if($e.IdentityReference.Value -ne $s -or $e.AccessControlType -ne 'Allow'){exit 2}};"
         "if(" + ('$true' if protected else '$false') + " -and -not $a.AreAccessRulesProtected){exit 2}"
     )
-    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
+    result = subprocess.run([str(system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
                             input=str(path).encode('utf-8'), capture_output=True, timeout=10,
                             creationflags=subprocess.CREATE_NO_WINDOW)
     if result.returncode or result.stdout or result.stderr:

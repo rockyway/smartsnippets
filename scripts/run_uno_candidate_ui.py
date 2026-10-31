@@ -95,18 +95,19 @@ def retain_window(process, private, desktop, work, visible_windows, initial, epo
 
 
 def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sleep=time.sleep):
-    # Startup creates nonactivating surfaces only. Establish the immutable input epoch
-    # after they are ready, before the first UIA lookup/focus/action.
+    # Recent input may settle before launch (process=None). After nonactivating
+    # startup, establish the immutable epoch again before any UIA lookup/focus/action.
     deadline = clock() + 4
     while clock() < deadline:
         if desktop.snapshot() != initial:
             raise ValueError('desktop_changed')
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             raise ValueError('early_exit')
         require_all_input_up(desktop)
-        rects = desktop.windows(process.pid)
-        if len(rects) != 1 or not startup.inside(rects[0], work):
-            raise ValueError('geometry')
+        if process is not None:
+            rects = desktop.windows(process.pid)
+            if len(rects) != 1 or not startup.inside(rects[0], work):
+                raise ValueError('geometry')
         try:
             epoch = quiet_input(desktop)
         except ValueError as error:
@@ -142,7 +143,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
         desktop.enable_dpi()
         desktop.validate_work_area(work)
         initial = desktop.snapshot()
-        epoch = quiet_input(desktop)
+        epoch = settle_quiet_epoch(None, desktop, initial, work)
         (private / 'fixture-launch-permit').write_bytes(b'owned_fixture_only\n')
         (private / 'fixture-rendered-ui-permit').write_bytes(b'owned_rendered_ui_019\n')
         with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
