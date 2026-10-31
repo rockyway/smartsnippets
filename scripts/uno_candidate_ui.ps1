@@ -61,6 +61,19 @@ public static class Owned019 {
         $fg = [Owned019]::GetForegroundWindow().ToInt64()
         if (($script:focused -and $fg -ne $OwnedHwnd) -or (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd)) { throw 'foreground' }
     }
+    function SelectOwnedLeave($items) {
+        $seen = @{}
+        $visible = @()
+        foreach ($item in $items) {
+            if ($item.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+            $itemName = $item.Current.Name
+            if ($itemName -cnotin @('New snippet','Back to list') -or $seen.ContainsKey($itemName)) { throw 'schema' }
+            $seen[$itemName] = $true
+            if (-not $item.Current.IsOffscreen) { $visible += $item }
+        }
+        if ($visible.Count -gt 1) { throw 'schema' }
+        if ($visible.Count -eq 1 -and $visible[0].Current.IsEnabled) { return $visible[0] }
+    }
     function Find([string]$key) {
         Guard
         $r = [Windows.Automation.AutomationElement]::FromHandle($h)
@@ -70,9 +83,16 @@ public static class Owned019 {
             'text' { $name='Snippet text'; $id='SnippetTextBox'; $type=[Windows.Automation.ControlType]::Edit }
             'save' { $name='Save snippet'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             'cancel' { $name='Keep editing'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'leave' { $name=$null; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             default { throw 'schema' }
         }
-        $conditions = @([Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$name),
+        $nameCondition = if ($key -ceq 'leave') {
+            # Responsive page: exactly one of toolbar New (wide) or editor Back (narrow) is onscreen.
+            [Windows.Automation.OrCondition]::new(
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,'New snippet'),
+                [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,'Back to list'))
+        } else { [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$name) }
+        $conditions = @($nameCondition,
             [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$type))
         if ($id) { $conditions += [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$id) }
         $condition = [Windows.Automation.AndCondition]::new([Windows.Automation.Condition[]]$conditions)
@@ -82,10 +102,15 @@ public static class Owned019 {
             $r = [Windows.Automation.AutomationElement]::FromHandle($h)
             if ($r.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
             $items = $r.FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
-            if ($items.Count -gt 1) { throw 'schema' }
-            if ($items.Count -eq 1) {
-                if ($items[0].Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
-                if (-not $items[0].Current.IsOffscreen -and $items[0].Current.IsEnabled) { Guard; return $items[0] }
+            if ($key -ceq 'leave') {
+                $selected = SelectOwnedLeave $items
+                if ($null -ne $selected) { Guard; return $selected }
+            } else {
+                if ($items.Count -gt 1) { throw 'schema' }
+                if ($items.Count -eq 1) {
+                    if ($items[0].Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+                    if (-not $items[0].Current.IsOffscreen -and $items[0].Current.IsEnabled) { Guard; return $items[0] }
+                }
             }
             Start-Sleep -Milliseconds 50
         }
@@ -131,7 +156,14 @@ public static class Owned019 {
     $stage = 'save'; Invoke 'save'; Start-Sleep -Milliseconds 700; Ack 'ui-new'
     WaitPhase 'ui-saved'
     $stage = 'edit_dirty'; Value 'ui019 synthetic dirty'
-    $stage = 'dirty_new'; Invoke 'new'; Start-Sleep -Milliseconds 400
+    $stage = 'dirty_leave'
+    $leave = Find 'leave'
+    $backToList = $leave.Current.Name -ceq 'Back to list'
+    Guard
+    ([Windows.Automation.InvokePattern]$leave.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    # Back changes only the narrow presentation, retaining the dirty editor. New then runs its real guard.
+    if ($backToList) { Invoke 'new' }
+    Start-Sleep -Milliseconds 400
     $stage = 'cancel'; Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
     $stage = 'finish'; WaitPhase 'ui-cancel'; Ack 'ui-cancel'
     [Console]::Out.WriteLine('ui_callbacks_observed')

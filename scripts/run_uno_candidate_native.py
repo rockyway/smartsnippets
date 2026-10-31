@@ -191,9 +191,14 @@ def require_owner_private(path, protected=False):
         "foreach($e in $r){if($e.IdentityReference.Value -ne $s -or $e.AccessControlType -ne 'Allow'){exit 2}};"
         "if(" + ('$true' if protected else '$false') + " -and -not $a.AreAccessRulesProtected){exit 2}"
     )
-    result = subprocess.run([str(system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
+    powershell = system_powershell()
+    environment = dict(os.environ)
+    # A PowerShell 7 parent may otherwise autoload an incompatible Core security module
+    # in Windows PowerShell 5.1. Restrict this child to its own trusted system modules.
+    environment['PSModulePath'] = str(powershell.parent / 'Modules')
+    result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-Command', script],
                             input=str(path).encode('utf-8'), capture_output=True, timeout=10,
-                            creationflags=subprocess.CREATE_NO_WINDOW)
+                            creationflags=subprocess.CREATE_NO_WINDOW, env=environment)
     if result.returncode or result.stdout or result.stderr:
         raise ValueError('native_ledger_owner_acl')
 

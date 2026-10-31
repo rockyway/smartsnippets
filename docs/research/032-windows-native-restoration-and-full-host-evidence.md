@@ -78,6 +78,44 @@ The operator was asked for this necessary preparation while implementation
 continued. Stopped-worker recovery, changed-owner refusal, native shortcut/input,
 Copy and rendered management acceptance are still separate required evidence.
 
+## Rendered management follow-up (partial; not accepted as a complete UI run)
+
+The reviewed, default-denied UI fixture reached actual UIA New → edit → Save and
+SQLite reload, but did not complete dirty Cancel. Latest session
+`ss-uno018-ui-dh15kifp`, build `573c98a080a64f6a8f3a01c27f6257d0`, executable SHA256
+`3e0a70cd08fe9621fa29f80242fbe0a2af87fe27e6a6e705bd7b3125dc8d6e32`, returned
+BLOCKED with fixed helper diagnostic `stage=dirty_new reason=control_timeout`.
+The responsive page hides the list toolbar, including New, while showing the
+narrow editor. The corrected helper must use the existing narrow Back-to-list
+presentation action before New; it must not invoke a hidden/disabled control.
+That correction requires source review and a fresh fingerprint-bound build.
+The private trial source execution gate was restored to false. Earlier sessions
+`ss-uno018-ui-yicayacp`, `ss-uno018-ui-oatfp821` and `ss-uno018-ui-pzq8phi1` remain
+BLOCKED; startup/input refusals are not UI acceptance.
+
+## Settled-baseline handoff: source reviewed, runtime ACL admission refused
+
+A bounded test-only successor-session witness was implemented and independently
+reviewed (`20183cfb-f33b-4212-bdb3-d7b86e6f4868`). It accepts no CLI/discovered
+folder as authorization. A trusted parent must supply its prior successful
+restorative observation; the new guardian still requires owner NULL, exact known
+prior marker, complete supported representations and compatible privacy metadata
+under one lock. Restore/foreign-owner policy is unchanged.
+
+Read-only admission of the known Scene 6A evidence tree nevertheless refused:
+its parent directory owner matches the current user and its DACL is protected,
+but four allow entries include three non-current-user grants. The older
+`private_directory` helper's `icacls /inheritance:r /grant:r` command did not
+establish the strict user-only ACL required by the new ledger. This is an evidence
+isolation defect, not a reason to weaken ledger checks. No original clipboard
+bytes were written to that evidence tree. A Windows PowerShell module-autoload
+compatibility issue was separately isolated by restricting that child to its
+trusted system module directory; the actual ACL refusal remains.
+
+No successor abort/owner-refusal scene was launched using the refused witness.
+Existing restoration observation does not establish new-session authorization;
+security review must disposition remediation or require operator recopy.
+
 ## Read-only prerequisites (not restoration acceptance)
 
 Before Scene 6A, aggregate checks found zero held input, idle >=1500ms, four builtin

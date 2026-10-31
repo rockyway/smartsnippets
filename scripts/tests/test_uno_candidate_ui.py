@@ -114,6 +114,38 @@ class UiManagementTests(unittest.TestCase):
             self.assertNotIn(forbidden,source)
         self.assertIn("default { throw 'schema' }",source)
 
+    @unittest.skipUnless(s.sys.platform == 'win32', 'Windows PowerShell pure selector test')
+    def test_responsive_leave_selector_executes_actual_function_without_uia(self):
+        import subprocess
+        helper = str(s.HELPER).replace("'", "''")
+        script = r"""
+$ErrorActionPreference='Stop'
+$tokens=$null; $errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile('HELPER',[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'parse'}
+$function=$ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'SelectOwnedLeave'},$true)
+if($function.Count -ne 1){throw 'function'}
+Invoke-Expression $function[0].Extent.Text
+$OwnedPid=42
+function Item($name,$off=$false,$enabled=$true,$owner=42){
+    [pscustomobject]@{Current=[pscustomobject]@{Name=$name; IsOffscreen=$off; IsEnabled=$enabled; ProcessId=$owner}}
+}
+function Reject($items,$reason){
+    try { SelectOwnedLeave $items; throw 'accepted' } catch { if($_.Exception.Message -cne $reason){throw} }
+}
+if((SelectOwnedLeave @((Item 'New snippet'),(Item 'Back to list' $true))).Current.Name -cne 'New snippet'){throw 'wide'}
+if((SelectOwnedLeave @((Item 'New snippet' $true),(Item 'Back to list'))).Current.Name -cne 'Back to list'){throw 'narrow'}
+if($null -ne (SelectOwnedLeave @((Item 'Back to list' $false $false)))){throw 'disabled'}
+if($null -ne (SelectOwnedLeave @((Item 'New snippet' $true)))){throw 'offscreen'}
+Reject @((Item 'New snippet'),(Item 'Back to list')) 'schema'
+Reject @((Item 'New snippet'),(Item 'New snippet' $true)) 'schema'
+Reject @((Item 'untrusted')) 'schema'
+Reject @((Item 'Back to list' $false $true 43)) 'uia_owner'
+""".replace('HELPER', helper)
+        result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
+                                capture_output=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+
     def test_mode_is_fixed_owned_permit_not_cli_profile_override(self):
         source=(s.REPO/'scripts/uno_candidate_fixture/Program.cs').read_text()
         self.assertIn('fixture-rendered-ui-permit',source)
