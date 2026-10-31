@@ -309,6 +309,21 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (CanShow?.Invoke() == false) return;
         _lifecycle.Preview(ViewModel, query, () => ShowPreviewReady(openSortMenu));
     }
+    internal void ShowCaptured(InsertionTarget target, Func<bool> canShow)
+    {
+        if (CanShow?.Invoke() == false || !canShow()) return;
+        _lifecycle.Captured(ViewModel, target,
+            () => CanShow?.Invoke() != false && canShow(),
+            () =>
+            {
+                if (CanShow?.Invoke() == false || !canShow()) return default;
+                Center();
+                // Captured routing does not grant native foreground/focus permission.
+                // A reviewed harness must separately authorize any activating input path.
+                ShowSurface(false); SetVisible(true);
+                return new PopupShowResult(true, null);
+            });
+    }
     private PopupShowResult ShowPreviewReady(bool openSortMenu)
     {
         if (CanShow?.Invoke() == false) return default;

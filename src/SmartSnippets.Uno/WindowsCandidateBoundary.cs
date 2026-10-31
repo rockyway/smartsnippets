@@ -50,7 +50,9 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         window.RunOperation = host.RunOperationAsync;
         _theme!.Register(window);
         window.Closed += (_, _) => { if (ReferenceEquals(_popup, window)) _popup = null; };
-        var surface = new PopupSurface(window, () => _main is null ? default : new HWND(WinRT.Interop.WindowNative.GetWindowHandle(_main)));
+        var surface = new PopupSurface(window,
+            () => _main is null ? default : new HWND(WinRT.Interop.WindowNative.GetWindowHandle(_main)),
+            () => ReferenceEquals(_popup, window) && host.Gate.CanInsert);
         surface.AttachClosed();
         return surface;
     }
@@ -79,12 +81,14 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         public void SetInteractionEnabled(bool enabled) => window.SetInteractionEnabled(enabled);
         public void Dispose() => window.CloseForExit();
     }
-    private sealed class PopupSurface(PopupWindow window, Func<HWND> owner) : ICandidatePopupWindow
+    private sealed class PopupSurface(PopupWindow window, Func<HWND> owner, Func<bool> canShowCaptured) : ICandidatePopupWindow
     {
         public event EventHandler? Closed;
         private bool _disposed;
         public void Prewarm() => window.Prewarm();
         public void ShowPreview(string? query, bool openSortMenu) => window.ShowPreview(owner(), query, false, openSortMenu);
+        public bool SupportsCapturedPopup => true;
+        public void ShowCaptured(InsertionTarget target) => window.ShowCaptured(target, canShowCaptured);
         public void Hide() => window.Hide();
         public void ShowAgain() => window.ShowAgain();
         public void OpenMainWindow() => window.OpenMainWindow();
