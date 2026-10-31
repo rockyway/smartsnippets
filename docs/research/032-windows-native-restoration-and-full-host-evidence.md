@@ -147,8 +147,39 @@ All three temporary source execution gates were restored to false.
 The corrected responsive UI fixture build `0426616ea36b4e88b4441f8c35473eb5`,
 SHA256 `1225ebe00f6ca71d416dc9303b381bcbfa478f936d520e758264850d2bb3ca10`,
 was separately refused with fixed `input` reason in session
-`ss-uno018-ui-f0f95d56e3671520a7fd2a521a6857c7`, before any UI receipt. No rendered
-callback claim follows; its execution gate was restored to false.
+`ss-uno018-ui-f0f95d56e3671520a7fd2a521a6857c7`, before any UI receipt. After a
+read-only ready check, session `ss-uno018-ui-4ac6fc0ad14b0ce764f2e8fbc5eac178`
+using the same reviewed artifact reached every actual UIA callback and all four
+postcondition receipts/acknowledgements, including dirty Cancel. The helper exited
+with exact `ui_callbacks_observed` and empty stderr, but the outer observer
+returned `desktop_changed` while shutdown was in progress. This remains BLOCKED,
+not a full successful run or graceful-cleanup claim. The generic reason cannot
+establish whether that particular observation was clipboard or foreground change.
+
+The subsequent reviewed source fix `83ded23` transfers the final acknowledgement
+from the helper to the observer after helper exit and verified receipts. Only
+after this boundary may a monotonic close of all owned visible windows release
+the foreground oracle; clipboard/input/desktop/geometry/graceful/JobZero checks
+remain strict. It records only an allowlisted post-close foreground category and
+distinguishes clipboard/foreground failure tokens. Review
+`f96d5636-2289-442c-b5b7-ce03576c14d3` cleared it with a sampling-order fix, applied
+with an executable regression test. Its next native run is not yet performed.
+All execution gates were restored to false.
+
+## Latest nonvisual verification and monitor boundary
+
+Integrated root: 436 Core, 616 Presentation, 260 candidate, 53 native-fixture and
+111 candidate Python tests pass; desktop Python runs 215 tests with one skip.
+Fresh strict candidate build `727782b1b2c4486f9fe58618c31d0d35` has SHA256
+`b84134d7b484f600ddc53e24736ef460f46df7c6959fadde7608dba02a399741`.
+The unchanged legacy publish gate also passes; its fresh executable SHA256 is
+`a0207416232a604d26e8b1dbbe4bb236c656cc83c927875f2527bcdd20f27ac1`.
+These are build/test checks, not native action acceptance or hosted CI evidence.
+
+The operator is changing to one powered-on monitor. Visible testing is paused
+until that monitor is confirmed; the earlier bottom-left coordinates must not be
+reused blindly. Physical power-off alone may leave a monitor in Windows' active
+display topology. Nonvisual implementation/review continues.
 
 ## Read-only prerequisites (not restoration acceptance)
 
