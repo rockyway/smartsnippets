@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SmartSnippets.Core.Logging;
 using Microsoft.UI.Xaml;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
@@ -70,7 +71,15 @@ public partial class App : Application
             }
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "lease_clipboard_control") throw new InvalidOperationException("native_lease");
             lease = true; // Only the distinct clipboard-control operation is admitted; broker stays denied.
-            if (NativeFixtureOs.Foreground() != foreground || session.PublishClipboardControl() != SwapStatus.Swapped || !session.RecoveryPending)
+            var admission = await ClipboardControlReadiness.WaitAsync(session.ClassifyClipboardControl,
+                () => NativeFixtureOs.Foreground() == foreground, ct);
+            // Enum values are fixed, content-free diagnostic tokens; no native identity is logged.
+            AppLog.Info("native_control_admission", $"reason={admission}");
+            var publishStatus = SwapStatus.NotPreserved;
+            if (admission == ClipboardControlAdmission.Ready && NativeFixtureOs.Foreground() == foreground)
+                publishStatus = session.PublishClipboardControl(); // Rechecks every guard before atomic guardian publication.
+            AppLog.Info("native_control_publish", publishStatus == SwapStatus.Swapped ? "status=swapped" : "status=refused");
+            if (publishStatus != SwapStatus.Swapped || !session.RecoveryPending)
                 throw new InvalidOperationException("native_publication_refused");
             await BootstrapProtocol.WriteAsync(Program.Responses, "published recovery_pending", ct);
             if (config[0] == "owner-refusal")

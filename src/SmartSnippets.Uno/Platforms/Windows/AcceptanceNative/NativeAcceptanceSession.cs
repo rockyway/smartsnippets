@@ -19,12 +19,22 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
     internal bool RecoveryPending => dispatcher.RecoveryPending;
     internal string RecoveryControl => guardian.RecoveryControl;
     internal nint DuplicateGuardianHandle(SafeProcessHandle recipient) => guardian.DuplicateGuardianHandle(recipient);
+    // Read-only classification in the original short-circuit guard order.
+    internal ClipboardControlAdmission ClassifyClipboardControl()
+    {
+        if (closed) return ClipboardControlAdmission.Closed;
+        if (!permitted(AcceptanceOperation.ClipboardControl)) return ClipboardControlAdmission.Permission;
+        if (!guardian.CanPublish) return ClipboardControlAdmission.GuardianUnavailable;
+        if (!guardian.IsPinned) return ClipboardControlAdmission.GuardianUnpinned;
+        if (!popup.PopupPinned) return ClipboardControlAdmission.PopupUnpinned;
+        if (owned.Check(target) != TargetCheck.Ok) return ClipboardControlAdmission.TargetIdentity;
+        if (!(visibleDesktop ?? NativeDesktop.IsVisibleCurrent)()) return ClipboardControlAdmission.Desktop;
+        if (!(quietInput ?? NativeOwnedPopup.QuietAllInput)()) return ClipboardControlAdmission.Unquiet;
+        return ClipboardControlAdmission.Ready;
+    }
     internal SwapStatus PublishClipboardControl()
     {
-        if (closed || !permitted(AcceptanceOperation.ClipboardControl) || !guardian.CanPublish
-            || !guardian.IsPinned || !popup.PopupPinned || owned.Check(target) != TargetCheck.Ok
-            || !(visibleDesktop ?? NativeDesktop.IsVisibleCurrent)()
-            || !(quietInput ?? NativeOwnedPopup.QuietAllInput)()) return SwapStatus.NotPreserved;
+        if (ClassifyClipboardControl() != ClipboardControlAdmission.Ready) return SwapStatus.NotPreserved;
         return guardian.Publish(AcceptanceOperation.ClipboardControl);
     }
     internal bool VerifyOwnedOwnerChangeRefusal() => !closed && permitted(AcceptanceOperation.ClipboardControl) &&

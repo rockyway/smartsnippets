@@ -153,6 +153,25 @@ public sealed class NativeAcceptanceSessionTests
         Assert.False(await session.WaitForCopyAdmissionAsync(default));
     }
 
+    [Fact]
+    public async Task ClipboardClassifier_IsReadOnlyAndPreservesGuardPrecedence()
+    {
+        using var fixture = new SessionFixture();
+        Assert.Equal(ClipboardControlAdmission.Ready, fixture.Session.ClassifyClipboardControl());
+        fixture.Popup.Quiet = false;
+        Assert.Equal(ClipboardControlAdmission.Unquiet, fixture.Session.ClassifyClipboardControl());
+        fixture.Popup.PopupPinned = false;
+        Assert.Equal(ClipboardControlAdmission.PopupUnpinned, fixture.Session.ClassifyClipboardControl());
+        fixture.Guardian.Pending = true;
+        Assert.Equal(ClipboardControlAdmission.GuardianUnavailable, fixture.Session.ClassifyClipboardControl());
+        fixture.Allowed = false;
+        Assert.Equal(ClipboardControlAdmission.Permission, fixture.Session.ClassifyClipboardControl());
+        await fixture.Session.DrainOwnedRecoveryAsync();
+        Assert.Equal(ClipboardControlAdmission.Closed, fixture.Session.ClassifyClipboardControl());
+        Assert.Equal(0, fixture.Guardian.Publications);
+        Assert.Equal(0, fixture.Popup.FocusCalls);
+    }
+
     private sealed class SessionFixture : IDisposable
     {
         internal bool Allowed = true;
