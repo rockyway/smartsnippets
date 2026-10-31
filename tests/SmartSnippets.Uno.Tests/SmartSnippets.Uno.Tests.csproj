@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />
+    <Using Include="Xunit" />
+    <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
+    <!-- Compile the actual composition root. Only external native/window implementations are omitted. -->
+    <Compile Include="../../src/SmartSnippets.Uno/UnoAppHost.cs;../../src/SmartSnippets.Uno/CandidateActivationQueue.cs;../../src/SmartSnippets.Uno/CandidateProfile.cs;../../src/SmartSnippets.Uno/CandidateFileIdentity.cs;../../src/SmartSnippets.Uno/CandidateHostBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs;../../src/SmartSnippets.Uno/Services/CandidateMessageWindowLifetime.cs" LinkBase="Candidate" />
+  </ItemGroup>
+</Project>

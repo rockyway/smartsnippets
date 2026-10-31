@@ -1,0 +1,123 @@
+using SmartSnippets.Core.Porting;
+using SmartSnippets.Core.Settings;
+using SmartSnippets.Presentation.Navigation;
+using SmartSnippets.Presentation.Services;
+using SmartSnippets.Uno;
+
+namespace SmartSnippets.Uno.Tests.Composition;
+
+internal sealed class HostFixture : IDisposable
+{
+    internal string Root { get; } = Path.Combine(Path.GetTempPath(), "SmartSnippets.Uno019.Tests", Guid.NewGuid().ToString("N"));
+    internal TestBoundary Boundary { get; } = new();
+    internal UnoAppHost Host { get; }
+    internal HostFixture() => Host = new(Boundary, () => CandidateProfile.OpenOwnedRoot(Root));
+    internal Task Start(bool background = false, LaunchOptions? options = null) => Host.StartAsync(background, options ?? new(null, false, null));
+    public void Dispose()
+    {
+        Host.Dispose();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        if (Directory.Exists(Root)) Directory.Delete(Root, true);
+    }
+}
+internal sealed class TestBoundary : CandidateHostBoundary
+{
+    internal TestDialogs Dialogs { get; } = new();
+    internal TestFiles Files { get; } = new();
+    internal MainSurface Main { get; private set; } = null!;
+    internal List<PopupSurface> Popups { get; } = [];
+    internal int Reports, Exits, Messages, MessageDisposals, TrayDisposals;
+    internal bool FailWindow;
+    internal Action? TrayPreview, TrayOpen, TraySettings, TrayExit;
+    internal Queue<Action> Posted { get; } = new();
+    internal void Drain() { while (Posted.TryDequeue(out var action)) action(); }
+    internal override IUiDispatcher Dispatcher => new TestDispatcher(Posted);
+    internal override IThemeService CreateTheme(AppSettings settings) => new TestTheme(settings);
+    internal override IDisposable CreateMessageWindow() { Messages++; return new Release(() => MessageDisposals++); }
+    internal override IDialogService CreateDialogs(bool popup) => Dialogs;
+    internal override ISnippetFileService CreateFiles() => Files;
+    internal override ICandidateMainWindow CreateMain(UnoAppHost host)
+    {
+        if (FailWindow) throw new IOException("synthetic startup failure");
+        return Main = new MainSurface(host);
+    }
+    internal override ICandidatePopupWindow CreatePopup(UnoAppHost host)
+    {
+        var surface = new PopupSurface(host); Popups.Add(surface); return surface;
+    }
+    internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
+    {
+        TrayOpen = open; TrayPreview = preview; TraySettings = settings; TrayExit = exit;
+        return new TestTray(() => TrayDisposals++);
+    }
+    internal override void ReportStartupFailure() => Reports++;
+    internal override void Exit() => Exits++;
+    private sealed class TestDispatcher(Queue<Action> queue) : IUiDispatcher { public void Post(Action action) => queue.Enqueue(action); }
+    private sealed class TestTray(Action dispose) : ICandidateTray
+    { public void Dispose() => dispose(); public void Notify(string title, string message) { } }
+    private sealed class Release(Action dispose) : IDisposable { public void Dispose() => dispose(); }
+}
+internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
+{
+    internal PageKind Current = PageKind.Snippets;
+    internal int Navigations, Disposals;
+    internal bool Visible;
+    internal bool InteractionEnabled = true;
+    public void SetInteractionEnabled(bool enabled) => InteractionEnabled = enabled;
+    public event EventHandler? HiddenByClose;
+    public async Task NavigateAsync(PageKind page, bool show)
+    {
+        if (Current != page && !await CanExitAsync()) return;
+        Current = page; Visible |= show; Navigations++;
+    }
+    public Task<bool> CanExitAsync() => Current switch
+    { PageKind.Snippets => host.Snippets.CanLeaveAsync(), PageKind.Folders => host.Folders.CanLeaveAsync(), _ => Task.FromResult(true) };
+    internal async Task CloseAsync()
+    { if (await CanExitAsync()) { Visible = false; HiddenByClose?.Invoke(this, EventArgs.Empty); } }
+    public void Dispose() => Disposals++;
+}
+internal sealed class PopupSurface(UnoAppHost host) : ICandidatePopupWindow
+{
+    internal int Prewarms, Shows, Hides, Disposals;
+    internal bool ClosedAlready;
+    public event EventHandler? Closed;
+    public void Prewarm() => Prewarms++;
+    public void ShowPreview(string? query, bool openSortMenu)
+    {
+        Shows++;
+        if (host.Popup.OpenPreview() != Presentation.ViewModels.PopupOpenMode.Ignored && query is not null) host.Popup.Query = query;
+    }
+    public void Hide() => Hides++;
+    public void ShowAgain() { host.Popup.EnsureCurrent(); Shows++; }
+    public void OpenMainWindow() { }
+    public void EditSnippet(long id) { var row = host.Popup.Items.First(r => r.SnippetId == id); host.Popup.EditRow(row); }
+    public void Focus(PopupFocusTarget target) { }
+    public void Dispose() { if (ClosedAlready) return; ClosedAlready = true; Disposals++; Closed?.Invoke(this, EventArgs.Empty); }
+}
+internal sealed class TestDialogs : IDialogService
+{
+    internal Queue<SaveChoice> Choices { get; } = [];
+    internal int Errors;
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(true);
+    public Task<SaveChoice> AskSaveDiscardCancelAsync(string title, string message) => Task.FromResult(Choices.Count > 0 ? Choices.Dequeue() : SaveChoice.Cancel);
+    public Task ShowErrorAsync(string title, string message) { Errors++; return Task.CompletedTask; }
+    public Task ShowInfoAsync(string title, string message) => Task.CompletedTask;
+}
+internal sealed class TestFiles : ISnippetFileService
+{
+    internal string? ImportPath, ExportPath;
+    internal bool FailWrite;
+    internal Task<string?>? DelayedExportPicker;
+    public Task<string?> PickImportFileAsync() => Task.FromResult(ImportPath);
+    public Task<string?> PickExportFileAsync(string suggestedBaseName) => DelayedExportPicker ?? Task.FromResult(ExportPath);
+    public Stream OpenRead(string path) => File.OpenRead(path);
+    public Task WriteAtomicallyAsync(string path, ReadOnlyMemory<byte> content) => FailWrite
+        ? Task.FromException(new IOException("synthetic write refusal")) : AtomicFileWriter.WriteAsync(path, content);
+}
+internal sealed class TestTheme(AppSettings settings) : IThemeService
+{
+    public ThemeMode Current { get; private set; } = settings.Theme;
+    public ColorPalette CurrentPalette { get; private set; } = settings.ColorPalette;
+    public void Apply(ThemeMode mode) => Current = mode;
+    public void ApplyPalette(ColorPalette palette) => CurrentPalette = palette;
+}
