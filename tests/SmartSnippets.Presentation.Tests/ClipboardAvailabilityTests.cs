@@ -32,6 +32,22 @@ public sealed class ClipboardAvailabilityTests : IDisposable
     private PopupViewModel Popup(FakeInsertionService? insertion = null) => new(_store, new MemorySettingsStore(), new AppSettings(),
         insertion ?? new(), _clipboard, new FakeElevation(), new FakePopupHost(), _dialogs, new RecordingNotifier());
 
+    [Fact]
+    public void AvailabilityRefresh_NotifiesBothCopyAndInsertPredicates()
+    {
+        var canInsert = true;
+        using var page = new SnippetsPageViewModel(_store, _dialogs, _clipboard,
+            insertRow: _ => Task.CompletedTask, canInsertRow: () => canInsert);
+        var changed = new List<string?>();
+        page.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        Assert.True(page.CanInsertRow);
+        canInsert = false;
+        page.RefreshClipboardAvailability();
+        Assert.False(page.CanInsertRow);
+        Assert.Contains(nameof(page.CanInsertRow), changed);
+        Assert.Contains(nameof(page.CanCopyRow), changed);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -10,7 +10,7 @@ public sealed class CandidateUiBindingAuditTests
     [Fact]
     public void IntentionallyDisabledButtons_HaveNoCommandThatCanReenableThem()
     {
-        foreach (var file in new[] { "Pages/SettingsPage.xaml", "Popup/PopupWindow.xaml" })
+        foreach (var file in new[] { "Pages/SettingsPage.xaml", "Popup/PopupWindow.xaml", "Controls/SnippetEditor.xaml" })
         {
             var xaml = XDocument.Parse(Read(file));
             foreach (var button in xaml.Descendants().Where(e => e.Name.LocalName == "Button" && (string?)e.Attribute("IsEnabled") == "False"))
@@ -21,7 +21,7 @@ public sealed class CandidateUiBindingAuditTests
     [Fact]
     public void FooterMenusDialogsAndPlacement_ConsumeLivePolicies()
     {
-        Assert.Contains("HintLine(ViewModel.HintText, ViewModel.StatusText)", Read("Popup/PopupWindow.xaml"));
+        Assert.Contains("HintLine(ViewModel.HintText, ViewModel.StatusText, ViewModel.IsPreview)", Read("Popup/PopupWindow.xaml"));
         Assert.Contains("IsEnabled = ViewModel.CanCopyRow(item)", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("IsEnabled = vm.CanCopyRow", Read("Pages/SnippetsPage.xaml.cs"));
         Assert.Contains("_lifecycle.Preview(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
@@ -41,7 +41,10 @@ public sealed class CandidateUiBindingAuditTests
         var failure = Read("WindowsCandidateBoundary.cs");
         Assert.Contains("CandidateUiPolicy.ReportStartupFailure(", failure);
         Assert.Contains("Program.StartInBackground, Program.InitialOptions.HasRequest", failure);
-        Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("legacy active hint", ""));
-        Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved"));
+        Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("active hint", "", true));
+        Assert.Equal("active hint", CandidateUiPolicy.HintLine("active hint", "", false));
+        Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved", true));
+        Assert.Contains("IsEnabled = CanInsert()", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("if (CanInsert()) await RunOperation", Read("Popup/PopupWindow.xaml.cs"));
     }
 }

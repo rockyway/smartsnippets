@@ -144,6 +144,7 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
     public void RefreshClipboardAvailability()
     {
         OnPropertyChanged(nameof(CanCopyRow));
+        OnPropertyChanged(nameof(CanInsertRow));
         Editor?.RefreshClipboardAvailability();
     }
 

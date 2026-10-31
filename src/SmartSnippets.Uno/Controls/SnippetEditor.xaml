@@ -248,7 +248,7 @@
                         Content="{x:Bind TryAgainText}"
                         automation:AutomationProperties.Name="Try saving again" />
                     <Button
-                        IsEnabled="False" Command="{x:Bind ViewModel.CopyTextCommand, Mode=OneWay}"
+                        Command="{x:Bind ViewModel.CopyTextCommand, Mode=OneWay}"
                         Content="{x:Bind CopyTextLabel}"
                         automation:AutomationProperties.Name="Copy snippet text" />
                 </StackPanel>

@@ -14,19 +14,22 @@ public partial class App : Application
         try
         {
             _host = new UnoAppHost(_boundary, () => CandidateProfile.OpenOwnedRoot(Program.ProfileRoot));
-            await _host.StartAsync(true, Program.InitialOptions);
+            await _host.StartAsync(Program.StartInBackground, Program.InitialOptions);
             CandidateAcceptanceFlow.RequireReady(_host, Program.ProfileRoot);
             Program.Receipt("ready"); await Program.WaitAsync("ready");
             var id = await CandidateAcceptanceFlow.ManagementAsync(_host);
             Program.Receipt("management"); await Program.WaitAsync("management");
             _host.ShowPreview("acceptance synthetic");
-            CandidateAcceptanceFlow.RequirePreview(_host, id);
             Program.Receipt("preview"); await Program.WaitAsync("preview");
+            // Observer acknowledges only after two real uncloaked windows remain visible.
+            // Yield first: native XAML warmup is asynchronous, unlike headless AutoReady.
+            CandidateAcceptanceFlow.RequirePreview(_host, id);
+            _host.Popup.Query = "unmatched-recreation-sentinel";
             _boundary.Popup!.Dispose();
             _host.ShowPreview("acceptance synthetic");
+            Program.Receipt("recreated"); await Program.WaitAsync("recreated");
             CandidateAcceptanceFlow.RequirePreview(_host, id);
             if (_boundary.PopupCreations != 2) throw new InvalidOperationException("fixture_recreation");
-            Program.Receipt("recreated"); await Program.WaitAsync("recreated");
             await _host.ExitAsync();
         }
         catch

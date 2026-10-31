@@ -171,9 +171,10 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     internal Action<string>? NotifyReopenFailure { get; set; }
     internal Func<bool>? CanShow { get; set; }
+    internal Func<bool>? CanInsertNative { get; set; }
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
-    private string HintLine(string hint, string status) => CandidateUiPolicy.HintLine(hint, status);
+    private string HintLine(string hint, string status, bool isPreview) => CandidateUiPolicy.HintLine(hint, status, isPreview);
     private string SearchPlaceholder => UiText.PopupSearchPlaceholder;
     private string SearchName => UiText.PopupSearchName;
     private string ToggleLayoutName => UiText.ToggleLayout;
@@ -535,17 +536,28 @@ public sealed partial class PopupWindow : Window, IPopupHost
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         FlyoutSurface.KeepSolid(menu);
         var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = ViewModel.CanCopyRow(item) };
-        var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = false };
+        bool CanInsert() => ViewModel.CanInsertFromMain && ViewModel.CanUseRowActions(item) && CanInsertNative?.Invoke() == true;
+        var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = CanInsert() };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
         copy.Click += (_, _) => ViewModel.CopyRow(item);
-        insert.Click += async (_, _) => await RunOperation(() => ViewModel.InsertRowAsync(item));
+        insert.Click += async (_, _) =>
+        {
+            if (CanInsert()) await RunOperation(() => ViewModel.InsertRowAsync(item));
+        };
+        void RefreshActions(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+        {
+            copy.IsEnabled = ViewModel.CanCopyRow(item);
+            insert.IsEnabled = CanInsert();
+        }
+        ViewModel.PropertyChanged += RefreshActions;
         edit.Click += (_, _) => ViewModel.EditRow(item);
         delete.Click += async (_, _) => await RunOperation(() => ViewModel.DeleteRowAsync(item));
         menu.Items.Add(copy); menu.Items.Add(insert); menu.Items.Add(edit); menu.Items.Add(delete);
         _contextFlyout = menu;
         menu.Closed += (_, _) =>
         {
+            ViewModel.PropertyChanged -= RefreshActions;
             if (ReferenceEquals(_contextFlyout, menu)) _contextFlyout = null;
             DispatcherQueue.TryEnqueue(() =>
             {

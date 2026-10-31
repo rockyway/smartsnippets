@@ -9,7 +9,7 @@ namespace SmartSnippets.Uno;
 public static class Program
 {
     private static AppInstance? _instance;
-    internal static bool StartInBackground => true;
+    internal static bool StartInBackground => false;
     internal static LaunchOptions InitialOptions => new(PageKind.Snippets, false, null);
     internal static string PrivateRoot { get; private set; } = "";
     internal static string ProfileRoot => Path.Combine(PrivateRoot, "fixture-profile");

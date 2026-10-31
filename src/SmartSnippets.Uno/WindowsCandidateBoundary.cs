@@ -46,6 +46,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         var window = new PopupWindow(host.TextSize, () => { if (_main is { } main) _ = main.ShowPageWithoutActivationAsync(PageKind.Snippets, true); });
         _popup = window;
         window.CanShow = () => ReferenceEquals(_popup, window);
+        window.CanInsertNative = () => ReferenceEquals(_popup, window) && host.Gate.CanInsert;
         window.ViewModel = host.Popup;
         window.RunOperation = host.RunOperationAsync;
         _theme!.Register(window);

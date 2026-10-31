@@ -31,6 +31,25 @@ public sealed class CandidateAcceptanceFlowTests
     }
 
     [Fact]
+    public async Task RecreatedPreviewCannotPassWithStaleVmStateBeforeWarmup()
+    {
+        using var fixture = new HostFixture(); await fixture.Start();
+        var id = await CandidateAcceptanceFlow.ManagementAsync(fixture.Host);
+        fixture.Host.ShowPreview("acceptance synthetic");
+        CandidateAcceptanceFlow.RequirePreview(fixture.Host, id);
+        fixture.Host.Popup.Query = "unmatched-recreation-sentinel";
+        fixture.Boundary.Popups.Single().Dispose();
+        fixture.Boundary.PopupAutoReady = false;
+        fixture.Host.ShowPreview("acceptance synthetic");
+        var replacement = fixture.Boundary.Popups.Last();
+        Assert.Equal(0, replacement.Shows);
+        Assert.Throws<InvalidOperationException>(() => CandidateAcceptanceFlow.RequirePreview(fixture.Host, id));
+        replacement.Ready();
+        CandidateAcceptanceFlow.RequirePreview(fixture.Host, id);
+        Assert.Equal(1, replacement.Shows);
+    }
+
+    [Fact]
     public async Task SameAcceptanceDriverTraversesRealHostManagementPreviewAndGracefulLeaseRelease()
     {
         using var fixture = new HostFixture(); await fixture.Start();

@@ -57,7 +57,8 @@ internal static class CandidateAcceptanceFlow
 
     internal static void RequirePreview(UnoAppHost host, long id)
     {
-        if (!host.Popup.IsPreview || !host.Popup.Items.Any(row => row.SnippetId == id)
+        if (!host.Popup.IsPreview || host.Popup.Query != "acceptance synthetic"
+            || !host.Popup.Items.Any(row => row.SnippetId == id)
             || host.Store.Snippets.Single().Snippet.UsageCount != 0 || host.Gate.IsAvailable)
             throw new InvalidOperationException("acceptance_preview");
     }

@@ -58,7 +58,8 @@ internal static class CandidateUiPolicy
     }
 
     internal const string PreviewHint = "Preview only — selection closes; clipboard unavailable";
-    internal static string HintLine(string hint, string status) => string.IsNullOrEmpty(status) ? PreviewHint : hint;
+    internal static string HintLine(string hint, string status, bool isPreview)
+        => isPreview && string.IsNullOrEmpty(status) ? PreviewHint : hint;
 
     internal static T? DialogRoot<T>(Func<T?> getRoot, Func<bool> isVisible, Action show) where T : class
     {
