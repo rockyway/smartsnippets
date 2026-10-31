@@ -129,7 +129,10 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
 
 def verify_result(private, data, expected, positive=False):
     phase = b'native_phase=awaiting_owned_a' if positive else b'native_phase=published'
-    if data[0].splitlines() != [b'native_phase=guardian_ready', phase, expected] or data[1]:
+    phases = [b'native_phase=guardian_ready', phase]
+    if expected == b'native_result=owner_refusal_restored':
+        phases.append(b'native_phase=owner_refused')
+    if data[0].splitlines() != [*phases, expected] or data[1]:
         raise ValueError('native_result_receipt')
     log = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private)
     text = log.decode('utf-8-sig')
@@ -154,7 +157,7 @@ def main(argv=None):
     parser.add_argument('--guardian', type=Path)
     parser.add_argument('--guardian-sha256')
     parser.add_argument('--authorized-screen-slot', action='store_true')
-    parser.add_argument('--scene', choices=('restore', 'abort', *POSITIVE_SCENES))
+    parser.add_argument('--scene', choices=('restore', 'abort', 'owner-refusal', *POSITIVE_SCENES))
     parser.add_argument('--row6-controls-verified', action='store_true', help='Operator attests independently accepted ordinary+abort controls for this exact source/artifact.')
     parser.add_argument('--operator-recopied-baseline', action='store_true', help='Operator has freshly copied a harmless supported baseline since the previous marked session; never auto-cleared.')
     args = parser.parse_args(argv)
@@ -195,13 +198,15 @@ def main(argv=None):
             monitor(process, desktop, foreground, paths, positive_private=private if positive else None)
         data = [helpers.owned_bytes(p, private, 65536) for p in paths]
         expected = (f'native_result={args.scene}_settled' if positive else
+                    'native_result=owner_refusal_restored' if args.scene == 'owner-refusal' else
                     'native_result=regular_restored' if args.scene == 'restore' else 'native_result=abort_restored').encode()
         verify_result(private, data, expected, positive)
         print(json.dumps({'result': 'positive_scene_settled' if positive else 'clipboard_control_settled', 'scene': args.scene,
                           'privateEvidenceToken': f'{private.parent.name}/{private.name}', 'sourceSha256': source_fingerprint(),
                           'positiveInputImplemented': positive and args.scene in INSERT_SCENES,
                           'shortcutProof': 'registered_posted_callback_not_physical' if args.scene in INSERT_SCENES else 'none',
-                          'actionProof': 'native_enter' if args.scene == 'posted-enter' else 'vm_callback' if positive else 'clipboard_control',
+                          'actionProof': 'native_enter' if args.scene == 'posted-enter' else 'vm_callback' if positive else
+                                         'owned_hwnd_change_refusal' if args.scene == 'owner-refusal' else 'clipboard_control',
                           'operatorReCopyRequiredBeforeNextSession': True}))
     finally:
         desktop.close()  # Never terminates the coordinator or guardian.

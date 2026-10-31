@@ -57,6 +57,11 @@ class NativeBootstrapTests(unittest.TestCase):
         log = b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n'
         with patch.object(native.helpers, 'owned_bytes', return_value=log):
             native.verify_result(private, [good, b''], expected)
+            owner_expected = b'native_result=owner_refusal_restored'
+            owner_good = b'native_phase=guardian_ready\nnative_phase=published\nnative_phase=owner_refused\n' + owner_expected + b'\n'
+            native.verify_result(private, [owner_good, b''], owner_expected)
+            with self.assertRaisesRegex(ValueError, 'native_result_receipt'):
+                native.verify_result(private, [owner_good.replace(b'native_phase=owner_refused\n', b''), b''], owner_expected)
             for output in (expected + b'\n', b'foreign\n' + good, good + b'extra\n', good.replace(b'published', b'wrong')):
                 with self.assertRaisesRegex(ValueError, 'native_result_receipt'):
                     native.verify_result(private, [output, b''], expected)

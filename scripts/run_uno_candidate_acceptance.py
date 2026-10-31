@@ -33,7 +33,8 @@ def source_fingerprint():
                      and not {'bin', 'obj'}.intersection(path.relative_to(REPO / relative).parts))
     paths.extend(REPO / relative for relative in (
         'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs',
-        'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs'))
+        'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs',
+        'scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1'))
     paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props'))
     result = hashlib.sha256()
     for path in sorted(paths):

@@ -27,7 +27,7 @@ public partial class App : Application
             var isPositive = PositiveProtocol.IsPositive(config[0]);
             var scene = config[0] == "abort" ? NativeScene.Abort : NativeScene.Restore;
             if (isPositive) PositiveProtocol.RequireReviewed(config[0]);
-            else if (config[0] is not ("restore" or "abort")) throw new InvalidOperationException("native_scene");
+            else if (config[0] is not ("restore" or "abort" or "owner-refusal")) throw new InvalidOperationException("native_scene");
             // Target creates its A/B windows with SW_SHOWNOACTIVATE. Independently observe foreground across launch.
             var foreground = NativeFixtureOs.Foreground();
             fixture = await AcceptanceFixture.StartAsync(TargetNativeRoot(config[1]), config[1], config[2], ct);
@@ -73,6 +73,12 @@ public partial class App : Application
             if (NativeFixtureOs.Foreground() != foreground || session.PublishClipboardControl() != SwapStatus.Swapped || !session.RecoveryPending)
                 throw new InvalidOperationException("native_publication_refused");
             await BootstrapProtocol.WriteAsync(Program.Responses, "published recovery_pending", ct);
+            if (config[0] == "owner-refusal")
+            {
+                if (!session.VerifyOwnedOwnerChangeRefusal() || !session.RecoveryPending)
+                    throw new InvalidOperationException("native_owner_refusal");
+                await BootstrapProtocol.WriteAsync(Program.Responses, "owner_refused original_pending", ct);
+            }
             if (scene == NativeScene.Abort)
             {
                 // Coordinator must kill only the worker Job. No finally/disposal is relied on for recovery.
@@ -81,6 +87,8 @@ public partial class App : Application
             }
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "restore") throw new InvalidOperationException("native_restore_order");
             lease = false; broker.Close();
+            if (config[0] == "owner-refusal" && session.CleanupOwnedOwnerControl() != RestoreStatus.Restored)
+                throw new InvalidOperationException("native_owned_owner_cleanup");
             if (!await session.DrainOwnedRecoveryAsync()) throw new InvalidOperationException("native_recovery_pending");
             await host.ExitAsync();
             if (!boundary.Exited) throw new InvalidOperationException("native_host_exit");

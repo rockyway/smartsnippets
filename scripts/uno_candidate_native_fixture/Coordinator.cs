@@ -16,7 +16,7 @@ internal static class Coordinator
         var isPositive = PositiveProtocol.IsPositive(config[0]);
         var scene = config[0] == "abort" ? NativeScene.Abort : NativeScene.Restore;
         if (isPositive) PositiveProtocol.RequireReviewed(config[0]);
-        else if (config[0] is not ("restore" or "abort")) throw new InvalidOperationException("native_scene");
+        else if (config[0] is not ("restore" or "abort" or "owner-refusal")) throw new InvalidOperationException("native_scene");
         var state = new NativeSceneState(scene);
         var keyboard = new PositiveKeyboardLifetime();
         using var self = Process.GetCurrentProcess();
@@ -98,6 +98,12 @@ internal static class Coordinator
             if (await BootstrapProtocol.ReadAsync(responses, ct.Token) != "published recovery_pending") throw new InvalidOperationException("native_publish_receipt");
             state.Publish(); Console.WriteLine("native_phase=published");
             if (NativeFixtureOs.Foreground() != foreground) throw new InvalidOperationException("native_foreground_changed");
+            if (config[0] == "owner-refusal")
+            {
+                if (await BootstrapProtocol.ReadAsync(responses, ct.Token) != "owner_refused original_pending")
+                    throw new InvalidOperationException("native_owner_refusal_receipt");
+                Console.WriteLine("native_phase=owner_refused");
+            }
             if (scene == NativeScene.Abort)
             {
                 NativeFixtureOs.TerminateWorkers(job);
@@ -116,7 +122,7 @@ internal static class Coordinator
                 if (worker.ExitCode != 0) throw new InvalidOperationException("native_worker_exit");
                 await WaitStoppedAsync(fixture, TimeSpan.FromSeconds(5));
                 if (await RetainGuardianAsync(guardian) != 0) throw new InvalidOperationException("native_guardian_exit");
-                Console.WriteLine("native_result=regular_restored");
+                Console.WriteLine(config[0] == "owner-refusal" ? "native_result=owner_refusal_restored" : "native_result=regular_restored");
             }
             if (!state.Settled || NativeFixtureOs.Foreground() != foreground) throw new InvalidOperationException("native_scene_incomplete");
             return 0;
