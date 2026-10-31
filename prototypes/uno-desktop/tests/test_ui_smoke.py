@@ -234,24 +234,24 @@ class UiSmokeTests(unittest.TestCase):
         root = smoke.private_directory()
         try:
             self.assertTrue(root.is_dir())
-            (root / "write-check").write_text("synthetic")
+            self.assertEqual([], list(root.iterdir()))
             if sys.platform == "darwin":
                 self.assertEqual(0o700, root.stat().st_mode & 0o777)
         finally:
-            shutil.rmtree(root)
+            root.rmdir()
 
     def test_private_directory_removed_after_permission_setup_failure(self):
+        if sys.platform == "win32":
+            with patch.object(smoke, "create_windows_private_directory", side_effect=OSError("synthetic")):
+                with self.assertRaises(OSError):
+                    smoke.private_directory()
+            return
         doomed = self.base / "doomed"
         doomed.mkdir()
         with patch.object(smoke.tempfile, "mkdtemp", return_value=str(doomed)):
-            if sys.platform == "win32":
-                with patch.object(subprocess, "run", side_effect=OSError("synthetic")):
-                    with self.assertRaises(OSError):
-                        smoke.private_directory()
-            else:
-                with patch.object(Path, "chmod", side_effect=OSError("synthetic")):
-                    with self.assertRaises(OSError):
-                        smoke.private_directory()
+            with patch.object(Path, "chmod", side_effect=OSError("synthetic")):
+                with self.assertRaises(OSError):
+                    smoke.private_directory()
         self.assertFalse(doomed.exists())
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS bundle identity")

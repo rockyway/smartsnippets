@@ -4,10 +4,8 @@ Observes a visible top-level window owned by the exact started PID. Never reads
 window titles or screen pixels. Stops only the subprocess handle it created.
 """
 import argparse
-import csv
 import ctypes
 import hashlib
-import io
 import json
 import plistlib
 import re
@@ -18,6 +16,7 @@ import sys
 import tempfile
 import time
 from verify_evidence import inspect_executable
+from private_evidence import create_windows_private_directory
 
 BASE = Path(__file__).resolve().parent
 LIFECYCLE_RECEIPTS = [
@@ -219,20 +218,11 @@ def visible_windows(pid, *, identities=False):
 
 
 def private_directory():
+    if sys.platform == "win32":
+        return create_windows_private_directory()
     root = Path(tempfile.mkdtemp(prefix="ss-uno018-ui-"))
     try:
-        if sys.platform == "win32":
-            identity = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"],
-                                      capture_output=True, text=True, check=True, timeout=10,
-                                      creationflags=subprocess.CREATE_NO_WINDOW)
-            sid = next(csv.reader(io.StringIO(identity.stdout)))[1]
-            if not sid.startswith("S-1-"):
-                raise ValueError("Cannot isolate UI evidence")
-            subprocess.run(["icacls", str(root), "/inheritance:r", "/grant:r", "*" + sid + ":(OI)(CI)F"],
-                           capture_output=True, check=True, timeout=10,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
-        else:
-            root.chmod(0o700)
+        root.chmod(0o700)
         return root
     except BaseException:
         shutil.rmtree(root, ignore_errors=True)
