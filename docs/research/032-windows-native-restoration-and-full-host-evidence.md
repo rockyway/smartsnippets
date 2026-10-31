@@ -168,8 +168,8 @@ All execution gates were restored to false.
 
 ## Latest nonvisual verification and monitor boundary
 
-Integrated root: 436 Core, 616 Presentation, 260 candidate, 53 native-fixture and
-111 candidate Python tests pass; desktop Python runs 215 tests with one skip.
+Integrated root: 436 Core, 616 Presentation, 263 candidate, 53 native-fixture and
+117 candidate Python tests pass; desktop Python runs 215 tests with one skip.
 Fresh strict candidate build `727782b1b2c4486f9fe58618c31d0d35` has SHA256
 `b84134d7b484f600ddc53e24736ef460f46df7c6959fadde7608dba02a399741`.
 The unchanged legacy publish gate also passes; its fresh executable SHA256 is
@@ -179,7 +179,30 @@ These are build/test checks, not native action acceptance or hosted CI evidence.
 The operator is changing to one powered-on monitor. Visible testing is paused
 until that monitor is confirmed; the earlier bottom-left coordinates must not be
 reused blindly. Physical power-off alone may leave a monitor in Windows' active
-display topology. Nonvisual implementation/review continues.
+display topology. A read-only topology check now reports two active displays
+(primary landscape and a portrait display to its right), not one. No subsequent
+visible trial has been launched.
+
+## Reviewed rendered management scenes ready for the next confirmed screen slot
+
+Source commits `3ea1299`, `4db7f4b` and `73c22a0` add fixed folder and settings
+scenes and extend snippets through dirty Save and new-draft Discard. Independent
+consolidated source/security/wiring review
+`bb881ff9-527c-4d78-8bdd-5e6afddb1784` found no issues. All mutations must be
+actual allowlisted owned UIA callbacks, with read-only VM/store/repository
+postconditions, exact action counts, source fingerprint, privacy controls and the
+reviewed final-ack/shutdown boundary. Settings scrolls only the unique fixed owned
+radio into view once; missing pattern or ambiguous identity refuses without a
+fallback. Repository reload is not process-relaunch evidence. Folder snippet
+seeding is explicit fixture setup, not rendered snippet-assignment proof.
+
+Fresh strict linked fixture build `ad11a1846b1f405c8ce2a907219c284c`, executable
+SHA256 `13863309b2130e8522e58beeb6922b6be61d1ae6cbb945fe6688d50b18dbda1f`,
+was prepared in the isolated UI trial worktree without launching it. The local
+source execution gate was enabled only for the fingerprint-bound build and
+restored false afterwards. Live folder/settings/extended dirty-navigation,
+existing-snippet Discard, save-failure and native file-picker acceptance remain
+NOT RUN; this ready source checkpoint does not close T7.
 
 ## Read-only prerequisites (not restoration acceptance)
 
