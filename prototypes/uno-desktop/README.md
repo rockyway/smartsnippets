@@ -135,3 +135,21 @@ scenes exit naturally with matching receipts. Both hosts run 159 Python tests
 with platform-specific skips. See [research 022](../../docs/research/022-preview-row-and-palette-probe.md)
 for the initial palette failure, correction, runtime tokens and boundaries.
 Plan 018 remains incomplete.
+
+### Windows owned native preview row (authorized slot only)
+
+`run_ui_smoke.py --preview-row-native --authorized-screen-slot --executable <owned exe> --sha256 <hash>`
+adds real guarded mouse delivery to the realized `OwnedPreviewRow` ListViewItem.
+This scene is Windows-only. It does not use the main-window foreground-preparation
+handshake: the runner waits for `ui_preview_row_native_ready hwnd=<popup>` on its
+owned child's stdout, then passes that exact popup HWND to the existing protected
+process/image/hash/UIA helper. UIA only reads the allowlisted row bounds; it never
+invokes a pattern. The shared mouse helper journals before raising/moving, checks
+PMv2/client bounds, desktop, idle/held input and final owned hit-test, then sends
+one down/up pair. Unlike foreground preparation, it does not require the popup
+to remain foreground after delivery because the real preview VM immediately hides
+it. Runner recovery replays any journal even on preparation failure. Natural exit,
+one actual ItemClick, shared row activation, unchanged real SQLite usage and
+clipboard epoch, and zero forbidden calls are required for PASS. Existing
+`--preview-row` remains programmatic and makes no native-pointer claim.
+The reviewed native Windows run passes with actual ItemClick and complete mouse recovery: build `51e5f7715c2c466cafbd2bf3e0639e1d`, SHA256 `352a6cb8cc7c6b9de3d23ca1f45a23ed8b2315b841efd4053d479de715e3dadc`, runtime token `ss-uno018-ui-kgeb18nj`. No macOS pointer evidence is provided by this scene. See [research 024](../../docs/research/024-windows-native-preview-row.md) for safety fixes and limits.

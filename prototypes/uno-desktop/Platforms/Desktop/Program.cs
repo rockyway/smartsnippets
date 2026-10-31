@@ -21,6 +21,7 @@ internal static class Program
         if (args.Length == 2 && args[0] == "--probe-shortcut-register" && args[1] == "--authorized-probe-shortcut")
             return NativeShortcutRegistrationProbe.Run();
         if (!args.Contains("--authorized-probe-ui", StringComparer.Ordinal)) return 0;
+        if (args.Contains("--preview-row-native", StringComparer.Ordinal)) return 2;
         if (new[] { "--probe-ui-lifecycle", "--probe-ui-coordinator", "--probe-ui-preview", "--probe-ui-companion", "--preview-row" }
             .Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1) return 2;
 

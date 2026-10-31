@@ -53,12 +53,16 @@ public sealed partial class PreviewProbePage : Page
         catch (Exception error) { _fail(error); }
     }
 
+    internal ListViewItem SelectedRow => (ListViewItem)RowsView.ContainerFromIndex(Model.SelectedIndex);
+
     public int RowEvents { get; private set; }
     public bool RowCompleted { get; private set; }
 
+    internal int ItemClickEvents { get; private set; }
+
     private async void RowClicked(object sender, ItemClickEventArgs args)
     {
-        try { await ActivateRowAsync(args.ClickedItem); }
+        try { ItemClickEvents++; await ActivateRowAsync(args.ClickedItem); }
         catch (Exception error) { _fail(error); }
     }
 

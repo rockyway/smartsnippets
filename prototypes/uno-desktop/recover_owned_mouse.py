@@ -56,9 +56,16 @@ def recover(path, pid, entry, digest):
     owner = wintypes.DWORD()
     owned = bool(user.GetWindowThreadProcessId(data["window"], ctypes.byref(owner)) and owner.value == pid)
     if owned:
-        actual_parent, actual_image = query_windows_process(pid)
-        if actual_parent != os.getppid() or actual_image != entry:
-            raise ValueError("Recovery process not spawned by caller")
+        try:
+            actual_parent, actual_image = query_windows_process(pid)
+        except ValueError:
+            latest = wintypes.DWORD()
+            if user.GetWindowThreadProcessId(data["window"], ctypes.byref(latest)):
+                raise
+            owned = False
+        else:
+            if actual_parent != os.getppid() or actual_image != entry:
+                raise ValueError("Recovery process not spawned by caller")
     old_dpi = user.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
     if not old_dpi:
         raise ValueError("Recovery coordinate context unavailable")
@@ -69,7 +76,7 @@ def recover(path, pid, entry, digest):
             if not user.GetCursorPos(ctypes.byref(current)):
                 raise ValueError("Cursor recovery state unavailable")
             if [current.x, current.y] == data["point"]:
-                if any(user.GetAsyncKeyState(key) & 0x8000 for key in (1, 2, 4, 5, 6, 0x10, 0x11, 0x12, 0x5B, 0x5C)):
+                if any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 255)):
                     raise ValueError("Held input; recovery journal retained")
                 if not user.SetCursorPos(*data["cursor"]) or not user.GetCursorPos(ctypes.byref(current)) or [current.x, current.y] != data["cursor"]:
                     raise ValueError("Cursor restoration incomplete")
@@ -78,7 +85,9 @@ def recover(path, pid, entry, digest):
                 latest = wintypes.DWORD()
                 if user.GetWindowThreadProcessId(data["window"], ctypes.byref(latest)) and latest.value == pid:
                     if not user.SetWindowPos(data["window"], ctypes.c_void_p(-2), 0, 0, 0, 0, 0x13):
-                        raise ValueError("Owned topmost restoration incomplete")
+                        latest = wintypes.DWORD()
+                        if user.GetWindowThreadProcessId(data["window"], ctypes.byref(latest)) and latest.value == pid:
+                            raise ValueError("Owned topmost restoration incomplete")
     finally:
         if not user.SetThreadDpiAwarenessContext(old_dpi):
             raise ValueError("Recovery thread context restoration incomplete")

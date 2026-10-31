@@ -30,6 +30,8 @@ public partial class App : Application
 #endif
         if (Environment.GetCommandLineArgs().Contains("--probe-ui-companion", StringComparer.Ordinal))
             _companionProbe = new CompanionSurfaceProbe(this, _window, page);
+        else if (Environment.GetCommandLineArgs().Contains("--preview-row-native", StringComparer.Ordinal))
+            _preview = new PreviewProbe(this, _window, page, rowMode: true, nativeRow: true);
         else if (Environment.GetCommandLineArgs().Contains("--preview-row", StringComparer.Ordinal))
             _preview = new PreviewProbe(this, _window, page, rowMode: true);
         else if (Environment.GetCommandLineArgs().Contains("--probe-ui-preview", StringComparer.Ordinal))

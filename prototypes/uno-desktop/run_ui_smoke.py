@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import plistlib
+import re
 import shutil
 from pathlib import Path
 import subprocess
@@ -70,6 +71,27 @@ PREVIEW_ROW_RECEIPTS = [
     "ui_preview_profile_removed",
     "ui_preview_row_complete shared_handler=1 native_pointer=NOT_TESTED uia=NOT_TESTED input=NONE insertion_calls=0 clipboard_writes=0 usage=0",
 ]
+
+
+PREVIEW_ROW_NATIVE_RECEIPTS = [
+    "ui_preview_row_native_started", "ui_preview_layout_ready", "ui_preview_ready_show",
+    "ui_preview_row_shared_handler",
+    "ui_preview_no_dispatch_or_usage clipboard_epoch=UNCHANGED forbidden_calls=0",
+    "ui_preview_profile_removed",
+    "ui_preview_row_native_complete item_click=1 insertion_calls=0 clipboard_writes=0 usage=0",
+]
+
+
+def native_row_ready(stdout):
+    matches = re.findall(r"^ui_preview_row_native_ready hwnd=([1-9][0-9]*)$", stdout, re.M)
+    return int(matches[0]) if len(matches) == 1 else None
+
+
+def preview_row_native_completed(stdout, stderr, code):
+    lines = stdout.splitlines()
+    return (code == 0 and not stderr.strip() and len(lines) == 8
+            and re.fullmatch(r"ui_preview_row_native_ready hwnd=[1-9][0-9]*", lines[3]) is not None
+            and lines[:3] + lines[4:] == PREVIEW_ROW_NATIVE_RECEIPTS)
 
 
 def preview_row_completed(stdout, stderr, code):
@@ -223,7 +245,10 @@ def main():
     scene.add_argument("--preview-row", action="store_true", help="Programmatic shared row handler only; no pointer/UIA input")
     scene.add_argument("--preview", action="store_true", help="Require native Enter through the actual preview view-model")
     scene.add_argument("--companion", action="store_true", help="Require external companion geometry and real hover-policy handoff, without input")
+    scene.add_argument("--preview-row-native", action="store_true", help="Windows-only authorized real owned row click")
     args = parser.parse_args()
+    if args.preview_row_native and sys.platform != "win32":
+        raise ValueError("Native row requires Windows")
     interactive = args.coordinator or args.preview
     if not args.authorized_screen_slot or sys.platform not in ("win32", "darwin"):
         raise ValueError("An authorized Windows or macOS screen slot is required")
@@ -246,14 +271,17 @@ def main():
     private = private_directory()
     process = None
     observed = False
-    preparation_ok = not interactive
+    preparation_ok = not (interactive or args.preview_row_native)
     recovery_ok = True
     recovery_required = False
     code = None
+    hwnd = None
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
             arguments = [str(entry), "--authorized-probe-ui"]
-            if args.preview_row:
+            if args.preview_row_native:
+                arguments.append("--preview-row-native")
+            elif args.preview_row:
                 arguments.append("--preview-row")
             elif args.companion:
                 arguments.append("--probe-ui-companion")
@@ -266,7 +294,7 @@ def main():
             process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
                                        cwd=entry.parent, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL,
                                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
-            deadline = time.monotonic() + (45 if interactive else 30 if args.lifecycle or args.companion or args.preview_row else 15)
+            deadline = time.monotonic() + (45 if interactive or args.preview_row_native else 30 if args.lifecycle or args.companion or args.preview_row else 15)
             observe_deadline = min(deadline, time.monotonic() + 10) if interactive else deadline
             while time.monotonic() < observe_deadline:
                 code = process.poll()
@@ -285,6 +313,32 @@ def main():
                     raise ValueError("Window observer failed")
                 if int(helper.stdout.strip()) > 0:
                     observed = True
+                    if args.preview_row_native:
+                        hwnd = None
+                        while time.monotonic() < deadline and process.poll() is None:
+                            hwnd = native_row_ready((private / "stdout.log").read_text(errors="replace"))
+                            if hwnd is not None:
+                                break
+                            time.sleep(0.1)
+                        if hwnd is None:
+                            break
+                        preparation_budget = min(20.0, deadline - time.monotonic() - 8)
+                        if preparation_budget <= 0:
+                            break
+                        try:
+                            prepared = subprocess.run(
+                                [sys.executable, str(BASE / "prepare_owned_focus.py"), "--pid", str(process.pid),
+                                 "--executable", str(entry), "--sha256", args.sha256,
+                                 "--journal", str(private / "focus.json"), "--row-hwnd", str(hwnd)],
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                timeout=preparation_budget, creationflags=subprocess.CREATE_NO_WINDOW)
+                        except subprocess.TimeoutExpired:
+                            (private / "prepare.log").write_text("owned_focus_prepare_timeout\n", encoding="utf-8")
+                            break
+                        (private / "prepare.log").write_text(prepared.stdout + prepared.stderr, encoding="utf-8")
+                        preparation_ok = prepared.returncode == 0 and prepared.stdout.strip() == "owned_focus_prepared" and not prepared.stderr.strip()
+                        if not preparation_ok:
+                            break
                     if interactive:
                         preparation_budget = min(20.0, deadline - time.monotonic() - 8)
                         if preparation_budget <= 0:
@@ -308,7 +362,7 @@ def main():
                         except OSError:
                             break
                         preparation_ok = True
-                    if args.lifecycle or args.companion or args.preview_row or interactive:
+                    if args.lifecycle or args.companion or args.preview_row or args.preview_row_native or interactive:
                         try:
                             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
@@ -320,7 +374,7 @@ def main():
         finally:
             if process is not None:
                 try:
-                    if interactive and sys.platform == "win32" and (private / "focus.json").exists():
+                    if (interactive or args.preview_row_native) and sys.platform == "win32" and (private / "focus.json").exists():
                         recovery_required = True
                         recovery_ok = replay_mouse_journal(private, process.pid, entry, args.sha256)
                 finally:
@@ -336,7 +390,7 @@ def main():
                             process.kill()
                             process.wait(timeout=3)
                         raise
-    interaction = ("GUARDED_MOUSE_AND_OWNED_ENTER" if sys.platform == "win32" else "OWNED_PID_ENTER") if args.preview else "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
+    interaction = "GUARDED_OWNED_ROW_MOUSE" if args.preview_row_native else ("GUARDED_MOUSE_AND_OWNED_ENTER" if sys.platform == "win32" else "OWNED_PID_ENTER") if args.preview else "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
     print("ui_smoke_window=" + ("OBSERVED" if observed else "NOT_OBSERVED") +
           " owned_process_stopped=true clipboard=UNTOUCHED input=" + interaction)
     print("private_evidence_token=" + private.name)
@@ -345,12 +399,14 @@ def main():
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
-    if args.lifecycle or args.companion or args.preview_row or interactive:
-        name = "preview_row" if args.preview_row else "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
-        validate = {"preview_row": preview_row_completed, "companion": companion_completed, "preview": preview_completed,
+    if args.lifecycle or args.companion or args.preview_row or args.preview_row_native or interactive:
+        name = "preview_row_native" if args.preview_row_native else "preview_row" if args.preview_row else "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
+        validate = {"preview_row_native": preview_row_native_completed, "preview_row": preview_row_completed, "companion": companion_completed, "preview": preview_completed,
                     "coordinator": coordinator_completed, "lifecycle": lifecycle_completed}[name]
-        completed = observed and preparation_ok and recovery_ok and validate(
-            (private / "stdout.log").read_text(errors="replace"),
+        stdout_text = (private / "stdout.log").read_text(errors="replace")
+        identity_ok = not args.preview_row_native or (hwnd is not None and native_row_ready(stdout_text) == hwnd)
+        completed = observed and preparation_ok and recovery_ok and identity_ok and validate(
+            stdout_text,
             (private / "stderr.log").read_text(errors="replace"), code)
         print("ui_" + name + "_result=" + ("PASS" if completed else "FAIL") +
               " graceful_exit=" + str(bool(completed)).lower())

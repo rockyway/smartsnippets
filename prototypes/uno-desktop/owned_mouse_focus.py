@@ -40,7 +40,7 @@ def require_input_desktop(user, kernel):
         user.CloseDesktop(active)
 
 
-def click_owned_window(pid, hwnd, x, y, journal, *, relative=False):
+def click_owned_window(pid, hwnd, x, y, journal, *, relative=False, require_foreground=True):
     from ctypes import wintypes
     class Point(ctypes.Structure):
         _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
@@ -82,6 +82,8 @@ def click_owned_window(pid, hwnd, x, y, journal, *, relative=False):
     user.WindowFromPoint.restype = wintypes.HWND
     user.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
     user.GetAncestor.restype = wintypes.HWND
+    user.IsWindowVisible.argtypes = [wintypes.HWND]
+    user.IsWindowVisible.restype = wintypes.BOOL
     user.GetForegroundWindow.restype = wintypes.HWND
     user.GetAsyncKeyState.argtypes = [ctypes.c_int]
     user.GetAsyncKeyState.restype = ctypes.c_short
@@ -96,7 +98,7 @@ def click_owned_window(pid, hwnd, x, y, journal, *, relative=False):
     user.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
     user.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(Input), ctypes.c_int]
     user.SendInput.restype = wintypes.UINT
-    held = lambda: any(user.GetAsyncKeyState(key) & 0x8000 for key in (1, 2, 4, 5, 6, 0x10, 0x11, 0x12, 0x5B, 0x5C))
+    held = lambda: any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 255))
     if user.GetSystemMetrics(23) != 0:
         raise ValueError("Refusing swapped mouse-button mapping")
     owner = wintypes.DWORD()
@@ -170,6 +172,9 @@ def click_owned_window(pid, hwnd, x, y, journal, *, relative=False):
         leaf_owner = wintypes.DWORD()
         if not leaf or not user.GetWindowThreadProcessId(leaf, ctypes.byref(leaf_owner)) or leaf_owner.value != pid or user.GetAncestor(leaf, 2) != hwnd or held():
             raise ValueError("Owned hit-test changed; no click")
+        final_idle = LastInput(ctypes.sizeof(LastInput), 0)
+        if not user.GetLastInputInfo(ctypes.byref(final_idle)) or (((kernel.GetTickCount64() & 0xFFFFFFFF) - final_idle.tick) & 0xFFFFFFFF) < 1500:
+            raise ValueError("Operator input changed; no click")
         sent = user.SendInput(2, events, ctypes.sizeof(Input))
         if sent != 2:
             if sent == 1:
@@ -179,10 +184,18 @@ def click_owned_window(pid, hwnd, x, y, journal, *, relative=False):
                     raise ValueError("Owned mouse release incomplete")
             raise ValueError("Owned click incomplete")
         until = time.monotonic() + 1
-        while user.GetForegroundWindow() != hwnd:
+        while require_foreground and user.GetForegroundWindow() != hwnd:
             if time.monotonic() >= until:
                 raise ValueError("Owned click did not foreground probe")
             time.sleep(0.05)
+        if not require_foreground:
+            while True:
+                current_owner = wintypes.DWORD()
+                if not user.GetWindowThreadProcessId(hwnd, ctypes.byref(current_owner)) or current_owner.value != pid or not user.IsWindowVisible(hwnd):
+                    break
+                if time.monotonic() >= until:
+                    raise ValueError("Owned click did not hide probe")
+                time.sleep(0.05)
     finally:
         try:
             if moved:
@@ -198,7 +211,9 @@ def click_owned_window(pid, hwnd, x, y, journal, *, relative=False):
                     current_owner = wintypes.DWORD()
                     if user.GetWindowThreadProcessId(hwnd, ctypes.byref(current_owner)) and current_owner.value == pid:
                         if not user.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, 0x13):
-                            raise ValueError("Owned window restoration incomplete")
+                            latest = wintypes.DWORD()
+                            if user.GetWindowThreadProcessId(hwnd, ctypes.byref(latest)) and latest.value == pid:
+                                raise ValueError("Owned window restoration incomplete")
             finally:
                 if not user.SetThreadDpiAwarenessContext(old_dpi):
                     raise ValueError("Thread coordinate context restoration incomplete")

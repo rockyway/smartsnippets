@@ -9,6 +9,16 @@ namespace SmartSnippets.Target018;
 internal static unsafe partial class Program
 {
     private const int EditorId = 101;
+    private const string UnicodeFixture = "AΩ中🙂e\u0301";
+    private const string MultilineFixture = "AΩ中🙂e\u0301\r\nsecond line\r\n";
+    internal static bool AllowedCommand(string command) => command is
+        "close_a" or "close_b" or "empty_a" or "empty_b" or "focus_a" or "focus_b" or
+        "verify_unicode_a" or "verify_unicode_b" or "verify_multiline_a" or "verify_multiline_b";
+
+    internal static bool VerifyFixture(string command, ReadOnlySpan<char> text) =>
+        command is "verify_unicode_a" or "verify_unicode_b" ? text.SequenceEqual(UnicodeFixture) :
+        command is "verify_multiline_a" or "verify_multiline_b" && text.SequenceEqual(MultilineFixture);
+
     private static int _closed;
     private const uint CommandMessage = 0x8001;
     private static readonly ConcurrentQueue<string> Commands = new();
@@ -40,6 +50,7 @@ internal static unsafe partial class Program
     private struct MonitorInfo { public uint Size; public Rect Monitor, Work; public uint Flags; }
     private struct Selection { public int Found, Failed; public Rect Monitor, Work; }
 
+    #if !TARGET_PROTOCOL_TESTS
     [STAThread]
     public static int Main(string[] args)
     {
@@ -53,6 +64,8 @@ internal static unsafe partial class Program
             return 1;
         }
     }
+
+    #endif
 
     private static int Run(Guid run)
     {
@@ -116,7 +129,7 @@ internal static unsafe partial class Program
         {
             while (Console.In.ReadLine() is { } command)
             {
-                if (command is not ("close_a" or "close_b" or "empty_a" or "empty_b"))
+                if (!AllowedCommand(command))
                 {
                     Console.Error.WriteLine("target_command_refused");
                     continue;
@@ -132,16 +145,38 @@ internal static unsafe partial class Program
     {
         var window = command.EndsWith("_a", StringComparison.Ordinal) ? a : b;
         var editor = window == a ? editA : editB;
-        var ok = IsWindow(window) != 0;
+        var ok = IsWindow(window) != 0 && IsWindow(editor) != 0;
+        var count = -1;
         if (ok)
         {
             VerifyOwner(window); VerifyOwner(editor);
-            if (command.StartsWith("close_", StringComparison.Ordinal))
+            ok = IsChild(window, editor) != 0;
+            if (ok && command.StartsWith("close_", StringComparison.Ordinal))
                 ok = DestroyWindow(window) != 0 && IsWindow(window) == 0;
-            else
-                ok = SendMessageW(editor, 0x000E, 0, 0) == 0; // WM_GETTEXTLENGTH; no text leaves the target.
+            else if (ok && command.StartsWith("focus_", StringComparison.Ordinal))
+            {
+                // One UI-thread attempt; no queue attachment, input synthesis or foreign activation.
+                ok = SetForegroundWindow(window) != 0;
+                if (ok) _ = SetFocus(editor);
+                ok = ok && GetForegroundWindow() == window && GetFocus() == editor;
+            }
+            else if (ok)
+            {
+                var expected = command.StartsWith("verify_unicode_", StringComparison.Ordinal) ? UnicodeFixture :
+                    command.StartsWith("verify_multiline_", StringComparison.Ordinal) ? MultilineFixture : "";
+                count = checked((int)SendMessageW(editor, 0x000E, 0, 0));
+                ok = count == expected.Length;
+                if (ok)
+                {
+                    var buffer = new char[count + 1];
+                    fixed (char* text = buffer)
+                        ok = SendMessageW(editor, 0x000D, (nuint)buffer.Length, (nint)text) == count &&
+                            (command.StartsWith("verify_", StringComparison.Ordinal) ? VerifyFixture(command, buffer.AsSpan(0, count)) : count == 0);
+                }
+            }
         }
-        Console.WriteLine($"target_command name={command} ok={(ok ? 1 : 0)}");
+        Console.WriteLine($"target_command name={command} ok={(ok ? 1 : 0)}" +
+            (command.StartsWith("verify_", StringComparison.Ordinal) ? $" utf16_count={count}" : ""));
         Console.Out.Flush();
     }
 
@@ -243,6 +278,12 @@ internal static unsafe partial class Program
     private static partial int SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
     [LibraryImport("user32.dll")]
     private static partial int ShowWindow(nint window, int command);
+    [LibraryImport("user32.dll")]
+    private static partial int SetForegroundWindow(nint window);
+    [LibraryImport("user32.dll")]
+    private static partial nint GetForegroundWindow();
+    [LibraryImport("user32.dll")]
+    private static partial nint GetFocus();
     [LibraryImport("user32.dll")]
     private static partial nint SetFocus(nint window);
     [LibraryImport("user32.dll")]

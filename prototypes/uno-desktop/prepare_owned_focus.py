@@ -77,7 +77,7 @@ def query_windows_process(pid):
         kernel.CloseHandle(handle)
 
 
-def prepare_windows(pid, parent, entry, digest, journal):
+def prepare_windows(pid, parent, entry, digest, journal, *, row_hwnd=None):
     if journal is None:
         raise ValueError("Private cursor journal required")
     try:
@@ -91,6 +91,8 @@ def prepare_windows(pid, parent, entry, digest, journal):
         raise ValueError("Refusing a process not spawned by caller")
     if actual_image != entry:
         raise ValueError("Process image mismatch")
+    if row_hwnd is not None and (type(row_hwnd) is not int or row_hwnd <= 0):
+        raise ValueError("Invalid popup handle")
     # All variable values are validated numeric/hex or single-quote escaped.
     image = str(entry).replace("'", "''")
     script = f"""
@@ -110,13 +112,13 @@ try {{
   [void][System.Reflection.Assembly]::Load('UIAutomationTypes, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35')
   $stage = 3
   $process.Refresh()
-  $hwnd = $process.MainWindowHandle
+  $hwnd = {"[IntPtr]::new(" + str(row_hwnd) + ")" if row_hwnd is not None else "$process.MainWindowHandle"}
   if ($hwnd -eq [IntPtr]::Zero) {{ throw [InvalidOperationException]::new() }}
   $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
   if ($root.Current.ProcessId -ne {pid}) {{ throw [InvalidOperationException]::new() }}
   $condition = [System.Windows.Automation.PropertyCondition]::new(
-    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-    [System.Windows.Automation.ControlType]::Edit)
+    [System.Windows.Automation.AutomationElement]::{"AutomationIdProperty" if row_hwnd is not None else "ControlTypeProperty"},
+    {"'OwnedPreviewRow'" if row_hwnd is not None else "[System.Windows.Automation.ControlType]::Edit"})
   $field = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
   if ($null -eq $field -or $field.Current.ProcessId -ne {pid}) {{ throw [InvalidOperationException]::new() }}
   $stage = 4
@@ -146,8 +148,10 @@ try {{
         if diagnostic:
             print(diagnostic[0].strip(), file=sys.stderr)
         raise ValueError("Owned focus preparation refused")
+    if row_hwnd is not None and int(point[1]) != row_hwnd:
+        raise ValueError("Popup HWND changed")
     from owned_mouse_focus import click_owned_window
-    click_owned_window(pid, int(point[1]), float(point[2]), float(point[3]), journal, relative=True)
+    click_owned_window(pid, int(point[1]), float(point[2]), float(point[3]), journal, relative=True, require_foreground=row_hwnd is None)
 
 
 def prepare_macos(pid, parent, entry):
@@ -189,6 +193,7 @@ def main():
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--journal", type=Path)
+    parser.add_argument("--row-hwnd", type=int)
     args = parser.parse_args()
     if not 0 < args.pid <= 2147483647 or sys.platform not in ("win32", "darwin"):
         raise ValueError("Unsupported focus target")
@@ -199,8 +204,10 @@ def main():
         raise
     parent = os.getppid()
     if sys.platform == "win32":
-        prepare_windows(args.pid, parent, entry, args.sha256, args.journal)
+        prepare_windows(args.pid, parent, entry, args.sha256, args.journal, row_hwnd=args.row_hwnd)
     else:
+        if args.row_hwnd is not None:
+            raise ValueError("Native row is Windows-only")
         prepare_macos(args.pid, parent, entry)
     print("owned_focus_prepared")
     return 0

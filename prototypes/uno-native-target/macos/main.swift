@@ -77,7 +77,8 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate {
         // Only stdin is read off-thread. All AppKit state remains main-actor-only.
         DispatchQueue.global(qos: .utility).async { [weak self] in
             while let command = readLine() {
-                guard ["close_a", "close_b", "empty_a", "empty_b", "focus_a", "focus_b"].contains(command) else {
+                guard ["close_a", "close_b", "empty_a", "empty_b", "focus_a", "focus_b",
+                       "verify_unicode_a", "verify_unicode_b", "verify_multiline_a", "verify_multiline_b", "verify_shared_crlf_a", "verify_shared_crlf_b"].contains(command) else {
                     FileHandle.standardError.write(Data("target_command_refused\n".utf8))
                     continue
                 }
@@ -97,6 +98,7 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate {
             let index = command.hasSuffix("_a") ? 0 : 1
             let window = windows[index]
             var ok = window.isVisible
+            var count = -1
             if ok {
                 if command.hasPrefix("focus_") {
                     NSApplication.shared.activate(ignoringOtherApps: true)
@@ -118,11 +120,21 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate {
                 } else if command.hasPrefix("close_") {
                     window.close()
                     ok = !window.isVisible
+                } else if command.hasPrefix("verify_") {
+                    // Compare UTF-16, not Swift canonical-equivalence equality.
+                    // Native Mac LF vs unchanged shared-service CRLF are distinct fixtures.
+                    let unicode = "AΩ中🙂e\u{0301}"
+                    let newline = command.hasPrefix("verify_shared_crlf_") ? "\r\n" : "\n"
+                    let expected = command.hasPrefix("verify_unicode_") ? unicode : unicode + newline + "second line" + newline
+                    let actual = editors[index].string
+                    count = actual.utf16.count
+                    ok = actual.utf16.elementsEqual(expected.utf16)
                 } else {
                     ok = editors[index].string.isEmpty // Never return editor content.
                 }
             }
-            print("target_command name=\(command) ok=\(ok ? 1 : 0)")
+            let detail = command.hasPrefix("verify_") ? " utf16_count=\(count)" : ""
+            print("target_command name=\(command) ok=\(ok ? 1 : 0)" + detail)
             fflush(nil)
         }
     }

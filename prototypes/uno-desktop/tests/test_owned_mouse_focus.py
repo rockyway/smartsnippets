@@ -118,9 +118,119 @@ class OwnedMouseFocusTests(unittest.TestCase):
         self.user.SetCursorPos.assert_not_called()
         self.user.SendInput.assert_not_called()
 
-    def invoke(self):
+    def invoke(self, *, require_foreground=True):
         with patch.object(mouse.ctypes, "WinDLL", side_effect=[self.user, self.kernel]):
-            mouse.click_owned_window(123, 77, -1500, 2000, self.journal)
+            mouse.click_owned_window(123, 77, -1500, 2000, self.journal, require_foreground=require_foreground)
+
+    def test_native_row_waits_for_hidden_before_cursor_or_zorder_restore(self):
+        order = []
+        def visible(hwnd):
+            self.assertEqual([-1500, 2000], self.cursor)
+            self.assertEqual(1, self.user.SetWindowPos.call_count)
+            self.assertEqual(1, self.user.SendInput.call_count)
+            order.append("visible")
+            return len(order) < 3
+        self.user.IsWindowVisible.side_effect = visible
+        with patch.object(mouse.time, "sleep") as sleep:
+            self.invoke(require_foreground=False)
+        self.assertEqual(3, len(order))
+        self.assertEqual(2, sleep.call_count)
+        self.assertEqual([10, 20], self.cursor)
+        self.assertEqual(2, self.user.SetWindowPos.call_count)
+        self.user.GetForegroundWindow.assert_not_called()
+
+    def test_native_row_close_while_waiting_is_success(self):
+        def visible(hwnd):
+            self.user.GetWindowThreadProcessId.return_value = 0
+            self.user.GetWindowThreadProcessId.side_effect = None
+            return 1
+        self.user.IsWindowVisible.side_effect = visible
+        with patch.object(mouse.time, "sleep"):
+            self.invoke(require_foreground=False)
+        self.assertEqual([10, 20], self.cursor)
+        self.assertEqual(1, self.user.SetWindowPos.call_count)
+
+    def test_native_row_visible_timeout_cannot_succeed(self):
+        self.user.IsWindowVisible.return_value = 1
+        with patch.object(mouse.time, "monotonic", side_effect=[0, 0, 2]),              self.assertRaisesRegex(ValueError, "did not hide"):
+            self.invoke(require_foreground=False)
+        self.assertTrue(self.journal.exists())
+
+    def test_demotion_failure_rechecks_owner_and_accepts_destroy_or_reuse_only(self):
+        for owner in (0, 999, 123):
+            with self.subTest(owner=owner):
+                self.setUp()
+                def demote(hwnd, after, *args):
+                    if after.value == ctypes.c_void_p(-2).value:
+                        self.owner = owner
+                        return 0
+                    return 1
+                self.user.SetWindowPos.side_effect = demote
+                if owner == 123:
+                    with self.assertRaisesRegex(ValueError, "window restoration incomplete"):
+                        self.invoke()
+                else:
+                    self.invoke()
+                self.assertEqual([10, 20], self.cursor)
+
+    def recover_fixture(self):
+        self.journal.write_text(json.dumps({"pid": 123, "window": 77, "cursor": [10, 20],
+                                           "point": [-1500, 2000], "wasTopmost": False}))
+        self.cursor[:] = [-1500, 2000]
+
+    def recover_invoke(self):
+        with patch.object(recovery, "validate_image", return_value=Path("fixture.exe")),              patch.object(recovery.ctypes, "WinDLL", side_effect=[self.user, self.kernel]):
+            recovery.recover(self.journal, 123, Path("fixture.exe"), "unused")
+
+    def test_recovery_all_held_virtual_keys_refuse_cursor_and_retain_journal(self):
+        for key in range(1, 255):
+            with self.subTest(key=key):
+                self.recover_fixture()
+                self.user.GetAsyncKeyState.side_effect = lambda vk: 0x8000 if vk == key else 0
+                with patch.object(recovery, "query_windows_process", return_value=(os.getppid(), Path("fixture.exe"))),                      self.assertRaisesRegex(ValueError, "Held input"):
+                    self.recover_invoke()
+                self.assertEqual([-1500, 2000], self.cursor)
+                self.assertTrue(self.journal.exists())
+        self.user.SetCursorPos.assert_not_called()
+        self.user.SendInput.assert_not_called()
+
+    def test_recovery_process_query_failure_allows_cursor_only_after_hwnd_gone(self):
+        for state in (0, 999, 123):
+            with self.subTest(state=state):
+                self.setUp()
+                self.recover_fixture()
+                def exited(pid):
+                    self.owner = state
+                    if state == 0:
+                        self.user.GetWindowThreadProcessId.side_effect = None
+                        self.user.GetWindowThreadProcessId.return_value = 0
+                    raise ValueError("Process ownership unavailable")
+                with patch.object(recovery, "query_windows_process", side_effect=exited):
+                    if state:
+                        with self.assertRaisesRegex(ValueError, "Process ownership unavailable"):
+                            self.recover_invoke()
+                        self.user.SetCursorPos.assert_not_called()
+                    else:
+                        self.recover_invoke()
+                        self.assertEqual([10, 20], self.cursor)
+                    self.user.SetWindowPos.assert_not_called()
+
+    def test_recovery_demotion_failure_rechecks_fresh_owner(self):
+        for state in (0, 999, 123):
+            with self.subTest(state=state):
+                self.setUp()
+                self.recover_fixture()
+                def demote(*args):
+                    self.owner = state
+                    return 0
+                self.user.SetWindowPos.side_effect = demote
+                with patch.object(recovery, "query_windows_process", return_value=(os.getppid(), Path("fixture.exe"))):
+                    if state == 123:
+                        with self.assertRaisesRegex(ValueError, "topmost restoration incomplete"):
+                            self.recover_invoke()
+                    else:
+                        self.recover_invoke()
+                self.assertEqual([10, 20], self.cursor)
 
     def test_wrong_pid_never_moves_cursor_raises_window_or_sends_input(self):
         self.owner = 999

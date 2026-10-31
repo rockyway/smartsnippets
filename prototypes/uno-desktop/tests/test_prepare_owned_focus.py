@@ -51,7 +51,7 @@ class OwnedFocusPreparationTests(unittest.TestCase):
              patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "owned_focus_fraction hwnd=987 u=0.5 v=0.25\n", "")) as execute, \
              patch("owned_mouse_focus.click_owned_window") as click:
             prepare.prepare_windows(123, 456, self.entry, self.digest, self.base / "focus.json")
-        click.assert_called_once_with(123, 987, 0.5, 0.25, self.base / "focus.json", relative=True)
+        click.assert_called_once_with(123, 987, 0.5, 0.25, self.base / "focus.json", relative=True, require_foreground=True)
         query.assert_called_once_with(123)
         args = execute.call_args.args[0]
         script = base64.b64decode(args[-1]).decode("utf-16le")
@@ -66,6 +66,34 @@ class OwnedFocusPreparationTests(unittest.TestCase):
         self.assertNotIn("SendInput", script)
         self.assertNotIn("Clipboard", script)
         self.assertEqual(subprocess.CREATE_NO_WINDOW, execute.call_args.kwargs["creationflags"])
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows row UIA protocol only; all workers faked")
+    def test_native_row_pins_popup_and_uses_hide_wait_mouse_path(self):
+        with patch.object(prepare, "query_windows_process", return_value=(456, self.entry)), \
+             patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "owned_focus_fraction hwnd=987 u=0.5 v=0.25\n", "")) as execute, \
+             patch("owned_mouse_focus.click_owned_window") as click:
+            prepare.prepare_windows(123, 456, self.entry, self.digest, self.base / "focus.json", row_hwnd=987)
+        click.assert_called_once_with(123, 987, 0.5, 0.25, self.base / "focus.json", relative=True, require_foreground=False)
+        script = base64.b64decode(execute.call_args.args[0][-1]).decode("utf-16le")
+        self.assertIn("$hwnd = [IntPtr]::new(987)", script)
+        self.assertIn("'OwnedPreviewRow'", script)
+        self.assertIn("AutomationIdProperty", script)
+        self.assertNotIn("$process.MainWindowHandle", script)
+        self.assertNotIn("InvokePattern", script)
+        self.assertNotIn("SetFocus", script)
+        self.assertEqual(7, execute.call_args.kwargs["timeout"])
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows row UIA protocol only; all workers faked")
+    def test_native_row_changed_popup_or_timed_out_uia_never_clicks(self):
+        for result in (subprocess.CompletedProcess([], 0, "owned_focus_fraction hwnd=988 u=0.5 v=0.25\n", ""),
+                       subprocess.TimeoutExpired("fake UIA", 7)):
+            with self.subTest(result=result), \
+                 patch.object(prepare, "query_windows_process", return_value=(456, self.entry)), \
+                 patch.object(subprocess, "run", side_effect=[result]), \
+                 patch("owned_mouse_focus.click_owned_window") as click:
+                with self.assertRaises((ValueError, subprocess.TimeoutExpired)):
+                    prepare.prepare_windows(123, 456, self.entry, self.digest, self.base / "focus.json", row_hwnd=987)
+                click.assert_not_called()
 
     @unittest.skipUnless(sys.platform == "win32", "Windows UIA script protocol only")
     def test_bad_fraction_protocol_never_calls_mouse(self):
