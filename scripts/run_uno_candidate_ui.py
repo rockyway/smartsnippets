@@ -121,6 +121,34 @@ def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sl
     raise ValueError('ui_quiet_timeout')
 
 
+def observe_desktop(desktop, allow_zero_fg=False):
+    desktop.validate_input_desktop()
+    fg = desktop.user.GetForegroundWindow()
+    clip = desktop.user.GetClipboardSequenceNumber()
+    if not clip or (not allow_zero_fg and not fg):
+        raise ValueError('desktop_unavailable')
+    return fg, clip
+
+
+def shutdown_frame(desktop, pid, hwnd, initial, work, closed_seen, owned_foreground_seen, visible_windows):
+    # Sample foreground first: a monotonic close must not leave a stale live-HWND sample
+    # paired with the later, legitimate post-close foreground transition.
+    fg, clip = observe_desktop(desktop, allow_zero_fg=True)
+    if clip != initial[1]:
+        raise ValueError('clipboard_changed')
+    handles = visible_windows(pid, identities=True)
+    rects = desktop.windows(pid)
+    if any(not startup.inside(rect, work) for rect in rects):
+        raise ValueError('geometry')
+    if closed_seen or hwnd not in handles:
+        if handles or rects:
+            raise ValueError('window_recreated')
+        return True
+    if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
+        raise ValueError('foreground_changed')
+    return False
+
+
 def save_helper_diagnostics(private, out, err):
     if any(not isinstance(value, bytes) or len(value) > 65536 for value in (out, err)):
         raise ValueError('ui_helper_output_limit')
@@ -161,9 +189,11 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
             owned_foreground_seen = False
             while helper.poll() is None:
                 quiet_input(desktop, epoch)
-                fg, clip = desktop.snapshot()
-                if clip != initial[1] or fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
-                    raise ValueError('desktop_changed')
+                fg, clip = observe_desktop(desktop)
+                if clip != initial[1]:
+                    raise ValueError('clipboard_changed')
+                if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
+                    raise ValueError('foreground_changed')
                 owned_foreground_seen |= fg == hwnd
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
                     raise ValueError('geometry')
@@ -177,18 +207,36 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
             for phase in ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel'):
                 if not base.receipt(private, phase, process.pid):
                     raise ValueError('ui_receipt')
+            for phase in ('ui-ready', 'ui-new', 'ui-saved'):
+                if base.owned_bytes(private / (phase + '.continue'), private) != b'continue\n':
+                    raise ValueError('ui_receipt')
+            # Release shutdown only after helper exit and every actual callback postcondition.
+            quiet_input(desktop, epoch)
+            fg, clip = observe_desktop(desktop)
+            if clip != initial[1]:
+                raise ValueError('clipboard_changed')
+            if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
+                raise ValueError('foreground_changed')
+            with (private / 'ui-cancel.continue').open('xb') as ack:
+                ack.write(b'continue\n')
             deadline = time.monotonic() + 12
+            closed_seen = False
             while process.poll() is None:
                 quiet_input(desktop, epoch)
-                fg, clip = desktop.snapshot()
-                if clip != initial[1] or fg not in (initial[0], hwnd):
-                    raise ValueError('desktop_changed')
+                closed_seen = shutdown_frame(desktop, process.pid, hwnd, initial, work, closed_seen,
+                                             owned_foreground_seen, ui.visible_windows)
                 if time.monotonic() > deadline:
                     raise ValueError('graceful_timeout')
                 time.sleep(.05)
             base.require_graceful(process, private)
-            if desktop.snapshot()[1] != initial[1]:
-                raise ValueError('desktop_changed')
+            quiet_input(desktop, epoch)
+            shutdown_frame(desktop, process.pid, hwnd, initial, work, True,
+                           owned_foreground_seen, ui.visible_windows)
+            fg, clip = observe_desktop(desktop, allow_zero_fg=True)
+            if clip != initial[1]:
+                raise ValueError('clipboard_changed')
+            with (private / 'ui-shutdown-observation.json').open('x', encoding='ascii') as observation:
+                json.dump({'foregroundAfterClose': 'initial' if fg == initial[0] else 'none' if not fg else 'other'}, observation)
             # Extend the existing privacy scanner and its negative controls with this mode's canaries.
             privacy = startup.repo_module('ui_privacy', 'scripts/uno_candidate_privacy.py')
             canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', str(private))
@@ -260,7 +308,11 @@ def main():
     except BaseException as error:
         base.record_failure(private, error)
         raise
-    return {'renderedNewEditSaveDirtyCancel': 'OBSERVED', 'folders': 'NOT_RUN', 'settings': 'NOT_RUN',
+    after_close = json.loads(base.owned_bytes(private / 'ui-shutdown-observation.json', private))
+    if after_close not in ({'foregroundAfterClose': 'initial'}, {'foregroundAfterClose': 'none'},
+                           {'foregroundAfterClose': 'other'}):
+        raise ValueError('ui_receipt')
+    return {**after_close, 'renderedNewEditSaveDirtyCancel': 'OBSERVED', 'folders': 'NOT_RUN', 'settings': 'NOT_RUN',
             'rowSelection': 'NOT_RUN', 'dirtySaveDiscard': 'NOT_RUN', 'filePicker': 'NOT_RUN',
             'nativeAdapters': 'DEFAULT_DENIED', 'stop': 'GRACEFUL', 'job': 'ZERO_ACTIVE',
             'privateEvidenceToken': private.name, 'sourceSha256': source_fingerprint()}

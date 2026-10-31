@@ -165,7 +165,8 @@ public static class Owned019 {
     if ($backToList) { Invoke 'new' }
     Start-Sleep -Milliseconds 400
     $stage = 'cancel'; Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
-    $stage = 'finish'; WaitPhase 'ui-cancel'; Ack 'ui-cancel'
+    # The observer acknowledges final shutdown only after this helper exits successfully.
+    $stage = 'finish'; WaitPhase 'ui-cancel'; Guard
     [Console]::Out.WriteLine('ui_callbacks_observed')
 } catch {
     $reason = 'operation'

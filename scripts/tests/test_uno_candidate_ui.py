@@ -101,6 +101,65 @@ class UiManagementTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'input_query_failed'):
                 s.settle_quiet_epoch(process, desktop, (1, 2), (0, 0, 20, 20))
 
+    def test_shutdown_keeps_foreground_strict_until_monotonic_owned_close(self):
+        desktop = Mock()
+        desktop.user.GetClipboardSequenceNumber.return_value = 2
+        desktop.user.GetForegroundWindow.return_value = 10
+        desktop.windows.return_value = [(0, 0, 10, 10)]
+        handles = Mock(return_value=[10])
+        args = (desktop, 42, 10, (1, 2), (0, 0, 20, 20))
+        self.assertFalse(s.shutdown_frame(*args, False, True, handles))
+        desktop.user.GetForegroundWindow.return_value = 99
+        with self.assertRaisesRegex(ValueError, 'foreground_changed'):
+            s.shutdown_frame(*args, False, True, handles)
+        handles.return_value = []
+        desktop.windows.return_value = []
+        for fg in (0, 1, 99):
+            desktop.user.GetForegroundWindow.return_value = fg
+            self.assertTrue(s.shutdown_frame(*args, False, True, handles))
+        desktop.user.GetClipboardSequenceNumber.return_value = 3
+        with self.assertRaisesRegex(ValueError, 'clipboard_changed'):
+            s.shutdown_frame(*args, True, True, handles)
+        desktop.user.GetClipboardSequenceNumber.return_value = 2
+        handles.return_value = [10]
+        with self.assertRaisesRegex(ValueError, 'window_recreated'):
+            s.shutdown_frame(*args, True, True, handles)
+        desktop.windows.return_value = [(30, 30, 40, 40)]
+        with self.assertRaisesRegex(ValueError, 'geometry'):
+            s.shutdown_frame(*args, True, True, handles)
+
+    def test_close_tick_samples_foreground_before_owned_liveness(self):
+        events = []
+        desktop = Mock()
+        desktop.user.GetForegroundWindow.side_effect = lambda: events.append('foreground') or 0
+        desktop.user.GetClipboardSequenceNumber.return_value = 2
+        desktop.windows.side_effect = lambda _: events.append('rects') or []
+        def closed_handles(*args, **kwargs):
+            events.append('handles')
+            return []
+        self.assertTrue(s.shutdown_frame(desktop, 42, 10, (1, 2), (0, 0, 20, 20),
+                                         False, True, closed_handles))
+        self.assertEqual(['foreground', 'handles', 'rects'], events)
+
+    def test_zero_foreground_allowed_only_during_verified_shutdown(self):
+        desktop = Mock()
+        desktop.user.GetForegroundWindow.return_value = 0
+        desktop.user.GetClipboardSequenceNumber.return_value = 2
+        with self.assertRaisesRegex(ValueError, 'desktop_unavailable'):
+            s.observe_desktop(desktop)
+        self.assertEqual((0, 2), s.observe_desktop(desktop, allow_zero_fg=True))
+        desktop.user.GetClipboardSequenceNumber.return_value = 0
+        with self.assertRaisesRegex(ValueError, 'desktop_unavailable'):
+            s.observe_desktop(desktop, allow_zero_fg=True)
+        desktop.validate_input_desktop.side_effect = ValueError('desktop_changed')
+        with self.assertRaisesRegex(ValueError, 'desktop_changed'):
+            s.observe_desktop(desktop, allow_zero_fg=True)
+
+    def test_final_ack_is_not_written_by_uia_helper(self):
+        source = s.HELPER.read_text()
+        self.assertNotIn("Ack 'ui-cancel'", source)
+        self.assertIn("WaitPhase 'ui-cancel'; Guard", source)
+
     def test_helper_exact_allowlist_and_no_foreign_discovery_or_input_synthesis(self):
         source=s.HELPER.read_text()
         for required in ('WinUIDesktopWin32WindowClass','FromHandle($h)', 'GetWindowThreadProcessId',
