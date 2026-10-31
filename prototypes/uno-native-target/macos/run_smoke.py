@@ -45,19 +45,10 @@ def control_completed(text, pid):
     return len(lines) == 4 and ready_pid_windows(lines[0], pid) and lines[1:] == CONTROL_RECEIPTS
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--executable", required=True, type=Path)
-    parser.add_argument("--sha256", required=True)
-    parser.add_argument("--authorized-screen-slot", action="store_true")
-    parser.add_argument("--empty-close", action="store_true", help="Check empty owned editors and close owned window A through native callbacks")
-    args = parser.parse_args()
-    if not args.authorized_screen_slot or sys.platform not in ("darwin", "win32"):
-        raise ValueError("Authorized desktop slot required")
-    windows = sys.platform == "win32"
+def validate_entry(entry, digest, windows):
     base = BASE.parent / "windows" if windows else BASE
     expected = "SmartSnippets.Target018.exe" if windows else "SmartSnippets.Target018"
-    entry = args.executable.resolve(strict=True)
+    entry = entry.resolve(strict=True)
     if not entry.is_relative_to((base / "bin").resolve()) or entry.name != expected:
         raise ValueError("Unowned target image")
     if not windows:
@@ -68,7 +59,7 @@ def main():
         if info.get("CFBundleIdentifier") != "org.smartsnippets.feasibility018.target" or info.get("CFBundleExecutable") != entry.name:
             raise ValueError("Target identity mismatch")
     data = entry.read_bytes()
-    if hashlib.sha256(data).hexdigest() != args.sha256.lower() or inspect_executable(data, "win-x64" if windows else "osx-arm64"):
+    if hashlib.sha256(data).hexdigest() != digest.lower() or inspect_executable(data, "win-x64" if windows else "osx-arm64"):
         raise ValueError("Native target hash/header mismatch")
     if windows:
         # A console-subsystem head can unexpectedly allocate/activate a console.
@@ -80,6 +71,20 @@ def main():
                                    capture_output=True, timeout=10)
         if signature.returncode:
             raise ValueError("Target signature refused")
+    return entry
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--executable", required=True, type=Path)
+    parser.add_argument("--sha256", required=True)
+    parser.add_argument("--authorized-screen-slot", action="store_true")
+    parser.add_argument("--empty-close", action="store_true", help="Check empty owned editors and close owned window A through native callbacks")
+    args = parser.parse_args()
+    if not args.authorized_screen_slot or sys.platform not in ("darwin", "win32"):
+        raise ValueError("Authorized desktop slot required")
+    windows = sys.platform == "win32"
+    entry = validate_entry(args.executable, args.sha256, windows)
     private = private_directory()
     print("private_evidence_token=" + private.name)
     process = None

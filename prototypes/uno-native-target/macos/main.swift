@@ -36,6 +36,7 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate {
             window.setFrame(frame, display: false)
             window.isReleasedWhenClosed = false
             window.title = "SS-Target018-\(index == 0 ? "A" : "B")-\(runID.uuidString)"
+            window.setAccessibilityIdentifier(index == 0 ? "SSFixtureWindowA" : "SSFixtureWindowB")
             let scroll = NSScrollView(frame: NSRect(origin: .zero, size: window.contentLayoutRect.size))
             scroll.autoresizingMask = [.width, .height]
             scroll.hasVerticalScroller = true
@@ -76,29 +77,54 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate {
         // Only stdin is read off-thread. All AppKit state remains main-actor-only.
         DispatchQueue.global(qos: .utility).async { [weak self] in
             while let command = readLine() {
-                guard ["close_a", "close_b", "empty_a", "empty_b"].contains(command) else {
+                guard ["close_a", "close_b", "empty_a", "empty_b", "focus_a", "focus_b"].contains(command) else {
                     FileHandle.standardError.write(Data("target_command_refused\n".utf8))
                     continue
                 }
-                DispatchQueue.main.async { [weak self] in self?.executeCommand(command) }
+                let completed = DispatchSemaphore(value: 0)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { completed.signal(); return }
+                    self.executeCommand(command, completed: completed)
+                }
+                completed.wait() // Serialize commands; never block the main actor.
             }
         }
     }
 
-    private func executeCommand(_ command: String) {
-        let index = command.hasSuffix("_a") ? 0 : 1
-        let window = windows[index]
-        var ok = window.isVisible
-        if ok {
-            if command.hasPrefix("close_") {
-                window.close()
-                ok = !window.isVisible
-            } else {
-                ok = editors[index].string.isEmpty // Never return editor content.
+    private func executeCommand(_ command: String, completed: DispatchSemaphore) {
+        Task { @MainActor in
+            defer { completed.signal() }
+            let index = command.hasSuffix("_a") ? 0 : 1
+            let window = windows[index]
+            var ok = window.isVisible
+            if ok {
+                if command.hasPrefix("focus_") {
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    ok = false
+                    let deadline = ProcessInfo.processInfo.systemUptime + 2.0
+                    while ProcessInfo.processInfo.systemUptime < deadline {
+                        if NSApplication.shared.isActive {
+                            window.makeKeyAndOrderFront(nil)
+                            _ = window.makeFirstResponder(editors[index])
+                        }
+                        if window.isVisible && NSApplication.shared.isActive && window.isKeyWindow && window.firstResponder === editors[index] {
+                            ok = true
+                            break
+                        }
+                        // Yield to AppKit/WindowServer; do not spin or nest a runloop.
+                        try? await Task.sleep(nanoseconds: 20_000_000)
+                    }
+                } else if command.hasPrefix("close_") {
+                    window.close()
+                    ok = !window.isVisible
+                } else {
+                    ok = editors[index].string.isEmpty // Never return editor content.
+                }
             }
+            print("target_command name=\(command) ok=\(ok ? 1 : 0)")
+            fflush(nil)
         }
-        print("target_command name=\(command) ok=\(ok ? 1 : 0)")
-        fflush(nil)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
