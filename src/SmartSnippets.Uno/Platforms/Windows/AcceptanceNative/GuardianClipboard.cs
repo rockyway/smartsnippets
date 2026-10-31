@@ -87,6 +87,17 @@ internal sealed class GuardianClipboard(IGuardianClipboardOs os, uint marker, by
         finally { os.Close(); }
     }
 
+    internal bool VerifyPublication(Func<bool> admitted)
+    {
+        if (!RecoveryPending || !admitted() || !os.TryOpen()) return false;
+        try
+        {
+            using var current = os.Read();
+            return os.Owner == os.Window && IsFullPublication(current) && admitted();
+        }
+        finally { os.Close(); }
+    }
+
     // Copy is a separate, explicit commit. Before commit, worker death restores it like insertion.
     internal bool CommitCopy(Func<bool> admitted)
     {

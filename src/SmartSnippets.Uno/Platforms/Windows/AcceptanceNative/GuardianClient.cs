@@ -139,6 +139,21 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
             return status;
         }
     }
+    public bool VerifyPublication()
+    {
+        lock (sync)
+        {
+            if (closed || !pending || !allowInsert || !IsPinned) return false;
+            try
+            {
+                var answer = Exchange("verify-publication");
+                if (answer == "published") return true;
+                if (answer == "refused") return false;
+                throw Break();
+            }
+            catch (Exception) { _ = Break(); return false; }
+        }
+    }
     public bool CommitCopy()
     {
         lock (sync)

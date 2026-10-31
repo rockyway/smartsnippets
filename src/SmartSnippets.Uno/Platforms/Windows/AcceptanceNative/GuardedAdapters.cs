@@ -21,6 +21,7 @@ internal interface IGuardianChannel : IDisposable
     long ByteCount { get; }
     SwapStatus Publish(AcceptanceOperation operation);
     bool CommitCopy();
+    bool VerifyPublication();
     bool VerifyOwnedOwnerChangeRefusal() => false;
     RestoreStatus CleanupOwnedOwnerControl() => Restore();
     RestoreStatus Restore();
@@ -80,7 +81,9 @@ internal sealed class GuardedPasteDispatcher(ITargetProbe probe, InsertionTarget
     public SwapStatus TryPlaceText(string text) => SwapStatus.NotPreserved;
     public DispatchState SendPaste()
     {
-        if (!swapped || attempted || !permitted(AcceptanceOperation.Input) || !Quiet(AcceptanceOperation.Insert) || !probe.IsTargetForeground(exactTarget)) return DispatchState.NotDispatched;
+        if (!swapped || attempted || !permitted(AcceptanceOperation.Input) || !Quiet(AcceptanceOperation.Insert) ||
+            !guardian.VerifyPublication() || !permitted(AcceptanceOperation.Input) ||
+            !Quiet(AcceptanceOperation.Insert) || !probe.IsTargetForeground(exactTarget)) return DispatchState.NotDispatched;
         attempted = true;
         KeyboardRecoveryPending = true;
         var state = input.SendPaste();

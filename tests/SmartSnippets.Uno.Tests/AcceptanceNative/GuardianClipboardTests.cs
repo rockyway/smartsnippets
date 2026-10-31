@@ -302,6 +302,47 @@ public sealed class GuardianClipboardTests
         Assert.Equal(Prior, new Guid("00112233-4455-6677-8899-aabbccddeeff").ToByteArray());
     }
 
+    [Theory]
+    [InlineData(0)] // Exact publication.
+    [InlineData(1)] // Foreign owner with identical bytes.
+    [InlineData(2)] // Changed text with retained marker/owner.
+    [InlineData(3)] // Missing representation.
+    [InlineData(4)] // Additional representation.
+    [InlineData(5)] // Incomplete read.
+    [InlineData(6)] // Busy.
+    [InlineData(7)] // Revoked before read.
+    [InlineData(8)] // Revoked after read.
+    public void VerifyPublication_RequiresExactOwnedImageWithoutMutatingRecovery(int change)
+    {
+        var os = new FakeClipboard(); var engine = Create(os);
+        Assert.False(engine.VerifyPublication(() => true));
+        Assert.Equal(SwapStatus.Swapped, engine.Publish(() => true));
+        var saved = os.ReadImages[0].Entries[13];
+        var original = saved.ToArray();
+        var count = engine.SavedCount; var bytes = engine.ByteCount;
+        switch (change)
+        {
+            case 1: os.Owner = 999; break;
+            case 2: os.Data[13] = [9, 8]; break;
+            case 3: os.Data.Remove(16); break;
+            case 4: os.Data[999] = [1]; break;
+            case 5: os.Complete = false; break;
+            case 6: os.Busy = true; break;
+        }
+        var expected = os.Data.ToDictionary(e => e.Key, e => e.Value.ToArray());
+        var writes = os.WriteCalls; var checks = 0;
+        Assert.Equal(change == 0, engine.VerifyPublication(() => change != 7 && (change != 8 || ++checks == 1)));
+        Assert.True(engine.RecoveryPending);
+        Assert.True(engine.HasBackup);
+        Assert.False(engine.Settled);
+        Assert.Equal(count, engine.SavedCount); Assert.Equal(bytes, engine.ByteCount);
+        Assert.Equal(original, saved);
+        Assert.Equal(1, os.EmptyCalls); Assert.Equal(writes, os.WriteCalls);
+        Assert.False(os.Open);
+        Assert.Equal(expected.Count, os.Data.Count);
+        foreach (var entry in expected) Assert.Equal(entry.Value, os.Data[entry.Key]);
+    }
+
     private sealed class FakeClipboard : IGuardianClipboardOs
     {
         internal Dictionary<uint, byte[]> Data = new() { [13] = [65, 0, 0, 0] };

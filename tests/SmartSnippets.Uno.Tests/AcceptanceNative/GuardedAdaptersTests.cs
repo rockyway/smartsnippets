@@ -199,6 +199,90 @@ public sealed class GuardedAdaptersTests
         Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Capture, true, false, false));
     }
 
+    [Fact]
+    public async Task PublicationRefusal_NoDispatchNoUsageAndRecoveryRemainsOwned()
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "publication-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        try
+        {
+            var factory = new SmartSnippets.Core.Data.SqliteConnectionFactory(System.IO.Path.Combine(directory, "test.db"));
+            new SmartSnippets.Core.Data.Migrator(factory).MigrateToLatest();
+            var store = new SmartSnippets.Core.Store.SnippetStore(factory, TimeProvider.System);
+            store.Load();
+            var id = store.CreateSnippet(new(GuardianClipboard.SyntheticText, "Synthetic", true, null, "")).Value!.Id;
+            var channel = new FakeGuardian { PublicationValid = false, ThrowRestore = true };
+            var input = new FakeInput(); var probe = new Probe();
+            var adapter = new GuardedPasteDispatcher(probe, A, _ => true, channel, input);
+            var service = new InsertionService(store, probe, adapter, delay: (_, _) => Task.CompletedTask);
+            var result = await service.InsertAsync(A, id);
+            Assert.Equal(InsertionOutcome.PasteFailed, result.Outcome);
+            Assert.Equal(0, input.Sends);
+            Assert.Equal(0, Assert.Single(store.Snippets).Snippet.UsageCount);
+            Assert.False(adapter.KeyboardRecoveryPending);
+            Assert.True(adapter.RecoveryPending);
+            Assert.Equal(1, channel.Verifications);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)] // Permission revoked during RPC.
+    [InlineData(1)] // Input arrives during RPC.
+    [InlineData(2)] // Foreground changes during RPC.
+    public void VerificationReturn_RechecksFinalLocalGatesBeforeSend(int change)
+    {
+        var permitted = true; var probe = new Probe(); var input = new FakeInput();
+        var channel = new FakeGuardian { AfterVerify = () =>
+        {
+            if (change == 0) permitted = false;
+            if (change == 1) input.IsQuiet = false;
+            if (change == 2) probe.Foreground = false;
+        } };
+        var adapter = new GuardedPasteDispatcher(probe, A, _ => permitted, channel, input);
+        adapter.TrySwapClipboard(GuardianClipboard.SyntheticText, false);
+        Assert.Equal(DispatchState.NotDispatched, adapter.SendPaste());
+        Assert.Equal(0, input.Sends);
+        Assert.False(adapter.KeyboardRecoveryPending);
+        Assert.True(adapter.RecoveryPending);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task VerificationResponsePipe_EofTruncationOrMalformedReplyFails(int failure)
+    {
+        var response = failure switch { 0 => "", 1 => "published", _ => ((char)0).ToString() + Environment.NewLine };
+        using var stream = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(response));
+        using var reader = new System.IO.StreamReader(stream);
+        await Assert.ThrowsAnyAsync<Exception>(() => SmartSnippets.WindowsInsertion018.FixedPipe.ReadAsync(
+            reader, TimeSpan.FromMilliseconds(50), default));
+    }
+
+    [Fact]
+    public void GuardianClient_VerificationProtocolFailureIsClosedAndRetainsPending_SourceSupplement()
+    {
+        var directory = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !System.IO.File.Exists(System.IO.Path.Combine(directory.FullName, "SmartSnippets.slnx")))
+            directory = directory.Parent;
+        var root = directory!.FullName;
+        var source = System.IO.File.ReadAllText(System.IO.Path.Combine(root,
+            "src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative/GuardianClient.cs"));
+        var method = source.Split("public bool VerifyPublication()", StringSplitOptions.None)[1]
+            .Split("public bool CommitCopy()", StringSplitOptions.None)[0];
+        Assert.Contains("closed || !pending || !allowInsert || !IsPinned", method);
+        Assert.Contains("Exchange(\"verify-publication\")", method);
+        Assert.Contains("if (answer == \"published\") return true;", method);
+        Assert.Contains("catch (Exception) { _ = Break(); return false; }", method);
+        Assert.DoesNotContain("pending =", method);
+        Assert.Contains("private IOException Break() { broken = true;", source);
+    }
+
     private sealed class Probe : ITargetProbe
     {
         internal bool Foreground = true;
@@ -217,7 +301,9 @@ public sealed class GuardedAdaptersTests
     {
         internal int Publishes, Restores, Commits;
         internal bool Closed, ThrowPublish, ThrowRestore, CommitResult = true;
-        internal Action? AfterPublish;
+        internal Action? AfterPublish, AfterVerify;
+        internal bool PublicationValid = true;
+        internal int Verifications;
         internal AcceptanceOperation LastOperation;
         public string RecoveryControl => "fake-owned-recovery";
         public void Dispose() { }
@@ -233,6 +319,7 @@ public sealed class GuardedAdaptersTests
             if (ThrowPublish) throw new InvalidOperationException();
             AfterPublish?.Invoke(); return SwapStatus.Swapped;
         }
+        public bool VerifyPublication() { Verifications++; AfterVerify?.Invoke(); return PublicationValid; }
         public bool CommitCopy() { Commits++; if (CommitResult) RecoveryPending = false; return CommitResult; }
         public RestoreStatus Restore() { Restores++; if (ThrowRestore) throw new InvalidOperationException(); RecoveryPending = false; return RestoreStatus.Restored; }
         public void CloseAdmission() => Closed = true;

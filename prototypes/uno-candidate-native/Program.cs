@@ -124,6 +124,8 @@ internal static class Program
                 }
                 else if (command == "cleanup-owned-owner-control")
                     answer = (allowClipboardControl && controlPublished ? RecoverOwnedControl() : RestoreStatus.Failed).ToString();
+                else if (command == "verify-publication")
+                    answer = allowInsert && clipboard.VerifyPublication(() => Admitted(copy: false)) ? "published" : "refused";
                 else if (command == "commit-copy")
                 {
                     copied = copied && allowCopy && clipboard.CommitCopy(() => Admitted(copy: true));

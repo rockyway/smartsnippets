@@ -217,6 +217,7 @@ public sealed class NativeAcceptanceSessionTests
         { Publications++; LastOperation = operation; Pending = true; return SwapStatus.Swapped; }
         public bool VerifyOwnedOwnerChangeRefusal() { RefusalChecks++; return true; }
         public RestoreStatus CleanupOwnedOwnerControl() { Pending = false; return RestoreStatus.Restored; }
+        public bool VerifyPublication() => true;
         public bool CommitCopy() { Pending = false; return true; }
         public RestoreStatus Restore() { if (RestoreResult == RestoreStatus.Restored) Pending = false; return RestoreResult; }
         public void CloseAdmission() => Closed = true;
