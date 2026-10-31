@@ -31,7 +31,9 @@ def source_fingerprint():
                      'prototypes/uno-native-target/windows-insertion'):
         paths.extend(path for path in (REPO / relative).rglob('*') if path.is_file()
                      and not {'bin', 'obj'}.intersection(path.relative_to(REPO / relative).parts))
-    paths.append(REPO / 'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs')
+    paths.extend(REPO / relative for relative in (
+        'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs',
+        'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs'))
     paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props'))
     result = hashlib.sha256()
     for path in sorted(paths):

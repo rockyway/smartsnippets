@@ -55,7 +55,7 @@ public static class Owned019 {
             [uint32]$needed = 0
             if (-not [Owned019]::GetUserObjectInformation($d, 2, $name, 512, [ref]$needed) -or $name.ToString() -cne 'Default') { throw 'desktop' }
         } finally { if (-not [Owned019]::CloseDesktop($d)) { throw 'desktop_close' } }
-        if ([Owned019]::Epoch() -ne $epoch -or ([Environment]::TickCount -band 0xffffffffL) - $epoch -lt 500) { throw 'input' }
+        if ([Owned019]::Epoch() -ne $epoch -or ([Environment]::TickCount -band 0xffffffffL) - $epoch -lt 1500) { throw 'input' }
         for ($k=1; $k -lt 256; $k++) { if (([int][Owned019]::GetAsyncKeyState($k) -band 0x8000) -ne 0) { throw 'input' } }
         $fg = [Owned019]::GetForegroundWindow().ToInt64()
         if (($script:focused -and $fg -ne $OwnedHwnd) -or (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd)) { throw 'foreground' }

@@ -63,7 +63,7 @@ def quiet_input(desktop, expected=None):
     kernel = startup.C.WinDLL('kernel32')
     kernel.GetTickCount.restype = startup.W.DWORD
     idle = (kernel.GetTickCount() - state.time) & 0xffffffff
-    if (expected is not None and state.time != expected) or idle < 500:
+    if (expected is not None and state.time != expected) or idle < 1500:
         raise ValueError('input')
     if any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 256)):
         raise ValueError('input')

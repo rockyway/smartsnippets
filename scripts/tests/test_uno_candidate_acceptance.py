@@ -206,9 +206,12 @@ class AcceptanceTests(unittest.TestCase):
             root = Path(tmp)
             driver = root / 'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs'
             driver.parent.mkdir(parents=True); driver.write_text('first')
+            ui_driver = driver.parent / 'UiAssertDriver.cs'; ui_driver.write_text('ui first')
             for name in ('Directory.Build.props', 'Directory.Packages.props'):
                 (root / name).write_text('fixed')
             before = s.source_fingerprint(); driver.write_text('changed')
+            self.assertNotEqual(before, s.source_fingerprint())
+            before = s.source_fingerprint(); ui_driver.write_text('ui changed')
             self.assertNotEqual(before, s.source_fingerprint())
             for relative in ('prototypes/uno-native-target/identity/OwnedFixtureLease.cs',
                              'prototypes/uno-native-target/windows-insertion/InputPreflight.cs'):
