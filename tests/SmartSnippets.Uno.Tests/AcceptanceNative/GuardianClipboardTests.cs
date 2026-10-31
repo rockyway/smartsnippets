@@ -182,6 +182,51 @@ public sealed class GuardianClipboardTests
         Assert.Equal(RestoreStatus.Restored, engine.Restore());
     }
 
+    [Fact]
+    public void AllocationMismatch_RefusesBeforeClearAndReleasesSnapshot()
+    {
+        var os = new FakeClipboard { ExactAllocation = false }; var engine = Create(os);
+        Assert.Equal(SwapStatus.NotPreserved, engine.Publish(() => true));
+        Assert.Equal(0, os.EmptyCalls);
+        Assert.False(engine.HasBackup);
+    }
+
+    [Fact]
+    public void RevocationDuringAllocationProof_RefusesBeforeClear()
+    {
+        var allowed = true;
+        var os = new FakeClipboard { AfterAllocation = () => allowed = false };
+        Assert.Equal(SwapStatus.NotPreserved, Create(os).Publish(() => allowed));
+        Assert.Equal(0, os.EmptyCalls);
+    }
+
+    [Fact]
+    public void ZeroPaddedPublication_IsNotExactAndCannotCommitOrRestoreAsOwned()
+    {
+        var os = new FakeClipboard(); var engine = Create(os);
+        Assert.Equal(SwapStatus.Swapped, engine.Publish(() => true));
+        os.Data[13] = os.Data[13].Concat(new byte[1]).ToArray();
+        Assert.False(engine.CommitCopy(() => true));
+        Assert.Equal(RestoreStatus.ClipboardChanged, engine.Restore());
+        Assert.True(engine.HasBackup);
+        Assert.Equal(1, os.EmptyCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NextSession_RejectsPriorMarkerEvenAfterSettlement_RequiresOperatorRecopy(bool copy)
+    {
+        var os = new FakeClipboard(); var first = Create(os);
+        Assert.Equal(SwapStatus.Swapped, first.Publish(() => true));
+        if (copy) Assert.True(first.CommitCopy(() => true));
+        else Assert.Equal(RestoreStatus.Restored, first.Restore());
+        Assert.True(first.Settled);
+        var clears = os.EmptyCalls;
+        Assert.Equal(SwapStatus.NotPreserved, Create(os).Publish(() => true));
+        Assert.Equal(clears, os.EmptyCalls);
+    }
+
     private sealed class FakeClipboard : IGuardianClipboardOs
     {
         internal Dictionary<uint, byte[]> Data = new() { [13] = [65, 0, 0, 0] };
@@ -189,6 +234,9 @@ public sealed class GuardianClipboardTests
         internal int EmptyCalls, WriteCalls, ReadCalls, FailWrite;
         internal bool Complete = true, Open, Busy, ThrowWrite;
         internal Action<int>? BeforeRead;
+        internal bool ExactAllocation = true;
+        internal Action? AfterAllocation;
+        public bool CanAllocateExact(int byteCount) { AfterAllocation?.Invoke(); return ExactAllocation; }
         public nint Window => 20;
         public nint Owner { get; set; } = 10;
         public bool TryOpen() { Assert.False(Open); if (Busy) return false; Open = true; return true; }

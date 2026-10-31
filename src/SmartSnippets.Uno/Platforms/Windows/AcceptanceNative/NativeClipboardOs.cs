@@ -45,10 +45,19 @@ internal sealed partial class NativeClipboardOs(nint window, uint marker, IReadO
         }
         return new(entries, complete);
     }
+    public bool CanAllocateExact(int byteCount)
+    {
+        if (byteCount <= 0 || byteCount > ByteLimit) return false;
+        var handle = GlobalAlloc(0x0042, (nuint)byteCount);
+        if (handle == 0) return false;
+        try { return GlobalSize(handle) == (nuint)byteCount; }
+        finally { _ = GlobalFree(handle); }
+    }
     public unsafe bool Write(uint format, byte[] bytes)
     {
-        var handle = GlobalAlloc(0x0042, (nuint)bytes.Length); // movable + zero initialized, including allocation padding
+        var handle = GlobalAlloc(0x0042, (nuint)bytes.Length); // movable + zero initialized
         if (handle == 0) return false;
+        if (GlobalSize(handle) != (nuint)bytes.Length) { _ = GlobalFree(handle); return false; }
         var destination = GlobalLock(handle);
         if (destination == null) { _ = GlobalFree(handle); return false; }
         try { bytes.CopyTo(new Span<byte>(destination, bytes.Length)); }

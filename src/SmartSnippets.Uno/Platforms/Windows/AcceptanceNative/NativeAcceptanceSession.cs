@@ -27,6 +27,8 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
             || !(quietInput ?? NativeOwnedPopup.QuietAllInput)()) return SwapStatus.NotPreserved;
         return guardian.Publish(AcceptanceOperation.ClipboardControl);
     }
+    public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
+    internal RestoreStatus RestoreClipboardControl() => guardian.Restore();
     internal Task<bool> ReadyForAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
     // Invoke ONLY from the existing popup coordinator's ready-surface focus callback.
     internal bool TryFocusOwnedPopup() => !closed && permitted(AcceptanceOperation.Focus) && focus.TryFocusPopup();

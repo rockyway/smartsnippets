@@ -37,6 +37,7 @@ public sealed class NativeAcceptanceSessionTests
         Assert.Null(session.CaptureOwnedTarget(target.WindowHandle, target.ProcessId));
         Assert.True(session.Validate(CandidateNativeOperation.Copy, session.SessionId, target.WindowHandle, target.ProcessId));
         fixture.Popup.PopupPinned = false;
+        Assert.False(session.IsAvailable);
         Assert.False(session.Validate(CandidateNativeOperation.Copy, session.SessionId, target.WindowHandle, target.ProcessId));
     }
 
@@ -81,6 +82,50 @@ public sealed class NativeAcceptanceSessionTests
         Assert.Equal(SwapStatus.NotPreserved, fixture.Session.PublishClipboardControl());
         Assert.Equal(0, fixture.Guardian.Publications);
         Assert.Equal(0, fixture.Popup.FocusCalls);
+    }
+
+    [Fact]
+    public void ClipboardControlRestore_ReportsStatusWithoutClosingAdmission()
+    {
+        using var fixture = new SessionFixture(); var session = fixture.Session;
+        Assert.Equal(SwapStatus.Swapped, session.PublishClipboardControl());
+        foreach (var status in new[] { RestoreStatus.ClipboardChanged, RestoreStatus.Busy, RestoreStatus.Partial, RestoreStatus.Failed })
+        {
+            fixture.Guardian.RestoreResult = status;
+            Assert.Equal(status, session.RestoreClipboardControl());
+            Assert.True(session.RecoveryPending);
+            Assert.False(fixture.Guardian.Closed);
+        }
+        fixture.Guardian.RestoreResult = RestoreStatus.Restored;
+        Assert.Equal(RestoreStatus.Restored, session.RestoreClipboardControl());
+        Assert.True(session.Validate(CandidateNativeOperation.Insert, session.SessionId, session.Target.WindowHandle, session.Target.ProcessId));
+    }
+
+    [Fact]
+    public void ControlOnlyProbe_ChecksIdentityButCannotCapture()
+    {
+        var popup = new PopupOs();
+        using var owned = new OwnedTargetProbe(new Lease(), new Identity(popup));
+        var target = owned.Capture("a");
+        var probe = new GuardedTargetProbe(owned, op => op == AcceptanceOperation.ClipboardControl);
+        Assert.Equal(TargetCheck.Ok, probe.Check(target));
+        Assert.Throws<InvalidOperationException>(() => probe.Capture("a"));
+    }
+
+    [Fact]
+    public async Task CopyWait_IsNonMutatingAndClosedSessionRefuses()
+    {
+        using var fixture = new SessionFixture(); var session = fixture.Session;
+        fixture.Popup.Foreground = 30; fixture.Popup.Quiet = false;
+        Assert.True(session.IsAvailable);
+        Assert.True(session.Validate(CandidateNativeOperation.Copy, session.SessionId, session.Target.WindowHandle, session.Target.ProcessId));
+        var wait = session.WaitForCopyAdmissionAsync(default);
+        Assert.False(wait.IsCompleted);
+        Assert.Equal(0, fixture.Guardian.Publications);
+        fixture.Popup.Quiet = true;
+        Assert.True(await wait);
+        await session.DrainOwnedRecoveryAsync();
+        Assert.False(await session.WaitForCopyAdmissionAsync(default));
     }
 
     private sealed class SessionFixture : IDisposable

@@ -15,6 +15,7 @@ internal interface IGuardianClipboardOs
     nint Owner { get; }
     ClipboardImage Read();
     bool Empty();
+    bool CanAllocateExact(int byteCount);
     bool Write(uint format, byte[] bytes);
 }
 
@@ -60,6 +61,11 @@ internal sealed class GuardianClipboard(IGuardianClipboardOs os, uint marker, by
             using (var current = os.Read())
                 if (!Same(current, original) || os.Owner != originalOwner || !admitted())
                 { Settle(); return SwapStatus.NotPreserved; }
+            // Refuse allocator rounding before destroying the baseline. Write rechecks every handle.
+            if (publication.Values.Concat(original.Entries.Values).Select(b => b.Length).Append(token.Length).Append(4)
+                .Distinct().Any(length => !os.CanAllocateExact(length)))
+            { Settle(); return SwapStatus.NotPreserved; }
+            if (os.Owner != originalOwner || !admitted()) { Settle(); return SwapStatus.NotPreserved; }
             if (!os.Empty()) { Settle(); return SwapStatus.Failed; }
             mutated = true; // Set before any subsequent native call can fail.
             if (os.Owner != os.Window || !os.Write(marker, token)) return SwapStatus.Failed;
@@ -128,14 +134,10 @@ internal sealed class GuardianClipboard(IGuardianClipboardOs os, uint marker, by
             privacy.Contains(e.Key) && e.Value.Length == 4 && e.Value.All(b => b == 0));
 
     private bool MatchesPublicationSubset(ClipboardImage image) => image.Entries.All(e =>
-        publication.TryGetValue(e.Key, out var value) && PaddedPayload(e.Value, value));
-
-    private static bool PaddedPayload(byte[] actual, byte[] expected) => actual.Length >= expected.Length &&
-        actual.Length <= expected.Length + 15 && actual.AsSpan(0, expected.Length).SequenceEqual(expected) &&
-        actual.AsSpan(expected.Length).IndexOfAnyExcept((byte)0) < 0;
+        publication.TryGetValue(e.Key, out var value) && Exact(e.Value, value));
 
     private bool IsFullPublication(ClipboardImage image) => image.Complete && MatchesPublicationSubset(image) &&
-        publication.All(e => image.Entries.TryGetValue(e.Key, out var value) && PaddedPayload(value, e.Value));
+        publication.All(e => image.Entries.TryGetValue(e.Key, out var value) && Exact(value, e.Value));
 
     private bool MatchesRestored(ClipboardImage image) => image.Complete && original is not null &&
         image.Entries.Count == original.Entries.Keys.Concat(privacy).Distinct().Count() + 1 && MatchesSubset(image, original.Entries) &&

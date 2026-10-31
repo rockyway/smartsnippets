@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Core.Domain;
 using SmartSnippets.TargetIdentity018;
 using Microsoft.Win32.SafeHandles;
 
@@ -90,11 +91,12 @@ internal sealed class GuardedPasteDispatcher(ITargetProbe probe, InsertionTarget
     public void DiscardClipboardSnapshot(IClipboardSnapshot saved) => throw new InvalidOperationException("Clipboard loss is prohibited.");
     private bool CopyReady() => Allowed(AcceptanceOperation.Copy) &&
         (focus?.ReadyForAdmission() ?? input.Quiet(probe, exactTarget)) && Allowed(AcceptanceOperation.Copy);
-    public bool IsAvailable => guardian.CanPublish && !guardian.RecoveryPending && !swapped && CopyReady();
+    public bool IsAvailable => guardian.CanPublish && !guardian.RecoveryPending && !swapped && Allowed(AcceptanceOperation.Copy) &&
+        (focus?.AdmissionIdentityReady() ?? true);
     public void SetText(string text) => _ = TrySetText(text);
     public bool TrySetText(string text)
     {
-        if (text != GuardianClipboard.SyntheticText || !IsAvailable) return false;
+        if (LineEndings.ToCrLf(text) != GuardianClipboard.SyntheticText || !IsAvailable || !CopyReady()) return false;
         try
         {
             if (guardian.Publish(AcceptanceOperation.Copy) != SwapStatus.Swapped) return false;
@@ -137,7 +139,7 @@ internal sealed class GuardedTargetProbe(OwnedTargetProbe owned, Func<Acceptance
             throw new InvalidOperationException("Owned target is unavailable.");
         return target;
     }
-    public TargetCheck Check(InsertionTarget target) => permitted(AcceptanceOperation.Insert) || permitted(AcceptanceOperation.Copy) || permitted(AcceptanceOperation.Capture)
+    public TargetCheck Check(InsertionTarget target) => permitted(AcceptanceOperation.Insert) || permitted(AcceptanceOperation.Copy) || permitted(AcceptanceOperation.Capture) || permitted(AcceptanceOperation.ClipboardControl)
         ? owned.Check(target) : TargetCheck.Closed;
     public bool IsTargetForeground(InsertionTarget target) => Check(target) == TargetCheck.Ok && owned.IsTargetForeground(target);
 }

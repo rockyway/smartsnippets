@@ -161,6 +161,42 @@ public sealed class GuardedAdaptersTests
         Assert.Throws<InvalidOperationException>(NativeAcceptanceFactory.RequireReviewed);
     }
 
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    [InlineData("\r\n")]
+    public void Copy_NormalizesStoredAndEditorLineEndings(string newline)
+    {
+        var channel = new FakeGuardian();
+        var adapter = new GuardedPasteDispatcher(new Probe(), A, op => op == AcceptanceOperation.Copy, channel, new FakeInput());
+        Assert.True(adapter.TrySetText(GuardianClipboard.SyntheticText.Replace("\r\n", newline)));
+        Assert.Equal(1, channel.Commits);
+    }
+
+    [Fact]
+    public void CopyAvailability_DoesNotRequireIdle_ButMutationStillDoes()
+    {
+        var channel = new FakeGuardian(); var input = new FakeInput { IsQuiet = false };
+        var adapter = new GuardedPasteDispatcher(new Probe(), A, _ => true, channel, input);
+        Assert.True(adapter.IsAvailable);
+        Assert.False(adapter.TrySetText(GuardianClipboard.SyntheticText));
+        Assert.Equal(0, channel.Publishes);
+        input.IsQuiet = true;
+        Assert.True(adapter.TrySetText(GuardianClipboard.SyntheticText));
+    }
+
+    [Fact]
+    public void FactoryPermissions_DefaultDenied_CaptureRequiresInsert_NotControlOrCopy()
+    {
+        foreach (var op in Enum.GetValues<AcceptanceOperation>())
+            Assert.False(NativeAcceptanceFactory.AllowsOperation(op, false, false, false));
+        Assert.False(NativeAcceptanceFactory.AllowsOperation((AcceptanceOperation)999, true, true, true));
+        Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Copy, false, true, false));
+        Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.ClipboardControl, false, false, true));
+        Assert.False(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Capture, false, true, true));
+        Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Capture, true, false, false));
+    }
+
     private sealed class Probe : ITargetProbe
     {
         internal bool Foreground = true;

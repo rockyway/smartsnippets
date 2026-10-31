@@ -12,6 +12,7 @@ namespace SmartSnippets.Uno.Platforms.Windows.AcceptanceNative;
 
 internal interface IAcceptanceFocus
 {
+    bool AdmissionIdentityReady();
     bool ReadyForAdmission();
     Task<bool> ReadyForAdmissionAsync(CancellationToken ct);
     Task<bool> RestoreTargetAsync(CancellationToken ct);
@@ -26,19 +27,22 @@ internal interface IOwnedFocusOs
 }
 
 internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nint popup, IOwnedFocusOs os,
-    Func<bool> permitted, Func<bool> focusPermitted) : IAcceptanceFocus
+    Func<bool> permitted, Func<bool> focusPermitted, nint main = 0, Func<bool>? mainPinned = null) : IAcceptanceFocus
 {
-    private bool OwnedForeground() => popup != 0 && permitted() && os.PopupPinned &&
-        probe.Check(target) == TargetCheck.Ok && (os.Foreground == popup || probe.IsTargetForeground(target));
+    public bool AdmissionIdentityReady() => popup != 0 && permitted() && os.PopupPinned &&
+        (main == 0 || mainPinned?.Invoke() == true) && probe.Check(target) == TargetCheck.Ok;
+    private bool OwnedForeground() => AdmissionIdentityReady() &&
+        (os.Foreground == popup || (main != 0 && os.Foreground == main) || probe.IsTargetForeground(target));
     public bool ReadyForAdmission() => OwnedForeground() && os.QuietDesktop() && OwnedForeground();
     public async Task<bool> ReadyForAdmissionAsync(CancellationToken ct)
     {
         var watch = Stopwatch.StartNew();
         try
         {
-            while (watch.ElapsedMilliseconds < 3000 && !ct.IsCancellationRequested && OwnedForeground())
+            while (watch.ElapsedMilliseconds < 3000 && !ct.IsCancellationRequested && AdmissionIdentityReady())
             {
                 if (ReadyForAdmission()) return true;
+                if (os.Foreground != 0 && !OwnedForeground()) return false;
                 await Task.Delay(50, ct);
             }
         }
@@ -50,14 +54,14 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
         if (!focusPermitted() || !await ReadyForAdmissionAsync(ct) || !focusPermitted() || !ReadyForAdmission()) return false;
         if (probe.IsTargetForeground(target)) return true;
         // No arbitrary current foreground window is ever focused/attached/inspected.
-        if (!focusPermitted() || !ReadyForAdmission() || os.Foreground != popup || !os.SetForeground(target.WindowHandle)) return false;
+        if (!focusPermitted() || !ReadyForAdmission() || !OwnedForeground() || !os.SetForeground(target.WindowHandle)) return false;
         var watch = Stopwatch.StartNew();
         while (watch.ElapsedMilliseconds < 500)
         {
             ct.ThrowIfCancellationRequested();
             if (!permitted() || !focusPermitted() || !os.PopupPinned || probe.Check(target) != TargetCheck.Ok) return false;
             if (probe.IsTargetForeground(target)) return true;
-            if (os.Foreground != popup) return false;
+            if (os.Foreground != 0 && !OwnedForeground()) return false;
             await Task.Delay(10, ct);
         }
         return false;
@@ -72,6 +76,7 @@ internal sealed partial class NativeOwnedPopup : IOwnedFocusOs, IDisposable
     private readonly nint window;
     internal Guid Marker { get; } = Guid.NewGuid();
     internal nint Window => window;
+    internal uint Thread => thread;
     private string Property => PropertyName(Marker);
     private static string PropertyName(Guid marker) => "SmartSnippets.UnoCandidate019.Acceptance." + marker.ToString("N");
     private readonly Process self;
@@ -102,8 +107,8 @@ internal sealed partial class NativeOwnedPopup : IOwnedFocusOs, IDisposable
         return true;
     }
     public bool SetForeground(nint target) => PopupPinned && SetForegroundWindow(target) != 0;
-    internal static bool RemoteForegroundReady(nint window, uint pid, Guid marker) =>
-        GetWindowThreadProcessId(window, out var actualPid) != 0 && actualPid == pid && ExpectedClass(window) &&
+    internal static bool RemoteForegroundReady(nint window, uint pid, Guid marker, uint expectedThread) =>
+        expectedThread != 0 && GetWindowThreadProcessId(window, out var actualPid) == expectedThread && actualPid == pid && ExpectedClass(window) &&
         GetPropW(window, PropertyName(marker)) == 1 && GetForegroundWindow() == window;
     private bool ExpectedClass() => ExpectedClass(window);
     private static unsafe bool ExpectedClass(nint window)

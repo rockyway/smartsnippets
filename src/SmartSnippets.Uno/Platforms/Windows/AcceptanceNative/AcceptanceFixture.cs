@@ -51,19 +51,28 @@ internal sealed class AcceptanceFixture : IAsyncDisposable
             try { return new(process, image); }
             catch
             {
-                if (!process.HasExited) process.Kill(entireProcessTree: false);
-                if (!process.WaitForExit(3000)) throw new InvalidOperationException("Owned fixture cleanup failed.");
-                process.Dispose();
+                try
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: false);
+                    if (!process.WaitForExit(3000)) throw new InvalidOperationException("Owned fixture cleanup failed.");
+                }
+                finally { process.Dispose(); }
                 throw;
             }
         }
         public bool IsIdentityAlive() => RetainedIdentity.Pinned(Process.SafeHandle, image);
         public async ValueTask DisposeAsync()
         {
-            if (!Process.HasExited) Process.Kill(entireProcessTree: false);
-            await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
-            await Protocol.DisposeAsync();
-            Process.Dispose();
+            try
+            {
+                if (!Process.HasExited) Process.Kill(entireProcessTree: false);
+                await Process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            finally
+            {
+                try { await Protocol.DisposeAsync(); }
+                finally { Process.Dispose(); }
+            }
         }
     }
 }

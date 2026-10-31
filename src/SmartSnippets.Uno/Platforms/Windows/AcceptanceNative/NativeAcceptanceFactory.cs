@@ -18,9 +18,19 @@ internal static class NativeAcceptanceFactory
             throw new InvalidOperationException("Native acceptance is not reviewed or supported.");
     }
 
+    internal static bool AllowsOperation(AcceptanceOperation operation, bool allowInsert, bool allowCopy, bool allowClipboardControl) => operation switch
+    {
+        AcceptanceOperation.Capture or AcceptanceOperation.Insert or AcceptanceOperation.Input or
+            AcceptanceOperation.Clipboard or AcceptanceOperation.Shortcut => allowInsert,
+        AcceptanceOperation.Copy => allowCopy,
+        AcceptanceOperation.Focus => allowInsert || allowCopy,
+        AcceptanceOperation.ClipboardControl => allowClipboardControl,
+        _ => false
+    };
+
     internal static NativeAcceptanceSession Create(AcceptanceFixture fixture, string selectedWindow,
         nint ownedPopupWindow, string guardianPath, string guardianDigest, DateTimeOffset expires,
-        bool allowInsert, bool allowCopy, Func<AcceptanceOperation, bool> permitted, bool allowClipboardControl = false)
+        bool allowInsert, bool allowCopy, Func<AcceptanceOperation, bool> permitted, bool allowClipboardControl = false, nint ownedMainWindow = 0)
     {
         RequireReviewed();
         if (expires <= DateTimeOffset.UtcNow || expires > DateTimeOffset.UtcNow.AddMinutes(2) ||
@@ -30,27 +40,25 @@ internal static class NativeAcceptanceFactory
         var closed = false;
         bool Permission(AcceptanceOperation operation) => !closed && Stopwatch.GetElapsedTime(started) < lifetime &&
             DateTimeOffset.UtcNow < expires && permitted(operation) &&
-            (operation is not (AcceptanceOperation.Insert or AcceptanceOperation.Input or AcceptanceOperation.Clipboard) || allowInsert) &&
-            (operation != AcceptanceOperation.Copy || allowCopy) &&
-            (operation != AcceptanceOperation.Focus || allowInsert || allowCopy) &&
-            (operation != AcceptanceOperation.Shortcut || allowInsert) &&
-            (operation != AcceptanceOperation.ClipboardControl || allowClipboardControl);
+            AllowsOperation(operation, allowInsert, allowCopy, allowClipboardControl);
         var owned = fixture.Lease.CreateProbe();
         try
         {
             var probe = new GuardedTargetProbe(owned, Permission);
-            var target = probe.Capture(selectedWindow);
+            var target = owned.Capture(selectedWindow);
             var popup = new NativeOwnedPopup(ownedPopupWindow);
+            NativeOwnedPopup? main = null;
             try
             {
-                var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy, allowClipboardControl);
+                main = ownedMainWindow == 0 ? null : new NativeOwnedPopup(ownedMainWindow);
+                var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy, allowClipboardControl, main);
                 var focus = new OwnedFocus(probe, target, ownedPopupWindow, popup,
                     () => Permission(AcceptanceOperation.Capture) || Permission(AcceptanceOperation.Copy) || Permission(AcceptanceOperation.Insert),
-                    () => Permission(AcceptanceOperation.Focus));
+                    () => Permission(AcceptanceOperation.Focus), ownedMainWindow, () => main?.PopupPinned == true);
                 return new(owned, probe, target, channel, new(probe, target, Permission, channel, new NativeAcceptanceInput(), focus),
-                    focus, popup, Permission, () => closed = true, popup.Dispose);
+                    focus, popup, Permission, () => closed = true, () => { try { main?.Dispose(); } finally { popup.Dispose(); } });
             }
-            catch { popup.Dispose(); throw; }
+            catch { try { main?.Dispose(); } finally { popup.Dispose(); } throw; }
         }
         catch { owned.Dispose(); throw; }
     }

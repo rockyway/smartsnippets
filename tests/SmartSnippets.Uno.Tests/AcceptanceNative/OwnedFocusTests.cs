@@ -70,6 +70,49 @@ public sealed class OwnedFocusTests
         Assert.Equal(0, os.FocusCalls);
     }
 
+    [Fact]
+    public async Task ExactPinnedMain_AllowsCopyAdmissionAndRestore_NotReusedMain()
+    {
+        var pinned = true;
+        var os = new FocusOs { Foreground = 40 };
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true, 40, () => pinned);
+        Assert.True(focus.ReadyForAdmission());
+        Assert.True(await focus.RestoreTargetAsync(default));
+        Assert.Equal(1, os.FocusCalls);
+        os.Foreground = 40; pinned = false;
+        Assert.False(focus.ReadyForAdmission());
+        Assert.False(await focus.RestoreTargetAsync(default));
+        Assert.Equal(1, os.FocusCalls);
+    }
+
+    [Fact]
+    public async Task TransientZero_PollsUntilOwnedForeground_BeforeAnyTransfer()
+    {
+        var os = new FocusOs { Foreground = 0 };
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true);
+        var restore = focus.RestoreTargetAsync(default);
+        Assert.False(restore.IsCompleted);
+        Assert.Equal(0, os.FocusCalls);
+        os.Foreground = Popup;
+        Assert.True(await restore);
+        Assert.Equal(1, os.FocusCalls);
+    }
+
+    [Fact]
+    public async Task PersistentZero_IsBoundedAndNeverFocuses_ForeignAfterZeroRefuses()
+    {
+        var os = new FocusOs { Foreground = 0 };
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.False(await focus.RestoreTargetAsync(default));
+        Assert.InRange(watch.ElapsedMilliseconds, 2900, 6000);
+        Assert.Equal(0, os.FocusCalls);
+        var restore = focus.RestoreTargetAsync(default);
+        os.Foreground = 999;
+        Assert.False(await restore);
+        Assert.Equal(0, os.FocusCalls);
+    }
+
     private sealed class Probe(FocusOs os) : ITargetProbe
     {
         public TargetCheck Check(InsertionTarget target) => target == A ? TargetCheck.Ok : TargetCheck.Closed;

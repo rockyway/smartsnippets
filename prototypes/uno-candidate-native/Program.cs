@@ -36,7 +36,7 @@ internal static class Program
     private static async Task<int> RunAsync(Process self, Stream commands, Stream responses, Guid run)
     {
         // Read a fixed-size bootstrap with a deadline. No arbitrary strings or PID attachment.
-        var bytes = new byte[16 + 16 + 16 + 24 + 8 + 3 + 128];
+        var bytes = new byte[16 + 16 + 16 + 24 + 24 + 8 + 8 + 3 + 128];
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             await commands.ReadExactlyAsync(bytes, deadline.Token);
         using var input = new BinaryReader(new MemoryStream(bytes), Encoding.UTF8);
@@ -47,6 +47,10 @@ internal static class Program
         var fixtureRun = new Guid(input.ReadBytes(16));
         var popup = (nint)input.ReadInt64();
         var popupMarker = new Guid(input.ReadBytes(16));
+        var popupThread = input.ReadUInt32();
+        var main = (nint)input.ReadInt64();
+        var mainMarker = new Guid(input.ReadBytes(16));
+        var mainThread = input.ReadUInt32();
         var expires = DateTimeOffset.FromUnixTimeMilliseconds(input.ReadInt64());
         var allowInsert = input.ReadBoolean(); var allowCopy = input.ReadBoolean(); var allowClipboardControl = input.ReadBoolean();
         var workerDigest = Encoding.ASCII.GetString(input.ReadBytes(64));
@@ -76,7 +80,8 @@ internal static class Program
             RetainedIdentity.Pinned(worker, workerImage) && RetainedIdentity.OutsideJob(self.SafeHandle) && owner.IsPinned() &&
             probe.Check(target) == TargetCheck.Ok && (copy
                 ? NativeOwnedPopup.QuietAllInput() && (probe.IsTargetForeground(target) ||
-                    NativeOwnedPopup.RemoteForegroundReady(popup, RetainedIdentity.Id(worker), popupMarker))
+                    NativeOwnedPopup.RemoteForegroundReady(popup, RetainedIdentity.Id(worker), popupMarker, popupThread) ||
+                    (main != 0 && NativeOwnedPopup.RemoteForegroundReady(main, RetainedIdentity.Id(worker), mainMarker, mainThread)))
                 : InputPreflight.QuietOwnedTarget(probe, target));
         bool ControlAdmitted() => leaseWatch.Elapsed < lifetime && DateTimeOffset.UtcNow < expires &&
             RetainedIdentity.Pinned(worker, workerImage) && RetainedIdentity.OutsideJob(self.SafeHandle) && owner.IsPinned() &&
@@ -124,10 +129,7 @@ internal static class Program
                 {
                     await recovery.WaitForConnectionAsync();
                     using var retry = new StreamReader(recovery, leaveOpen: true);
-                    var command = await FixedPipe.ReadAsync(retry, TimeSpan.FromSeconds(3), CancellationToken.None);
-                    if (command == "retry") status = clipboard.Restore();
-                    await FixedPipe.WriteAsync(recovery, clipboard.HasBackup ? "RECOVERY_PENDING " + status : "settled");
-                    return status;
+                    return await RecoveryPipeProtocol.RespondAsync(recovery, retry, status, clipboard.Restore, () => clipboard.HasBackup);
                 }
                 finally { try { recovery.Disconnect(); } catch (Exception) { } }
             });

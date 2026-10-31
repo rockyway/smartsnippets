@@ -41,7 +41,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     public long ByteCount { get; private set; }
 
     internal static GuardianClient Start(AcceptanceFixture fixture, InsertionTarget target, NativeOwnedPopup popup, string path,
-        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false)
+        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false, NativeOwnedPopup? main = null)
     {
         NativeAcceptanceFactory.RequireReviewed();
         using var self = Process.GetCurrentProcess();
@@ -82,6 +82,10 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
                 bootstrap.Write(fixture.Lease.Run.ToByteArray());
                 bootstrap.Write(popup.Window.ToInt64());
                 bootstrap.Write(popup.Marker.ToByteArray());
+                bootstrap.Write(popup.Thread);
+                bootstrap.Write(main?.Window.ToInt64() ?? 0L);
+                bootstrap.Write((main?.Marker ?? Guid.Empty).ToByteArray());
+                bootstrap.Write(main?.Thread ?? 0U);
                 bootstrap.Write(expires.ToUnixTimeMilliseconds());
                 bootstrap.Write(allowInsert); bootstrap.Write(allowCopy); bootstrap.Write(allowClipboardControl);
                 bootstrap.Write(Encoding.ASCII.GetBytes(workerImage.Digest));
@@ -95,13 +99,18 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
         catch
         {
             // No publish command has ever been issued on this path; no backup/mutation exists.
-            if (child is not null)
+            try
             {
-                if (!child.HasExited) child.Kill(entireProcessTree: false);
-                if (!child.WaitForExit(5000)) throw new InvalidOperationException("Prepublication guardian cleanup failed.");
-                child.Dispose();
+                if (child is not null)
+                {
+                    if (!child.HasExited) child.Kill(entireProcessTree: false);
+                    if (!child.WaitForExit(5000)) throw new InvalidOperationException("Prepublication guardian cleanup failed.");
+                }
             }
-            commands.Dispose(); responses.Dispose(); image.Dispose();
+            finally
+            {
+                child?.Dispose(); commands.Dispose(); responses.Dispose(); image.Dispose();
+            }
             throw;
         }
     }
@@ -155,6 +164,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
             catch (Exception) { return RestoreStatus.Failed; }
         }
     }
+    // The coordinator intentionally runs the exact same pinned candidate fixture image.
     public nint DuplicateGuardianHandle(SafeProcessHandle recipient)
     {
         using var self = Process.GetCurrentProcess();
