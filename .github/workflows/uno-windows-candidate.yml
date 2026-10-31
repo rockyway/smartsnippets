@@ -35,8 +35,8 @@ jobs:
       - name: Candidate composition tests (pinned SDK cwd)
         working-directory: src/SmartSnippets.Uno
         run: dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
-      - name: Candidate build gate negative controls
-        run: python -B -m unittest discover -s scripts/tests -p 'test_uno_candidate_gate.py' -q
+      - name: Candidate build and startup-observer negative controls (no native launch)
+        run: python -B -m unittest discover -s scripts/tests -p 'test_uno_candidate*.py' -q
       - name: Candidate fresh strict Native AOT gate
         shell: pwsh
         run: |

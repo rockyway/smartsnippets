@@ -256,10 +256,10 @@ See [research 031](../research/031-windows-uno-candidate-implementation.md) for 
 |---|---|---|
 | T0 candidate graph | Integrated Windows-only SDK/project/lock; parent fresh strict native artifact gate passes | Candidate source review and final compatibility audit |
 | T1 shared privacy | Shared fixes and diagnostic-preservation corrections; 436 Core / 615 Presentation tests, confirming review clear | Full candidate/native privacy evidence and final regression |
-| T2–T4 host and UI | Actual host/store/VM/lifecycle composition with 51 headless tests after review fixes; compiled management/popup views | Confirming source review; actual Windows UI/event/lifecycle/coexistence acceptance |
+| T2–T4 host and UI | Actual host/store/VM/lifecycle composition with 58 headless tests; compiled management/popup views; source reviews clear; one owned-window startup observation | Full initialization receipt absent before forced stop; management/UI-event/lifecycle/coexistence acceptance remains pending |
 | T5 clipboard/gate | Additive shared Copy result/availability and legacy source tests pass; candidate gate always denies | No candidate authorization/native adapter exists yet; guarded positive/expired/dispatch/recovery paths unimplemented/unaccepted |
-| T6 build-only CI | Additive workflow/scripts and 19 negative-control tests; gate source review clear; fresh local gate passes | Hosted CI and final integrated evidence |
-| T7–T8 | Named runbook and evidence boundaries retained | Native acceptance and final wiring/privacy audit; no completion or release claim |
+| T6 build-only CI | Additive workflow/scripts; 19 build-gate and 25 startup-observer tests; source reviews clear; fresh local gate passes | Hosted CI and final integrated evidence |
+| T7–T8 | Single reviewed startup-only trial: owned visible window in bottom-left work area; sampled foreground/epoch unchanged; forced stop, zero active job, new profile retained | `candidate_started` receipt absent: no full readiness/render/interaction or graceful-exit proof. Observer restored closed; do not repeat absent-profile trial against retained profile. Native acceptance/final audit remain open; no completion or release claim |
 
 ## 7. Test strategy
 
