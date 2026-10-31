@@ -2,6 +2,7 @@ using SmartSnippets.Core;
 using SmartSnippets.Core.Data;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.ViewModels;
 
 namespace SmartSnippets.Uno;
 
@@ -96,6 +97,7 @@ internal static class UiAssertDriver
 
     internal const string SavedText = "ui019 synthetic saved";
     internal const string DirtyText = "ui019 synthetic dirty";
+    internal const string DiscardText = "ui019 synthetic discarded";
 
     internal static void RequireFresh(UnoAppHost host)
     {
@@ -109,7 +111,7 @@ internal static class UiAssertDriver
             throw new InvalidOperationException("ui_new");
     }
 
-    internal static void RequireSaved(UnoAppHost host)
+    internal static long RequireSaved(UnoAppHost host)
     {
         if (host.Snippets.Editor is not { IsDirty: false, Text: SavedText }
             || host.Store.Snippets.Count != 1 || host.Store.Snippets.Single().Snippet.Text != SavedText)
@@ -119,13 +121,56 @@ internal static class UiAssertDriver
         if (host.Store.Snippets.Count != 1 || host.Store.Snippets.Single().Snippet.Text != SavedText
             || host.Store.Snippets.Single().Snippet.UsageCount != 0 || host.Store.Folders.Count != 0)
             throw new InvalidOperationException("ui_reload");
+        return host.Store.Snippets.Single().Snippet.Id;
     }
 
     internal static void RequireCancelled(UnoAppHost host)
     {
-        if (host.Snippets.Editor is not { IsDirty: true, Text: DirtyText }
-            || host.Store.Snippets.Count != 1 || host.Store.Snippets.Single().Snippet.Text != SavedText)
+        host.Store.Load();
+        if (host.Snippets.Editor is not { IsDirty: true, Text: DirtyText, IsNew: false } editor
+            || host.Store.Snippets.Count != 1 || host.Store.Snippets.Single().Snippet.Text != SavedText
+            || host.Store.Snippets.Single().Snippet.Id != editor.SnippetId
+            || host.Store.Snippets.Single().Snippet.UsageCount != 0)
             throw new InvalidOperationException("ui_cancel");
+    }
+
+    internal static void RequireDirtySaved(UnoAppHost host, long savedId)
+    {
+        RequireGuardedNewPersistence(host, savedId);
+        RequireCleanNewEditor(host);
+    }
+
+    internal static SnippetEditorViewModel RequireDiscardDirty(UnoAppHost host, long savedId)
+    {
+        RequireGuardedNewPersistence(host, savedId);
+        if (host.Snippets.Editor is not { IsDirty: true, IsNew: true, SnippetId: null, Text: DiscardText })
+            throw new InvalidOperationException("ui_discard_not_dirty");
+        return host.Snippets.Editor;
+    }
+
+    internal static void RequireDiscarded(UnoAppHost host, long savedId, SnippetEditorViewModel discardedEditor)
+    {
+        RequireGuardedNewPersistence(host, savedId);
+        RequireCleanNewEditor(host);
+        if (ReferenceEquals(host.Snippets.Editor, discardedEditor))
+            throw new InvalidOperationException("ui_discard_missing_new_transition");
+    }
+
+    private static void RequireCleanNewEditor(UnoAppHost host)
+    {
+        if (host.Snippets.Editor is not { IsDirty: false, IsNew: true, SnippetId: null, Text: "" })
+            throw new InvalidOperationException("ui_guarded_new_editor");
+    }
+
+    private static void RequireGuardedNewPersistence(UnoAppHost host, long savedId)
+    {
+        host.Store.Load();
+        if (host.Store.Snippets.Count != 1 || host.Store.Folders.Count != 0
+            || host.Store.Snippets.Single().Snippet.Id != savedId
+            || host.Store.Snippets.Single().Snippet.Text != DirtyText
+            || host.Store.Snippets.Single().Snippet.UsageCount != 0
+            || host.Store.Snippets.Single().Snippet.FolderId is not null || host.Gate.IsAvailable)
+            throw new InvalidOperationException("ui_guarded_new_persistence");
     }
 }
 

@@ -1,4 +1,5 @@
 using SmartSnippets.Core.Settings;
+using SmartSnippets.Presentation.Services;
 using SmartSnippets.Uno.Tests.Composition;
 
 namespace SmartSnippets.Uno.Tests.Acceptance;
@@ -69,6 +70,43 @@ public sealed class UiAssertDriverTests
         Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireSettingsReloaded(host, fixture.Root));
         Assert.Equal(TextSizePreset.Large, host.SettingsPage.SelectedTextSizePreset);
         Assert.Equal("Small", host.SettingsStore.Get(SettingsKeys.TextSizePreset));
+    }
+
+    [Fact]
+    public async Task DirtyNavigationAssertionsRequireSaveAndDiscardNewTransitionsWithoutExtraRecords()
+    {
+        using var fixture = new HostFixture(); await fixture.Start();
+        var host = fixture.Host;
+        // Headless real-VM setup only, never rendered callback evidence.
+        await host.Snippets.NewAsync();
+        host.Snippets.Editor!.Text = UiAssertDriver.SavedText;
+        Assert.True(await host.Snippets.Editor.SaveAsync());
+        var id = UiAssertDriver.RequireSaved(host);
+        host.Snippets.Editor.Text = UiAssertDriver.DirtyText;
+        fixture.Boundary.Dialogs.Choices.Enqueue(SaveChoice.Cancel);
+        Assert.False(await host.Snippets.NewAsync());
+        UiAssertDriver.RequireCancelled(host);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDirtySaved(host, id));
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDiscardDirty(host, id));
+        fixture.Boundary.Dialogs.Choices.Enqueue(SaveChoice.Save);
+        Assert.True(await host.Snippets.NewAsync());
+        UiAssertDriver.RequireDirtySaved(host, id);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDirtySaved(host, id + 1));
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDiscardDirty(host, id));
+        host.Snippets.Editor!.Text = UiAssertDriver.DiscardText;
+        var discardedEditor = UiAssertDriver.RequireDiscardDirty(host, id);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDiscarded(host, id, discardedEditor));
+        discardedEditor.ResetToSaved(); // Clean state alone is insufficient: actual New must replace it.
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDiscarded(host, id, discardedEditor));
+        discardedEditor.Text = UiAssertDriver.DiscardText;
+        fixture.Boundary.Dialogs.Choices.Enqueue(SaveChoice.Discard);
+        Assert.True(await host.Snippets.NewAsync());
+        UiAssertDriver.RequireDiscarded(host, id, discardedEditor);
+        Assert.NotSame(discardedEditor, host.Snippets.Editor);
+        Assert.Single(host.Store.Snippets);
+        Assert.Equal(UiAssertDriver.DirtyText, host.Store.Snippets.Single().Snippet.Text);
+        Assert.True(host.Store.RecordUsage(id).Success);
+        Assert.Throws<InvalidOperationException>(() => UiAssertDriver.RequireDiscarded(host, id, discardedEditor));
     }
 
     [Fact]

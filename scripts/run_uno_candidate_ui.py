@@ -40,7 +40,8 @@ def source_fingerprint():
 
 def scene_phases(scene):
     if scene == 'snippets':
-        return ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel')
+        return ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel',
+                'ui-dirty-saved', 'ui-discard-dirty', 'ui-discarded')
     if scene == 'folders':
         return ('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted')
     if scene == 'settings':
@@ -51,6 +52,13 @@ def scene_phases(scene):
 def validate_folder_actions(value):
     if value != b'invoke=5\nvalue=2\nfocus=2\n':
         raise ValueError('ui_folder_actions')
+
+
+def validate_snippet_actions(value):
+    allowed = tuple(f'invoke={8 + backs}\nvalue=3\nfocus=4\nback={backs}\n'.encode('ascii')
+                    for backs in range(3))
+    if value not in allowed:
+        raise ValueError('ui_snippet_actions')
 
 
 def validate_settings_actions(value):
@@ -237,6 +245,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             for phase in phases[:-1]:
                 if base.owned_bytes(private / (phase + '.continue'), private) != b'continue\n':
                     raise ValueError('ui_receipt')
+            if scene == 'snippets':
+                validate_snippet_actions(base.owned_bytes(private / 'ui-snippet-actions.receipt', private))
             if scene == 'folders':
                 validate_folder_actions(base.owned_bytes(private / 'ui-folder-actions.receipt', private))
             if scene == 'settings':
@@ -271,7 +281,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             # Extend the existing privacy scanner and its negative controls with this mode's canaries.
             privacy = startup.repo_module('ui_privacy', 'scripts/uno_candidate_privacy.py')
             canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', 'ui019 synthetic folder',
-                        'ui019 synthetic renamed', 'ui019 synthetic attached', str(private))
+                        'ui019 synthetic renamed', 'ui019 synthetic attached', 'ui019 synthetic discarded', str(private))
             privacy.verify_negative_controls(canaries)
             records = [base.owned_bytes(p, private) for p in
                        (private / 'stdout.log', private / 'stderr.log', private / 'fixture-profile/logs/app.log',
@@ -351,7 +361,8 @@ def main():
             'settingsReload': 'REPOSITORY_READ' if args.scene == 'settings' else 'NOT_RUN',
             'settingsRelaunch': 'NOT_RUN',
             'folderSnippetAssignment': 'FIXTURE_SEED_ONLY' if args.scene == 'folders' else 'NOT_RUN',
-            'rowSelection': 'NOT_RUN', 'dirtySaveDiscard': 'NOT_RUN', 'filePicker': 'NOT_RUN',
+            'rowSelection': 'NOT_RUN', 'dirtySaveDiscard': 'OBSERVED' if args.scene == 'snippets' else 'NOT_RUN',
+            'filePicker': 'NOT_RUN',
             'nativeAdapters': 'DEFAULT_DENIED', 'stop': 'GRACEFUL', 'job': 'ZERO_ACTIVE',
             'privateEvidenceToken': private.name, 'sourceSha256': source_fingerprint()}
 

@@ -24,7 +24,8 @@ class UiManagementTests(unittest.TestCase):
     def test_fixed_scenes_and_exact_completed_action_receipt(self):
         self.assertEqual(('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted'),
                          s.scene_phases('folders'))
-        self.assertEqual('ui-cancel', s.scene_phases('snippets')[-1])
+        self.assertEqual(('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel', 'ui-dirty-saved',
+                          'ui-discard-dirty', 'ui-discarded'), s.scene_phases('snippets'))
         self.assertEqual(('ui-ready', 'ui-settings-theme', 'ui-settings-size', 'ui-settings-reloaded'),
                          s.scene_phases('settings'))
         for value in ('', '../folders', 'Folders', 'Settings'):
@@ -80,6 +81,28 @@ class UiManagementTests(unittest.TestCase):
         self.assertNotIn('.Save(', settings)
         self.assertNotIn('SelectedTheme =', settings)
         self.assertIn('new SettingsRepository(new SqliteConnectionFactory(database))', settings)
+
+    def test_snippet_action_receipts_count_fixed_dialog_actions_and_responsive_back_only(self):
+        for backs in range(3):
+            s.validate_snippet_actions(f'invoke={8 + backs}\nvalue=3\nfocus=4\nback={backs}\n'.encode())
+        for value in (b'', b'invoke=8\nvalue=2\nfocus=4\nback=0\n',
+                      b'invoke=8\nvalue=3\nfocus=4\nback=1\n',
+                      b'invoke=11\nvalue=3\nfocus=4\nback=3\n',
+                      b'invoke=8\nvalue=3\nfocus=4\nback=0\nextra'):
+            with self.assertRaisesRegex(ValueError, 'ui_snippet_actions'):
+                s.validate_snippet_actions(value)
+
+    def test_dirty_dialog_buttons_have_exact_names_template_ids_and_types(self):
+        source = s.HELPER.read_text()
+        for name, identity in (('Keep editing', 'CloseButton'), ('Save', 'PrimaryButton'), ('Discard', 'SecondaryButton')):
+            self.assertIn(f"$name='{name}'; $id='{identity}'; $type=[Windows.Automation.ControlType]::Button", source)
+        self.assertEqual(3, source.count('        RequestSnippetNew') + source.count("; RequestSnippetNew"))
+        driver = (s.REPO / 'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs').read_text()
+        assertions = driver.split('internal static void RequireCancelled', 1)[1].split('/// <summary>Explicit fixture setup', 1)[0]
+        for forbidden in ('.SaveAsync(', '.CreateSnippet(', '.UpdateSnippet(', '.ResetToSaved(', '.NewAsync('):
+            self.assertNotIn(forbidden, assertions)
+        self.assertIn('ReferenceEquals(host.Snippets.Editor, discardedEditor)', assertions)
+        self.assertIn('host.Store.Load()', assertions)
 
     def test_slot_required_even_after_source_review(self):
         with patch.object(s, 'UI_SOURCE_REVIEWED', True), patch.object(s.sys, 'platform', 'win32'):
@@ -217,8 +240,10 @@ class UiManagementTests(unittest.TestCase):
 
     def test_final_ack_is_not_written_by_uia_helper(self):
         source = s.HELPER.read_text()
-        self.assertNotIn("Ack 'ui-cancel'", source)
-        self.assertIn("WaitPhase 'ui-cancel'; Guard", source)
+        self.assertNotIn("Ack 'ui-discarded'", source)
+        self.assertIn("WaitPhase 'ui-discarded'; Guard", source)
+        self.assertIn("Ack 'ui-cancel'", source)
+        self.assertIn("Ack 'ui-discard-dirty'", source)
 
     def test_helper_exact_allowlist_and_no_foreign_discovery_or_input_synthesis(self):
         source=s.HELPER.read_text()

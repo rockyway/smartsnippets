@@ -53,14 +53,17 @@ public partial class App : Application
                 Program.Receipt("ui-ready"); await Program.WaitAsync("ui-ready");
                 UiAssertDriver.RequireNew(_host);
                 Program.Receipt("ui-new"); await Program.WaitAsync("ui-new");
-                UiAssertDriver.RequireSaved(_host);
+                var savedId = UiAssertDriver.RequireSaved(_host);
                 Program.Receipt("ui-saved"); await Program.WaitAsync("ui-saved");
                 UiAssertDriver.RequireCancelled(_host);
                 Program.Receipt("ui-cancel"); await Program.WaitAsync("ui-cancel");
-                // Cancellation deliberately leaves a dirty editor. Disposing the host is cleanup,
-                // not a second navigation/exit confirmation callback under test.
-                _host.Dispose();
-                _boundary.Exit();
+                UiAssertDriver.RequireDirtySaved(_host, savedId);
+                Program.Receipt("ui-dirty-saved"); await Program.WaitAsync("ui-dirty-saved");
+                var discardedEditor = UiAssertDriver.RequireDiscardDirty(_host, savedId);
+                Program.Receipt("ui-discard-dirty"); await Program.WaitAsync("ui-discard-dirty");
+                UiAssertDriver.RequireDiscarded(_host, savedId, discardedEditor);
+                Program.Receipt("ui-discarded"); await Program.WaitAsync("ui-discarded");
+                await _host.ExitAsync();
                 return;
             }
             Program.Receipt("ready"); await Program.WaitAsync("ready");

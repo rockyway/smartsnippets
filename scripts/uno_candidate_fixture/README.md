@@ -102,7 +102,8 @@ execution gates remain false. **All visible tests remain PAUSED pending operator
 remaining-monitor authorization and independent review.** No scene was executed
 for this checkpoint.
 
-The default snippets scene retains New/edit/save/dirty-leave/Keep-editing checks.
+The default snippets scene retains New/edit/save/dirty-leave/Keep-editing checks
+and now continues through the fixed Save/Discard dirty-navigation flow below.
 The folders scene additionally requires the test-only
 `fixture-folder-scene-permit` containing exactly `owned_folder_ui_019\n`; it cannot
 be selected by the production executable. Initial fixture navigation is Folders.
@@ -176,3 +177,38 @@ and consolidated independent review. Headless VM setup in assertion unit tests i
 not native/rendered evidence. Repository reload is **not process relaunch**, visual
 pixel/theme comparison or proof of the custom-size/palette/System/Light paths.
 File pickers and dirty-folder dialogs are not part of this settings batch.
+
+## Fixed snippets dirty-navigation continuation (review closed)
+
+The existing snippets scene/permit now continues after Keep editing; folders and
+settings scenes are unchanged. No additional selectors or payload arguments are
+accepted. All visible execution remains PAUSED pending remaining-monitor
+confirmation; source gates remain false.
+
+| Phase | Required rendered action / read-only fixture check |
+|---|---|
+| ui-cancel | Keep editing via exact Button name + CloseButton id; reload retains the dirty existing editor and original saved text/zero usage |
+| ui-dirty-saved | New requests the real dirty guard; Save via exact Button name + PrimaryButton id; original snippet id now persists the dirty text, count remains 1, actual New yields a clean blank unsaved editor |
+| ui-discard-dirty | Set fixed discarded text in the new editor; reload verifies it is dirty/new while the single persisted record still contains the previous saved dirty text |
+| ui-discarded | Another actual New request; Discard via exact Button name + SecondaryButton id; reload verifies unchanged persisted id/text/count/zero usage and a distinct clean blank new editor |
+
+Each dialog action is uniquely enabled/onscreen beneath the retained owned main
+HWND. The fixed responsive New request invokes only the visible New button, or
+Back-to-list followed by New; Back is presentation only, never a replacement for
+the guarded New command. There are three guarded requests: Cancel, Save, Discard.
+No action retries, direct VM/store mutation in the assertion driver, file pickers
+or dirty-folder dialog paths are added.
+
+The final content-free action receipt requires 8 InvokePattern calls plus the
+actual 0–2 responsive Back invocations, 3 SetValue calls and 4 SetFocus calls;
+the observer rejects missing, extra or inconsistent counts. The final shutdown
+acknowledgment is now **ui-discarded**, never written by the helper: observer
+verification of every phase/action receipt and helper exit still precedes it.
+The host then uses real ExitAsync with a clean new editor. Immutable input epoch,
+clipboard/foreground/owned geometry checks and monotonic shutdown remain intact.
+The discarded text is included in privacy canaries and planted negative controls.
+
+Headless tests exercise assertion rejection and real VM Save/Discard semantics,
+not rendered callback proof. No native run has verified these new dialog template
+identities or the responsive path. Save failure and folder dirty dialogs remain
+unproven, as do file pickers and the other outstanding Plan019 acceptance paths.

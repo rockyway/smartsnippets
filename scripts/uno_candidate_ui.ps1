@@ -39,7 +39,7 @@ public static class Owned019 {
     if ([Owned019]::Epoch() -ne $epoch) { throw 'input' }
     $focused = $false
     $script:invokes = 0; $script:values = 0; $script:focuses = 0
-    $script:scrolls = 0; $script:selections = 0
+    $script:scrolls = 0; $script:selections = 0; $script:backs = 0
     $clipboardSequence = [Owned019]::GetClipboardSequenceNumber()
     if ($clipboardSequence -eq 0) { throw 'clipboard' }
     $ownedProcess = [Diagnostics.Process]::GetProcessById($OwnedPid)
@@ -96,7 +96,9 @@ public static class Owned019 {
             'new' { $name='New snippet'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             'text' { $name='Snippet text'; $id='SnippetTextBox'; $type=[Windows.Automation.ControlType]::Edit }
             'save' { $name='Save snippet'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
-            'cancel' { $name='Keep editing'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'cancel' { $name='Keep editing'; $id='CloseButton'; $type=[Windows.Automation.ControlType]::Button }
+            'dirty-save' { $name='Save'; $id='PrimaryButton'; $type=[Windows.Automation.ControlType]::Button }
+            'dirty-discard' { $name='Discard'; $id='SecondaryButton'; $type=[Windows.Automation.ControlType]::Button }
             'leave' { $name=$null; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             default { throw 'schema' }
         }
@@ -196,6 +198,15 @@ public static class Owned019 {
         ([Windows.Automation.InvokePattern]$e.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
         $script:invokes++
     }
+    function RequestSnippetNew {
+        # Responsive path only: Back changes presentation, then actual New runs the dirty guard.
+        $leave = Find 'leave'
+        $backToList = $leave.Current.Name -ceq 'Back to list'
+        Guard
+        ([Windows.Automation.InvokePattern]$leave.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        $script:invokes++
+        if ($backToList) { $script:backs++; Invoke 'new' }
+    }
     function Value([string]$value, [string]$key = 'text') {
         $e = Find $key
         Guard
@@ -263,7 +274,7 @@ public static class Owned019 {
         } finally { $file.Dispose() }
     } else {
         # Focus only this retained owned window before invoking callbacks.
-        $e=Find 'new'; Guard; $e.SetFocus(); $script:focused=$true; Guard
+        $e=Find 'new'; Guard; $e.SetFocus(); $script:focused=$true; $script:focuses++; Guard
         $stage = 'new'; Invoke 'new'; Start-Sleep -Milliseconds 400; Ack 'ui-ready'
         WaitPhase 'ui-new'
         $stage = 'edit_saved'; Value 'ui019 synthetic saved'
@@ -271,16 +282,25 @@ public static class Owned019 {
         WaitPhase 'ui-saved'
         $stage = 'edit_dirty'; Value 'ui019 synthetic dirty'
         $stage = 'dirty_leave'
-        $leave = Find 'leave'
-        $backToList = $leave.Current.Name -ceq 'Back to list'
-        Guard
-        ([Windows.Automation.InvokePattern]$leave.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
-        # Back changes only the narrow presentation, retaining the dirty editor. New then runs its real guard.
-        if ($backToList) { Invoke 'new' }
+        RequestSnippetNew
         Start-Sleep -Milliseconds 400
         $stage = 'cancel'; Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
-        # The observer acknowledges final shutdown only after this helper exits successfully.
-        $stage = 'finish'; WaitPhase 'ui-cancel'; Guard
+        WaitPhase 'ui-cancel'; Guard
+        $stage = 'dirty_save_leave'; RequestSnippetNew
+        $stage = 'dirty_save'; Invoke 'dirty-save'; Start-Sleep -Milliseconds 700; Ack 'ui-cancel'
+        WaitPhase 'ui-dirty-saved'
+        $stage = 'discard_edit'; Value 'ui019 synthetic discarded'; Ack 'ui-dirty-saved'
+        WaitPhase 'ui-discard-dirty'
+        $stage = 'dirty_discard_leave'; RequestSnippetNew
+        $stage = 'dirty_discard'; Invoke 'dirty-discard'; Start-Sleep -Milliseconds 400; Ack 'ui-discard-dirty'
+        # The observer acknowledges final shutdown only after every callback and helper exit.
+        $stage = 'finish'; WaitPhase 'ui-discarded'; Guard
+        if ($script:backs -gt 2 -or $script:invokes -ne (8 + $script:backs) -or $script:values -ne 3 -or $script:focuses -ne 4) { throw 'actions' }
+        $file = [IO.File]::Open((Join-Path $root 'ui-snippet-actions.receipt'), [IO.FileMode]::CreateNew)
+        try {
+            $bytes = [Text.Encoding]::ASCII.GetBytes("invoke=$script:invokes`nvalue=$script:values`nfocus=$script:focuses`nback=$script:backs`n")
+            $file.Write($bytes,0,$bytes.Length)
+        } finally { $file.Dispose() }
     }
     [Console]::Out.WriteLine('ui_callbacks_observed')
 } catch {
