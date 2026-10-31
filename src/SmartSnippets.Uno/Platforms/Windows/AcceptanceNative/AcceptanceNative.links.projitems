@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <_AcceptanceIdentityRoot>$(MSBuildThisFileDirectory)..\..\..\..\..\prototypes\uno-native-target\identity\</_AcceptanceIdentityRoot>
+    <_AcceptanceInsertionRoot>$(MSBuildThisFileDirectory)..\..\..\..\..\prototypes\uno-native-target\windows-insertion\</_AcceptanceInsertionRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Retained direct-child provenance and exact A/B HWND/class/editor checks, unchanged. -->
+    <Compile Include="$(_AcceptanceIdentityRoot)ChildProtocol.cs;$(_AcceptanceIdentityRoot)NativeChild.cs;$(_AcceptanceIdentityRoot)OwnedFixtureLease.cs;$(_AcceptanceIdentityRoot)OwnedTargetProbe.cs;$(_AcceptanceIdentityRoot)TargetArtifact.cs;$(_AcceptanceIdentityRoot)WindowsWindowIdentity.cs;$(_AcceptanceIdentityRoot)MacWindowIdentity.cs" Link="AcceptanceIdentity/%(Filename)%(Extension)" />
+    <!-- Fixed synthetic publication, bounded protocol and read-only desktop/input preflight, unchanged. -->
+    <Compile Include="$(_AcceptanceInsertionRoot)FixedPipe.cs;$(_AcceptanceInsertionRoot)InputPreflight.cs;$(_AcceptanceInsertionRoot)OwnClipboardPublication.cs;$(_AcceptanceInsertionRoot)ClipboardOwnershipPolicy.cs" Link="AcceptancePrerequisites/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
