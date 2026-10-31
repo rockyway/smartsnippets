@@ -1,4 +1,4 @@
-"""Explicitly authorized bounded GUI startup only; no clipboard, hotkeys or input.
+"""Authorized bounded owned-window scenes; optional guarded mouse/Enter, no clipboard writes.
 
 Observes a visible top-level window owned by the exact started PID. Never reads
 window titles or screen pixels. Stops only the subprocess handle it created.
@@ -8,6 +8,7 @@ import csv
 import ctypes
 import hashlib
 import io
+import json
 import plistlib
 import shutil
 from pathlib import Path
@@ -49,6 +50,23 @@ COORDINATOR_RECEIPTS = [
 ]
 
 
+PREVIEW_RECEIPTS = [
+    "ui_preview_started",
+    "ui_preview_layout_ready",
+    "ui_preview_ready_show",
+    "ui_preview_focus_applied",
+    "ui_preview_native_enter_requested",
+    "ui_preview_enter_routed",
+    "ui_preview_no_dispatch_or_usage clipboard_epoch=UNCHANGED forbidden_calls=0",
+    "ui_preview_profile_removed",
+    "ui_preview_complete native_enter=1 insertion_calls=0 clipboard_writes=0 usage=0",
+]
+
+
+def preview_completed(stdout, stderr, code):
+    return code == 0 and not stderr.strip() and stdout.splitlines() == PREVIEW_RECEIPTS
+
+
 def coordinator_completed(stdout, stderr, code):
     return code == 0 and not stderr.strip() and stdout.splitlines() == COORDINATOR_RECEIPTS
 
@@ -57,7 +75,7 @@ def lifecycle_completed(stdout, stderr, code):
     return code == 0 and not stderr.strip() and stdout.splitlines() == LIFECYCLE_RECEIPTS
 
 
-def visible_windows(pid):
+def visible_windows(pid, *, identities=False):
     if sys.platform == "win32":
         from ctypes import wintypes
         user = ctypes.WinDLL("user32", use_last_error=True)
@@ -68,18 +86,17 @@ def visible_windows(pid):
         user.IsWindowVisible.restype = wintypes.BOOL
         user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
         user.GetWindowThreadProcessId.restype = wintypes.DWORD
-        count = 0
+        found = []
         def visit(hwnd, parameter):
-            nonlocal count
             owner = wintypes.DWORD()
             valid = user.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
             if valid and owner.value == pid and user.IsWindowVisible(hwnd):
-                count += 1
+                found.append(int(hwnd))
             return True
         callback = callback_type(visit)
         if not user.EnumWindows(callback, 0):
             raise ValueError("Window enumeration failed")
-        return count
+        return sorted(found) if identities else len(found)
     if sys.platform != "darwin":
         raise ValueError("Unsupported UI host")
     cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
@@ -99,14 +116,14 @@ def visible_windows(pid):
     cf.CFRelease.restype = None
     cg.CGWindowListCopyWindowInfo.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
     cg.CGWindowListCopyWindowInfo.restype = pointer
-    keys = [cf.CFStringCreateWithCString(None, name, 0x08000100)
-            for name in (b"kCGWindowOwnerPID", b"kCGWindowLayer")]
+    names = (b"kCGWindowOwnerPID", b"kCGWindowLayer") + ((b"kCGWindowNumber",) if identities else ())
+    keys = [cf.CFStringCreateWithCString(None, name, 0x08000100) for name in names]
     windows = None
     try:
         windows = cg.CGWindowListCopyWindowInfo(1 | 16, 0)
         if not windows or not all(keys):
             raise ValueError("Window enumeration unavailable")
-        count = 0
+        found = []
         for index in range(cf.CFArrayGetCount(windows)):
             item = cf.CFArrayGetValueAtIndex(windows, index)
             values = []
@@ -115,9 +132,11 @@ def visible_windows(pid):
                 value = ctypes.c_int64()
                 valid = number and cf.CFNumberGetValue(number, 4, ctypes.byref(value))
                 values.append(value.value if valid else None)
-            if values == [pid, 0]:
-                count += 1
-        return count
+            if values[:2] == [pid, 0]:
+                if identities and (values[2] is None or values[2] <= 0):
+                    raise ValueError("Window identity unavailable")
+                found.append(values[2] if identities else 0)
+        return sorted(found) if identities else len(found)
     finally:
         if windows:
             cf.CFRelease(windows)
@@ -172,7 +191,9 @@ def main():
     scene = parser.add_mutually_exclusive_group()
     scene.add_argument("--lifecycle", action="store_true", help="Require real-host lifecycle receipts and graceful exit")
     scene.add_argument("--coordinator", action="store_true", help="Require cloaked native warmup and coordinator-only focus")
+    scene.add_argument("--preview", action="store_true", help="Require native Enter through the actual preview view-model")
     args = parser.parse_args()
+    interactive = args.coordinator or args.preview
     if not args.authorized_screen_slot or sys.platform not in ("win32", "darwin"):
         raise ValueError("An authorized Windows or macOS screen slot is required")
     entry = args.executable.resolve(strict=True)
@@ -194,21 +215,23 @@ def main():
     private = private_directory()
     process = None
     observed = False
-    preparation_ok = not args.coordinator
+    preparation_ok = not interactive
     recovery_ok = True
     recovery_required = False
     code = None
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
             arguments = [str(entry), "--authorized-probe-ui"]
-            if args.coordinator:
+            if args.preview:
+                arguments.append("--probe-ui-preview")
+            elif args.coordinator:
                 arguments.append("--probe-ui-coordinator")
             elif args.lifecycle:
                 arguments.append("--probe-ui-lifecycle")
             process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
-                                       cwd=entry.parent, stdin=subprocess.PIPE if args.coordinator else subprocess.DEVNULL)
-            deadline = time.monotonic() + (45 if args.coordinator else 30 if args.lifecycle else 15)
-            observe_deadline = min(deadline, time.monotonic() + 10) if args.coordinator else deadline
+                                       cwd=entry.parent, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL)
+            deadline = time.monotonic() + (45 if interactive else 30 if args.lifecycle else 15)
+            observe_deadline = min(deadline, time.monotonic() + 10) if interactive else deadline
             while time.monotonic() < observe_deadline:
                 code = process.poll()
                 if code is not None:
@@ -226,7 +249,7 @@ def main():
                     raise ValueError("Window observer failed")
                 if int(helper.stdout.strip()) > 0:
                     observed = True
-                    if args.coordinator:
+                    if interactive:
                         preparation_budget = min(20.0, deadline - time.monotonic() - 8)
                         if preparation_budget <= 0:
                             break
@@ -249,7 +272,7 @@ def main():
                         except OSError:
                             break
                         preparation_ok = True
-                    if args.lifecycle or args.coordinator:
+                    if args.lifecycle or interactive:
                         try:
                             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
@@ -261,7 +284,7 @@ def main():
         finally:
             if process is not None:
                 try:
-                    if args.coordinator and sys.platform == "win32" and (private / "focus.json").exists():
+                    if interactive and sys.platform == "win32" and (private / "focus.json").exists():
                         recovery_required = True
                         recovery_ok = replay_mouse_journal(private, process.pid, entry, args.sha256)
                 finally:
@@ -277,7 +300,7 @@ def main():
                             process.kill()
                             process.wait(timeout=3)
                         raise
-    interaction = "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
+    interaction = ("GUARDED_MOUSE_AND_OWNED_ENTER" if sys.platform == "win32" else "OWNED_PID_ENTER") if args.preview else "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
     print("ui_smoke_window=" + ("OBSERVED" if observed else "NOT_OBSERVED") +
           " owned_process_stopped=true clipboard=UNTOUCHED input=" + interaction)
     print("private_evidence_token=" + private.name)
@@ -286,12 +309,12 @@ def main():
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
-    if args.lifecycle or args.coordinator:
-        validate = coordinator_completed if args.coordinator else lifecycle_completed
+    if args.lifecycle or interactive:
+        validate = preview_completed if args.preview else coordinator_completed if args.coordinator else lifecycle_completed
         completed = observed and preparation_ok and recovery_ok and validate(
             (private / "stdout.log").read_text(errors="replace"),
             (private / "stderr.log").read_text(errors="replace"), code)
-        print(("ui_coordinator_result=" if args.coordinator else "ui_lifecycle_result=") + ("PASS" if completed else "FAIL") +
+        print(("ui_preview_result=" if args.preview else "ui_coordinator_result=" if args.coordinator else "ui_lifecycle_result=") + ("PASS" if completed else "FAIL") +
               " graceful_exit=" + str(bool(completed)).lower())
         return 0 if completed else 1
     return 0 if observed else 1
@@ -299,10 +322,10 @@ def main():
 
 if __name__ == "__main__":
     try:
-        if len(sys.argv) == 3 and sys.argv[1] == "--window-count" and sys.argv[2].isdigit():
-            print(visible_windows(int(sys.argv[2])))
+        if len(sys.argv) == 3 and sys.argv[1] in ("--window-count", "--window-ids") and sys.argv[2].isdigit():
+            print(json.dumps(visible_windows(int(sys.argv[2]), identities=sys.argv[1] == "--window-ids")))
             sys.exit(0)
         sys.exit(main())
     except (OSError, ValueError, subprocess.SubprocessError):
-        print("UI smoke failed; inspect private evidence. No input was requested.", file=sys.stderr)
+        print("UI smoke failed; inspect private evidence and recovery receipts.", file=sys.stderr)
         sys.exit(1)

@@ -13,8 +13,8 @@ internal static class Program
         if (args.Length == 1 && args[0] == "--probe-native-capabilities") return MacCapabilityProbe.Run();
         // Guard before constructing a native host. This probe has no implicit GUI mode.
         if (!args.Contains("--authorized-probe-ui", StringComparer.Ordinal)) return 0;
-        if (args.Contains("--probe-ui-lifecycle", StringComparer.Ordinal) &&
-            args.Contains("--probe-ui-coordinator", StringComparer.Ordinal)) return 2;
+        if (new[] { "--probe-ui-lifecycle", "--probe-ui-coordinator", "--probe-ui-preview" }
+            .Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1) return 2;
 
         if (!OperatingSystem.IsMacOS())
             throw new PlatformNotSupportedException("The desktop probe target is macOS only.");
@@ -24,6 +24,7 @@ internal static class Program
             .UseMacOS()
             .Build()
             .Run();
+        if (args.Contains("--probe-ui-preview", StringComparer.Ordinal)) return PreviewProbe.ExitCode;
         if (args.Contains("--probe-ui-coordinator", StringComparer.Ordinal)) return CoordinatedPopupProbe.ExitCode;
         return args.Contains("--probe-ui-lifecycle", StringComparer.Ordinal) ? LifecycleProbe.ExitCode : 0;
     }

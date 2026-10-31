@@ -11,6 +11,7 @@ guard arguments.count == 3,
 @MainActor
 final class FixtureDelegate: NSObject, NSApplicationDelegate {
     private var windows: [NSWindow] = []
+    private var editors: [NSTextView] = []
     private let runID: UUID
 
     init(runID: UUID) {
@@ -63,9 +64,40 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate {
             window.contentView = scroll
             window.makeFirstResponder(editor)
             windows.append(window)
+            editors.append(editor)
             window.orderFront(nil) // Do not activate the target application during launch.
         }
         print("target_ready pid=\(ProcessInfo.processInfo.processIdentifier) a=\(windows[0].windowNumber) b=\(windows[1].windowNumber)")
+        fflush(nil)
+        startCommands()
+    }
+
+    private func startCommands() {
+        // Only stdin is read off-thread. All AppKit state remains main-actor-only.
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            while let command = readLine() {
+                guard ["close_a", "close_b", "empty_a", "empty_b"].contains(command) else {
+                    FileHandle.standardError.write(Data("target_command_refused\n".utf8))
+                    continue
+                }
+                DispatchQueue.main.async { [weak self] in self?.executeCommand(command) }
+            }
+        }
+    }
+
+    private func executeCommand(_ command: String) {
+        let index = command.hasSuffix("_a") ? 0 : 1
+        let window = windows[index]
+        var ok = window.isVisible
+        if ok {
+            if command.hasPrefix("close_") {
+                window.close()
+                ok = !window.isVisible
+            } else {
+                ok = editors[index].string.isEmpty // Never return editor content.
+            }
+        }
+        print("target_command name=\(command) ok=\(ok ? 1 : 0)")
         fflush(nil)
     }
 

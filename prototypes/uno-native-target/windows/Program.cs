@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -8,6 +10,8 @@ internal static unsafe partial class Program
 {
     private const int EditorId = 101;
     private static int _closed;
+    private const uint CommandMessage = 0x8001;
+    private static readonly ConcurrentQueue<string> Commands = new();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { public int Left, Top, Right, Bottom; }
@@ -78,11 +82,18 @@ internal static unsafe partial class Program
                 VerifyOwner(a); VerifyOwner(b); VerifyOwner(editA); VerifyOwner(editB);
                 Console.WriteLine($"target_ready pid={Environment.ProcessId} a={(nuint)a} b={(nuint)b} edit_a={(nuint)editA} edit_b={(nuint)editB}");
                 Console.Out.Flush();
+                var thread = GetCurrentThreadId();
+                _ = Task.Run(() => ReadCommands(thread));
                 while (true)
                 {
                     var result = GetMessageW(out var message, 0, 0, 0);
                     Require(result >= 0);
                     if (result == 0) break;
+                    if (message.Window == 0 && message.Id == CommandMessage)
+                    {
+                        while (Commands.TryDequeue(out var command)) ExecuteCommand(command, a, b, editA, editB);
+                        continue;
+                    }
                     _ = TranslateMessage(ref message);
                     _ = DispatchMessageW(ref message);
                 }
@@ -95,6 +106,43 @@ internal static unsafe partial class Program
                 _ = UnregisterClassW(name, instance);
             }
         }
+    }
+
+    private static void ReadCommands(uint thread)
+    {
+        // The harness owns stdin. EOF is not a shutdown request (startup-only
+        // smoke uses DEVNULL); never touch UI/native windows on this worker.
+        try
+        {
+            while (Console.In.ReadLine() is { } command)
+            {
+                if (command is not ("close_a" or "close_b" or "empty_a" or "empty_b"))
+                {
+                    Console.Error.WriteLine("target_command_refused");
+                    continue;
+                }
+                Commands.Enqueue(command);
+                if (PostThreadMessageW(thread, CommandMessage, 0, 0) == 0) return;
+            }
+        }
+        catch (Exception error) { Console.Error.WriteLine("target_reader_failed kind=" + error.GetType().Name); }
+    }
+
+    private static void ExecuteCommand(string command, nint a, nint b, nint editA, nint editB)
+    {
+        var window = command.EndsWith("_a", StringComparison.Ordinal) ? a : b;
+        var editor = window == a ? editA : editB;
+        var ok = IsWindow(window) != 0;
+        if (ok)
+        {
+            VerifyOwner(window); VerifyOwner(editor);
+            if (command.StartsWith("close_", StringComparison.Ordinal))
+                ok = DestroyWindow(window) != 0 && IsWindow(window) == 0;
+            else
+                ok = SendMessageW(editor, 0x000E, 0, 0) == 0; // WM_GETTEXTLENGTH; no text leaves the target.
+        }
+        Console.WriteLine($"target_command name={command} ok={(ok ? 1 : 0)}");
+        Console.Out.Flush();
     }
 
     private static nint CreateTarget(string name, string title, int x, int y, nint instance, Rect area)
@@ -161,6 +209,10 @@ internal static unsafe partial class Program
     private static void VerifyOwner(nint window) => Require(GetWindowThreadProcessId(window, out var pid) != 0 && pid == (uint)Environment.ProcessId);
     private static void Require(bool condition) { if (!condition) throw new InvalidOperationException("Owned target setup failed."); }
 
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetCurrentThreadId();
+    [LibraryImport("user32.dll")]
+    private static partial int PostThreadMessageW(uint thread, uint message, nuint wParam, nint lParam);
     [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial nint GetModuleHandleW(string? name);
     [LibraryImport("user32.dll")]

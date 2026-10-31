@@ -39,7 +39,7 @@ class UiSmokeTests(unittest.TestCase):
         self.private = self.base / "private"
         self.private.mkdir()
 
-    def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None, coordinator=False):
+    def invoke(self, *, authorize=True, helper=None, interrupt_wait=False, lifecycle=None, coordinator=False, preview=False):
         process = Mock(pid=12345)
         process.poll.return_value = None
         process.wait.return_value = 0
@@ -48,7 +48,7 @@ class UiSmokeTests(unittest.TestCase):
         output = io.StringIO()
         args = self.args + (["--authorized-screen-slot"] if authorize else [])
         if lifecycle:
-            args.append("--coordinator" if coordinator else "--lifecycle")
+            args.append("--preview" if preview else "--coordinator" if coordinator else "--lifecycle")
             if lifecycle == "success":
                 process.poll.side_effect = [None, 0, 0]
             else:
@@ -56,12 +56,12 @@ class UiSmokeTests(unittest.TestCase):
 
         def start(arguments, **kwargs):
             if lifecycle:
-                receipts = smoke.COORDINATOR_RECEIPTS if coordinator else smoke.LIFECYCLE_RECEIPTS
+                receipts = smoke.PREVIEW_RECEIPTS if preview else smoke.COORDINATOR_RECEIPTS if coordinator else smoke.LIFECYCLE_RECEIPTS
                 kwargs["stdout"].write(("\n".join(receipts) + "\n").encode())
                 kwargs["stdout"].flush()
             return process
         results = helper or [subprocess.CompletedProcess([], 0, "1\n", "")]
-        if coordinator and helper is None:
+        if (coordinator or preview) and helper is None:
             results.append(subprocess.CompletedProcess([], 0, "owned_focus_prepared\n", ""))
         with patch.object(sys, "argv", args), patch.object(smoke, "BASE", self.base), \
              patch.object(smoke, "inspect_executable", return_value=[]), \
@@ -117,6 +117,38 @@ class UiSmokeTests(unittest.TestCase):
         process.stdin.write.assert_called_once_with(b"probe_foreground_prepared\n")
         process.stdin.close.assert_called_once_with()
         self.assertIn("ui_coordinator_result=PASS graceful_exit=true", output)
+
+    def test_preview_requires_preparation_routed_receipts_and_natural_exit(self):
+        result, process, launch, output = self.invoke(lifecycle="success", preview=True)
+        self.assertEqual(0, result)
+        self.assertEqual([str(self.entry), "--authorized-probe-ui", "--probe-ui-preview"], launch.call_args.args[0])
+        process.stdin.write.assert_called_once_with(b"probe_foreground_prepared\n")
+        process.terminate.assert_not_called()
+        self.assertIn("ui_preview_result=PASS graceful_exit=true", output)
+
+    def test_preview_receipts_cannot_pass_watchdog_cleanup(self):
+        result, process, launch, output = self.invoke(lifecycle="hung", preview=True)
+        self.assertEqual(1, result)
+        process.terminate.assert_called_once()
+        self.assertIn("ui_preview_result=FAIL", output)
+
+    def test_preview_refuses_preparation_failure_without_signalling(self):
+        responses = [subprocess.CompletedProcess([], 0, "1\n", ""),
+                     subprocess.CompletedProcess([], 1, "", "refused")]
+        result, process, launch, output = self.invoke(lifecycle="success", preview=True, helper=responses)
+        self.assertEqual(1, result)
+        process.stdin.write.assert_not_called()
+        self.assertIn("ui_preview_result=FAIL", output)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows mouse-journal backstop")
+    def test_preview_recovery_failure_cannot_pass_native_receipts(self):
+        (self.private / "focus.json").write_text("{}")
+        with patch.object(smoke, "replay_mouse_journal", return_value=False) as replay:
+            result, process, launch, output = self.invoke(lifecycle="success", preview=True)
+        self.assertEqual(1, result)
+        replay.assert_called_once()
+        self.assertIn("mouse_recovery=INCOMPLETE", output)
+        self.assertIn("ui_preview_result=FAIL", output)
 
     def test_coordinator_refuses_preparation_failure_before_signal(self):
         responses = [subprocess.CompletedProcess([], 0, "1\n", ""),
@@ -205,6 +237,18 @@ class UiSmokeTests(unittest.TestCase):
         self.assertIsInstance(result, ValueError)
         self.assertEqual("Artifact identity check failed", str(result))
         launch.assert_not_called()
+
+
+class PreviewReceiptTests(unittest.TestCase):
+    def test_every_native_preview_hop_and_clean_exit_required(self):
+        lines = smoke.PREVIEW_RECEIPTS
+        self.assertTrue(smoke.preview_completed("\n".join(lines), "", 0))
+        for index in range(len(lines)):
+            self.assertFalse(smoke.preview_completed("\n".join(lines[:index] + lines[index + 1:]), "", 0))
+        self.assertFalse(smoke.preview_completed("\n".join(lines), "", None))
+        self.assertFalse(smoke.preview_completed("\n".join(lines), "failure", 0))
+        self.assertFalse(smoke.preview_completed("\n".join(reversed(lines)), "", 0))
+        self.assertFalse(smoke.preview_completed("\n".join(lines + [lines[-1]]), "", 0))
 
 
 class LifecycleReceiptTests(unittest.TestCase):

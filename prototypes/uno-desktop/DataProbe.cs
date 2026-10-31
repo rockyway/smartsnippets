@@ -10,6 +10,7 @@ using SmartSnippets.Core.Data;
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Porting;
+using SmartSnippets.Core.Query;
 using SmartSnippets.Core.Store;
 
 namespace SmartSnippets.UnoProbe;
@@ -149,7 +150,11 @@ internal static class DataProbe
             command.CommandText = "CREATE TABLE schema_version(version INTEGER NOT NULL); INSERT INTO schema_version VALUES(999);";
             command.ExecuteNonQuery();
         }
+        SqliteConnection.ClearAllPools();
+        var newerOriginal = File.ReadAllBytes(newer.DatabasePath);
         ExpectFailure(() => new Migrator(newer).MigrateToLatest());
+        SqliteConnection.ClearAllPools();
+        Require(File.ReadAllBytes(newer.DatabasePath).SequenceEqual(newerOriginal));
         using (var connection = newer.Open())
         using (var command = connection.CreateCommand())
         {
@@ -268,6 +273,14 @@ internal static class DataProbe
         Require(view.Snippet.CreatedAt == ProbeClock.Start);
         Require(view.Snippet.UpdatedAt == ProbeClock.Start.AddMinutes(1));
         Require(view.Snippet.LastUsedAt == ProbeClock.Start.AddMinutes(2));
+        // Exercise the actual portable index on both freshly mutated and
+        // independently reloaded native SQLite snapshots; never emit queries.
+        var search = new SnippetSearch(store.Snippets);
+        Require(search.Filter(null).Single().Snippet.Id == view.Snippet.Id);
+        Require(search.Filter("label_u018 TAG_U018 λ😀 RENAMED_U018").Single().Snippet.Id == view.Snippet.Id);
+        Require(search.Filter("BODY_U018\u00a0tag_u018\nRENAMED_U018").Single().Snippet.Id == view.Snippet.Id);
+        Require(search.Filter("missing_u018").Count == 0);
+        Require(search.Filter("LABEL_U018 missing_u018").Count == 0);
     }
 
     private static void VerifyLog(string root)
@@ -294,7 +307,7 @@ internal static class DataProbe
         throw new InvalidOperationException("Synthetic failure was not rejected.");
     }
 
-    private static void CreatePrivateRoot(string root)
+    internal static void CreatePrivateRoot(string root)
     {
         if (OperatingSystem.IsWindows()) CreateWindowsRoot(root);
         else Directory.CreateDirectory(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
