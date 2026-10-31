@@ -40,7 +40,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private MenuFlyout? _contextFlyout;
     private readonly CandidatePopupLifecycle _lifecycle;
     private PopupShowCoordinator _shows => _lifecycle.Shows;
-    private HMONITOR _previewMonitor;
     private DispatcherQueueTimer? _prewarmTimer;
     private readonly UISettings _uiSettings = new();
     private bool _closed;
@@ -109,7 +108,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
         SearchBox.TextCompositionEnded += (_, _) => _isComposing = false;
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        _previewMonitor = PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         RootGrid.Loaded += RegisterHoverOwner;
         RootGrid.Unloaded += (_, _) => UnregisterHoverOwner();
         AppWindow.Changed += OnHoverWindowChanged;
@@ -308,7 +306,6 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     internal void ShowPreview(HWND owner, string? query = null, bool activate = false, bool openSortMenu = false)
     {
-        if (owner != default) _previewMonitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         if (CanShow?.Invoke() == false) return;
         _lifecycle.Preview(ViewModel, query, () => ShowPreviewReady(openSortMenu));
     }
@@ -326,9 +323,10 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void Center()
     {
-        var monitor = ViewModel.Target is { } target ? new HMONITOR(target.MonitorHandle) : _previewMonitor;
-        if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
-            WindowPlacement.CenterOn(AppWindow, _previewMonitor, LogicalWidth, LogicalHeight);
+        if (ViewModel.Target is { } target
+            && WindowPlacement.CenterOn(AppWindow, new HMONITOR(target.MonitorHandle), LogicalWidth, LogicalHeight)) return;
+        if (!WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
+            throw new InvalidOperationException("Candidate preview bottom-left placement could not be verified.");
     }
     public void Hide()
     {

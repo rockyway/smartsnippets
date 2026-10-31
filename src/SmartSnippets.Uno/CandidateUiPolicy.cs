@@ -28,6 +28,20 @@ internal sealed class CandidatePopupLifecycle(Action<Action> schedule, Action<Po
 
 internal static class CandidateUiPolicy
 {
+    internal static int BottomLeftMonitorIndex(IReadOnlyList<SmartSnippets.Core.Layout.PixelRect> monitors)
+    {
+        if (monitors.Count == 0) throw new InvalidOperationException("No candidate display is available.");
+        var selected = 0;
+        for (var i = 0; i < monitors.Count; i++)
+        {
+            if (monitors[i].Width <= 0 || monitors[i].Height <= 0)
+                throw new InvalidOperationException("Invalid candidate display geometry.");
+            if (monitors[i].Left < monitors[selected].Left
+                || (monitors[i].Left == monitors[selected].Left && monitors[i].Top > monitors[selected].Top)) selected = i;
+        }
+        return selected;
+    }
+
     internal const string PreviewHint = "Preview only — selection closes; clipboard unavailable";
     internal static string HintLine(string hint, string status) => string.IsNullOrEmpty(status) ? PreviewHint : hint;
 

@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 
 REPO = Path(__file__).resolve().parents[1]
 STARTUP_OBSERVER_REVIEWED = False
@@ -55,6 +56,32 @@ def validate_candidate(path, digest):
     return path
 
 
+def local_app_data():
+    shell, ole = C.WinDLL('shell32'), C.WinDLL('ole32')
+    shell.SHGetKnownFolderPath.argtypes = [C.c_void_p, W.DWORD, W.HANDLE, C.POINTER(C.c_void_p)]
+    shell.SHGetKnownFolderPath.restype = C.c_int32
+    ole.CoTaskMemFree.argtypes, ole.CoTaskMemFree.restype = [C.c_void_p], None
+    identifier = (C.c_ubyte * 16).from_buffer_copy(uuid.UUID('f1b32785-6fba-4fcf-9d55-7b8e7f157091').bytes_le)
+    value = C.c_void_p()
+    try:
+        if shell.SHGetKnownFolderPath(identifier, 0, None, C.byref(value)) != 0 or not value.value:
+            raise ValueError('local_app_data')
+        return Path(C.wstring_at(value.value))
+    finally:
+        if value.value:
+            ole.CoTaskMemFree(value)
+
+
+def system_tool(name):
+    kernel = C.WinDLL('kernel32')
+    kernel.GetSystemDirectoryW.argtypes, kernel.GetSystemDirectoryW.restype = [W.LPWSTR, W.UINT], W.UINT
+    value = C.create_unicode_buffer(32768)
+    count = kernel.GetSystemDirectoryW(value, len(value))
+    if not count or count >= len(value) or name != 'tasklist.exe':
+        raise ValueError('system_tool')
+    return str(Path(value.value) / name)
+
+
 def profile_absent(local):
     root = Path(local) / 'SmartSnippets.UnoCandidate019'
     # lexists refuses dangling aliases too. Never inspect contents or change it.
@@ -66,10 +93,35 @@ def profile_absent(local):
     return root
 
 
+def require_job_membership():
+    kernel = C.WinDLL('kernel32', use_last_error=True)
+    kernel.GetCurrentProcess.argtypes, kernel.GetCurrentProcess.restype = [], W.HANDLE
+    kernel.IsProcessInJob.argtypes, kernel.IsProcessInJob.restype = [W.HANDLE, W.HANDLE, C.POINTER(W.BOOL)], W.BOOL
+    member = W.BOOL()
+    if not kernel.IsProcessInJob(kernel.GetCurrentProcess(), None, C.byref(member)) or not member.value:
+        raise ValueError('job_membership')
+
+
+def validate_private(private):
+    if not private.is_absolute() or not re.fullmatch(r'ss-uno018-ui-[a-zA-Z0-9_-]{8,80}', private.name):
+        raise ValueError('private_evidence')
+    for item in (private, *private.parents):
+        if item.is_symlink() or getattr(item.lstat(), 'st_file_attributes', 0) & 0x400:
+            raise ValueError('private_alias')
+    if not private.is_dir() or any(private.iterdir()):
+        raise ValueError('private_evidence')
+
+
 def inside(rect, work):
     l, t, r, b = rect
     x, y, z, w = work
     return x <= l < r <= z and y <= t < b <= w
+
+
+def bottom_left_work_area(monitors):
+    if not monitors or any(not inside(rect, rect) or not inside(work, rect) for rect, work in monitors):
+        raise ValueError('monitors')
+    return min(monitors, key=lambda item: (item[0][0], -item[0][1]))[1]
 
 
 def observe(process, snapshot, windows, initial, work, clock=time.monotonic, sleep=time.sleep):
@@ -101,6 +153,19 @@ class Desktop:
             fn.argtypes, fn.restype = args, result
         self.dwm.DwmGetWindowAttribute.argtypes = [W.HWND, W.DWORD, C.c_void_p, W.DWORD]
         self.dwm.DwmGetWindowAttribute.restype = C.c_long
+        self.user.SetThreadDpiAwarenessContext.argtypes = [C.c_void_p]
+        self.user.SetThreadDpiAwarenessContext.restype = C.c_void_p
+        self.previous_dpi = None
+
+    def enable_dpi(self):
+        self.previous_dpi = self.user.SetThreadDpiAwarenessContext(C.c_void_p(-4))
+        if not self.previous_dpi:
+            raise ValueError('dpi_context')
+
+    def close(self):
+        previous, self.previous_dpi = self.previous_dpi, None
+        if previous and not self.user.SetThreadDpiAwarenessContext(previous):
+            raise ValueError('dpi_cleanup')
 
     def validate_input_desktop(self):
         self.user.OpenInputDesktop.argtypes = [W.DWORD, W.BOOL, W.DWORD]
@@ -136,14 +201,14 @@ class Desktop:
             if not self.user.GetMonitorInfoW(handle, C.byref(info)):
                 errors.append(True)
             else:
-                r = info.work
-                found.append((r.left, r.top, r.right, r.bottom))
+                r, m = info.work, info.monitor
+                found.append(((m.left, m.top, m.right, m.bottom), (r.left, r.top, r.right, r.bottom)))
             return True
         callback = callback_type(visit)
         if not self.user.EnumDisplayMonitors(None, None, callback, 0) or errors or not found:
             raise ValueError('monitors')
-        # Lowest monitor first, then leftmost among equally low monitors.
-        if tuple(expected) != min(found, key=lambda r: (-r[3], r[0])):
+        # Same policy as the candidate: bottom monitor of the leftmost column.
+        if tuple(expected) != bottom_left_work_area(found):
             raise ValueError('bottom_left_work_area')
 
     def snapshot(self):
@@ -182,30 +247,36 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
     # Bootstrap cannot create any candidate before parent assigns its Job.
     if stream.readline(64) != PERMIT:
         raise ValueError('permit')
+    require_job_membership()
+    validate_private(private)
     entry = validate_candidate(entry, digest)
-    profile_absent(os.environ['LOCALAPPDATA'])
+    profile_absent(local_app_data())
     # Conservative refusal of any candidate image; never terminate discovered PIDs.
-    check = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq SmartSnippets.UnoCandidate.exe', '/FO', 'CSV', '/NH'],
+    check = subprocess.run([system_tool('tasklist.exe'), '/FI', 'IMAGENAME eq SmartSnippets.UnoCandidate.exe', '/FO', 'CSV', '/NH'],
                            capture_output=True, timeout=3, creationflags=subprocess.CREATE_NO_WINDOW)
     if check.returncode or check.stderr or b'smartsnippets.unocandidate.exe' in check.stdout.lower():
         raise ValueError('prior_ownership')
     ui = repo_module('startup_ui', 'prototypes/uno-desktop/run_ui_smoke.py')
     desktop = Desktop(ui.visible_windows)
-    desktop.validate_work_area(work)
-    initial = desktop.snapshot()
-    process = None
-    with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
-        try:
-            process = subprocess.Popen([str(entry)], cwd=entry.parent, stdin=subprocess.DEVNULL,
-                                       stdout=out, stderr=err)
-            observe(process, desktop.snapshot, desktop.windows, initial, work)
-        finally:
+    try:
+        desktop.enable_dpi()  # Observer thread only; never changes application/system DPI settings.
+        desktop.validate_work_area(work)
+        initial = desktop.snapshot()
+        process = None
+        with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
             try:
-                if process is not None:
-                    stop_app(process)
+                process = subprocess.Popen([str(entry)], cwd=entry.parent, stdin=subprocess.DEVNULL,
+                                           stdout=out, stderr=err)
+                observe(process, desktop.snapshot, desktop.windows, initial, work)
             finally:
-                if desktop.snapshot() != initial:
-                    raise ValueError('desktop_changed')
+                try:
+                    if process is not None:
+                        stop_app(process)
+                finally:
+                    if desktop.snapshot() != initial:
+                        raise ValueError('desktop_changed')
+    finally:
+        desktop.close()
     if (private / 'stderr.log').stat().st_size:
         raise ValueError('process_stderr')
     print('startup_observed', flush=True)
@@ -261,7 +332,7 @@ class Parser(argparse.ArgumentParser):
 
 
 def main():
-    parser = Parser()
+    parser = Parser(allow_abbrev=False)
     parser.add_argument('--executable', required=True, type=Path)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--authorized-screen-slot', action='store_true')
@@ -272,7 +343,7 @@ def main():
     if not STARTUP_OBSERVER_REVIEWED or not args.authorized_screen_slot or sys.platform != 'win32':
         raise ValueError('authorization')
     entry = validate_candidate(args.executable, args.sha256)
-    profile_absent(os.environ['LOCALAPPDATA'])
+    profile_absent(local_app_data())
     if not inside(args.work_area, args.work_area):
         raise ValueError('work_area')
     if args.worker_private:
@@ -281,24 +352,29 @@ def main():
     ui = repo_module('startup_ui', 'prototypes/uno-desktop/run_ui_smoke.py')
     identity = repo_module('startup_identity', 'prototypes/uno-native-target/run_identity_harness.py')
     private = ui.private_directory()
-    command = [sys.executable, str(Path(__file__).resolve()), '--executable', str(entry),
+    command = [sys.executable, '-I', '-B', str(Path(__file__).resolve()), '--executable', str(entry),
                '--sha256', args.sha256, '--authorized-screen-slot', '--work-area',
                *map(str, args.work_area), '--worker-private', str(private)]
     supervise(command, identity.WindowsJob)
-    if not (Path(os.environ['LOCALAPPDATA']) / 'SmartSnippets.UnoCandidate019').is_dir():
+    if not (local_app_data() / 'SmartSnippets.UnoCandidate019').is_dir():
         raise ValueError('missing_retained_profile')
     return private.name
 
 
-if __name__ == '__main__':
-    is_worker = '--worker-private' in sys.argv
+def cli():
+    is_worker = any(arg == '--worker-private' or arg.startswith('--worker-private=') for arg in sys.argv[1:])
     try:
         evidence_token = main()
-        if not is_worker:
+        if evidence_token is not None:
             print(json.dumps({'startup': 'OBSERVED', 'nativeAcceptance': 'NOT_RUN',
                               'stop': 'FORCED', 'job': 'ZERO_ACTIVE', 'profile': 'RETAINED',
                               'privateEvidenceToken': evidence_token}))
     except BaseException:
         if not is_worker:
             print(json.dumps({'startup': 'BLOCKED', 'nativeAcceptance': 'NOT_RUN'}))
-        sys.exit(1)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(cli())

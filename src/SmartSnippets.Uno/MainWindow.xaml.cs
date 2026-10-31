@@ -62,15 +62,8 @@ public sealed partial class MainWindow : Window
             });
         };
         AppWindow.Resize(new SizeInt32((int)(LogicalWidth * scale), (int)(LogicalHeight * scale)));
-        var displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
-        if (displayArea is not null)
-        {
-            var workArea = displayArea.WorkArea;
-            var size = AppWindow.Size;
-            AppWindow.Move(new PointInt32(
-                workArea.X,
-                workArea.Y + Math.Max(0, workArea.Height - size.Height)));
-        }
+        if (!Services.WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
+            throw new InvalidOperationException("Candidate bottom-left placement could not be verified.");
         AppWindow.Closing += OnClosing;
         Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot); };
         Closed += (_, _) => Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);

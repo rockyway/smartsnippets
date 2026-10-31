@@ -1,5 +1,6 @@
 """Pure tests: no desktop, native calls, or child processes."""
 import importlib.util
+from contextlib import redirect_stdout
 import io
 from pathlib import Path
 import tempfile
@@ -15,10 +16,30 @@ class StartupTests(unittest.TestCase):
     def test_review_gate_closed(self):
         self.assertFalse(s.STARTUP_OBSERVER_REVIEWED)
 
+    def test_worker_cli_never_claims_outer_job_receipt(self):
+        for private_flag in ('--worker-private', '--worker-private=private'):
+            output = io.StringIO()
+            with patch.object(s, 'main', return_value=None), patch.object(s.sys, 'argv', ['observer', private_flag]), redirect_stdout(output):
+                self.assertEqual(0, s.cli())
+            self.assertEqual('', output.getvalue())
+
     def test_geometry_full_rect(self):
         self.assertTrue(s.inside((-90, 10, -10, 90), (-100, 0, 0, 100)))
         for rect in [(-101, 0, -10, 90), (-90, -1, -10, 90), (-90, 0, 1, 90), (-90, 0, -10, 101), (0, 0, 0, 1)]:
             self.assertFalse(s.inside(rect, (-100, 0, 0, 100)))
+
+    def test_bottom_left_means_leftmost_column_then_bottom(self):
+        monitors = [((0, 0, 100, 100), (0, 0, 100, 95)),
+                    ((-100, 0, 0, 100), (-95, 0, 0, 100)),
+                    ((-100, 100, 0, 200), (-100, 100, 0, 190)),
+                    ((0, 200, 100, 300), (0, 200, 100, 290))]
+        self.assertEqual((-100, 100, 0, 190), s.bottom_left_work_area(monitors))
+        self.assertEqual((-100, 100, 0, 190), s.bottom_left_work_area(list(reversed(monitors))))
+
+    def test_bottom_left_refuses_invalid_monitor_records(self):
+        for monitors in ([], [((0, 0, 0, 1), (0, 0, 0, 1))], [((0, 0, 10, 10), (-1, 0, 10, 10))]):
+            with self.assertRaises(ValueError):
+                s.bottom_left_work_area(monitors)
 
     def test_profile_existing_refused_without_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,6 +78,13 @@ class StartupTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     s.worker(None, None, None, None, io.BytesIO(text))
                 launch.assert_not_called()
+
+    def test_valid_permit_without_job_never_launches(self):
+        with patch.object(s, 'require_job_membership', side_effect=ValueError('not_owned')), \
+             patch.object(s.subprocess, 'Popen') as launch:
+            with self.assertRaises(ValueError):
+                s.worker(None, None, None, None, io.BytesIO(s.PERMIT))
+            launch.assert_not_called()
 
     def test_observe_owned_pid(self):
         process = Mock(pid=123)
@@ -155,6 +183,8 @@ class StartupTests(unittest.TestCase):
             check = Mock(returncode=0, stderr=b'', stdout=b'none')
             process = Mock()
             with patch.object(s, 'validate_candidate', return_value=entry), patch.object(s, 'profile_absent'), \
+                 patch.object(s, 'require_job_membership'), patch.object(s, 'validate_private'), \
+                 patch.object(s, 'local_app_data', return_value=Path(tmp)), patch.object(s, 'system_tool', return_value='owned-system-tasklist'), \
                  patch.dict(s.os.environ, {'LOCALAPPDATA': tmp}), patch.object(s, 'repo_module', return_value=ui), \
                  patch.object(s, 'Desktop', return_value=desktop), patch.object(s.subprocess, 'run', return_value=check), \
                  patch.object(s.subprocess, 'Popen', return_value=process), \
@@ -163,6 +193,8 @@ class StartupTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     s.worker(entry, 'digest', private, (0, 0, 20, 20), io.BytesIO(s.PERMIT))
                 stop.assert_called_once_with(process)
+                desktop.enable_dpi.assert_called_once()
+                desktop.close.assert_called_once()
                 self.assertTrue((private / 'stdout.log').exists())
                 self.assertTrue((private / 'stderr.log').exists())
 

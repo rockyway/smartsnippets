@@ -26,13 +26,16 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Contains("IsEnabled = vm.CanCopyRow", Read("Pages/SnippetsPage.xaml.cs"));
         Assert.Contains("_lifecycle.Preview(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("_lifecycle.Reopen(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
-        Assert.Contains("new HMONITOR(target.MonitorHandle) : _previewMonitor", Read("Popup/PopupWindow.xaml.cs"));
-        Assert.Contains("WindowPlacement.CenterOn(AppWindow, monitor", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("new HMONITOR(target.MonitorHandle)", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("WindowPlacement.ParkBottomLeft(AppWindow", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.DoesNotContain("_previewMonitor", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("MONITOR_DEFAULTTOPRIMARY", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("CandidateUiPolicy.DialogRoot", Read("Services/DialogService.cs"));
         Assert.Contains("textSize, _theme", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("_main?.BringToFront()", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("if (await NavigateGuardedAsync(kind) && show)", Read("MainWindow.xaml.cs"));
+        Assert.Contains("Services.WindowPlacement.ParkBottomLeft(AppWindow", Read("MainWindow.xaml.cs"));
+        Assert.Contains("CandidateUiPolicy.BottomLeftMonitorIndex(", Read("Services/WindowPlacement.cs"));
         Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("legacy active hint", ""));
         Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved"));
     }

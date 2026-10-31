@@ -10,6 +10,19 @@ namespace SmartSnippets.Uno.Services;
 
 internal static class WindowPlacement
 {
+    internal static bool ParkBottomLeft(AppWindow window, int logicalWidth, int logicalHeight)
+    {
+        var displays = DisplayArea.FindAll().ToArray();
+        var selected = CandidateUiPolicy.BottomLeftMonitorIndex(displays.Select(display =>
+        {
+            var bounds = display.OuterBounds;
+            return new PixelRect(bounds.X, bounds.Y, bounds.X + bounds.Width, bounds.Y + bounds.Height);
+        }).ToArray());
+        var work = displays[selected].WorkArea;
+        var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(work.X, work.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        return CenterOn(window, monitor, logicalWidth, logicalHeight);
+    }
+
     // Return monitor/window bounds in owner-client logical coordinates, including negative origins.
     public static unsafe (Windows.Foundation.Rect Window, Windows.Foundation.Rect WorkArea)? HoverBounds(
         Windows.Win32.Foundation.HWND hwnd, double scale)
