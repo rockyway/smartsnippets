@@ -1,0 +1,51 @@
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
+using SmartSnippets.Presentation.Navigation;
+
+namespace SmartSnippets.Uno;
+
+// Test-only executable: no general profile argument/environment override or default-profile fallback.
+public static class Program
+{
+    private static AppInstance? _instance;
+    internal static bool StartInBackground => true;
+    internal static LaunchOptions InitialOptions => new(PageKind.Snippets, false, null);
+    internal static string PrivateRoot { get; private set; } = "";
+    internal static string ProfileRoot => Path.Combine(PrivateRoot, "fixture-profile");
+
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        if (args.Length != 0) throw new InvalidOperationException("fixture_arguments");
+        PrivateRoot = Path.GetFullPath(Environment.CurrentDirectory);
+        var name = Path.GetFileName(PrivateRoot);
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^ss-uno018-ui-[a-zA-Z0-9_-]{8,80}$")
+            || Directory.Exists(ProfileRoot) || File.Exists(ProfileRoot)
+            || !File.Exists(Path.Combine(PrivateRoot, "fixture-launch-permit")))
+            throw new InvalidOperationException("fixture_ownership");
+        for (var directory = new DirectoryInfo(PrivateRoot); directory is not null; directory = directory.Parent)
+            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("fixture_alias");
+        WinRT.ComWrappersSupport.InitializeComWrappers();
+        _instance = AppInstance.FindOrRegisterForKey("SmartSnippets.UnoAcceptanceFixture019." + name);
+        if (!_instance.IsCurrent) throw new InvalidOperationException("fixture_instance");
+        Application.Start(parameters =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
+            _ = new App();
+        });
+    }
+    internal static void StopActivations() { _instance?.UnregisterKey(); _instance = null; }
+    internal static void Receipt(string phase) => File.WriteAllText(Path.Combine(PrivateRoot, phase + ".receipt"),
+        $"{Environment.ProcessId}\n{Path.GetFileName(PrivateRoot)}\n{phase}\n");
+    internal static async Task WaitAsync(string phase)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(12);
+        while (!File.Exists(Path.Combine(PrivateRoot, phase + ".continue")))
+        {
+            if (DateTime.UtcNow >= deadline) throw new TimeoutException("fixture_observer");
+            await Task.Delay(50);
+        }
+    }
+}
