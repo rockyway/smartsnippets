@@ -81,12 +81,12 @@ public sealed class Migrator
             command.CommandText = "VACUUM INTO $path;";
             command.Parameters.AddWithValue("$path", target);
             command.ExecuteNonQuery();
-            AppLog.Info("migration_backup", $"path={Path.GetFileName(target)}");
+            AppLog.Info("migration_backup", $"from={from}");
         }
         catch (Exception ex)
         {
             AppLog.Error("migration_failed", ex, "reason=backup");
-            throw new MigrationException("Could not back up the database before upgrading: " + ex.Message, ex);
+            throw new MigrationException("Could not back up the database before upgrading. Check available disk space and folder permissions, then try again.", ex);
         }
     }
 

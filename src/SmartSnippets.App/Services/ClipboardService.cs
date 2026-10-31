@@ -9,7 +9,9 @@ namespace SmartSnippets.App.Services;
 /// <summary>Plain-text clipboard writes for "Copy text"; called from UI-thread commands.</summary>
 internal sealed class ClipboardService : IClipboardService
 {
-    public void SetText(string text)
+    public void SetText(string text) => _ = TrySetText(text);
+
+    public bool TrySetText(string text)
     {
         if (DispatcherQueue.GetForCurrentThread() is null)
         {
@@ -22,12 +24,14 @@ internal sealed class ClipboardService : IClipboardService
             package.SetText(text);
             Clipboard.SetContent(package);
             Clipboard.Flush();
+            return true;
         }
         catch (COMException ex)
         {
             // Another process (clipboard manager, RDP) can hold the clipboard open. "Copy text" exists to
             // protect unsaved text, so it must never crash the app; the text stays in the editor.
             AppLog.Error("clipboard_copy_failed", ex);
+            return false;
         }
     }
 }

@@ -161,7 +161,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public bool IsFooterCaution => FooterState is PopupFooterState.ConfirmClipboardLoss or PopupFooterState.MaybePasted;
     public bool IsConfirmingClipboardLoss => FooterState == PopupFooterState.ConfirmClipboardLoss;
     public bool CanDismissFooter => FooterState == PopupFooterState.MaybePasted;
-    public bool CanCopyFailedText => FooterState is PopupFooterState.Error or PopupFooterState.MaybePasted && _failedOutcome != InsertionOutcome.SnippetMissing && _store.Snippets.Any(s => s.Snippet.Id == _failedId);
+    public bool CanCopyFailedText => !IsPreview && _clipboard.IsAvailable && (FooterState is PopupFooterState.Error or PopupFooterState.MaybePasted) && _failedOutcome != InsertionOutcome.SnippetMissing && _store.Snippets.Any(s => s.Snippet.Id == _failedId);
     public bool CanRestartAsAdmin => FooterState == PopupFooterState.Error && _failedOutcome == InsertionOutcome.TargetElevated && !_elevation.IsElevated;
     public bool IsInserting { get => _isInserting; private set => SetProperty(ref _isInserting, value); }
     public SnippetEditorViewModel? Editor { get => _editor; private set { if (SetProperty(ref _editor, value)) { OnPropertyChanged(nameof(IsEditorOpen)); OnPropertyChanged(nameof(IsEditorClosed)); } } }
@@ -234,12 +234,13 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
     public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
     public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
-    public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && CanUseRowActions(item);
+    public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && _clipboard.IsAvailable && CanUseRowActions(item);
     public void CopyRow(PopupItemViewModel item)
     {
-        if (!CanCopyRow(item)) return;
+        if (IsPreview || !CanUseRowActions(item)) return;
+        if (!_clipboard.IsAvailable) { StatusText = UiText.CopyFailed; return; }
         var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
-        _clipboard.SetText(snippet.Text);
+        if (!_clipboard.TrySetText(snippet.Text)) { StatusText = UiText.CopyFailed; return; }
         AppLog.Info("popup_row_copied", $"id={snippet.Id}");
     }
     public Task InsertRowAsync(PopupItemViewModel item) => CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
@@ -371,14 +372,34 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     [RelayCommand] private async Task PasteAnyway() { if (!IsConfirmingClipboardLoss || _pendingId is not { } id) return; AppLog.Info("popup_paste_anyway", $"id={id}"); await InsertAsync(id, new InsertionOptions(AllowClipboardLoss: true)); }
     [RelayCommand] private void CancelPasteAnyway() { if (!IsConfirmingClipboardLoss) return; AppLog.Info("popup_paste_cancelled", $"id={_pendingId}"); ClearFooter(); _host.Focus(PopupFocusTarget.Search); }
     [RelayCommand] private void DismissFooter() { if (FooterState != PopupFooterState.MaybePasted) return; AppLog.Info("popup_caution_dismissed", $"id={_failedId}"); ClearFooter(); _host.Focus(PopupFocusTarget.Search); }
-    [RelayCommand] private void CopyFailedText() { if (!CanCopyFailedText) return; var snippet = _store.Snippets.FirstOrDefault(s => s.Snippet.Id == _failedId)?.Snippet; if (snippet is null) return; _clipboard.SetText(snippet.Text); AppLog.Info("popup_copy_text", $"id={snippet.Id}"); }
+    [RelayCommand(CanExecute = nameof(CanCopyFailedText))]
+    private void CopyFailedText()
+    {
+        if (IsPreview || FooterState is not (PopupFooterState.Error or PopupFooterState.MaybePasted)
+            || _failedOutcome == InsertionOutcome.SnippetMissing) return;
+        var snippet = _store.Snippets.FirstOrDefault(s => s.Snippet.Id == _failedId)?.Snippet;
+        if (snippet is null) return;
+        if (!_clipboard.IsAvailable || !_clipboard.TrySetText(snippet.Text))
+        {
+            FooterMessage = UiText.CopyFailed;
+            return;
+        }
+        AppLog.Info("popup_copy_text", $"id={snippet.Id}");
+    }
     [RelayCommand] private void RestartAsAdmin() { if (!CanRestartAsAdmin) return; var result = _elevation.RestartAsAdministrator(); if (result.Outcome == ElevationOutcome.Started) _requestExit?.Invoke(); else FooterMessage = result.Message; }
+    public void RefreshClipboardAvailability()
+    {
+        OnPropertyChanged(nameof(CanCopyRow));
+        OnPropertyChanged(nameof(CanCopyFailedText));
+        CopyFailedTextCommand.NotifyCanExecuteChanged();
+        Editor?.RefreshClipboardAvailability();
+    }
     private void ClearTransientFooter() { if (IsConfirmingClipboardLoss) CancelPasteAnyway(); else if (FooterState == PopupFooterState.MaybePasted) DismissFooter(); }
     private void ClearFooter() { FooterState = PopupFooterState.None; FooterMessage = string.Empty; _pendingId = null; }
     private void NotifyFooter()
     {
         OnPropertyChanged(nameof(HintText)); OnPropertyChanged(nameof(FooterItemStatus)); OnPropertyChanged(nameof(HasFooterMessage)); OnPropertyChanged(nameof(IsFooterError));
         OnPropertyChanged(nameof(IsFooterCaution)); OnPropertyChanged(nameof(IsConfirmingClipboardLoss));
-        OnPropertyChanged(nameof(CanDismissFooter)); OnPropertyChanged(nameof(CanCopyFailedText)); OnPropertyChanged(nameof(CanRestartAsAdmin));
+        CopyFailedTextCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(CanDismissFooter)); OnPropertyChanged(nameof(CanCopyFailedText)); OnPropertyChanged(nameof(CanRestartAsAdmin));
     }
 }
