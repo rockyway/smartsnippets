@@ -112,9 +112,43 @@ bytes were written to that evidence tree. A Windows PowerShell module-autoload
 compatibility issue was separately isolated by restricting that child to its
 trusted system module directory; the actual ACL refusal remains.
 
-No successor abort/owner-refusal scene was launched using the refused witness.
-Existing restoration observation does not establish new-session authorization;
-security review must disposition remediation or require operator recopy.
+The creation defect is fixed in `3bb31fb`: fresh Windows directories are created
+atomically with a protected, current-user-only owner/DACL, then verified. Actual
+Windows ACL tests and confirming review `1453040c-bd79-4760-9712-d669a156ea22` pass.
+
+Reviews `1f270a3e-fa21-47ae-901f-d6333440b0c7` and
+`47b94c27-178e-40d4-81cc-73a4768ac598` conditionally cleared tightening only the
+exact known Scene 6A tree using the parent-retained successful observation and
+fixed receipts, never directory discovery as authority. An initial PowerShell
+array-framing defect and subsequent `Set-Acl` owner-setting privilege refusal
+changed no nodes. The final typed Win32 DACL-only operation left existing current
+ownership unchanged and tightened all 13 verified nodes without elevation.
+Windows supplied automatic-inheritance metadata on protected DACLs; verification
+accepted only that metadata variation, the same exact single-user rule, unchanged
+owner, no aliases/hardlinks, and unchanged file hashes/receipts. The original
+unmodified strict ledger then passed read-only. No clipboard access occurred in
+this remediation.
+
+## Successor abort attempt: refused before publication
+
+The first settled-baseline successor attempt used fresh strict fixture build
+`ad96d9b7a1c54521a3006e10e29316bb`, executable SHA256
+`764492f18686a97c2071cbe422c419908fd47a3e5bcef88fdd0619ba546ee65d`, and fresh
+helper SHA256 `f346355e5037d70fc7f40edb9a69f6aecb622b486cf88229fa98d02aaba1af50`.
+Session `ss-uno018-ui-738f3ec1ee814b608da7284da31972f9/ss-uno019-native-b2b982a391bf4739992179cd55a6890e`
+reached authenticated `guardian_ready` and completed host startup but emitted
+`native_result=failed` before any `published` receipt. The parent wrapper
+`ss-uno018-ui-f850076d57e47333198fb8bb88a0e4aa` exited 2 with empty stderr;
+owner-refusal was not launched. This is **not** post-publication abort recovery
+acceptance. Existing fixed receipts do not distinguish the exact publication
+admission refusal; recent-input timing is a hypothesis, not an established cause.
+All three temporary source execution gates were restored to false.
+
+The corrected responsive UI fixture build `0426616ea36b4e88b4441f8c35473eb5`,
+SHA256 `1225ebe00f6ca71d416dc9303b381bcbfa478f936d520e758264850d2bb3ca10`,
+was separately refused with fixed `input` reason in session
+`ss-uno018-ui-f0f95d56e3671520a7fd2a521a6857c7`, before any UI receipt. No rendered
+callback claim follows; its execution gate was restored to false.
 
 ## Read-only prerequisites (not restoration acceptance)
 
