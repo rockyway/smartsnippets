@@ -147,7 +147,12 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   not restoration of the baseline. Fresh operator recopy is mandatory afterward.
 - `preview/expired`: active preview refuses main/popup Copy and Insert callbacks;
   selection closes without insertion. `expired` waits for the real monotonic capability
-  deadline first, not artificial revocation. Both require empty A/B and zero native
+  deadline first, independently measuring beyond its entire lifetime, not artificial revocation.
+  After preview hides it validates the still-live 55s adapter lease and exercises denied
+  non-preview main/popup Copy, host capture and direct/VM Insert. `expired` alone also
+  carries bounded insertion permissions, so it requires input source review even though
+  no non-preview operation is attempted until expiry is verified.
+  Both require empty A/B and zero native
   mutation/capture/usage counters. Preview selection intentionally releases the main
   Copy lock on hiding, so no Copy is attempted after hiding except under expiry.
 
@@ -156,8 +161,13 @@ coordinator arms retained keyboard lifetime **before** replying `keyboard_permit
 Only explicit `keyboard_settled` after adapter recovery drain permits Job abort/close.
 Lost receipts, worker death, timeout or ambiguous input retain coordinator, Job and
 worker/guardian handles indefinitely with a content-free pending receipt. The worker
-also stays alive without disposing possibly armed state. This is conservative (some
-pre-dispatch faults can remain pending); it is not a keyboard recovery implementation.
+also stays alive without disposing possibly armed state. Its failure path closes host
+admission, awaits the actual gate/VM drain, and attempts independent guardian restoration.
+While retained it retries that ordered, bounded ownership-checked restoration every second;
+clipboard settlement never repairs uncertain input. Known-safe Enter/paste with no pending
+clipboard snapshot can send `keyboard_settled` even after failed readback; the scene remains
+failed. The coordinator accepts a late settlement receipt without converting failure to PASS.
+This is not a keyboard recovery implementation.
 Do not wrap either lifetime in an outer timeout/kill, or terminate retained processes
 as a substitute for reviewed operator recovery. Ordinary restore/abort controls still
 use their original exact protocol and do not arm input.

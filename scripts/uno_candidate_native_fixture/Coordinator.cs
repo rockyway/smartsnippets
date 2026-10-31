@@ -131,7 +131,16 @@ internal static class Coordinator
         {
             Console.WriteLine("native_result=failed");
             if (keyboard.Armed)
-                await keyboard.RetainAsync(() => Console.WriteLine("native_result=KEYBOARD_RECOVERY_PENDING coordinator_retained=1"), () => Task.Delay(1000));
+                await keyboard.RetainAsync(() => Console.WriteLine("native_result=KEYBOARD_RECOVERY_PENDING coordinator_retained=1"), async () =>
+                {
+                    // A retained live worker may finish draining later. Only its explicit receipt releases the Job.
+                    try
+                    {
+                        if (await BootstrapProtocol.ReadAsync(responses, CancellationToken.None) == "keyboard_settled") keyboard.Settle();
+                        else await Task.Delay(1000);
+                    }
+                    catch { await Task.Delay(1000); } // EOF/death is not keyboard settlement.
+                });
             await NativeRecoveryLifetime.CleanupAsync(async () =>
             {
                 try

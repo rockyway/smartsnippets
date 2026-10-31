@@ -28,7 +28,8 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         await BootstrapProtocol.WriteAsync(Program.Responses,
             $"positive_surfaces {ready.WindowA} {ready.WindowB} {boundary.Popup!.NativeHandle} {boundary.Main!.NativeHandle}", ct);
         if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "lease_positive") throw new InvalidOperationException("native_positive_lease");
-        admitSession(); broker.Admit(); host.RefreshClipboardAvailability();
+        admitSession();
+        if (scene != "expired") { broker.Admit(); host.RefreshClipboardAvailability(); }
         // Operator explicitly selects A after guardian-ready. Never activate a foreign window to make admission pass.
         await WaitAsync(() => session.IsTargetForeground(session.Target) && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(15), ct);
         await fixture.Lease.CommandAsync("focus_a", ct); // Already foreground, fixed owned editor only.
@@ -47,8 +48,13 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             if (scene == "expired")
             {
                 // Wait for the real monotonic capability deadline (not a fake revocation).
+                var expiryWait = Stopwatch.GetTimestamp();
                 await Task.Delay(TimeSpan.FromSeconds(21), ct); // Capability's entire lifetime is 20s from BEFORE host creation.
-                if (capability.Allows(CandidateNativeOperation.Copy)) throw new InvalidOperationException("native_expiry");
+                // Independently measure beyond its entire lifetime, so adapter refusal cannot masquerade as expiry.
+                if (Stopwatch.GetElapsedTime(expiryWait) < TimeSpan.FromSeconds(20) || capability.Allows(CandidateNativeOperation.Copy))
+                    throw new InvalidOperationException("native_expiry");
+                // Binding stays denied until expiry is proved; no pre-expiry capability can reach the adapter.
+                broker.Admit(); host.RefreshClipboardAvailability();
             }
             host.ShowPreview();
             await WaitAsync(() => boundary.PopupShown && host.Popup.IsPreview, TimeSpan.FromSeconds(4), ct);
@@ -60,6 +66,20 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             host.ShowPreview();
             await WaitAsync(() => boundary.PopupShown && host.Popup.IsPreview, TimeSpan.FromSeconds(4), ct);
             await host.Popup.InsertSelectedAsync();
+            if (scene == "expired")
+            {
+                // Preview is hidden: only real capability expiry, not preview policy, denies these calls.
+                if (!session.Validate(CandidateNativeOperation.Copy | CandidateNativeOperation.Insert | CandidateNativeOperation.Capture,
+                    session.SessionId, session.Target.WindowHandle, session.Target.ProcessId))
+                    throw new InvalidOperationException("native_expired_adapter_lease");
+                if (boundary.PopupShown || host.ShowCapturedPopup() || host.Gate.IsAvailable || host.Snippets.CanCopyRow)
+                    throw new InvalidOperationException("native_expired_admission");
+                await host.RunCopyOperationAsync(() => host.Snippets.CopyRow(id));
+                host.Popup.CopyRow(row);
+                await host.Snippets.InsertRowAsync(id);
+                if ((await host.Gate.InsertAsync(session.Target, id)).Outcome != InsertionOutcome.PasteFailed)
+                    throw new InvalidOperationException("native_expired_insert");
+            }
             if (broker.CopyCommits != 0 || broker.PasteCalls != 0 || broker.CaptureCalls != 0) throw new InvalidOperationException("native_nonmutating");
             await fixture.Lease.CommandAsync("empty_a", ct);
         }
@@ -80,6 +100,23 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         }
         await BootstrapProtocol.WriteAsync(Program.Responses, "positive_verified", ct);
     }
+    internal Task<bool> DrainFailedKeyboardAsync() => Keyboard.DrainAndSettleAsync(
+        host.Gate.CloseAdmission,
+        async () =>
+        {
+            _ = await host.Gate.DrainAsync();
+            // Gate completion releases the dispatcher; let the VM's awaiting continuation finish too.
+            while (host.Popup.IsInserting) await Task.Delay(25);
+        },
+        async () =>
+        {
+            // Restore is ownership-checked and bounded by the guardian protocol, even after lease expiry.
+            if (session.RecoveryPending) _ = session.RestoreClipboardControl();
+            _ = await session.DrainOwnedRecoveryAsync();
+        },
+        () => enter.Pending || session.RecoveryPending || host.Popup.IsInserting || !host.Gate.IsIdle,
+        () => BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_settled", CancellationToken.None));
+
     private async Task InsertAsync(string scene, long id, CancellationToken ct)
     {
         if (boundary.Message is null) throw new InvalidOperationException("native_message_missing");

@@ -18,6 +18,15 @@ public sealed class PositiveProtocolTests
         Assert.Equal("native_result=" + scene + "_settled", PositiveProtocol.Result(scene));
         Assert.Equal((CandidateNativeOperation)0, PositiveProtocol.Permissions(scene) & CandidateNativeOperation.ClipboardLoss);
     }
+    [Fact]
+    public void PositiveProtocol_ExpiredHasFullBoundedPermissionsAndRequiresInputReview()
+    {
+        Assert.True(PositiveProtocol.RequiresInputReview("expired"));
+        Assert.Equal(PositiveProtocol.Permissions("posted-enter") | CandidateNativeOperation.Copy,
+            PositiveProtocol.Permissions("expired"));
+        Assert.False(PositiveProtocol.RequiresInputReview("copy"));
+        Assert.False(PositiveProtocol.RequiresInputReview("preview"));
+    }
     [Theory]
     [InlineData("positive_surfaces 1 2 3 4", true)]
     [InlineData("positive_surfaces 1 1 3 4", false)]
@@ -70,6 +79,55 @@ public sealed class PositiveProtocolTests
         Assert.Equal(expected, guard.Send(() => true, () => PositiveEnterGuard.Classify(count)));
         Assert.Equal(pending, guard.Pending);
     }
+    [Theory]
+    [InlineData(false, false)] // Known zero native Enter events.
+    [InlineData(true, false)] // Enter delivered, insertion focus refused with no pending clipboard.
+    [InlineData(true, true)] // Actual uncertain paste remains pending regardless of clipboard restoration.
+    public async Task PositiveKeyboardLifetime_FailedReadbackSettlesOnlyKnownSafeInput(bool dispatched, bool pastePending)
+    {
+        var enter = new PositiveEnterGuard();
+        enter.Send(() => true, () => dispatched ? DispatchState.Dispatched : DispatchState.NotDispatched);
+        var keyboard = new PositiveKeyboardLifetime(); keyboard.Arm();
+        var failed = false; var receipts = 0;
+        try { throw new IOException("readback failed"); }
+        catch
+        {
+            failed = true;
+            var settled = await keyboard.DrainAndSettleAsync(() => { }, () => Task.CompletedTask,
+                () => Task.CompletedTask, () => enter.Pending || pastePending,
+                () => { receipts++; return Task.CompletedTask; });
+            Assert.Equal(!pastePending, settled);
+        }
+        Assert.True(failed); Assert.Equal(pastePending, keyboard.Armed);
+        Assert.Equal(pastePending ? 0 : 1, receipts);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task PositiveKeyboardLifetime_PartialOrThrowNeverSettlesAfterClipboardRecovery(bool throws)
+    {
+        var enter = new PositiveEnterGuard();
+        try { enter.Send(() => true, () => throws ? throw new IOException() : DispatchState.Uncertain); }
+        catch (IOException) { }
+        var keyboard = new PositiveKeyboardLifetime(); keyboard.Arm();
+        var restores = 0;
+        for (var attempt = 0; attempt < 3; attempt++)
+            Assert.False(await keyboard.DrainAndSettleAsync(() => { }, () => Task.CompletedTask,
+                () => { restores++; return Task.CompletedTask; }, () => enter.Pending,
+                () => throw new Exception("must not settle")));
+        Assert.True(keyboard.Armed); Assert.Equal(3, restores);
+    }
+
+    [Fact]
+    public async Task PositiveKeyboardLifetime_ThrowingDrainCannotAuthorizeGuardianRestore()
+    {
+        var keyboard = new PositiveKeyboardLifetime(); keyboard.Arm();
+        Assert.False(await keyboard.DrainAndSettleAsync(() => { }, () => throw new IOException(),
+            () => throw new Exception("must not restore before drain"), () => false,
+            () => throw new Exception("must not settle")));
+        Assert.True(keyboard.Armed);
+    }
+
     [Fact]
     public async Task PositiveKeyboardLifetime_OnlyExplicitCompletionReleasesRetention()
     {

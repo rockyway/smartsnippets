@@ -10,12 +10,15 @@ internal static class PositiveProtocol
     internal const string Permit = "owned_positive_row6_verified_operator_recopied_baseline\n";
     internal static bool IsPositive(string scene) => scene is "posted-enter" or "posted-row" or "posted-main" or "copy" or "preview" or "expired";
     internal static bool Inserts(string scene) => scene is "posted-enter" or "posted-row" or "posted-main";
-    internal static CandidateNativeOperation Permissions(string scene) => Inserts(scene)
+    internal static bool RequiresInputReview(string scene) => Inserts(scene) || scene == "expired";
+    internal static CandidateNativeOperation Permissions(string scene) => scene == "expired"
+        ? Permissions("posted-enter") | CandidateNativeOperation.Copy
+        : Inserts(scene)
         ? CandidateNativeOperation.Capture | CandidateNativeOperation.Insert | CandidateNativeOperation.Focus | CandidateNativeOperation.Input | CandidateNativeOperation.Clipboard
         : scene is "copy" or "preview" or "expired" ? CandidateNativeOperation.Copy | CandidateNativeOperation.Focus : throw new InvalidOperationException("native_scene");
     internal static void RequireReviewed(string scene)
     {
-        if (!IsPositive(scene) || !SourceReviewed || (Inserts(scene) && !InputSourceReviewed))
+        if (!IsPositive(scene) || !SourceReviewed || (RequiresInputReview(scene) && !InputSourceReviewed))
             throw new InvalidOperationException("native_positive_unreviewed");
     }
     internal static string Result(string scene) => IsPositive(scene) ? "native_result=" + scene + "_settled" : throw new InvalidOperationException("native_scene");
@@ -57,6 +60,22 @@ internal sealed class PositiveKeyboardLifetime
     private bool used;
     internal void Arm() { if (used) throw new InvalidOperationException("native_keyboard_order"); used = true; Armed = true; }
     internal void Settle() { if (!Armed) throw new InvalidOperationException("native_keyboard_order"); Armed = false; }
+    // Drain completion, even a false recovery result, precedes every independent guardian retry.
+    internal async Task<bool> DrainAndSettleAsync(Action closeAdmission, Func<Task> drain,
+        Func<Task> restore, Func<bool> pending, Func<Task> receipt)
+    {
+        try
+        {
+            closeAdmission();
+            await drain(); // Never restore alongside an active dispatcher/VM operation.
+            await restore();
+            if (pending()) return false;
+            await receipt();
+            Settle();
+            return true;
+        }
+        catch { return false; } // Lost receipts and recovery failures retain ownership, not inferred success.
+    }
     internal async Task RetainAsync(Action pending, Func<Task> wait)
     {
         pending();

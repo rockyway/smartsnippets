@@ -54,7 +54,8 @@ public sealed class PositiveActualHostTests
         await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
         Assert.Equal(1, f.Operations.CopyWaits); Assert.Equal(1, f.Broker.CopyCommits);
         Assert.True(f.Host.ShowCapturedPopup());
-        Assert.True(f.Host.Gate.TryFocusOwnedPopup()); Assert.Equal(1, f.Operations.PopupFocus);
+        Assert.Equal(1, f.Operations.PopupFocus);
+        Assert.True(f.Boundary.Popup.Shown);
         f.Host.ShowPreview();
         await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
         f.Host.Popup.CopyRow(f.Host.Popup.Items.Single(row => row.SnippetId == id));
@@ -69,6 +70,72 @@ public sealed class PositiveActualHostTests
         await f.Host.ExitAsync();
     });
 
+    [Fact]
+    public Task ActualHost_FailedKeyboardDrainsActiveVmBeforeIndependentRestoreAndRetriesFalseDrain() => CandidateHostThread.RunAsync(async () =>
+    {
+        using var f = new Fixture();
+        await f.Host.StartAsync(true, new(null, false, null));
+        var id = f.Host.Store.CreateSnippet(new("synthetic", "Synthetic", true, null, "")).Value!.Id;
+        f.Broker.Bind(f.Operations, f.Operations.Id); f.Broker.Admit();
+        Assert.True(f.Host.ShowCapturedPopup());
+        var insertion = f.Host.Popup.InsertSelectedAsync();
+        Assert.True(f.Host.Popup.IsInserting);
+        var keyboard = new PositiveKeyboardLifetime(); keyboard.Arm();
+        var restores = 0; var receipts = 0; var clipboardPending = true;
+        f.Operations.DrainSettled = false;
+        Task<bool> Retry() => keyboard.DrainAndSettleAsync(f.Host.Gate.CloseAdmission,
+            async () => { _ = await f.Host.Gate.DrainAsync(); await insertion; },
+            () =>
+            {
+                Assert.False(f.Host.Popup.IsInserting);
+                Assert.True(insertion.IsCompleted);
+                if (++restores == 2) clipboardPending = false;
+                return Task.CompletedTask;
+            }, () => clipboardPending, () => { receipts++; return Task.CompletedTask; });
+        var drain = Retry();
+        Assert.False(drain.IsCompleted); Assert.Equal(0, restores); Assert.False(f.Operations.Drained);
+        f.Operations.Focus.SetResult(null);
+        await insertion;
+        Assert.False(await drain); Assert.True(keyboard.Armed); Assert.Equal(1, restores);
+        Assert.True(await Retry()); Assert.False(keyboard.Armed); Assert.Equal(1, receipts);
+        f.Operations.DrainSettled = true;
+        await f.Host.ExitAsync();
+    });
+
+    [Fact]
+    public Task ActualHost_MonotonicExpiryOutsideHiddenPreviewRefusesCopyCaptureAndInsert() => CandidateHostThread.RunAsync(async () =>
+    {
+        var clock = new ExpiryClock();
+        using var f = new Fixture(clock);
+        await f.Host.StartAsync(true, new(null, false, null));
+        var id = f.Host.Store.CreateSnippet(new("synthetic", "Synthetic", true, null, "")).Value!.Id;
+        f.Broker.Bind(f.Operations, f.Operations.Id); f.Broker.Admit();
+        Assert.True(f.Host.Gate.IsAvailable);
+        f.Host.ShowPreview();
+        var row = f.Host.Popup.Items.Single(item => item.SnippetId == id);
+        Assert.True(f.Boundary.Popup.Shown);
+        clock.Seconds = 31; // Real capability timestamp path, no Revoke or adapter revocation.
+        await f.Host.Popup.InsertSelectedAsync();
+        Assert.False(f.Boundary.Popup.Shown);
+        Assert.False(f.Host.ShowCapturedPopup());
+        Assert.False(f.Host.Gate.IsAvailable); Assert.False(f.Host.Snippets.CanCopyRow);
+        await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+        f.Host.Popup.CopyRow(row);
+        await f.Host.Snippets.InsertRowAsync(id);
+        Assert.Equal(InsertionOutcome.PasteFailed, (await f.Host.Gate.InsertAsync(f.Operations.Target, id)).Outcome);
+        Assert.Equal(0, f.Broker.CopyCommits); Assert.Equal(0, f.Broker.PasteCalls); Assert.Equal(0, f.Broker.CaptureCalls);
+        Assert.Equal(0, f.Host.Store.Snippets.Single().Snippet.UsageCount);
+        Assert.False(f.Operations.Drained); // Adapter remains bound/live; expiry alone refused admission.
+        await f.Host.ExitAsync();
+    });
+
+    private sealed class ExpiryClock : TimeProvider
+    {
+        internal long Seconds;
+        public override long TimestampFrequency => 1;
+        public override long GetTimestamp() => Seconds;
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "ss019-positive-tests-" + Guid.NewGuid().ToString("N"));
@@ -77,10 +144,10 @@ public sealed class PositiveActualHostTests
         internal readonly Boundary Boundary;
         internal readonly CandidateNativeCapability Capability;
         internal readonly UnoAppHost Host;
-        internal Fixture()
+        internal Fixture(TimeProvider? clock = null)
         {
             Capability = new(Guid.NewGuid(), 123, 456, PositiveProtocol.Permissions("posted-enter") | CandidateNativeOperation.Copy,
-                TimeSpan.FromSeconds(30), TimeProvider.System, Broker);
+                TimeSpan.FromSeconds(30), clock ?? TimeProvider.System, Broker);
             Boundary = new(Capability);
             Host = new(Boundary, () => CandidateProfile.OpenOwnedRoot(root));
         }
@@ -98,6 +165,7 @@ public sealed class PositiveActualHostTests
         internal Guid ValidatedSession;
         internal int Restores, CopyWaits, PopupFocus;
         internal bool Drained;
+        internal bool DrainSettled = true;
         internal string? Text;
         public bool Validate(CandidateNativeOperation operation, Guid id, nint window, uint pid)
         { ValidatedSession = id; return id == Id && window == 123 && pid == 456; }
@@ -117,7 +185,7 @@ public sealed class PositiveActualHostTests
         public void SetText(string text) => _ = TrySetText(text);
         public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) { CopyWaits++; return Task.FromResult(true); }
         public bool TryFocusOwnedPopup() { PopupFocus++; return true; }
-        public Task<bool> DrainOwnedRecoveryAsync() { Drained = true; return Task.FromResult(true); }
+        public Task<bool> DrainOwnedRecoveryAsync() { Drained = true; return Task.FromResult(DrainSettled); }
     }
     private sealed class Snapshot : IClipboardSnapshot
     {
@@ -140,21 +208,46 @@ public sealed class PositiveActualHostTests
         internal override void ReportStartupFailure() => throw new InvalidOperationException();
         internal override void Exit() => Exits++;
     }
-    private sealed class Surface(UnoAppHost host) : ICandidatePopupWindow
+    private sealed class Surface : ICandidatePopupWindow
     {
+        private readonly UnoAppHost host;
+        private readonly CandidatePopupLifecycle lifecycle;
+        internal bool Shown { get; private set; }
+        internal Surface(UnoAppHost host)
+        {
+            this.host = host;
+            lifecycle = new(action => action(), ApplyFocus, () => { }, () => { });
+            lifecycle.PresentationChanged += (_, shown) => PresentationChanged?.Invoke(this, shown);
+        }
         public event EventHandler? Closed { add { } remove { } }
         public event EventHandler? Hidden;
         public event EventHandler<bool>? PresentationChanged;
         public bool SupportsCapturedPopup => true;
-        public void Prewarm() { }
-        public void ShowCaptured(InsertionTarget target) { host.Popup.Open(target); PresentationChanged?.Invoke(this, true); }
-        public void ShowPreview(string? query, bool openSortMenu) { host.Popup.OpenPreview(); if (query is not null) host.Popup.Query = query; PresentationChanged?.Invoke(this, true); }
-        public void Hide() => Hidden?.Invoke(this, EventArgs.Empty);
-        public void ShowAgain() { }
+        public void Prewarm()
+        {
+            lifecycle.Shows.BeginWarmup();
+            lifecycle.Shows.CompleteWarmup(lifecycle.Shows.WarmupGeneration);
+        }
+        public void ShowCaptured(InsertionTarget target) => lifecycle.Captured(host.Popup, target,
+            () => host.Gate.CanInsert, () => { Shown = true; return new(true, PopupFocusTarget.Search); });
+        public void ShowPreview(string? query, bool openSortMenu) => lifecycle.Preview(host.Popup, query,
+            () => { Shown = true; return new(true, null); });
+        public void Hide()
+        {
+            lifecycle.Shows.Hide(); lifecycle.Hidden();
+            if (!Shown) return;
+            Shown = false; Hidden?.Invoke(this, EventArgs.Empty);
+        }
+        public void ShowAgain() => lifecycle.Reopen(host.Popup, () => { Shown = true; return new(true, null); });
         public void OpenMainWindow() { }
         public void EditSnippet(long id) { }
-        public void Focus(PopupFocusTarget target) { }
-        public void Dispose() { }
+        public void Focus(PopupFocusTarget target) => lifecycle.Shows.Focus(target);
+        private void ApplyFocus(PopupFocusTarget target)
+        {
+            if (!Shown) return;
+            if (!host.Popup.IsPreview && !host.Gate.TryFocusOwnedPopup()) return;
+        }
+        public void Dispose() => lifecycle.Shows.Close();
     }
     private sealed class Main : ICandidateMainWindow
     {

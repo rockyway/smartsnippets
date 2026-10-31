@@ -46,7 +46,7 @@ public partial class App : Application
                 throw new InvalidOperationException("native_host_ready");
             if (NativeFixtureOs.Foreground() != foreground) throw new InvalidOperationException("native_host_activation");
             session = NativeAcceptanceFactory.Create(fixture, "a", boundary.Popup.NativeHandle, config[3], config[4],
-                DateTimeOffset.UtcNow.AddSeconds(55), isPositive && PositiveProtocol.Inserts(config[0]), isPositive && !PositiveProtocol.Inserts(config[0]),
+                DateTimeOffset.UtcNow.AddSeconds(55), isPositive && PositiveProtocol.RequiresInputReview(config[0]), isPositive && !PositiveProtocol.Inserts(config[0]),
                 operation => operation == AcceptanceOperation.Capture || (lease && (isPositive || operation == AcceptanceOperation.ClipboardControl)),
                 allowClipboardControl: !isPositive, ownedMainWindow: isPositive ? boundary.Main.NativeHandle : 0);
             broker.Bind(session, session.SessionId);
@@ -102,10 +102,18 @@ public partial class App : Application
             lease = false; broker.Close();
             if (positive?.Keyboard.Armed == true)
             {
-                // Unknown Enter/paste delivery forbids worker abort/disposal. Coordinator also retains its unjobbed lifetime.
-                try { await BootstrapProtocol.WriteAsync(Program.Responses, "failed keyboard_pending", CancellationToken.None); } catch { }
-                await positive.Keyboard.RetainAsync(() => { }, () => Task.Delay(1000));
-                return;
+                // Close and drain the actual host before independent guardian restoration. Never abort uncertain input.
+                await positive.DrainFailedKeyboardAsync();
+                if (positive.Keyboard.Armed)
+                {
+                    try { await BootstrapProtocol.WriteAsync(Program.Responses, "failed keyboard_pending", CancellationToken.None); } catch { }
+                    await positive.Keyboard.RetainAsync(() => { }, async () =>
+                    {
+                        await Task.Delay(1000);
+                        await positive.DrainFailedKeyboardAsync();
+                    });
+                }
+                // A known-safe keyboard settlement is still a FAILED scene, not positive_verified.
             }
             // Always ask guardian, including an ambiguous publish failure and zero local VM snapshots.
             var settled = session is null || await session.DrainOwnedRecoveryAsync();
