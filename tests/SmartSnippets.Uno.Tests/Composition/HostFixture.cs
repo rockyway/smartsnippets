@@ -34,7 +34,7 @@ internal sealed class TestBoundary : CandidateHostBoundary
     internal override IUiDispatcher Dispatcher => new TestDispatcher(Posted);
     internal override IThemeService CreateTheme(AppSettings settings) => new TestTheme(settings);
     internal override IDisposable CreateMessageWindow() { Messages++; return new Release(() => MessageDisposals++); }
-    internal override IDialogService CreateDialogs(bool popup) => Dialogs;
+    internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => Dialogs;
     internal override ISnippetFileService CreateFiles() => Files;
     internal override ICandidateMainWindow CreateMain(UnoAppHost host)
     {
@@ -67,8 +67,8 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
     public event EventHandler? HiddenByClose;
     public async Task NavigateAsync(PageKind page, bool show)
     {
-        if (Current != page && !await CanExitAsync()) return;
-        Current = page; Visible |= show; Navigations++;
+        await CandidateUiPolicy.NavigateAsync(() => Current != page ? CanExitAsync() : Task.FromResult(true),
+            () => { Current = page; Navigations++; }, show, () => Visible = true);
     }
     public Task<bool> CanExitAsync() => Current switch
     { PageKind.Snippets => host.Snippets.CanLeaveAsync(), PageKind.Folders => host.Folders.CanLeaveAsync(), _ => Task.FromResult(true) };
@@ -76,23 +76,33 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
     { if (await CanExitAsync()) { Visible = false; HiddenByClose?.Invoke(this, EventArgs.Empty); } }
     public void Dispose() => Disposals++;
 }
-internal sealed class PopupSurface(UnoAppHost host) : ICandidatePopupWindow
+internal sealed class PopupSurface : ICandidatePopupWindow
 {
+    private readonly UnoAppHost host;
+    internal CandidatePopupLifecycle Lifecycle { get; }
+    internal bool AutoReady = true;
+    internal PopupSurface(UnoAppHost host)
+    {
+        this.host = host;
+        Lifecycle = new(action => action(), _ => { }, () => { }, () => { });
+    }
+    internal void Ready() => Lifecycle.Shows.CompleteWarmup(Lifecycle.Shows.WarmupGeneration);
+    private void CompleteIfReady() { if (AutoReady) Ready(); }
     internal int Prewarms, Shows, Hides, Disposals;
     internal bool ClosedAlready;
     public event EventHandler? Closed;
-    public void Prewarm() => Prewarms++;
+    public void Prewarm() { Prewarms++; Lifecycle.Shows.BeginWarmup(); CompleteIfReady(); }
     public void ShowPreview(string? query, bool openSortMenu)
     {
-        Shows++;
-        if (host.Popup.OpenPreview() != Presentation.ViewModels.PopupOpenMode.Ignored && query is not null) host.Popup.Query = query;
+        Lifecycle.Preview(host.Popup, query, () => { Shows++; return new(true, null); });
+        CompleteIfReady();
     }
-    public void Hide() => Hides++;
-    public void ShowAgain() { host.Popup.EnsureCurrent(); Shows++; }
-    public void OpenMainWindow() { }
+    public void Hide() { Hides++; Lifecycle.Shows.Hide(); }
+    public void ShowAgain() { Lifecycle.Reopen(host.Popup, () => { Shows++; return new(true, null); }); CompleteIfReady(); }
+    public void OpenMainWindow() { _ = host.ApplyLaunchOptionsAsync(new(PageKind.Snippets, false, null)); Hide(); }
     public void EditSnippet(long id) { var row = host.Popup.Items.First(r => r.SnippetId == id); host.Popup.EditRow(row); }
     public void Focus(PopupFocusTarget target) { }
-    public void Dispose() { if (ClosedAlready) return; ClosedAlready = true; Disposals++; Closed?.Invoke(this, EventArgs.Empty); }
+    public void Dispose() { if (ClosedAlready) return; ClosedAlready = true; Lifecycle.Shows.Close(); Disposals++; Closed?.Invoke(this, EventArgs.Empty); }
 }
 internal sealed class TestDialogs : IDialogService
 {

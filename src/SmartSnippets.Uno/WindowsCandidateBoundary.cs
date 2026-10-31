@@ -24,9 +24,10 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         _theme!.ObserveSystemMessages(_message);
         return _message;
     }
-    internal override IDialogService CreateDialogs(bool popup) => new DialogService(
+    internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => new DialogService(
         () => popup ? _popup?.ContentXamlRoot : _main?.ContentXamlRoot,
-        () => { }, theme: _theme);
+        () => { if (!popup) _main?.BringToFront(); }, textSize, _theme,
+        () => popup ? _popup?.ContentXamlRoot?.IsHostVisible == true : _main is { IsHidden: false });
     internal override ISnippetFileService CreateFiles() => new SnippetFileService(() => _main?.AppWindow.Id);
     internal override ICandidateMainWindow CreateMain(UnoAppHost host)
     {

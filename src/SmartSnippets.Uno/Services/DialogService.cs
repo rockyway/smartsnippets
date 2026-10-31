@@ -10,15 +10,17 @@ internal sealed class DialogService : IDialogService
 {
     private readonly Func<XamlRoot?> _getXamlRoot;
     private readonly Action _showMainWindow;
+    private readonly Func<bool> _isHostVisible;
     private readonly ITextSizeService? _textSize;
     private readonly ThemeService? _theme;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public DialogService(Func<XamlRoot?> getXamlRoot, Action showMainWindow, ITextSizeService? textSize = null, ThemeService? theme = null)
+    public DialogService(Func<XamlRoot?> getXamlRoot, Action showMainWindow, ITextSizeService? textSize = null, ThemeService? theme = null, Func<bool>? isHostVisible = null)
     {
         _theme = theme;
         _textSize = textSize;
         _getXamlRoot = getXamlRoot;
+        _isHostVisible = isHostVisible ?? (() => _getXamlRoot()?.IsHostVisible == true);
         _showMainWindow = showMainWindow;
     }
 
@@ -87,12 +89,7 @@ internal sealed class DialogService : IDialogService
         await _gate.WaitAsync();
         try
         {
-            var root = _getXamlRoot();
-            if (root is null)
-            {
-                _showMainWindow();
-                root = _getXamlRoot();
-            }
+            var root = CandidateUiPolicy.DialogRoot(_getXamlRoot, _isHostVisible, _showMainWindow);
 
             if (root is null)
             {

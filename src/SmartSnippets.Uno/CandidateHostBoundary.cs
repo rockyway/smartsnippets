@@ -26,7 +26,7 @@ internal abstract class CandidateHostBoundary
     internal abstract IUiDispatcher Dispatcher { get; }
     internal abstract IThemeService CreateTheme(AppSettings settings);
     internal abstract IDisposable CreateMessageWindow();
-    internal abstract IDialogService CreateDialogs(bool popup);
+    internal abstract IDialogService CreateDialogs(bool popup, ITextSizeService textSize);
     internal abstract ISnippetFileService CreateFiles();
     internal abstract ICandidateMainWindow CreateMain(UnoAppHost host);
     internal abstract ICandidatePopupWindow CreatePopup(UnoAppHost host);

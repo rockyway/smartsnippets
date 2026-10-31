@@ -68,18 +68,18 @@
                     Content="Change" />
                 <Button
                     automation:AutomationProperties.Name="Restore default shortcut"
-                    IsEnabled="False" Command="{x:Bind ViewModel.RestoreDefaultHotkeyCommand}"
+                    IsEnabled="False"
                     Content="Restore default" />
             </StackPanel>
             <TextBlock
                 Opacity="0.7"
-                Text="{x:Bind ViewModel.HotkeyFeedback, Mode=OneWay}"
+                Text="Shortcut registration is unavailable in this candidate."
                 TextWrapping="Wrap"
                 Visibility="{x:Bind IsNotError(ViewModel.HotkeyFeedbackSeverity), Mode=OneWay}"
                 automation:AutomationProperties.LiveSetting="Polite" />
             <TextBlock
                 Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                Text="{x:Bind ViewModel.HotkeyFeedback, Mode=OneWay}"
+                Text="Shortcut registration is unavailable in this candidate."
                 TextWrapping="Wrap"
                 Visibility="{x:Bind IsError(ViewModel.HotkeyFeedbackSeverity), Mode=OneWay}"
                 automation:AutomationProperties.LiveSetting="Assertive" />
@@ -152,7 +152,7 @@
                 Toggled="OnStartupToggled" />
             <TextBlock
                 Opacity="0.7"
-                Text="{x:Bind ViewModel.StartAtLoginHint}"
+                Text="Start at login is unavailable in this candidate; no registration is changed."
                 TextWrapping="Wrap" />
 
             <!-- Advanced -->
@@ -165,7 +165,6 @@
                 Content="{x:Bind ViewModel.PreviewGlobalDialogText}" />
             <Button
                 automation:AutomationProperties.Name="Restart as administrator"
-                Command="{x:Bind ViewModel.RestartAsAdministratorCommand}"
                 Content="Restart as administrator"
                 IsEnabled="False" />
             <TextBlock

@@ -1,0 +1,47 @@
+using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.ViewModels;
+
+namespace SmartSnippets.Uno;
+
+// Shared by compiled window handlers and portable lifecycle drivers; never bypass readiness.
+internal sealed class CandidatePopupLifecycle(Action<Action> schedule, Action<PopupFocusTarget> focus,
+    Action startWarmup, Action stopWarmup, Action? warmupFailed = null)
+{
+    internal PopupShowCoordinator Shows { get; } = new(schedule, focus, startWarmup, stopWarmup, warmupFailed);
+
+    internal void Preview(PopupViewModel model, string? query, Func<PopupShowResult> reveal)
+        => Shows.RequestShow(() =>
+        {
+            var mode = model.OpenPreview();
+            if (mode == PopupOpenMode.Ignored)
+            {
+                if (!model.IsPreview || !model.IsEditorOpen || model.IsInserting) return default;
+                model.EnsureCurrent(); // Resume without resetting the editor's query or selection.
+            }
+            else if (query is not null) model.Query = query;
+            return reveal();
+        });
+
+    internal void Reopen(PopupViewModel model, Func<PopupShowResult> reveal)
+        => Shows.RequestShow(() => { model.EnsureCurrent(); return reveal(); });
+}
+
+internal static class CandidateUiPolicy
+{
+    internal const string PreviewHint = "Preview only — selection closes; clipboard unavailable";
+    internal static string HintLine(string hint, string status) => string.IsNullOrEmpty(status) ? PreviewHint : hint;
+
+    internal static T? DialogRoot<T>(Func<T?> getRoot, Func<bool> isVisible, Action show) where T : class
+    {
+        if (!isVisible() || getRoot() is null) show();
+        return getRoot();
+    }
+
+    internal static async Task<bool> NavigateAsync(Func<Task<bool>> guard, Action navigate, bool show, Action reveal)
+    {
+        if (!await guard()) return false;
+        navigate();
+        if (show) reveal();
+        return true;
+    }
+}

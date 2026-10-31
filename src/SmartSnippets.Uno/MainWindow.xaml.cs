@@ -100,8 +100,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Navigate through the normal unsaved-changes guard without taking foreground.</summary>
     internal async Task ShowPageWithoutActivationAsync(PageKind kind, bool show)
     {
-        await NavigateGuardedAsync(kind);
-        if (show) AppWindow.Show(false);
+        if (await NavigateGuardedAsync(kind) && show) AppWindow.Show(false);
     }
 
     /// <summary>Shows and activates the window on the page it already displays.</summary>
@@ -172,27 +171,25 @@ public sealed partial class MainWindow : Window
 
     private IGuardedPage? CurrentGuard() => Navigation.Content as IGuardedPage;
 
-    private async Task NavigateGuardedAsync(PageKind kind)
+    private async Task<bool> NavigateGuardedAsync(PageKind kind)
     {
         if (_guardInProgress)
         {
-            return;
+            return false;
         }
 
         Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         _guardInProgress = true;
         try
         {
-            if (_current != kind && CurrentGuard() is { } guard && !await guard.CanLeaveAsync())
-            {
-                return;
-            }
-
-            Navigate(kind);
+            return await CandidateUiPolicy.NavigateAsync(
+                () => _current != kind && CurrentGuard() is { } guard ? guard.CanLeaveAsync() : Task.FromResult(true),
+                () => Navigate(kind), false, () => AppWindow.Show(false));
         }
         catch (Exception ex)
         {
             AppLog.Error("navigate_failed", ex);
+            return false;
         }
         finally
         {

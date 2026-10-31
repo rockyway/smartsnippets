@@ -51,12 +51,12 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             TextSize.Apply(Settings.TextSizePreset, Settings.CustomTextSize);
             _theme = boundary.CreateTheme(Settings);
             _message = boundary.CreateMessageWindow();
-            Dialogs = boundary.CreateDialogs(false);
+            Dialogs = boundary.CreateDialogs(false, TextSize);
             var elevation = new CandidateElevation();
             var sort = new SortPreference(SettingsStore, Settings.PopupSort);
             _popupHost = new DeferredPopupHost(new Popup.RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
             Popup = new PopupViewModel(Store, SettingsStore, Settings, Gate, Gate, elevation, _popupHost,
-                boundary.CreateDialogs(true), new HostNotifier(this), () => boundary.Dispatcher.Post(() => _ = ExitAsync()),
+                boundary.CreateDialogs(true, TextSize), new HostNotifier(this), () => boundary.Dispatcher.Post(() => _ = ExitAsync()),
                 TextSize, action => boundary.Dispatcher.Post(() => { if (!_disposed) action(); }), sort);
             Snippets = new SnippetsPageViewModel(Store, Dialogs, Gate, files: boundary.CreateFiles(), textSize: TextSize,
                 insertRow: id => Popup.InsertFromMainAsync(id), canInsertRow: () => false, sortPreference: sort);
@@ -70,7 +70,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             _tray = boundary.CreateTray(() => PostNavigation(PageKind.Snippets),
                 () => boundary.Dispatcher.Post(() => ShowPreview()), () => PostNavigation(PageKind.Settings),
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()));
-            EnsurePopup().Prewarm();
+            EnsurePopup();
             await ApplyLaunchOptionsAsync(options, !background);
             AppLog.Info("candidate_started");
         }
@@ -120,6 +120,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         var popup = boundary.CreatePopup(this);
         _popup = popup;
         popup.Closed += (_, _) => { if (ReferenceEquals(_popup, popup)) _popup = null; };
+        popup.Prewarm();
         return popup;
     }
     internal async Task ExitAsync()
@@ -134,7 +135,9 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             await DrainManagementAsync();
             if ((_main is not null && !await _main.CanExitAsync()) || !await CanExitPopupAsync())
             {
-                _exiting = false; _main?.SetInteractionEnabled(true); _popupHost?.Resume(); return;
+                _exiting = false; _main?.SetInteractionEnabled(true);
+                if (Popup.IsEditorOpen) _popupHost?.ShowAgain();
+                _popupHost?.Resume(); return;
             }
             await DrainManagementAsync();
             Gate.CloseAdmission();

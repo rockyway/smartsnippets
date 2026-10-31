@@ -38,7 +38,9 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private bool _awaitingLayout;
     private bool _awaitingFrame;
     private MenuFlyout? _contextFlyout;
-    private readonly PopupShowCoordinator _shows;
+    private readonly CandidatePopupLifecycle _lifecycle;
+    private PopupShowCoordinator _shows => _lifecycle.Shows;
+    private HMONITOR _previewMonitor;
     private DispatcherQueueTimer? _prewarmTimer;
     private readonly UISettings _uiSettings = new();
     private bool _closed;
@@ -107,6 +109,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         SearchBox.TextCompositionEnded += (_, _) => _isComposing = false;
         RootGrid.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnSurfacePointerReleased), true);
         _hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _previewMonitor = PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         RootGrid.Loaded += RegisterHoverOwner;
         RootGrid.Unloaded += (_, _) => UnregisterHoverOwner();
         AppWindow.Changed += OnHoverWindowChanged;
@@ -118,7 +121,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         {
             if (_hoverRoot is { } root) Controls.HoverDetailsSurface.TrackExternalPointer(root, null);
         };
-        _shows = new PopupShowCoordinator(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
+        _lifecycle = new CandidatePopupLifecycle(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
         // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
         // Keep a native border so DWM owns both the perimeter and the rounded clip.
@@ -172,6 +175,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal Func<bool>? CanShow { get; set; }
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
+    private string HintLine(string hint, string status) => CandidateUiPolicy.HintLine(hint, status);
     private string SearchPlaceholder => UiText.PopupSearchPlaceholder;
     private string SearchName => UiText.PopupSearchName;
     private string ToggleLayoutName => UiText.ToggleLayout;
@@ -303,17 +307,17 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _shows.CompleteWarmup(_shows.WarmupGeneration);
     }
     internal void ShowPreview(HWND owner, string? query = null, bool activate = false, bool openSortMenu = false)
-        => _shows.RequestShow(() => ShowPreviewReady(owner, query, activate, openSortMenu));
-    private PopupShowResult ShowPreviewReady(HWND owner, string? query, bool activate, bool openSortMenu)
+    {
+        if (owner != default) _previewMonitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        if (CanShow?.Invoke() == false) return;
+        _lifecycle.Preview(ViewModel, query, () => ShowPreviewReady(openSortMenu));
+    }
+    private PopupShowResult ShowPreviewReady(bool openSortMenu)
     {
         if (CanShow?.Invoke() == false) return default;
-        if (ViewModel.OpenPreview() == PopupOpenMode.Ignored) return default;
-        if (query is not null) ViewModel.Query = query;
-        var monitor = PInvoke.MonitorFromWindow(owner, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
-        if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
-            WindowPlacement.CenterOn(AppWindow, PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), LogicalWidth, LogicalHeight);
+        Center();
         // The QA menu seam is always non-activating, even if a caller uses the default activate value.
-        activate = false; // All candidate previews are nonactivating.
+        const bool activate = false; // All candidate previews are nonactivating.
         _previewSortMenuPending = openSortMenu;
         ShowSurface(activate); SetVisible(true);
         QueuePreviewSortMenu();
@@ -322,10 +326,9 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void Center()
     {
-        if (ViewModel.Target is not { } target) return;
-        var monitor = new HMONITOR(target.MonitorHandle);
+        var monitor = ViewModel.Target is { } target ? new HMONITOR(target.MonitorHandle) : _previewMonitor;
         if (!WindowPlacement.CenterOn(AppWindow, monitor, LogicalWidth, LogicalHeight))
-            WindowPlacement.CenterOn(AppWindow, PInvoke.MonitorFromWindow(_hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), LogicalWidth, LogicalHeight);
+            WindowPlacement.CenterOn(AppWindow, _previewMonitor, LogicalWidth, LogicalHeight);
     }
     public void Hide()
     {
@@ -343,7 +346,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _searchStarted = 0; _awaitingLayout = false; _awaitingFrame = false;
         AppWindow.Hide(); SetVisible(false);
     }
-    public void ShowAgain() => _shows.RequestShow(ShowAgainReady);
+    public void ShowAgain() => _lifecycle.Reopen(ViewModel, ShowAgainReady);
     private PopupShowResult ShowAgainReady()
     {
         if (CanShow?.Invoke() == false) return default;
@@ -518,7 +521,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         FlyoutSurface.KeepSolid(menu);
-        var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = false };
+        var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = ViewModel.CanCopyRow(item) };
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = false };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };

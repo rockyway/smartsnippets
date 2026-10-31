@@ -258,7 +258,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         Controls.HoverDetailsSurface.CancelActive(XamlRoot);
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         FlyoutSurface.KeepSolid(menu);
-        var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = false };
+        var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = vm.CanCopyRow };
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = vm.CanInsertRow };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };

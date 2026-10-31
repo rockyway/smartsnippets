@@ -5,6 +5,6 @@
     <Using Include="Xunit" />
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
     <!-- Compile the actual composition root. Only external native/window implementations are omitted. -->
-    <Compile Include="../../src/SmartSnippets.Uno/UnoAppHost.cs;../../src/SmartSnippets.Uno/CandidateActivationQueue.cs;../../src/SmartSnippets.Uno/CandidateProfile.cs;../../src/SmartSnippets.Uno/CandidateFileIdentity.cs;../../src/SmartSnippets.Uno/CandidateHostBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs;../../src/SmartSnippets.Uno/Services/CandidateMessageWindowLifetime.cs" LinkBase="Candidate" />
+    <Compile Include="../../src/SmartSnippets.Uno/CandidateUiPolicy.cs;../../src/SmartSnippets.Uno/UnoAppHost.cs;../../src/SmartSnippets.Uno/CandidateActivationQueue.cs;../../src/SmartSnippets.Uno/CandidateProfile.cs;../../src/SmartSnippets.Uno/CandidateFileIdentity.cs;../../src/SmartSnippets.Uno/CandidateHostBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs;../../src/SmartSnippets.Uno/Services/CandidateMessageWindowLifetime.cs" LinkBase="Candidate" />
   </ItemGroup>
 </Project>
