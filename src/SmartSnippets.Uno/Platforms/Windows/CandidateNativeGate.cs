@@ -15,7 +15,19 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
     private InsertionTarget? _captured, _activeTarget;
     private TaskCompletionSource? _active;
     private Task<bool>? _drain;
-    private bool _closed, _suspended, _pasteAttempted;
+    private bool _closed, _suspended, _pasteAttempted, _untrackedRecovery;
+    internal event Action? AvailabilityChanged;
+    private bool HasRecovery => _untrackedRecovery || _snapshots.Count != 0;
+    private void NotifyAvailabilityChanged()
+    {
+        try { AvailabilityChanged?.Invoke(); }
+        catch { AppLog.Info("candidate_availability_notification_failed"); }
+    }
+    internal void ClearCapturedTarget()
+    {
+        _captured = null;
+        NotifyAvailabilityChanged();
+    }
 
     internal CandidateNativeGate(CandidateNativeCapability? capability = null, Func<bool>? preview = null)
     { _capability = capability; _preview = preview ?? (() => false); }
@@ -28,9 +40,9 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
         && _capability?.Allows(operation) == true;
     private bool AllowsInsert(CandidateNativeOperation operation) => _activeTarget is { } target
         && _capability?.Owns(target) == true && Allows(CandidateNativeOperation.Insert | operation);
-    internal bool CanInsert => _captured is not null && Allows(CandidateNativeOperation.Insert);
-    internal bool IsIdle => _active is null;
-    public bool IsAvailable => _active is null && _snapshots.Count == 0 && Allows(CandidateNativeOperation.Copy);
+    internal bool CanInsert => IsIdle && _captured is not null && Allows(CandidateNativeOperation.Insert);
+    internal bool IsIdle => _active is null && !HasRecovery;
+    public bool IsAvailable => IsIdle && Allows(CandidateNativeOperation.Copy);
     public bool TrySetText(string text)
     {
         if (!IsAvailable) return false;
@@ -41,13 +53,16 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
 
     internal InsertionTarget? Capture()
     {
-        if (_active is not null || !Allows(CandidateNativeOperation.Capture)) return null;
-        _captured = null;
+        if (_active is not null) return null;
+        ClearCapturedTarget();
+        if (HasRecovery || !Allows(CandidateNativeOperation.Capture)) return null;
         try
         {
             var target = _capability!.Operations.CaptureOwnedTarget(_capability.Window, _capability.ProcessId);
             if (target is null || !_capability.Owns(target) || !Allows(CandidateNativeOperation.Capture)) return null;
-            return _captured = target;
+            _captured = target;
+            NotifyAvailabilityChanged();
+            return target;
         }
         catch { return null; }
     }
@@ -55,23 +70,31 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
     public async Task<InsertionResult> InsertAsync(InsertionTarget target, long snippetId,
         InsertionOptions options = default, CancellationToken ct = default)
     {
+        if (_active is not null && target == _captured && Allows(CandidateNativeOperation.Insert))
+            return new(InsertionOutcome.Busy, "An insertion is already in progress.");
         if (!CanInsert || target != _captured || _insertion is null
             || (options.AllowClipboardLoss && !Allows(CandidateNativeOperation.ClipboardLoss)))
             return new(InsertionOutcome.PasteFailed, _closed ? "The candidate is shutting down." : Unavailable);
-        if (_active is not null) return new(InsertionOutcome.Busy, "An insertion is already in progress.");
-        if (_snapshots.Count != 0) return new(InsertionOutcome.PasteFailed, Unavailable);
         var active = new TaskCompletionSource();
         _active = active; _activeTarget = target; _pasteAttempted = false;
+        NotifyAvailabilityChanged();
         try { return await _insertion.InsertAsync(target, snippetId, options, ct); }
-        finally { _activeTarget = null; _active = null; active.TrySetResult(); }
+        finally
+        {
+            _activeTarget = null; _active = null;
+            if (HasRecovery) _captured = null;
+            NotifyAvailabilityChanged();
+            active.TrySetResult();
+        }
     }
 
-    internal void SuspendAdmission() => _suspended = true;
-    internal void ResumeAdmission() { if (!_closed) _suspended = false; }
+    internal void SuspendAdmission() { _suspended = true; NotifyAvailabilityChanged(); }
+    internal void ResumeAdmission() { if (!_closed) { _suspended = false; NotifyAvailabilityChanged(); } }
     internal void CloseAdmission()
     {
         if (_closed) return;
         _closed = true;
+        ClearCapturedTarget();
         AppLog.Info("candidate_native_admission", "state=closed");
     }
     internal Task<bool> DrainAsync()
@@ -83,13 +106,14 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
     private async Task<bool> DrainCoreAsync()
     {
         if (_active is { } active) await active.Task;
-        if (_snapshots.Count == 0) return true;
+        if (!HasRecovery) return true;
         // This is recovery of already-owned state, not permission to begin a new mutation.
         // The adapter must verify clipboard ownership and retain its RAM backup on failure.
         try
         {
             if (!await _capability!.Operations.DrainOwnedRecoveryAsync()) return false;
-            _snapshots.Clear();
+            _snapshots.Clear(); _untrackedRecovery = false;
+            NotifyAvailabilityChanged();
             return true;
         }
         catch { return false; }
@@ -115,17 +139,32 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
         {
             var swap = _capability!.Operations.TrySwapClipboard(text, allowIncomplete);
             if (swap.Snapshot is { } snapshot) _snapshots.Add(snapshot);
-            return swap;
+            if (swap.Status == SwapStatus.Swapped && swap.Snapshot is null)
+            {
+                // A faulty adapter may have emptied the clipboard without transferring its backup.
+                // Only its owned recovery drain can settle that state; never dispatch without a snapshot.
+                _untrackedRecovery = true;
+                NotifyAvailabilityChanged();
+                return new(SwapStatus.Failed, null);
+            }
+            NotifyAvailabilityChanged();
+            return swap.Status == SwapStatus.NotPreserved && !AllowsInsert(CandidateNativeOperation.ClipboardLoss)
+                ? swap with { Status = SwapStatus.Failed } : swap;
         }
-        catch (ClipboardSwapException ex) { _snapshots.Add(ex.Snapshot); throw; }
+        catch (ClipboardSwapException ex) { _snapshots.Add(ex.Snapshot); NotifyAvailabilityChanged(); throw; }
+        catch { _untrackedRecovery = true; NotifyAvailabilityChanged(); throw; }
     }
     SwapStatus IPasteDispatcher.TryPlaceText(string text) => AllowsInsert(CandidateNativeOperation.Clipboard | CandidateNativeOperation.ClipboardLoss)
         ? _capability!.Operations.TryPlaceText(text) : SwapStatus.Failed;
     DispatchState IPasteDispatcher.SendPaste()
     {
-        if (!AllowsInsert(CandidateNativeOperation.Input)) return DispatchState.NotDispatched;
-        // Authorization checks must not separate the final native HWND/PID check from dispatch.
-        if (!_capability!.Operations.IsTargetForeground(_activeTarget!)) return DispatchState.NotDispatched;
+        try
+        {
+            if (!AllowsInsert(CandidateNativeOperation.Input)) return DispatchState.NotDispatched;
+            // Authorization checks must not separate the final native HWND/PID check from dispatch.
+            if (!_capability!.Operations.IsTargetForeground(_activeTarget!)) return DispatchState.NotDispatched;
+        }
+        catch { return DispatchState.NotDispatched; }
         _pasteAttempted = true;
         return _capability.Operations.SendPaste();
     }
@@ -134,7 +173,8 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
     {
         if (!_snapshots.Contains(snapshot)) return RestoreStatus.Failed;
         var result = _capability!.Operations.TryRestoreClipboard(snapshot);
-        if (result is RestoreStatus.Restored or RestoreStatus.ClipboardChanged) _snapshots.Remove(snapshot);
+        if (result == RestoreStatus.Restored) _snapshots.Remove(snapshot);
+        NotifyAvailabilityChanged();
         return result;
     }
     void IPasteDispatcher.DiscardClipboardSnapshot(IClipboardSnapshot snapshot)
@@ -143,5 +183,6 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
             throw new InvalidOperationException("Clipboard discard is not authorized.");
         _capability!.Operations.DiscardClipboardSnapshot(snapshot);
         _snapshots.Remove(snapshot);
+        NotifyAvailabilityChanged();
     }
 }

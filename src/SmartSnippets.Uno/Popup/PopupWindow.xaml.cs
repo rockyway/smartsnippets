@@ -174,6 +174,11 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal Func<bool>? CanInsertNative { get; set; }
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
+    internal event EventHandler<bool>? PresentationChanged
+    {
+        add => _lifecycle.PresentationChanged += value;
+        remove => _lifecycle.PresentationChanged -= value;
+    }
     private string HintLine(string hint, string status, bool isPreview) => CandidateUiPolicy.HintLine(hint, status, isPreview);
     private string SearchPlaceholder => UiText.PopupSearchPlaceholder;
     private string SearchName => UiText.PopupSearchName;
@@ -308,7 +313,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal void ShowPreview(HWND owner, string? query = null, bool activate = false, bool openSortMenu = false)
     {
         if (CanShow?.Invoke() == false) return;
-        _lifecycle.Preview(ViewModel, query, () => ShowPreviewReady(openSortMenu));
+        _lifecycle.Preview(ViewModel, query, () => ShowPreviewReady(openSortMenu), () => CanShow?.Invoke() != false);
     }
     internal void ShowCaptured(InsertionTarget target, Func<bool> canShow)
     {
@@ -355,12 +360,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _searchTimer?.Stop();
         SortFlyout.Hide();
         _shows.Hide();
+        _lifecycle.Hidden();
         if (!AppWindow.IsVisible && !_visible) return;
         CompositionTarget.Rendered -= OnRendered;
         _searchStarted = 0; _awaitingLayout = false; _awaitingFrame = false;
         AppWindow.Hide(); SetVisible(false);
     }
-    public void ShowAgain() => _lifecycle.Reopen(ViewModel, ShowAgainReady);
+    public void ShowAgain() => _lifecycle.Reopen(ViewModel, ShowAgainReady, () => CanShow?.Invoke() != false);
     private PopupShowResult ShowAgainReady()
     {
         if (CanShow?.Invoke() == false) return default;

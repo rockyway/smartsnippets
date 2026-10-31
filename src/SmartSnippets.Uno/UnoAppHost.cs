@@ -20,7 +20,10 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private ICandidateTray? _tray;
     private DeferredPopupHost? _popupHost;
     private IThemeService? _theme;
-    private bool _exiting, _disposed, _started, _ownsLog, _disposing;
+    private bool _exiting, _disposed, _started, _ownsLog, _disposing, _disposeRequested;
+    private bool _previewActive, _previewHidden, _pendingCaptured;
+    internal bool CanPresentPopup => !_exiting && !ExitSuperseded;
+    private bool ExitSuperseded => _disposed || _disposeRequested;
     internal ISnippetStore Store { get; private set; } = null!;
     internal AppSettings Settings { get; private set; } = null!;
     internal ISettingsStore SettingsStore { get; private set; } = null!;
@@ -32,11 +35,11 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     internal PopupViewModel Popup { get; private set; } = null!;
     private CandidateNativeGate? _gate;
     private CandidateNativeCapability? _nativeCapability;
-    internal CandidateNativeGate Gate => _gate ??= new(_nativeCapability = boundary.NativeCapability, () => Popup?.IsPreview == true);
+    internal CandidateNativeGate Gate => _gate ??= new(_nativeCapability = boundary.NativeCapability, () => _previewActive);
 
     internal async Task StartAsync(bool background, LaunchOptions options)
     {
-        if (_started || _disposed) return;
+        if (_started || ExitSuperseded) return;
         _started = true;
         try
         {
@@ -69,6 +72,8 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
                 new CandidateStartupRegistration(), new CandidateHotkeyManager(Settings.Hotkey), elevation,
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()), () => ShowPreview());
             if (_nativeCapability is { } capability) capability.AuthorizationChanged += OnAuthorizationChanged;
+            Gate.AvailabilityChanged += RefreshClipboardAvailability;
+            Popup.PropertyChanged += OnPopupPropertyChanged;
             RefreshClipboardAvailability();
             _main = boundary.CreateMain(this);
             _main.HiddenByClose += OnHiddenByClose;
@@ -77,10 +82,12 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()));
             EnsurePopup();
             await ApplyLaunchOptionsAsync(options, !background);
+            if (ExitSuperseded) return;
             AppLog.Info("candidate_started");
         }
         catch (Exception ex)
         {
+            if (ExitSuperseded) return;
             if (_ownsLog) AppLog.Error("candidate_startup_failed", ex);
             Dispose();
             boundary.ReportStartupFailure();
@@ -92,8 +99,17 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     {
         if (!_disposed) RefreshClipboardAvailability();
     });
+    private void OnPopupPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(PopupViewModel.IsInserting) or nameof(PopupViewModel.Editor))
+        {
+            if (_previewHidden && !Popup.IsEditorOpen) _previewActive = false;
+            RefreshClipboardAvailability();
+        }
+    }
     internal void RefreshClipboardAvailability()
     {
+        if (_disposed || Snippets is null || Popup is null) return;
         // Execution also rechecks the lease; notification never grants authorization.
         Snippets.RefreshClipboardAvailability();
         Popup.RefreshClipboardAvailability();
@@ -118,9 +134,12 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     }
     internal void ShowPreview(string? query = null, bool sortMenu = false)
     {
-        if (_exiting || _disposed) return;
+        if (!CanPresentPopup || Popup.IsInserting || (Popup.IsEditorOpen && !Popup.IsPreview)) return;
+        _previewActive = true; _previewHidden = false; _pendingCaptured = false;
+        Gate.ClearCapturedTarget();
         // No HWND enumeration/capture/title inspection exists on the closed candidate route.
         EnsurePopup().ShowPreview(query, sortMenu);
+        RefreshClipboardAvailability();
     }
     internal void ShowPopupFromNativeRequest()
     {
@@ -129,15 +148,49 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     }
     internal bool ShowCapturedPopup()
     {
-        if (_exiting || _disposed || !Gate.IsIdle || Popup.IsEditorOpen || Popup.IsPreview) return false;
+        if (!CanPresentPopup || !Gate.IsIdle || Popup.IsEditorOpen || _previewActive) return false;
         var surface = EnsurePopup();
-        if (!surface.SupportsCapturedPopup) return false;
+        if (!surface.SupportsCapturedPopup) { Gate.ClearCapturedTarget(); return false; }
         var target = Gate.Capture();
-        if (target is null || !Gate.CanInsert) { RefreshClipboardAvailability(); return false; }
+        if (target is null || !Gate.CanInsert) { Gate.ClearCapturedTarget(); return false; }
         // Capture and its exact identity validation precede all popup show/focus work.
-        surface.ShowCaptured(target);
+        _pendingCaptured = true;
+        try { surface.ShowCaptured(target); }
+        catch
+        {
+            _pendingCaptured = false;
+            Gate.ClearCapturedTarget();
+            AppLog.Info("candidate_popup_show_failed");
+            return false;
+        }
         RefreshClipboardAvailability();
         return true;
+    }
+    private void OnPopupHidden(object? sender, EventArgs args)
+    {
+        if (!ReferenceEquals(sender, _popup)) return;
+        _previewHidden = true;
+        _previewActive = Popup.IsPreview && Popup.IsEditorOpen;
+        if (_pendingCaptured) Gate.ClearCapturedTarget();
+        _pendingCaptured = false;
+        RefreshClipboardAvailability();
+    }
+    private void OnPopupPresentationChanged(object? sender, bool shown)
+    {
+        if (!ReferenceEquals(sender, _popup)) return;
+        if (!shown)
+        {
+            if (_pendingCaptured) Gate.ClearCapturedTarget();
+            _previewHidden = true;
+            _previewActive = Popup.IsPreview && Popup.IsEditorOpen;
+        }
+        else
+        {
+            _previewHidden = false;
+            _previewActive = Popup.IsPreview;
+        }
+        _pendingCaptured = false;
+        RefreshClipboardAvailability();
     }
     private ICandidatePopupWindow EnsurePopup()
     {
@@ -145,22 +198,34 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         if (_popup is not null) return _popup;
         var popup = boundary.CreatePopup(this);
         _popup = popup;
-        popup.Closed += (_, _) => { if (ReferenceEquals(_popup, popup)) _popup = null; };
+        popup.Hidden += OnPopupHidden;
+        popup.PresentationChanged += OnPopupPresentationChanged;
+        popup.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_popup, popup)) return;
+            OnPopupHidden(popup, EventArgs.Empty);
+            popup.Hidden -= OnPopupHidden;
+            popup.PresentationChanged -= OnPopupPresentationChanged;
+            _popup = null;
+        };
         popup.Prewarm();
         return popup;
     }
     internal async Task ExitAsync()
     {
-        if (_exiting || _disposed) return;
+        if (_exiting || ExitSuperseded) return;
         _exiting = true;
         Gate.SuspendAdmission();
+        if (ExitSuperseded) return;
         AppLog.Info("candidate_shutdown_started");
         _popupHost?.Suspend();
         try
         {
             _main?.SetInteractionEnabled(false);
             _popup?.Hide();
-            if (!await Gate.DrainAsync())
+            var recovered = await Gate.DrainAsync();
+            if (ExitSuperseded) return;
+            if (!recovered)
             {
                 CancelExit();
                 AppLog.Info("candidate_shutdown_blocked", "reason=recovery");
@@ -168,13 +233,15 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
                 return;
             }
             await DrainManagementAsync();
-            if ((_main is not null && !await _main.CanExitAsync()) || !await CanExitPopupAsync())
-            {
-                _exiting = false; Gate.ResumeAdmission(); _main?.SetInteractionEnabled(true);
-                if (Popup.IsEditorOpen) _popupHost?.ShowAgain();
-                _popupHost?.Resume(); return;
-            }
+            if (ExitSuperseded) return;
+            var canExitMain = _main is null || await _main.CanExitAsync();
+            if (ExitSuperseded) return;
+            if (!canExitMain) { CancelExit(); return; }
+            var canExitPopup = await CanExitPopupAsync();
+            if (ExitSuperseded) return;
+            if (!canExitPopup) { CancelExit(); return; }
             await DrainManagementAsync();
+            if (ExitSuperseded) return;
             Gate.CloseAdmission();
             _popupHost?.Commit();
             ReleaseResources();
@@ -182,21 +249,35 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         }
         catch (Exception ex)
         {
+            if (ExitSuperseded) return;
             CancelExit(); AppLog.Error("candidate_exit_failed", ex);
         }
     }
     private void CancelExit()
     {
-        _exiting = false; Gate.ResumeAdmission(); _main?.SetInteractionEnabled(true); _popupHost?.Resume();
+        if (ExitSuperseded) return;
+        _exiting = false;
+        Gate.ResumeAdmission();
+        if (ExitSuperseded) return;
+        _main?.SetInteractionEnabled(true);
+        if (ExitSuperseded) return;
+        if (Popup.IsEditorOpen) _popupHost?.ShowAgain();
+        _popupHost?.Resume();
+        RefreshClipboardAvailability();
     }
     private async Task<bool> CanExitPopupAsync()
     {
         if (Popup?.Editor is not { IsDirty: true, IsDeleted: false } editor) return true;
         var choice = await Dialogs.AskSaveDiscardCancelAsync("Unsaved popup changes", "Save the popup editor before exiting the Uno candidate?");
-        if (choice == SaveChoice.Save && await editor.SaveAsync()) return true;
+        if (ExitSuperseded) return false;
+        if (choice == SaveChoice.Save)
+        {
+            var saved = await editor.SaveAsync();
+            if (ExitSuperseded) return false;
+            if (saved) return true;
+        }
         if (choice == SaveChoice.Discard) { editor.ResetToSaved(); return true; }
-        // Preserve and recover the existing editor through the shared deferred recovery gate.
-        _popupHost?.ShowAgain();
+        // CancelExit recovers the existing editor exactly once through the deferred gate.
         return false;
     }
     internal async Task RunOperationAsync(Func<Task> operation)
@@ -226,7 +307,8 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             var tasks = ManagementTasks().Where(task => !task.IsCompleted)
                 .Append(WaitForPortingIdleAsync()).Append(WaitForPopupIdleAsync());
             try { await Task.WhenAll(tasks); }
-            catch (Exception ex) { AppLog.Error("candidate_operation_failed", ex); }
+            catch (Exception ex) { if (_ownsLog) AppLog.Error("candidate_operation_failed", ex); }
+            if (_disposed) return;
             if (!Snippets.Porting.IsBusy && !Popup.IsInserting && ManagementTasks().All(task => task.IsCompleted)) return;
         }
     }
@@ -257,6 +339,8 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     public void Dispose()
     {
         if (_disposed || _disposing) return;
+        _disposing = true;
+        _disposeRequested = true;
         _exiting = true;
         Gate.CloseAdmission(); _popupHost?.Suspend();
         Release(() => _main?.SetInteractionEnabled(false));
@@ -265,16 +349,18 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         if (drain.IsCompletedSuccessfully && drain.Result
             && (Snippets is null || (!Popup.IsInserting && !Snippets.Porting.IsBusy
                 && ManagementTasks().All(task => task.IsCompleted))))
-        { ReleaseResources(); return; }
-        _disposing = true;
+        { ReleaseResources(); _disposing = false; return; }
         _ = DisposeAfterDrainAsync(drain);
     }
     private async Task DisposeAfterDrainAsync(Task<bool> drain)
     {
         try
         {
-            if (!await drain) { AppLog.Info("candidate_shutdown_blocked", "reason=recovery"); return; }
+            var recovered = await drain;
+            if (_disposed) return;
+            if (!recovered) { AppLog.Info("candidate_shutdown_blocked", "reason=recovery"); return; }
             await DrainManagementAsync();
+            if (_disposed) return;
             ReleaseResources();
         }
         catch (Exception ex) { if (_ownsLog) AppLog.Error("candidate_cleanup_failed", ex); }
@@ -284,7 +370,13 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     {
         if (_disposed) return;
         _disposed = true;
-        if (_nativeCapability is { } capability) capability.AuthorizationChanged -= OnAuthorizationChanged;
+        if (_nativeCapability is { } capability)
+        {
+            capability.AuthorizationChanged -= OnAuthorizationChanged;
+            capability.Revoke();
+        }
+        Gate.AvailabilityChanged -= RefreshClipboardAvailability;
+        if (Popup is not null) Popup.PropertyChanged -= OnPopupPropertyChanged;
         _popupHost?.Commit();
         if (_main is not null) _main.HiddenByClose -= OnHiddenByClose;
         Release(() => _tray?.Dispose()); Release(() => Popup?.Dispose());

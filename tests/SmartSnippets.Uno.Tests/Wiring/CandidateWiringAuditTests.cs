@@ -28,6 +28,24 @@ public sealed class CandidateWiringAuditTests
         Assert.False(File.Exists(Path.Combine(Candidate, "Services", "DeferredPopupHost.cs")));
     }
     [Fact]
+    public void PopupNativeEventSources_ForwardHiddenAndQueuedPresentationCompletionToActualHost()
+    {
+        var boundary = File.ReadAllText(Path.Combine(Candidate, "WindowsCandidateBoundary.cs"));
+        Assert.Contains("host.CanPresentPopup", boundary);
+        Assert.Contains("window.VisibleChanged +=", boundary);
+        Assert.Contains("Hidden?.Invoke(this, EventArgs.Empty)", boundary);
+        Assert.Contains("window.PresentationChanged +=", boundary);
+        var window = File.ReadAllText(Path.Combine(Candidate, "Popup", "PopupWindow.xaml.cs"));
+        Assert.Contains("add => _lifecycle.PresentationChanged += value", window);
+        Assert.Contains("_lifecycle.Hidden();", window);
+        Assert.Contains("ShowPreviewReady(openSortMenu), () => CanShow?.Invoke() != false", window);
+        var host = File.ReadAllText(Path.Combine(Candidate, "UnoAppHost.cs"));
+        Assert.Contains("popup.Hidden += OnPopupHidden", host);
+        Assert.Contains("popup.PresentationChanged += OnPopupPresentationChanged", host);
+        Assert.Contains("capability.Revoke();", host);
+    }
+
+    [Fact]
     public void CandidateTray_BothStatesBrandedAndDistinctOwnedIcon()
     {
         var tray = File.ReadAllText(Path.Combine(Candidate, "Services", "TrayIcon.cs"));

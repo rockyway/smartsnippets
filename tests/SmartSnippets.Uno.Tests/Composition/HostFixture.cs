@@ -66,6 +66,7 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
     internal int Navigations, Disposals;
     internal bool Visible;
     internal bool InteractionEnabled = true;
+    internal Func<Task<bool>>? ExitGuard;
     public void SetInteractionEnabled(bool enabled) => InteractionEnabled = enabled;
     public event EventHandler? HiddenByClose;
     public async Task NavigateAsync(PageKind page, bool show)
@@ -73,7 +74,7 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
         await CandidateUiPolicy.NavigateAsync(() => Current != page ? CanExitAsync() : Task.FromResult(true),
             () => { Current = page; Navigations++; }, show, () => Visible = true);
     }
-    public Task<bool> CanExitAsync() => Current switch
+    public Task<bool> CanExitAsync() => ExitGuard?.Invoke() ?? Current switch
     { PageKind.Snippets => host.Snippets.CanLeaveAsync(), PageKind.Folders => host.Folders.CanLeaveAsync(), _ => Task.FromResult(true) };
     internal async Task CloseAsync()
     { if (await CanExitAsync()) { Visible = false; HiddenByClose?.Invoke(this, EventArgs.Empty); } }
@@ -88,28 +89,31 @@ internal sealed class PopupSurface : ICandidatePopupWindow
     {
         this.host = host;
         Lifecycle = new(action => action(), _ => { }, () => { }, () => { });
+        Lifecycle.PresentationChanged += (_, shown) => PresentationChanged?.Invoke(this, shown);
     }
     internal void Ready() => Lifecycle.Shows.CompleteWarmup(Lifecycle.Shows.WarmupGeneration);
     private void CompleteIfReady() { if (AutoReady) Ready(); }
     internal int Prewarms, Shows, Hides, Disposals;
     internal bool ClosedAlready;
     public event EventHandler? Closed;
+    public event EventHandler? Hidden;
+    public event EventHandler<bool>? PresentationChanged;
     public void Prewarm() { Prewarms++; Lifecycle.Shows.BeginWarmup(); CompleteIfReady(); }
     public void ShowPreview(string? query, bool openSortMenu)
     {
-        Lifecycle.Preview(host.Popup, query, () => { Shows++; return new(true, null); });
+        Lifecycle.Preview(host.Popup, query, () => { Shows++; return new(true, null); }, () => host.CanPresentPopup);
         CompleteIfReady();
     }
     public bool SupportsCapturedPopup => true;
     internal Action<InsertionTarget>? CapturedShown;
     public void ShowCaptured(InsertionTarget target)
     {
-        Lifecycle.Captured(host.Popup, target, () => host.Gate.CanInsert,
+        Lifecycle.Captured(host.Popup, target, () => host.CanPresentPopup && host.Gate.CanInsert,
             () => { CapturedShown?.Invoke(target); Shows++; return new(true, null); });
         CompleteIfReady();
     }
-    public void Hide() { Hides++; Lifecycle.Shows.Hide(); }
-    public void ShowAgain() { Lifecycle.Reopen(host.Popup, () => { Shows++; return new(true, null); }); CompleteIfReady(); }
+    public void Hide() { Hides++; Lifecycle.Shows.Hide(); Lifecycle.Hidden(); Hidden?.Invoke(this, EventArgs.Empty); }
+    public void ShowAgain() { Lifecycle.Reopen(host.Popup, () => { Shows++; return new(true, null); }, () => host.CanPresentPopup); CompleteIfReady(); }
     public void OpenMainWindow() { _ = host.ApplyLaunchOptionsAsync(new(PageKind.Snippets, false, null)); Hide(); }
     public void EditSnippet(long id) { var row = host.Popup.Items.First(r => r.SnippetId == id); host.Popup.EditRow(row); }
     public void Focus(PopupFocusTarget target) { }
@@ -119,8 +123,9 @@ internal sealed class TestDialogs : IDialogService
 {
     internal Queue<SaveChoice> Choices { get; } = [];
     internal int Errors;
+    internal Task<SaveChoice>? PendingChoice;
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(true);
-    public Task<SaveChoice> AskSaveDiscardCancelAsync(string title, string message) => Task.FromResult(Choices.Count > 0 ? Choices.Dequeue() : SaveChoice.Cancel);
+    public Task<SaveChoice> AskSaveDiscardCancelAsync(string title, string message) => PendingChoice ?? Task.FromResult(Choices.Count > 0 ? Choices.Dequeue() : SaveChoice.Cancel);
     public Task ShowErrorAsync(string title, string message) { Errors++; return Task.CompletedTask; }
     public Task ShowInfoAsync(string title, string message) => Task.CompletedTask;
 }

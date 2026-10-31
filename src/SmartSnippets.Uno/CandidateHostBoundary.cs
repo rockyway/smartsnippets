@@ -15,6 +15,8 @@ internal interface ICandidateMainWindow : IDisposable
 internal interface ICandidatePopupWindow : IPopupHost, IDisposable
 {
     event EventHandler? Closed;
+    event EventHandler? Hidden;
+    event EventHandler<bool>? PresentationChanged;
     void Prewarm();
     void ShowPreview(string? query, bool openSortMenu);
     // A head without a concrete captured-target surface must not advertise native readiness.

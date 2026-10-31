@@ -25,11 +25,15 @@ internal interface ICandidateNativeOperations : ITargetProbe, IPasteDispatcher, 
 /// <summary>One revocable, operation-scoped, monotonic bounded lease for one harness-owned target.</summary>
 internal sealed class CandidateNativeCapability
 {
+    internal static readonly TimeSpan MaxLifetime = TimeSpan.FromMinutes(5);
+    private readonly object _liveness = new();
     private readonly TimeProvider _clock;
-    private readonly long _started;
+    private readonly ITimer _expiryTimer;
+    private readonly long _started, _frequency;
+    private long _lastTimestamp;
     private readonly TimeSpan _lifetime;
     private readonly CandidateNativeOperation _permissions;
-    private bool _revoked, _expiryReported;
+    private bool _inactive;
     internal Guid SessionId { get; }
     internal nint Window { get; }
     internal uint ProcessId { get; }
@@ -40,39 +44,86 @@ internal sealed class CandidateNativeCapability
         CandidateNativeOperation permissions, TimeSpan lifetime, TimeProvider clock,
         ICandidateNativeOperations operations)
     {
-        if (sessionId == Guid.Empty || window == 0 || processId == 0 || lifetime <= TimeSpan.Zero)
-            throw new ArgumentException("An owned session, exact target and finite positive lifetime are required.");
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(operations);
+        if (sessionId == Guid.Empty || window == 0 || processId == 0 || lifetime <= TimeSpan.Zero || lifetime > MaxLifetime)
+            throw new ArgumentException("An owned session, exact target and bounded positive lifetime are required.");
+        _frequency = clock.TimestampFrequency;
+        if (_frequency <= 0) throw new ArgumentException("A monotonic clock with positive frequency is required.", nameof(clock));
         SessionId = sessionId; Window = window; ProcessId = processId;
         _permissions = permissions; _lifetime = lifetime; _clock = clock;
-        _started = clock.GetTimestamp(); Operations = operations;
+        _started = _lastTimestamp = clock.GetTimestamp(); Operations = operations;
+        _expiryTimer = clock.CreateTimer(_ => ObserveExpiry(), null, lifetime, Timeout.InfiniteTimeSpan);
     }
 
-    internal void Revoke()
+    internal void Revoke() => Deactivate("candidate_native_revoked");
+    private void ObserveExpiry()
     {
-        if (_revoked) return;
-        _revoked = true;
-        AppLog.Info("candidate_native_revoked");
-        AuthorizationChanged?.Invoke();
+        try
+        {
+            if (!IsLive()) return;
+            // Timer resolution can wake just before the monotonic deadline.
+            lock (_liveness)
+            {
+                if (!_inactive)
+                    _expiryTimer?.Change(_lifetime - _clock.GetElapsedTime(_started, _lastTimestamp), Timeout.InfiniteTimeSpan);
+            }
+        }
+        catch { Deactivate("candidate_native_expired"); }
+    }
+    private void Deactivate(string eventName)
+    {
+        lock (_liveness)
+        {
+            if (_inactive) return;
+            _inactive = true;
+        }
+        NotifyDeactivated(eventName);
+    }
+    private void NotifyDeactivated(string eventName)
+    {
+        try { _expiryTimer?.Dispose(); }
+        catch { AppLog.Info("candidate_expiry_timer_cleanup_failed"); }
+        AppLog.Info(eventName);
+        // Observers must not turn refusal into an exception, or prevent other observers refreshing.
+        if (AuthorizationChanged is not { } changed) return;
+        foreach (var handler in changed.GetInvocationList())
+        {
+            try { ((Action)handler)(); }
+            catch { AppLog.Info("candidate_authorization_notification_failed"); }
+        }
     }
     internal bool Allows(CandidateNativeOperation operation)
     {
-        if ((_permissions & operation) != operation || !IsLive()) return false;
-        try { return Operations.Validate(operation, SessionId, Window, ProcessId) && IsLive(); }
-        catch { return false; }
+        try
+        {
+            if (!IsLive() || (_permissions & operation) != operation) return false;
+            return Operations.Validate(operation, SessionId, Window, ProcessId) && IsLive();
+        }
+        catch
+        {
+            // Clock or validation faults revoke rather than letting a later check revive the lease.
+            Deactivate("candidate_native_expired");
+            return false;
+        }
     }
     private bool IsLive()
     {
-        if (_clock.GetElapsedTime(_started) >= _lifetime)
+        lock (_liveness)
         {
-            if (!_expiryReported)
+            if (_inactive) return false;
+            var timestamp = _clock.GetTimestamp();
+            var elapsed = _clock.GetElapsedTime(_started, timestamp);
+            if (_clock.TimestampFrequency == _frequency && timestamp >= _lastTimestamp
+                && elapsed >= TimeSpan.Zero && elapsed < _lifetime)
             {
-                _expiryReported = true;
-                AppLog.Info("candidate_native_expired");
-                AuthorizationChanged?.Invoke();
+                _lastTimestamp = timestamp;
+                return true;
             }
-            return false;
+            _inactive = true;
         }
-        return !_revoked;
+        NotifyDeactivated("candidate_native_expired");
+        return false;
     }
     internal bool Owns(InsertionTarget target) => target.WindowHandle == Window && target.ProcessId == ProcessId;
 }

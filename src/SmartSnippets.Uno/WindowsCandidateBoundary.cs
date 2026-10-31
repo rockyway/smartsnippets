@@ -45,7 +45,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     {
         var window = new PopupWindow(host.TextSize, () => { if (_main is { } main) _ = main.ShowPageWithoutActivationAsync(PageKind.Snippets, true); });
         _popup = window;
-        window.CanShow = () => ReferenceEquals(_popup, window);
+        window.CanShow = () => ReferenceEquals(_popup, window) && host.CanPresentPopup;
         window.CanInsertNative = () => ReferenceEquals(_popup, window) && host.Gate.CanInsert;
         window.ViewModel = host.Popup;
         window.RunOperation = host.RunOperationAsync;
@@ -85,6 +85,8 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     private sealed class PopupSurface(PopupWindow window, Func<HWND> owner, Func<bool> canShowCaptured) : ICandidatePopupWindow
     {
         public event EventHandler? Closed;
+        public event EventHandler? Hidden;
+        public event EventHandler<bool>? PresentationChanged;
         private bool _disposed;
         public void Prewarm() => window.Prewarm();
         public void ShowPreview(string? query, bool openSortMenu) => window.ShowPreview(owner(), query, false, openSortMenu);
@@ -104,7 +106,12 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
             window.Close();
         }
         // Native Closed must invalidate the forwarding surface as well as the underlying HWND.
-        internal void AttachClosed() => window.Closed += (_, _) => { _disposed = true; Closed?.Invoke(this, EventArgs.Empty); };
+        internal void AttachClosed()
+        {
+            window.VisibleChanged += (_, visible) => { if (!visible) Hidden?.Invoke(this, EventArgs.Empty); };
+            window.PresentationChanged += (_, shown) => PresentationChanged?.Invoke(this, shown);
+            window.Closed += (_, _) => { _disposed = true; Closed?.Invoke(this, EventArgs.Empty); };
+        }
     }
     private sealed class TraySurface(TrayIcon tray) : ICandidateTray
     {
