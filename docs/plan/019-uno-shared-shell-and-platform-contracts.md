@@ -1,16 +1,308 @@
 # 019 — Uno shared shell and platform contracts
 
-**Status:** Placeholder
-**Master:** [017 — Uno cross-platform migration](017-master-uno-cross-platform-migration.md)
-**Dependencies:** 018 complete
+**Date:** 2026-10-30 (original reservation; revised following latest G1 confirmation)
+**Status:** In progress — implementation authorized; native acceptance pending
+**Size:** L
+**Area:** isolated Windows Uno candidate, Core/Presentation reuse, Windows shell, privacy, tests and additive CI
+**Requirement brief confirmed:** latest user confirmation (G1; verbatim below)
+**Master:** [017 — Uno migration](017-master-uno-cross-platform-migration.md)
+**Prerequisite disposition:** explicit Windows-candidate sequence exception to 017/018; 018 remains In progress. User G2 approves this plan, including the proposed Windows graph and bounded shared Copy/logging corrections. The user subsequently instructed “implement plan 019”; implementation is authorized, not native gate relaxation.
 
-## Objective and scope
-Build the production single multi-targeted Uno shell and port the **unpackaged** Windows head (`WindowsPackageType=None`) after refreshing discovery against 018 and receiving an explicit user decision on any early mobile AOT/keyboard-host blocker. Reuse Core/Presentation, adapt target identity, shortcuts, clipboard/focus policy, paths, document access and capability-driven UI without weakening Windows behavior. Preserve the existing profile, settings, activation, popup recovery and UI-thread store ownership. Keep the legacy executable as a cutover reference.
+## 1. Goal
 
-## Expected completion criteria
-- New Windows-native Uno head exercises management, popup, both insertion entry paths, previews, theme/palette, settings and import/export.
-- Existing data/settings and native Windows contracts pass compatibility tests; Core/Presentation remain platform-UI independent.
-- Native AOT publishes and real composition-root flow tests pass; provisional Windows/macOS AOT feature-branch/PR CI gates begin here rather than waiting for cutover.
-- macOS interfaces/shell are ready for 020 without declaring native parity; shortcut defaults/validation, Ctrl/⌘ hints, elevation capability, document descriptors, sanitized error logging (including internal `Migrator.cs:59,88` and `SnippetsPageViewModel.cs:292,334` exception-message paths) and current startup-failure UI are explicitly addressed.
+Build an isolated Windows x64 Uno candidate alongside the usable legacy Windows app, reusing existing data, settings and safety policy. This is a bounded candidate, not production cutover, native parity or release readiness. Carry every unfinished Windows acceptance obligation forward visibly; defer macOS/mobile feasibility decisions without discarding those product requirements.
 
-Not implementation-ready or approved. Expand only after 018 completes; record exact APIs/files, integration tests, rollback and wiring checks then.
+## 2. Requirement (as confirmed at G1)
+
+The revised brief, verbatim:
+
+> Build the Uno Windows candidate alongside the unchanged legacy app, using a separate profile. Keep strict Native AOT and all clipboard/input safety guards. Carry unfinished Windows acceptance forward explicitly; don’t mark018 complete. Defer Mac and mobile feasibility decisions, without claiming release readiness.
+
+**Interpretation of the confirmed boundary:**
+- **Problem:** 018 has useful native build/data/lifecycle evidence but unresolved Windows clipboard/input acceptance; waiting for cross-platform feasibility prevents bounded Windows-shell work.
+- **In scope:** isolated unpackaged Windows-native Uno head; management, folders, settings, JSON transfer, dialogs, popup, previews, theme, background/tray and activation; current Windows contracts; safe logging with legacy compatibility tests; additive Windows candidate AOT CI; named remaining Windows acceptance tasks.
+- **Out of scope:** replacing/changing legacy UI or native behavior, live profile migration, production startup registration, Mac head/fork/CI/parity, mobile heads/contract redesign, release readiness, changes to plans 020–025, password snippets, cloud services.
+- **Users/surfaces:** developers/operators exercising a separately identified candidate; ordinary users retain `SmartSnippets.App`. Surface inventory is §4.5.
+- **Behaviour:** management works in the isolated profile; previews are target-free, never copy/dispatch/record usage. Candidate native capture/registration, clipboard writes (including explicit Copy), focus/input and elevation restart default to unavailable, with truthful feedback. Only separately reviewed, authorized guarded acceptance may exercise native mutations.
+- **Constraints:** strict Native AOT, no IL-warning suppression or runtime fallback; UI-thread store/cache ownership; no real profile/identity/hotkey/startup takeover. Shared privacy corrections plus the bounded clipboard API/VM/legacy ClipboardService adaptation proposed below require compatibility evidence and explicit user approval at G2; legacy composition, successful Copy behaviour, insertion contracts and release gate remain intact.
+- **Decisions made:** Windows-only candidate now; separate profile; preserve safety; 018 incomplete; accept deferred cross-platform risk only for isolated candidate planning. G1 does not approve the proposed package graph or implementation (G2).
+
+**Review-driven deviation proposed for G2, not already approved by G1:** truthful denied/failed Copy cannot be implemented with the void-only clipboard API and unconditional VM success logs. In addition to privacy fixes, propose the additive availability/result members, three VM consumer updates and legacy ClipboardService adaptation in §4.3/T5. This narrowly changes failure reporting/availability while preserving successful legacy Copy and existing SetText implementers. User approval of this deviation is required before code changes; “unchanged legacy” must not be misrepresented as approval already given. No broader platform-contract redesign is proposed.
+
+### Candidate acceptance criteria
+
+These are 019-specific AC1–AC7, contributing to master AC1/AC3/AC5/AC6, not replacing the master criteria.
+
+1. **AC1 — Coexistence:** distinct candidate identity/profile/output/instance/tray; initial and redirected launch cannot reach legacy state or production registration. Legacy remains usable; compatible copied database/settings fixtures roundtrip.
+2. **AC2 — Management:** real Core/Presentation composition supports snippet CRUD/search/sort/folders, folder create/rename/delete-to-Unfiled, persisted settings and JSON import/export, including cancel/failure/unsaved Save–Discard–Cancel behavior.
+3. **AC3 — Popup/lifecycle:** compiled views preserve cache invalidation, warmup/recovery/focus policy, theme/palette/text size, preview/hover, background close and orderly exit. Initial and redirected QA navigation obey unsaved guards without foreground activation; preview has zero clipboard, dispatch and usage.
+4. **AC4 — Safe Windows boundaries:** Windows insertion contracts/CRLF/settings remain compatible; additive clipboard availability/result semantics require G2 and legacy compatibility tests. Default candidate registration/capture/focus/clipboard/input/restart refuse before native side effects; all Copy paths are gated too. Reviewed candidate flow tests and separately authorized native acceptance establish both insertion entry paths, Copy, exact target, single-flight, restore and success-only usage before this criterion is closed.
+5. **AC5 — Privacy/legacy compatibility:** shared logging emits no content/labels/tags/titles/query/document paths or raw exception payloads; legacy startup/failure/event consumers and normal data/settings behavior remain compatible and legacy AOT gate passes.
+6. **AC6 — Reproducible AOT:** fresh Windows x64 native artifact, correct effective properties and dependencies, zero warnings and no hidden IL suppression; additive candidate CI preserves existing legacy CI. Oldest runtime support is not inferred.
+7. **AC7 — Honest evidence:** named Windows outstanding checks retain owner/task/status; no 018 completion, native parity or release claim from shell/policy/build evidence. Do not mark 019 Complete until its own AC1–AC7 evidence passes, including AC4's live candidate flows; a useful closed-gate shell checkpoint may remain In progress/Blocked.
+
+## 3. Current state (as-built)
+
+References below were freshly opened in the current worktree; task paths marked new are proposals, not existing code. Consumer searches covered AppHost, services, page handlers and all three clipboard-consuming VMs.
+
+- `src/SmartSnippets.App/Program.cs:13–46` registers `SmartSnippets.Main`, initializes default-path logging, redirects second launches and sets the UI synchronization context. `src/SmartSnippets.Core/AppPaths.cs:5–19` defaults to LocalApplicationData/SmartSnippets but accepts an explicit root.
+- `src/SmartSnippets.App/AppHost.cs:69–129,135–167` loads/migrates real SQLite/settings then constructs Windows services on the UI dispatcher. It registers the saved hotkey and runs HKCU startup migration; blindly copying composition would affect production state.
+- `AppHost.cs:176–244` composes Snippets/Folders/Settings VMs, file service, main/popup, tray, notices and deferred/recoverable popup host. Main-row Insert calls the popup VM; hotkey/tray capture before show (`:319–336`). Initial and redirected launch options converge at `:258–273,302–316`.
+- `src/SmartSnippets.App/MainWindow.xaml.cs:91–101,142–165,200–218,260–283` separates guarded navigation, nonactivating QA navigation, Exit and close-to-background. `Pages/SnippetsPage.xaml.cs:27–56,72–85` wires binding updates, hover cancellation, unsaved guard and debounced search; `Pages/FoldersPage.xaml.cs:12–45` supplies its VM and leave guard.
+- `src/SmartSnippets.Presentation/ViewModels/FoldersPageViewModel.cs:159–221` deletes to Unfiled and guards unsaved rename. `SettingsViewModel.cs:83–110,156–179,212–278` applies immediate settings, hotkey validation/registration and startup service results. Candidate must not report successful registration just because settings were saved.
+- `src/SmartSnippets.Presentation/Services/InsertionContracts.cs:3–28` deliberately models Windows HWND/PID/monitor and CRLF. `InsertionService.cs:18–40,53–83,88–129` supplies single-flight, CRLF, focus/clipboard handling, adjacent final foreground gate/SendPaste, and success-only usage. Windows-only candidate has no demonstrated need to replace this with opaque platform tokens.
+- `PopupViewModel.cs:65–88,237–254,284–287,317–374` separates previews, editor, popup/main insertion and Copy/failure-copy/loss-consent. `SnippetsPageViewModel.cs:140–153` supplies main-row Copy/Insert; `SnippetEditorViewModel.cs:328–329,354` supplies save-failure Copy text. All must consume the same candidate gate, not only the popup Enter handler.
+- `src/SmartSnippets.Presentation/Services/IClipboardService.cs:3–6` is a void SetText boundary; `src/SmartSnippets.App/Services/ClipboardService.cs:10–30` really writes/flushes the clipboard. Copy is not a non-mutating preview. `ISnippetFileService.cs:3–19` has Windows path pickers/atomic write; no document-handle redesign is needed for this head.
+- Review discovery: `tests/SmartSnippets.Core.Tests/Logging/AppLogTests.cs:26–61` covers pre-initialize no-op, INFO/ERROR formatting and log repointing; WritesInfoAndErrorLines currently requires the unsafe message `boom`. Preserve the other tests and `Logging/AppLogCollection.cs` isolation; retain Presentation `PopupLogFormatTests.cs` no-query-text checks. `src/SmartSnippets.App/AppHost.cs:483–492` uses modal startup MessageBox; `Services/MessageWindow.cs:13–37,56–79` uses a legacy class name without unregistering it, so direct copying is not a headless/repeated-lifecycle seam. Shared `src/SmartSnippets.Presentation/Services/DeferredPopupHost.cs:3–21` already provides exit recovery gating. Candidate inventory must also include existing App CsWin32 inputs (`NativeMethods.json` has allowMarshaling=false), assets, PaletteBaseline/PopupRow/SnippetRowDetails controls and `Converters/VisibilityConverters.cs`.
+- `src/SmartSnippets.Core/Logging/AppLog.cs:44–53` includes exception.Message; `Core/Data/Migrator.cs:59,84–89` logs exceptions/backup filename and embeds backup exception text. `SnippetsPageViewModel.cs:292,334` logs failures. Legacy `AppHost.cs:85,118–129` also logs startup exceptions. Shared logging sanitization must cover these callers without changing their user recovery flow.
+- `prototypes/uno-desktop/SmartSnippets.UnoProbe.csproj:1–15,21–43,47–67` pins Uno.Sdk 6.7.30, native Windows manual package mode and independent Mac overlay; probe-local `Directory.Build.props:1–12` / `Directory.Packages.props:1–6` isolate package management and strictness. This is evidence, not approved production adoption.
+- `prototypes/uno-desktop/Flow/ProbeFlowComposition.cs:37–75,94–99` composes actual SQLite/VMs/insertion/coordinator and converges shortcut/menu/main/preview routes. `Flow/ProbeFlowBoundary.cs:8–48` supplies no default native adapter and refuses native effects. Reuse this composition/testing pattern, not fixture seeding or probe profile deletion as product lifecycle.
+- `prototypes/uno-native-target/windows-insertion/Program.cs:11–16` hard-disables the native entry. Research [028](../research/028-windows-insertion-review-gated-checkpoint.md), [029](../research/029-desktop-flow-and-pointer-review-checkpoint.md), [030](../research/030-clipboard-only-readiness-and-bootstrap.md) distinguish reviewed source/builds from blocked pointer/publication/recovery/input. The last worker refused before swap; guardian settlement was unchanged-owner settlement, not post-swap recovery.
+- `Directory.Packages.props:1–15` already pins WinAppSDK 1.8.260921001, BuildTools 10.0.28000.2705, CsWin32 0.3.367, Sqlite 10.0.14 and toolkit 8.4.2. `global.json:1–6` selects 10.0.100/latestFeature. `.github/workflows/ci.yml:1–61` sequentially tests Core/Presentation and gates legacy Windows AOT only.
+- [Research 020](../research/020-desktop-toolchain-and-support-floors.md) records successful selected Windows native build on SDK 10.0.403, host 10.0.26300, TFM net10.0-windows10.0.26100 / win-x64, both minimum properties 17763. Oldest-runtime execution remains NOT RUN. [Research 017](../research/017-mobile-aot-prerequisite-risk.md) records Android XA1040 and unresolved iOS paired Native AOT/keyboard evidence, not cross-platform readiness.
+
+## 4. Design
+
+### 4.1 Approach
+
+Add `src/SmartSnippets.Uno/` as a Windows-only candidate application using Uno SDK project tooling and native WinAppSDK rendering. Reuse Core/Presentation APIs, except the bounded additive clipboard API and consumer adaptation proposed for G2 in §4.3/T5. Port Windows views/services into the candidate namespace without moving/deleting legacy sources. Share a source file only where its dependencies and behavior are identical and tested; do not introduce a new platform-services package or DI framework. Keep explicit composition and dispatcher ownership. Duplicated head-local wiring is preferable to risky broad contract extraction in this slice.
+
+No planned opaque-target, newline, shortcut, capabilities or document-provider refactor. Retain Windows `InsertionTarget`, `HotkeyGesture`, CRLF, file service and elevation outcomes. A demonstrable shell blocker may justify a minimal behavior-preserving extraction with a consumer map and legacy tests; any change beyond the explicit clipboard proposal below requires a revised plan/decision, not implementer discretion.
+
+#### Proposed Windows graph (G2 proposal, not adopted at G1)
+
+| Item | Proposed candidate value | Source/provenance |
+|---|---|---|
+| Project SDK | Uno.Sdk/6.7.30 | probe csproj:1; research 020 successful artifact token `5bf6803df42b416b9c4a8f9cb6787375` |
+| Selected head | net10.0-windows10.0.26100 / win-x64; native WinAppSDK, unpackaged/self-contained | probe csproj:4,21–43; research 020 |
+| Packages | Microsoft.WindowsAppSDK 1.8.260921001; Microsoft.Windows.SDK.BuildTools 10.0.28000.2705 | probe csproj:26–27,40–43; existing central production pins match |
+| Package route | DisableImplicitUnoPackages=true, ImplicitUsings=disable, explicit native package references in Windows candidate | successful probe manual mode; avoids defective default helper graph/IL2059, no suppression |
+| Shared dependencies | existing project references/central pins: Sqlite 10.0.14, toolkit 8.4.2, CsWin32 0.3.367; record resolved SQLitePCLRaw 2.1.13 closure | Directory.Packages.props and research 020 |
+| Toolchain | isolated candidate `global.json` pins SDK 10.0.403 with rollForward disabled; legacy root global.json unchanged | actual successful probe SDK in research 020 |
+| Build minima | SupportedOSPlatformVersion and TargetPlatformMinVersion 10.0.17763.0 | probe csproj:24–25; runtime on oldest serviced supported edition NOT RUN |
+| AOT | PublishAot/PublishTrimmed/IsAotCompatible/analyzers/TreatWarningsAsErrors=true; SuppressTrimAnalysisWarnings/TrimmerSingleWarn=false; no IL NoWarn; no single-file JIT | strict probe properties; fresh candidate effective-property/artifact checks still required |
+
+Use candidate-local `global.json` and `Directory.Build.props` importing root props; preserve central package management and explicit Windows PackageReferences without Version attributes (existing central versions). All candidate restore/build/test/publish commands must set cwd to `src/SmartSnippets.Uno` (including `dotnet test ../../tests/SmartSnippets.Uno.Tests`); CLI SDK selection follows cwd, not the project path. CI uses `global-json-file: src/SmartSnippets.Uno/global.json` and the same explicit cwd; the publish script sets/restores cwd internally. No root SDK/package baseline changes. Set `RuntimeIdentifier=win-x64` and `RestorePackagesWithLockFile=true` inside the candidate csproj. Generate/update only its lock file in the controlled dependency-update step; set `RestoreLockedMode=true` only inside that csproj when `ContinuousIntegrationBuild=true`. Do not pass RestorePackagesWithLockFile/RestoreLockedMode as global CLI properties or put them in shared props: referenced Core/Presentation projects remain non-locking. Restore and publish both explicitly use `-r win-x64` with identical configuration/strict properties; publish uses `--no-restore` after matching locked restore. Pin resolved packages in candidate lock/provenance evidence. If the candidate closure differs from the selected probe closure, stop and review before adopting it. The probe's Uno framework 6.7.135 is provenance for its SDK/backend selection, not a requirement to pull Uno Skia runtime into native Windows. Do not copy Mac runtime replacement targets, vendor sources, SkiaRenderer settings or desktop TFMs. G2 approval would approve this bounded Windows graph; it would not approve any Mac fork. Fail fresh compilation rather than silently return to the helper graph or suppress diagnostics.
+
+### 4.2 Alternatives considered
+
+| Option | Pros | Cons | Verdict |
+|---|---|---|---|
+| Keep only legacy until all 018 gates pass | Smallest technical change | Does not deliver the confirmed parallel Windows candidate | Rejected for this slice; legacy stays rollback |
+| Windows-native candidate with existing contracts | Smallest bounded reusable head; proven package-route evidence | Native acceptance still outstanding; some head-local duplication | Chosen, subject to G2 and fresh validation |
+| Old draft's multi-target shell and broad portable contracts | Prepares Mac/mobile early | Speculative target/document APIs, unapproved Mac fork/CI, greater legacy risk | Deferred to refreshed 020/022 design |
+| Auto-enable shipping Windows adapters because tests are green | Fast apparent parity | Violates unresolved native recovery/authorization gates | Rejected |
+
+### 4.3 Data, config, identity and safety model
+
+- Candidate executable/assembly: `SmartSnippets.UnoCandidate`; application ID `org.smartsnippets.unocandidate019`; instance key `SmartSnippets.UnoCandidate019`; both ready and hotkey-unavailable tray tooltips explicitly prefix `Smart Snippets — Uno candidate` (unavailable suffix retained), with its own icon identity. Output `publish-uno-candidate/`, never `publish/`.
+- Default root `%LOCALAPPDATA%\SmartSnippets.UnoCandidate019`, passed explicitly to AppPaths and logging before any data/log access. Do not offer a general profile CLI that could point to production. Harness roots are owner-created disposable directories supplied through a reviewed test seam, rejecting production aliases/reparse paths and concurrent owners. Redirect only within candidate identity; no legacy admin `--after-pid` takeover.
+- No database schema/settings key changes. Test copied v1/v2 fixtures; preserve IDs, Unicode, LF storage, flags/tags/folders, usage, sort and shell settings. Never open/copy a running live database; use synthetic fixtures or operator-prepared offline copies. Migration backups remain candidate-local. Export/import uses existing JSON version and atomic desktop writes.
+- Candidate startup service always reports unavailable/disabled and returns a truthful failed result for Enable/Disable, without invoking HKCU registry or StartupMigrationCoordinator. Saved fixture startup preferences must not trigger registry writes. Keep Windows start-at-login UI visibly unavailable in this candidate; background launch can still be tested explicitly. Actual candidate autostart is deferred to 021, not silently implemented with the production value name.
+- Default candidate hotkey service reports NotRegistered and never attempts saved/default production gesture. Settings may validate/display compatible values but cannot falsely report registration success. Only guarded acceptance may use an explicitly chosen nonconflicting test gesture; conflict never steals/releases another app's registration. Candidate MessageWindow uses class `SmartSnippets.UnoCandidate019.MessageWindow`, never the legacy class. Destroy its HWND then unregister its owned class on Dispose and construction failure; reset static ownership, make cleanup idempotent and report cleanup failures without adopting an existing class. Test create→dispose→create and failed-create cleanup through substituted native calls; native repeated lifecycle remains T7. Tray Open/Settings/Exit work. Denied tray Show popup branches to target-free preview **in the tray callback before** PreviousAppWindow/external enumeration, TargetCapture, GetWindowText or OpenProcess; a host-only check after an HWND was precomputed is too late. Authorized harness capture validates exact owned HWND/PID before title/process inspection; host rechecks permission before capture/show. No candidate administrator restart by default; expose truthful unavailable feedback, not a successful no-op.
+- Candidate-local `CandidateNativeGate` implements outer `IInsertionService` and `IClipboardService`, default denied; it also gates capture/focus/dispatch before native adapter calls. Denied Insert returns `InsertionOutcome.PasteFailed` with safe actionable text **before invoking InsertionService**, never ClipboardNotPreserved/MaybePasted: no insert_start/service call, loss-consent prompt or manual-paste fallback. Error-footer Copy remains unavailable. Authorized insertion delegates to the existing service with guarded native boundaries.
+- **Bounded clipboard proposal:** retain `void SetText(string text)`; add default interface `bool IsAvailable => true` and `bool TrySetText(string text) { SetText(text); return true; }`. Existing implementers/fakes remain source-compatible without recursion. Legacy `ClipboardService` overrides TrySetText: true only after SetContent + Flush, false on the existing caught COMException; SetText delegates to TrySetText and discards its result. Preserve UI-thread precondition and existing failure logging. Candidate denied/expired gate reports IsAvailable=false, TrySetText=false without throwing or invoking native code; its SetText delegates to that safe attempt. Refusal feedback must never imply success.
+- All three shared VMs use IsAvailable for Copy availability and recheck TrySetText at execution: popup row + error-footer Copy, main-row Copy and editor save-failure Copy. Only true emits *_copied/popup_copy_text success events; false retains text/dirty/error state, gives safe existing notifier/dialog/footer feedback and never crashes, dispatches or credits usage. Candidate bindings disable unavailable Copy; main VM exposes a row availability predicate, popup CanCopyRow/CanCopyFailedText and editor CanCopyText include availability. Add minimal `RefreshClipboardAvailability` VM methods to notify these properties/command CanExecute; candidate host calls them after authorization changes, including active editor/footer state. Execution rechecks prevent stale UI permission; popup Copy predicates also explicitly reject preview mode. Test unavailable and available-but-refused separately. Never attach raw ClipboardService or enable Copy via insertion error footer.
+- Actual UnoAppHost composition accepts candidate-local constructor-injected delegates/factories for startup-failure reporting, main/popup window surfaces, message window, tray, app exit and dispatcher. Production supplies native implementations; tests supply nonmodal/no-native boundaries and execute the same host wiring, not a parallel graph. Startup failure must not invoke legacy modal MessageBox or Application.Exit in CI. No shared platform-service framework is needed.
+- Proposed test-only authorization seam admits only a reviewed owned harness with explicit session/operation permissions, exact owned target and a bounded lifetime; no ordinary CLI/environment flag, stored setting or tray action unlocks native operations. Revalidate desktop idle/all-input-up, identity, ownership, safe representations/restore and authorization at native boundaries. G2 does not authorize a screen slot or this seam's native execution. Review the concrete gate before any native run; never flip or bypass prototype `NativeEntryReviewed=false` in normal source.
+- Preview mode independently denies capture, Copy (row, footer, editor), insertion and usage even in an authorized session; selection hides. Main-row Insert shares popup VM target/single-flight policy, never recaptures an arbitrary current window. Shutdown closes admission, drains restore/VM continuations, then disposes windows/tray/hotkey/store; denied mode must not touch clipboard during cleanup.
+- Logging: preserve AppLog API, safe event names, timestamp/level and numeric diagnostic metadata; remove exception.Message/stack/path-bearing detail from known callers and backup filename detail. Preserve useful user-facing recovery dialogs separately. Sanitize shared sources only with legacy compatibility tests; no content-bearing startup stack dump copied into candidate. Audit AppLog.Info/detail consumers as well as Error; a safe Error method alone cannot sanitize interpolated detail.
+
+### 4.4 Sequence diagram and parallel paths
+
+```mermaid
+sequenceDiagram
+    participant U as User / activation
+    participant H as Candidate host / tray
+    participant V as Shared VMs + popup coordinator
+    participant G as CandidateNativeGate (outer service)
+    participant I as Existing InsertionService
+    participant W as Guarded Windows target/clipboard/input
+    participant S as Candidate SQLite
+    U->>H: Initial / redirected QA / tray
+    H->>V: Guarded navigation / target-free preview
+    V->>S: Management / settings / JSON on UI thread
+    V-->>H: Preview selection hides; zero Copy/dispatch/usage
+    U->>H: Shortcut/menu test request
+    H->>G: Check before external enumeration/capture
+    alt Denied / expired
+        G-->>H: Target-free preview / truthful refusal
+    else Explicitly authorized owned harness
+        G->>W: Validate owned HWND/PID; capture before focus
+        W-->>V: Existing Windows InsertionTarget
+        V->>V: Warmup / ready / select / hide
+        V->>G: Popup or main-row InsertAsync
+        alt Authorization denied at execution
+            G-->>V: PasteFailed; no inner call or loss-consent
+        else Authorized
+            G->>I: InsertAsync(target, id)
+            I->>I: Single-flight admission
+            I->>S: Resolve stored text; normalize CRLF
+            I->>W: Target/focus checks; preserve/swap clipboard
+            I->>W: Adjacent final foreground gate + SendPaste
+            W-->>I: Positive / uncertain / failed
+            opt Positive dispatch only
+                I->>S: RecordUsage once
+            end
+            I->>W: Owned clipboard restore / cleanup
+            I-->>G: Outcome
+            G-->>V: Outcome
+        end
+    end
+    Note over V,G: Separate Copy: availability + TrySetText result; no usage
+```
+
+InsertionService, not the adapter or VM, resolves stored text and records insertion usage. Parallel paths checked: popup Enter, ItemClick/context Insert, main-row Insert; main/popup Copy, editor save-failure Copy and footer Copy; loss-consent/manual-paste; hotkey/tray; initial/redirected QA requests; settings preview. Each is gated in production composition and tested. File export is an explicitly user-selected file write, not clipboard authorization. QA requests never activate foreground merely to satisfy a guard/dialog; unsaved navigation cancellation must remain respected.
+
+### 4.5 Full surface inventory
+
+| Surface | Candidate work / boundary | Task |
+|---|---|---|
+| App/Program/UnoAppHost, startup failure | Explicit profile/instance/log composition, initial/redirected activation, sanitized failure + clean exit | T0–T2 |
+| MainWindow, SnippetsPage, SnippetEditor | CRUD, search/sort/filter, folder assignment, wide/narrow layouts, validation, save failure, Copy/Insert denied-state feedback | T3, T5 |
+| FoldersPage | Create/rename/delete-to-Unfiled; unsaved rename Save/Discard/Cancel | T3 |
+| SettingsPage/ShortcutRecorder | Compatible persisted theme/palette/text size/sort/hotkey; unavailable startup/admin/native-registration explanation; preview and Exit | T3–T5 |
+| Import/export and dialogs | Existing JSON parser/transaction and Windows pickers; cancel, invalid/oversized data, failed atomic write, truthful errors | T3 |
+| PopupWindow/toolbar/rows/editor/footer/context/sort menu | Existing VM, readiness generations, cache, deferred/recoverable window, keyboard/row flow, Copy/loss-consent boundaries | T4–T5 |
+| HoverDetailsSurface / keyboard preview | Work-area/DPI, external companion lifecycle, no stale surface/focus bypass | T4, T7 |
+| ThemeService/PaletteResources/TextSizeService/dialog/flyout brushes | System/Light/Dark, palettes/fonts applied before reveal and after live changes; menu_surface receipt retained | T3–T4 |
+| MessageWindow/TrayIcon/Notifier/UiDispatcher | Candidate identity, UI-posted callbacks, close-to-background, Open/Settings/preview/Exit, teardown | T2, T4 |
+| LaunchOptions QA options | --page snippets/folders/settings, --preview-popup, query and sort-menu on initial and redirect; no input synthesis or foreground stealing; unknown options ignored | T4 |
+| Windows service adapters | Existing contracts and source behavior preserved behind candidate gate; no production startup/hotkey/elevation takeover | T2, T5, T7 |
+| Shared AppLog/Migrator/VM failure logs | Minimal privacy corrections; legacy compatibility | T1 |
+| IClipboardService, three Copy-consuming VMs, legacy ClipboardService | Additive availability/result proposal, truthful refusal and success logs, legacy Copy compatibility; G2 deviation | T5 |
+| Candidate publish/CI/tests/evidence | Additive Windows-only AOT gate and composition tests; legacy CI untouched | T6–T8 |
+
+## 5. Impact and risk
+
+| Question | Answer |
+|---|---|
+| State/crash survival | Existing SQLite transactions and atomic export retained; unsaved edits never silently discarded. Candidate-local migration backup; clipboard guardian/recovery controls must be proven before mutation. |
+| Consistency/races | One owner per isolated profile, one UI-thread store, scheduled popup-cache rebuild, single-flight insertion; redirect/shutdown cannot spawn a second store or late native call. |
+| User experience | Explicit candidate branding and unavailable operations avoid false parity. Close hides; Exit guards dirty edits and drains operations. Copy refusal must not look like success. |
+| Backward compatibility | No schema/keys/legacy registration changes. Offline copied fixtures compare both heads; shared privacy corrections retain safe events/diagnostics. Proposed additive clipboard members preserve SetText implementers and successful legacy Copy; changed failure reporting/availability requires G2 and compatibility tests. |
+| Recovery | Startup load fails with safe dialog and exit; native refusal leaves state untouched; uncertain dispatch never retries/credits. Unsettled clipboard recovery blocks further operations and retains independent RAM backup. |
+| Diagnostics | Allowlisted content-free lifecycle/gate/outcome/menu receipts; scan app/stdout/stderr/private diagnostic evidence with planted-leak negative controls. Do not publish paths or fixture payloads. |
+| Edge cases | Empty/10k, Unicode/multiline, dirty navigation, rapid activation, repeated close/recreate, multiple monitors/DPI, held input, changed-owner clipboard, same-PID other window, denied picker/permission, cancellation/shutdown. |
+
+**Risks:** R1 manual package route may regress with full views → pinned graph/fresh AOT gate, stop on defects. R2 native recovery/input remains blocked → closed default and T7, not inferred from tests. R3 shared logging can regress legacy diagnostics → API/event and startup/failure compatibility tests. R4 untested oldest runtime → explicit 021 release gate. R5 Mac/mobile feasibility could require later redesign → accepted for isolated Windows candidate only; no permanent product removal or feasibility claim. R6 duplicated head-local source can drift → T8 consumer/source audit against legacy.
+
+**Rollback:** stop only owned candidate processes after draining/recovering any authorized operation; retain recovery RAM until settled. Remove candidate output/profile only with operator consent; never delete legacy data or startup keys. Revert candidate additions and reviewed shared privacy/clipboard adaptations independently, including their consumer updates. Legacy executable, profile, root toolchain/package pins and CI remain usable. A copied candidate DB must never be rolled back over the live legacy DB. Production cutover/backup/downgrade acceptance stays in 021.
+
+## 6. Tasks (approved; implementation in progress)
+
+All new tests below are planned names, not claimed existing/passing tests. Implementation owner means the implementer assigned after G2 and a later implementation instruction. Run tests sequentially.
+
+### T0 — Freeze candidate graph and isolation boundary (AC1, AC6, AC7)
+- **Files:** new `src/SmartSnippets.Uno/{SmartSnippets.Uno.csproj,global.json,Directory.Build.props,packages.lock.json,app.manifest,NativeMethods.txt,NativeMethods.json,README.md}`, `Assets/*`, new `tests/SmartSnippets.Uno.Tests/SmartSnippets.Uno.Tests.csproj`, `SmartSnippets.slnx` (add candidate and its tests only).
+- **Change:** implement only G2-approved §4.1 graph, explicit provenance/resolved closure, candidate assembly/output; no root SDK/CPM version changes. Establish candidate test paths and CsWin32 inputs (`allowMarshaling=false`, explicit required APIs including UnregisterClass) under the existing central CsWin32 pin. Scope static RID, lock generation and conditional locked mode to candidate csproj, not references.
+- **Verify:** from candidate cwd, pinned `dotnet --info`, matching Release `-r win-x64` restore/publish, effective-property capture (including referenced projects) and clean Windows AOT publication. Compare resolved selected closure with probe/central pins. No native launch for this task.
+- **Mutation-catching tests:** new `tests/SmartSnippets.Uno.Tests/Build/CandidateBuildGraphTests.cs`: `RejectsHelperGraphMacOverlayOrIlSuppression` fails if implicit helper packages, Mac overlay, fallback runtime or suppression is introduced; `KeepsLegacyPinsAndOutputSeparate` fails on output/pin aliasing; `CandidateLockProperties_DoNotPropagateToProjectReferences` evaluates the real graph and fails if locking is globally forced on Core/Presentation or restore/publish RIDs differ; `CandidateCommands_UsePinnedCwdAndRid` rejects root-cwd candidate test/publish commands.
+
+### T1 — Sanitize shared logs with legacy compatibility (AC5)
+- **Files:** `src/SmartSnippets.Core/Logging/AppLog.cs`, `src/SmartSnippets.Core/Data/Migrator.cs`, targeted failure/detail callers in `src/SmartSnippets.Presentation/ViewModels/SnippetsPageViewModel.cs`; existing `tests/SmartSnippets.Core.Tests/Logging/{AppLogTests.cs,AppLogCollection.cs}`, `tests/SmartSnippets.Core.Tests/Data/MigratorTests.cs`; new `tests/SmartSnippets.Core.Tests/Logging/AppLogPrivacyTests.cs`, `Data/MigratorPrivacyTests.cs`, `tests/SmartSnippets.Presentation.Tests/LegacyLoggingCompatibilityTests.cs`; preserve existing `tests/SmartSnippets.Presentation.Tests/PopupLogFormatTests.cs`.
+- **Change:** retain signatures/event names and safe numeric metadata, remove raw exception/backup-path leakage. AppLog.Error must reject free-form path/stack-bearing detail (including existing AppHost.StackFrames), retaining only validated safe diagnostic tokens/fields; do not merely strip exception.Message while preserving an unsafe detail argument. Update existing AppLogTests.WritesInfoAndErrorLines to assert exception type/HResult and safe code=5, explicitly rejecting boom/message; retain all other logging tests (BeforeInitialize_IsNoOp, Initialize_CanBeRepointed, Presentation PopupLogFormatTests) and their nonparallel AppLog collection. Migrator migration_backup logs `from={from}` instead of filename/path; backup failure throws a safe actionable recovery message without concatenating ex.Message (inner exception retained for safe type/code inspection only). Update MigratorTests expectations and add a safe from-version/no-path assertion. Audit remaining legacy Error/Info detail callers before copying them. Except the explicit T5 ClipboardService adaptation, any additional legacy head change requires a minimal revised proposal.
+- **Verify:** Core then Presentation suites; real migration failure fixtures and shared log scanner; legacy startup/load/migration/save/delete failure flows and legacy AOT build/gate. User-facing recovery remains actionable.
+- **Mutation-catching tests:** `Error_OmitsMessageInnerExceptionAndUserPath`, `FailedBackup_LogsSafeReasonAndRetainsOriginal`, `LegacyStartupAndEditorFailure_KeepEventsAndRecoveryWithoutPayload` fail with planted content/label/tag/title/query/path tokens or missing recovery/event. Shared fixes may not land on candidate-only evidence.
+
+### T2 — Compose isolated candidate and default-denied services (AC1, AC4, AC5)
+- **Files:** new `src/SmartSnippets.Uno/{App.xaml,App.xaml.cs,Program.cs,UnoAppHost.cs,CandidateProfile.cs,CandidateHostBoundary.cs}`, `Platforms/Windows/{CandidateNativeGate.cs,CandidateStartupRegistration.cs,CandidateHotkeyManager.cs}` plus candidate-local native service copies/linked sources selected from `src/SmartSnippets.App/Services/`; new `tests/SmartSnippets.Uno.Tests/Composition/CandidateIsolationFlowTests.cs`, `Services/CandidateMessageWindowTests.cs`.
+- **Change:** real UI-thread store/settings and explicit composition; identity/root/redirect locking, startup error path, default-denied clipboard/insertion/capture/focus/registration/admin services, candidate tray identity. Inject only the host/window/native boundaries listed in §4.3 into the actual UnoAppHost; startup error tests use nonmodal reporter/exit spies, not MessageBox/Application.Exit. Candidate message class/cleanup follows §4.3, including construction failure. Never call startup migration/production registry implementation or initialize saved production hotkey.
+- **Verify:** real SQLite temp profiles, failed/corrupt/newer DB, concurrent startup/redirect/dispose; assert every external-boundary spy sees zero calls by default and no legacy profile open/log path.
+- **Mutation-catching tests:** `DefaultComposition_NeverTouchesLegacyProfileRegistryHotkeyOrClipboard`, `Redirect_UsesOneCandidateOwner`, `StartupFailure_ExitsWithoutNativeEffects`, `ProfileAliasToProduction_IsRejected`, `RepeatedMessageWindow_CreateDisposeAndFailedCreateReleaseClass`. Tests fail if real host bypasses startup/window/tray/message/exit substitution. Removing explicit AppPaths or attaching raw ClipboardService must fail.
+
+### T3 — Port management, settings, dialogs and JSON transfer (AC1, AC2, AC5)
+- **Files:** new candidate `MainWindow.xaml*`, `Pages/{SnippetsPage,FoldersPage,SettingsPage}.xaml*`, `Controls/{SnippetEditor,ShortcutRecorder,PaletteBaseline,PopupRow,SnippetRowDetails}.xaml*`, `Converters/VisibilityConverters.cs` (including BrowseKindToVisibilityConverter), `Assets/*`, theme/text resources and Windows `DialogService`, `SnippetFileService`, `ThemeService`, `PaletteResources`; new `tests/SmartSnippets.Uno.Tests/Flows/ManagementFlowTests.cs`, `SettingsAndPortingFlowTests.cs`.
+- **Change:** compiled x:Bind to existing VMs; full §4.5 management inventory; copy failure text stays editable; Settings persists compatible values but reports unavailable native actions honestly; file picker owner is candidate window. Save/Discard/Cancel on page/row/folder/Exit boundaries, failure stays dirty. No document-contract redesign.
+- **Verify:** existing suites then candidate composition flows with real SQLite/parser/settings; compile actual candidate page handlers with UI-boundary substitution where portable and inspect native compiled bindings in T7. Import/export cancellation, malformed/over-budget input and failed atomic publication leave originals intact.
+- **Mutation-catching tests:** `SnippetCrudSearchFolderDeleteToUnfiled_Roundtrips`, `DirtyNavigation_SaveDiscardCancelAndSaveFailure`, `Settings_ReloadsCompatibleValuesWithoutRegistration`, `ImportExport_RealJsonCancelAndAtomicFailure`, `LegacyAndCandidateFixture_ReadSameDataAndSettings`. Disconnect page command→VM or VM→store and the named flow must fail; fake-only VMs are insufficient.
+
+### T4 — Port popup, previews, activation and background lifecycle (AC3, AC7)
+- **Files:** new candidate `Popup/{PopupWindow.xaml*,RecoverablePopupHost.cs}`, `Controls/HoverDetailsSurface.xaml*`, popup/theme resources, Windows tray/message/dispatcher services; `UnoAppHost.cs`, `MainWindow.xaml.cs`; new `tests/SmartSnippets.Uno.Tests/Flows/PopupLifecycleFlowTests.cs`, `ActivationFlowTests.cs`.
+- **Change:** reuse `src/SmartSnippets.Presentation/Services/DeferredPopupHost.cs` directly (no head-local duplicate); preserve shared coordinator/generation/warmup focus gates, dirty-cache flush, close/recreate and hover cancellation; compiled popup/editor/footer/context menus; theme before prewarm. Initial/redirected LaunchOptions share guarded nonactivating handler, sort-menu transient Bottom placement and content-free menu_surface receipt. Tray callbacks UI-posted; both tooltip states retain candidate branding. Denied Show popup checks before external enumeration/capture/title reads in the tray itself and again in host, routing directly to preview. Authorized capture validates owned HWND/PID before inspection. Use injected host/window/tray/message/exit boundaries in actual composition tests. Close hides, Exit guards/drains/disposes exactly once.
+- **Verify:** real shared VMs/store/coordinator with actual candidate handlers and substituted window boundaries, then authorized native preview/layout/foreground checks in T7. No UIA invocation substituted as proof of nonactivation.
+- **Mutation-catching tests:** `WarmupHideReopen_RejectsStaleReadyAndFlushesCache`, `ClosedPopup_RecreatesUnderRecoveryGate`, `InitialAndRedirectedQa_RespectDirtyGuardWithoutActivation`, `CloseHides_ExitDrainsAndDisposesOnce`, `Preview_AllSelectionEditorFooterCopyPathsHaveZeroNativeCallsAndUsage`, `TrayReadyAndUnavailable_AreCandidateBranded`, `DeniedTrayPopup_DoesNotEnumerateCaptureOrReadTitles`. Removing IsPreview or routing around coordinator must fail.
+
+### T5 — Bounded clipboard compatibility and gated native entry paths (AC4, AC5)
+- **Files:** candidate `Platforms/Windows/CandidateNativeGate.cs`, target/clipboard/paste adapters, `UnoAppHost.cs`, main/popup/editor bindings/handlers; shared `src/SmartSnippets.Presentation/Services/IClipboardService.cs`, `ViewModels/{PopupViewModel,SnippetsPageViewModel,SnippetEditorViewModel}.cs`, `Text/UiText.cs` (safe refusal feedback as needed); legacy `src/SmartSnippets.App/Services/ClipboardService.cs`; existing `tests/SmartSnippets.Presentation.Tests/{PopupViewModelInsertionTests,PopupViewModelEditTests,SnippetsPageViewModelTests,SnippetEditorViewModelTests}.cs`; new `tests/SmartSnippets.Presentation.Tests/ClipboardAvailabilityTests.cs`, `tests/SmartSnippets.Uno.Tests/Flows/CandidateNativeGateFlowTests.cs`, `Services/LegacyClipboardServiceTests.cs`.
+- **Change:** implement exactly §4.3 additive IsAvailable/TrySetText defaults (keep SetText), legacy TrySetText actual flush/COMException result with delegating SetText, and three VM availability/result updates. This shared/legacy adaptation is the explicit G2 deviation, not preapproved unchanged behaviour. Candidate false refusal never throws; outer IInsertionService returns PasteFailed before the inner service, Copy footer remains disabled and loss-consent/manual fallback stays suppressed. Review concrete threat/lifecycle boundary before exercising the minimal candidate gate; no prototype hardfalse changes. Retain existing Windows insertion policy; only explicitly scoped harness composition may inject guarded native capability. Recheck permission at every operation. Popup/main Insert share existing single-flight; all Copy uses availability + TrySetText, true-only success logs and safe failure feedback retaining editor/error state, with no usage. Refresh availability/commands on authorization changes; recheck at execution.
+- **Verify:** real InsertionService/VM/store composition with hostile/expired/denied OS boundaries; trace every native consumer and loss-consent/manual-paste path. Existing SetText-only fakes exercise default interface compatibility. Test actual legacy ClipboardService source with substituted Windows DataTransfer/dispatcher boundary (no real clipboard in CI): successful SetContent/Flush, caught COMException false and delegating SetText. Native execution is separately T7, not granted here.
+- **Mutation-catching tests:** `DeniedOrExpiredGate_RejectsEveryInsertCopyAndFallbackBeforeNativeCall`, `AuthorizedPopupAndMain_ShareSingleFlightAndExactTarget`, `UncertainOrCopy_NeverCreditsUsage`, `Preview_IgnoresEvenAuthorizedMutationCapability`, `Shutdown_RejectsLateCallbacksAndDrainsRestore`, `SetTextOnlyImplementer_DefaultMembersPreserveCompatibility`, `LegacyClipboard_FlushSuccessTrueComFailureFalse`, `AllCopyConsumers_UnavailableOrRefused_NoCrashSuccessLogOrUsage`, `InsertionDenied_NoInnerCallLossConsentOrCopyFooter`, `AvailabilityRefresh_DisablesCommandsAndRechecksAtExecution`. Fail if a direct service escapes the wrapper, a main-row path recaptures foreground, denied Insert reaches insert_start, or any refused Copy logs success.
+
+### T6 — Add Windows-only provisional candidate CI (AC5, AC6)
+- **Files:** new `.github/workflows/uno-windows-candidate.yml`, `scripts/publish-uno-candidate-aot.ps1`, new `tests/SmartSnippets.Uno.Tests/Build/CandidateArtifactGateTests.cs`; existing `.github/workflows/ci.yml` and `scripts/publish-aot.ps1` unchanged.
+- **Change:** manual/PR additive Windows candidate restore→sequential tests→strict fresh native publish with `global-json-file: src/SmartSnippets.Uno/global.json`, candidate cwd for **all** candidate commands (test path relative to that cwd), matching Release/win-x64 restore/publish and candidate-csproj-scoped lock settings from §4.1, isolated output and provenance/effective-property capture. Require selected native x64 PE, SQLite dependency, no candidate managed entry DLL/CoreCLR/Mono payload, no stale executable, zero warnings and no hidden IL suppression. Preserve and separately run old Windows gate; no Mac CI promise. CI performs no clipboard/input/registry mutation.
+- **Verify:** deterministic planted fixtures for rejected artifacts/properties and one clean candidate CI run plus unchanged legacy gate. Core then Presentation then candidate tests, never parallel builds sharing Core output.
+- **Mutation-catching tests:** `RejectsManagedOrWrongArchStaleMissingSqliteAndSuppressedWarnings`, `CandidateWorkflow_DoesNotReplaceLegacyGateOrRunNativeMutation`. Build-only checks cannot generate native parity PASS.
+
+### T7 — Owned Windows acceptance and carried gates (AC1–AC7)
+- **Owner:** assigned implementation owner after G2; operator authorizes each native session, security reviewer clears mutation/recovery harness. No default live authorization from this draft.
+- **Files:** new `scripts/verify-uno-candidate.ps1`, candidate acceptance fixture/test paths under `tests/SmartSnippets.Uno.Tests/Acceptance/`, candidate README evidence matrix; existing 018 prototype gates remain owned by 018 implementer and are not silently edited/unlocked.
+- **Change:** execute §7 in order, first nonmutating shell and clipboard-only controls, then only if proven safe guarded input/Copy. Link exact candidate source/artifact/session receipts. Research 028–030 provide prerequisites and failure history, not passed candidate evidence. Stop on idle/held-input/unsupported representation/identity/cleanup failure; no elevation, guard exemption, synthetic key-up, interactive fallback or plaintext original clipboard persistence.
+- **Verify:** native callbacks, target fixture text/counters in private evidence, original clipboard representations/changed-owner refusal/recovery, isolated profile/registration cleanup and privacy scan. Native acceptance tests stay BLOCKED/NOT RUN if prerequisites fail; AC4 and 019 completion stay open.
+- **Mutation-catching checks:** `NativeClipboardOnly_PostPublicationRestoreAndWorkerAbort`, `NativeShortcutPopupAndMainRow_ExactTargetOnce`, `NativeCopyVsPreview_UsageAndMutationBoundary`, `NativePointerPreviewAndForegroundPreservation`, `LegacyCoexistence_ProfileAndRegistrationUnchanged`; wrong-window, missing restore, detached callback or false-success receipts must fail the actual run, not just static audits.
+
+### T8 — Final wiring/evidence audit (AC1–AC7)
+- **Files:** candidate README/evidence matrix, new `tests/SmartSnippets.Uno.Tests/Wiring/CandidateWiringAuditTests.cs`; status-only updates to 017/019 on later execution, with 018 evidence owned separately.
+- **Change:** trace project/SDK/assets→Program identity→profile/log/store→service/gate→VM→x:Bind/command/native callback→persisted result→shutdown. Audit every §4.5 surface, parallel Copy/Insert/Preview path, lifecycle event registration/unregistration and legacy source delta. No dead services, bindings, success-only fake controls or duplicate store owners. Record content-free startup/settings/popup/gate/menu/shutdown receipts and planted-leak scan.
+- **Verify:** match every AC to actual test/native receipts; audit missing receipts as failure, not PASS. Keep 018 In progress and 020/021/022–025 gates intact. Unmet accepted candidate criteria block 019 Complete even if a shell checkpoint is merged under the approved process.
+- **Mutation-catching tests:** `EveryCandidateAction_ReachesRegisteredConsumerOrTruthfulRefusal`, `MissingNativeEvidence_CannotPromoteCandidateOr018ToComplete`, `EvidenceScanner_DetectsPlantedFixtureLeak`. Disconnect a registration/binding and confirm its actual flow test fails, not only that its source spelling exists.
+
+## 7. Test strategy
+
+**Unit:** retain Core/Presentation suites; test gate/identity/build properties/privacy and compatibility. No test count claim in this draft. New candidate test project uses actual candidate composition/handler code; only external OS/window/file-picker boundaries are substituted. UI stubs/static XML checks cannot establish compiled XAML/native event delivery.
+
+**Integration chain map:** management handler→VM→real store→reload (T3); folder rename/delete→guard/dialog→store→Unfiled projection (T3); settings control→VM→repository→restart/theme and refusal feedback (T3); import/export handler→real parser/transaction/atomic writer→reload (T3); activation/tray→host→coordinator/VM→window policy (T4); Enter/row/main→same insertion service→guarded boundary→usage (T5/T7); every Copy→gate→clipboard with no usage (T5/T7); failure/startup→safe log/dialog→cleanup (T1/T2); Exit→admission close→restore drain→unregister/dispose (T4/T5). Named tests above must traverse these real hops. No mandatory DI container.
+
+**Sequential commands proposed for implementation:** legacy Core/Presentation tests (including Release budget filter) under existing root SDK policy; then change cwd to `src/SmartSnippets.Uno`, confirm `dotnet --version` is 10.0.403, run `dotnet restore SmartSnippets.Uno.csproj -r win-x64 -p:Configuration=Release -p:ContinuousIntegrationBuild=true`, `dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true`, and matching strict `dotnet publish SmartSnippets.Uno.csproj -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true` through candidate gate. Lock generation is a separate candidate-csproj-scoped dependency-update step, never global CLI lock properties. Restore/publish use the same strict-property set; then return to repo root for unchanged legacy native publish/gate. Run project suites sequentially to avoid shared Core CS2012 collisions. No builds/tests/native activity are performed for this documentation task.
+
+### Authorized manual/native runbook and outstanding Windows ownership
+
+All rows start **NOT RUN/BLOCKED for candidate**. T7 implementation owner records results; T8 audits. Run only in an exclusive explicitly authorized slot with isolated profile, exact owned processes/targets, watchdog, recovery plan and screen boundary per [harness safety](../guides/002-acceptance-harness-safety.md). Park owned Windows windows on bottom-left work area as required by 018. Read-only checks and artifact tests do not authorize later mutation.
+
+| # | Step | Expected / closure owner |
+|---|---|---|
+| 1 | Fresh pinned candidate and legacy AOT gates; inspect effective properties/closure/binaries | Native x64 + SQLite; no warnings/suppression; independent outputs (T6) |
+| 2 | Launch candidate alongside legacy with synthetic offline copied fixtures; restart, redirect and background launch | Distinct profile/log/tray/instance; no production HKCU/hotkey/profile change; legacy still usable (T2/T7) |
+| 3 | CRUD, search/sort, folder create/rename/delete, settings/theme/text size, import/export; Save/Discard/Cancel and injected failures | Exact persisted content/settings; no silent loss; atomic/cancel failure guarantees (T3/T7) |
+| 4 | Initial and redirected --page/preview/query/sort menu; popup warm/hide/recreate, keyboard/row preview, hover, multiple DPI/work areas | Foreground preserved for QA; layout ready before show, theme/menu receipt; zero preview clipboard/dispatch/usage (T4/T7; carries 018 T3) |
+| 5 | Establish exclusive quiet desktop/all-input-up and harmless operator-prepared clipboard; read-only representation capability checks | Refuse held/recent input or unsupported formats; no guard relaxation (T7; carries 018 T4/T5, research 030) |
+| 6 | Reviewed clipboard-only/no-input controls: cross-process owner assignment/synthesis, ordinary restoration, stopped-worker post-publication recovery, changed-owner refusal | Verified after-swap bytes/declared marker semantics and independent RAM recovery; pre-swap guardian settlement is not PASS. Uncertain recovery stops here (T7; 018 T4/T5) |
+| 7 | Only after row 6 passes: reviewed shortcut conflict/release/reacquire and actual callback→popup; tray capture before focus; Enter/row/context and main-row Insert into exact owned target | Correct text/CRLF once, usage once; same-PID other window/closed target/permission/focus/contention/duplicate/uncertain/shutdown cases fail safely (T5/T7; 018 T4/T5) |
+| 8 | Authorized explicit Copy from main/popup/editor failure/footer; repeat every preview path | Copy mutation only when permitted, no usage/paste; preview and expired authorization never mutate (T5/T7) |
+| 9 | Native pointer/hover handoff, dirty close/background/tray Exit; in-flight shutdown, sleep/re-show and cleanup | Actual callbacks, no stale surfaces/unsafe focus; drains restore and removes only owned registrations/processes (T4/T7; 018 T3/T5) |
+| 10 | Synthetic leakage scan app/process/owned diagnostics, negative/fault receipts and final matrix | Content-free evidence, no fabricated PASS; 018 T6/T8 remain independently open until their gates pass (T1/T8) |
+| 11 | Oldest supported serviced Windows runtime compatibility | NOT RUN, release owner in 021; 17763 metadata/build success is not runtime support evidence |
+
+Rows 1–10 are accepted candidate criteria, not optional demonstrations; blocked required rows keep 019 In progress/Blocked, not Complete. Existing unfinished 018 Windows T3/T4/T5/T6/T8 obligations remain with the 018 implementation owner; candidate T7 may supply reusable evidence only after reviewer checks source/adapter equivalence. Passing candidate tests does not retroactively complete 018. Mac outstanding native acceptance is deferred to 020/021, mobile paired app/keyboard/device/10k/offline evidence to 022–025; no evidence is manufactured by deferral.
+
+## 8. Rollout / phasing
+
+Documentation now: canonical 019 approved at G2, with the narrowly recorded sequence exception in 017/018. Implementation explicitly authorized by the subsequent user instruction. Execution: T0 graph/isolation → T1 compatibility/privacy → T2–T5 closed-gate shell and flows → T6 additive CI → T7 separately reviewed authorized acceptance → T8 audit. A closed-gate candidate checkpoint is not a completed plan or release. Never enable native actions merely because candidate CI passes.
+
+Legacy remains the usable product/reference throughout. No live data migration, installer replacement, startup transfer or legacy retirement before 021. Retain Mac 020, desktop cutover/release 021 and mobile feasibility 022–025; their scope/approval gates are unchanged. Mac/mobile deferral is accepted risk for this isolated candidate only, not evidence of feasibility or permanent scope removal.
+
+## 9. Open questions / deferred decisions
+
+No further G1 clarification is required. These are explicit gates/deferred owners, not hidden implementation choices:
+
+| Decision / obligation | Owner and gate | Disposition |
+|---|---|---|
+| Proposed pinned manual Windows graph and bounded shared clipboard/VM/legacy ClipboardService adaptation | User at 019 G2 | Explicit deviation requiring approval: availability/result reporting and failure UI/logging, preserving successful legacy Copy and SetText implementer compatibility. G1 does not approve this adaptation, dependencies or implementation |
+| Concrete test-only native authorization/recovery harness and screen slot | Implementation owner + security reviewer + operator before T7 | Default denied; prototype hardfalse unchanged; no new guard waiver |
+| Outstanding Windows native acceptance | 018 owner plus 019 T7 owner; reviewer at T8 | Clipboard publication/recovery, positive input/shortcut/main-row/Copy, native pointer/foreground/negative/privacy flows remain pending; block native parity and production readiness |
+| Oldest runtime, installation/signing/distribution, profile backup/cutover/startup | Release owner in 021 | Oldest runtime NOT RUN; no change to release gate |
+| Mac dependency/fork, native acceptance, CI/parity | User/020 implementer at refreshed 020 approval; release in 021 | Deferred; no Mac graph adopted here |
+| Android XA1040/iOS renderer/paired-artifact/device/memory feasibility | User/022 implementer at 022 gate | Deferred risk for candidate only; no Mono fallback, permanent mobile removal or feasibility PASS |
+
+## 10. Approval log
+
+| Date / checkpoint | Event | Notes |
+|---|---|---|
+| 2026-10-30 | Original 017/018 approval | Master decomposition and prototype approval, not this candidate implementation |
+| Latest user confirmation | Revised brief confirmed (G1) | Verbatim §2; bounded Windows-candidate planning exception while 018 incomplete; Mac/mobile decisions deferred without safety/release waiver |
+| Current draft | Discovery and self-review | Replaced canonical placeholder; old draft under docs/drafts is historical, not this contract. Fresh source/consumer refs, criterion/task/flow coverage, rollback and remaining gates checked. No code/config/test changes or builds/native operations |
+| Independent review folded | P0/P1/P2 corrections | Clipboard result/availability + outer insertion refusal explicitly proposed for G2; existing logging tests/safe migration version metadata; cwd/RID/scoped-lock tests; actual host-boundary tests, message-class lifecycle, shared DeferredPopupHost and CsWin32/assets/controls/converter inventory; both tray tooltip states and pre-enumeration denial; service-owned store/usage diagram. Documentation only; confirming review completed below |
+| Confirming independent review | No issues found; ready for G2 | antigravity/gemini-4-argon:high; prior findings cleared, report c8dd59c7-4fb1-4ca4-9ebf-c5b3c1b7f3e5. Documentation review only |
+| Latest user approval | Plan approved (G2) | User approved the reviewed Windows-first plan, proposed Windows dependency graph and bounded shared Copy/logging corrections; no native safety gate is waived |
+| Subsequent user instruction | Implementation started | “implement plan 019”; Windows candidate work authorized, Mac deferred, native acceptance and safety gates unchanged |
