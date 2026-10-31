@@ -280,6 +280,16 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         // CancelExit recovers the existing editor exactly once through the deferred gate.
         return false;
     }
+    internal Task RunCopyOperationAsync(Action copy) => RunOperationAsync(async () =>
+    {
+        if (!await Gate.WaitForCopyAdmissionAsync() || _exiting || _disposing || _disposed)
+        {
+            if (!_exiting && !_disposing && !_disposed)
+                _tray?.Notify("Copy unavailable", "Copy was not performed. Wait for a quiet desktop and try again.");
+            return;
+        }
+        copy(); // Shared VM rechecks availability/result and owns truthful feedback/logging.
+    });
     internal async Task RunOperationAsync(Func<Task> operation)
     {
         if (_exiting || _disposed) return;

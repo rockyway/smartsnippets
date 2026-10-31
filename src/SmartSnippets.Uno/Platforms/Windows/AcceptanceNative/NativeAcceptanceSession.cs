@@ -31,7 +31,7 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
     internal RestoreStatus RestoreClipboardControl() => guardian.Restore();
     internal Task<bool> ReadyForAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
     // Invoke ONLY from the existing popup coordinator's ready-surface focus callback.
-    internal bool TryFocusOwnedPopup() => !closed && permitted(AcceptanceOperation.Focus) && focus.TryFocusPopup();
+    public bool TryFocusOwnedPopup() => !closed && permitted(AcceptanceOperation.Focus) && focus.TryFocusPopup();
     internal AcceptanceHotkey CreateHotkey(HotkeyGesture explicitlySelected, nint ownedMessageWindow, Action callback) =>
         new(explicitlySelected, () => !closed && permitted(AcceptanceOperation.Shortcut) && owned.Check(target) == TargetCheck.Ok,
             new NativeAcceptanceHotkey(ownedMessageWindow), callback);

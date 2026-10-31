@@ -27,6 +27,12 @@ namespace SmartSnippets.Uno.Popup;
 public sealed partial class PopupWindow : Window, IPopupHost
 {
     internal Func<Func<Task>, Task> RunOperation { get; set; } = operation => operation();
+    private Func<Action, Task> _runCopy = _ => Task.CompletedTask;
+    internal Func<Action, Task> RunCopy
+    {
+        get => _runCopy;
+        set { _runCopy = value; EditorControl.RunCopy = value; }
+    }
 
     private const int LogicalWidth = 640;
     private const int LogicalHeight = 480;
@@ -172,6 +178,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     internal Action<string>? NotifyReopenFailure { get; set; }
     internal Func<bool>? CanShow { get; set; }
     internal Func<bool>? CanInsertNative { get; set; }
+    internal Func<bool>? TryFocusCapturedPopup { get; set; }
     internal XamlRoot? ContentXamlRoot => RootGrid.XamlRoot;
     public event EventHandler<bool>? VisibleChanged;
     internal event EventHandler<bool>? PresentationChanged
@@ -324,10 +331,9 @@ public sealed partial class PopupWindow : Window, IPopupHost
             {
                 if (CanShow?.Invoke() == false || !canShow()) return default;
                 Center();
-                // Captured routing does not grant native foreground/focus permission.
-                // A reviewed harness must separately authorize any activating input path.
                 ShowSurface(false); SetVisible(true);
-                return new PopupShowResult(true, null);
+                // Only the shared ready-surface coordinator may request scoped native focus.
+                return new PopupShowResult(true, TryFocusCapturedPopup is null ? null : PopupFocusTarget.Search);
             });
     }
     private PopupShowResult ShowPreviewReady(bool openSortMenu)
@@ -390,6 +396,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void ApplyFocus(PopupFocusTarget target)
     {
         if (_closed || CanShow?.Invoke() == false || !_visible) return;
+        if (!ViewModel.IsPreview && TryFocusCapturedPopup?.Invoke() != true) return;
         if (target == PopupFocusTarget.Editor) EditorControl.FocusText();
         else if (target == PopupFocusTarget.Footer) PasteAnywayButton.Focus(FocusState.Programmatic);
         else SearchBox.Focus(FocusState.Programmatic);
@@ -515,6 +522,10 @@ public sealed partial class PopupWindow : Window, IPopupHost
         }
         else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && e.Key == VirtualKey.Enter && !ViewModel.IsConfirmingClipboardLoss) { e.Handled = true; _ = RunOperation(() => ViewModel.InsertSelectedAsync()); }
     }
+    private async void OnCopyFailedText(object sender, RoutedEventArgs e) => await RunCopy(() =>
+    {
+        if (ViewModel.CopyFailedTextCommand.CanExecute(null)) ViewModel.CopyFailedTextCommand.Execute(null);
+    });
     private void OnItemClick(object sender, ItemClickEventArgs e) { if (e.ClickedItem is PopupItemViewModel item) _ = RunOperation(() => ViewModel.ActivateAsync(item)); }
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
     {
@@ -546,7 +557,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = CanInsert() };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
-        copy.Click += (_, _) => ViewModel.CopyRow(item);
+        copy.Click += async (_, _) => await RunCopy(() => ViewModel.CopyRow(item));
         insert.Click += async (_, _) =>
         {
             if (CanInsert()) await RunOperation(() => ViewModel.InsertRowAsync(item));

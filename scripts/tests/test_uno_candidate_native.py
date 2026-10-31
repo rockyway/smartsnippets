@@ -1,5 +1,6 @@
 """Pure bootstrap/build/protocol tests: never start a native process."""
 import importlib.util
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -28,7 +29,7 @@ class NativeBootstrapTests(unittest.TestCase):
         self.assertEqual(b'native_harness_blocked\n', result.stderr.replace(b'\r\n', b'\n'))
 
     def test_fixed_scene_allowlist_rejects_positive_input(self):
-        with self.assertRaises(SystemExit):
+        with patch.object(native.sys, 'stderr', io.StringIO()), self.assertRaises(SystemExit):
             native.main(['--scene', 'paste'])
 
     def test_source_fingerprint_binds_linked_sources_and_changes(self):
@@ -41,6 +42,33 @@ class NativeBootstrapTests(unittest.TestCase):
             native.validate_image('other.exe', '0' * 64, native.ENTRY)
         with self.assertRaisesRegex(ValueError, 'identity'):
             native.validate_image(native.ENTRY, 'bad', native.ENTRY)
+
+    def test_wrong_directory_is_rejected_before_any_artifact_bytes(self):
+        for basename in (native.ENTRY, 'SmartSnippets.Target018.exe', 'SmartSnippets.UnoCandidate.Guardian.exe'):
+            with patch.object(native.helpers, 'owned_bytes') as read:
+                with self.assertRaisesRegex(ValueError, 'provenance'):
+                    native.validate_image(Path('untrusted') / basename, 'a' * 64, basename)
+                read.assert_not_called()
+
+    def test_exact_ordered_receipts_and_private_log_privacy_are_required(self):
+        private = Path(tempfile.gettempdir()) / 'owned-parent-directory' / 'owned-child-directory'
+        expected = b'native_result=regular_restored'
+        good = b'native_phase=guardian_ready\nnative_phase=published\n' + expected + b'\n'
+        log = b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n'
+        with patch.object(native.helpers, 'owned_bytes', return_value=log):
+            native.verify_result(private, [good, b''], expected)
+            for output in (expected + b'\n', b'foreign\n' + good, good + b'extra\n', good.replace(b'published', b'wrong')):
+                with self.assertRaisesRegex(ValueError, 'native_result_receipt'):
+                    native.verify_result(private, [output, b''], expected)
+            with self.assertRaisesRegex(ValueError, 'native_result_receipt'):
+                native.verify_result(private, [good, b'warning'], expected)
+        for invalid in (b'not ready', log + b'fixed ERROR candidate_cleanup_failed\n'):
+            with patch.object(native.helpers, 'owned_bytes', return_value=invalid):
+                with self.assertRaisesRegex(ValueError, 'native_host_readiness_cleanup'):
+                    native.verify_result(private, [good, b''], expected)
+        with patch.object(native.helpers, 'owned_bytes', return_value=log + b'second line'):
+            with self.assertRaisesRegex(ValueError, 'native_privacy'):
+                native.verify_result(private, [good, b''], expected)
 
     def test_monitor_never_force_cleans_pending_coordinator(self):
         class Process:

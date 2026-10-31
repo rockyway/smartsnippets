@@ -26,7 +26,9 @@ def source_fingerprint():
     """Bind fixture evidence to the actual linked head, shared libraries and test driver."""
     paths = []
     for relative in ('src/SmartSnippets.Core', 'src/SmartSnippets.Presentation',
-                     'src/SmartSnippets.Uno', 'scripts/uno_candidate_fixture'):
+                     'src/SmartSnippets.Uno', 'scripts/uno_candidate_fixture',
+                     'prototypes/uno-native-target/identity',
+                     'prototypes/uno-native-target/windows-insertion'):
         paths.extend(path for path in (REPO / relative).rglob('*') if path.is_file()
                      and not {'bin', 'obj'}.intersection(path.relative_to(REPO / relative).parts))
     paths.append(REPO / 'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs')
@@ -186,7 +188,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
     print('full_host_observed', flush=True)
 
 
-def require_empty_job(job):
+def require_empty_job(job, clock=time.monotonic, sleep=time.sleep):
     # Successful worker exit must leave zero descendants BEFORE emergency termination.
     # Otherwise a leaked child could be killed by finish_job and falsely called graceful.
     class Accounting(startup.C.Structure):
@@ -195,9 +197,16 @@ def require_empty_job(job):
     query = job.kernel.QueryInformationJobObject
     query.argtypes = [startup.W.HANDLE, startup.C.c_int, startup.C.c_void_p, startup.W.DWORD, startup.C.c_void_p]
     query.restype = startup.W.BOOL
-    accounting = Accounting()
-    if not query(job.handle, 1, startup.C.byref(accounting), startup.C.sizeof(accounting), None) or accounting.active:
-        raise ValueError('graceful_job_not_empty')
+    deadline = clock() + 3
+    while True:
+        accounting = Accounting()
+        if not query(job.handle, 1, startup.C.byref(accounting), startup.C.sizeof(accounting), None):
+            raise ValueError('graceful_job_query_failed')
+        if not accounting.active:
+            return
+        if clock() >= deadline:
+            raise ValueError('graceful_job_not_empty')
+        sleep(.05)
 
 
 def supervise(command, job_factory, popen=subprocess.Popen):
@@ -217,6 +226,21 @@ def supervise(command, job_factory, popen=subprocess.Popen):
             startup.stop_app(process)
 
 
+def record_failure(private, error):
+    # Fixed tokens only. Never echo an exception message, path, title or payload.
+    allowed = {'desktop_changed', 'early_exit', 'geometry', 'missing_ready', 'missing_management',
+               'missing_preview', 'missing_recreated', 'missing_graceful_cleanup', 'graceful_timeout',
+               'host_readiness_cleanup', 'privacy', 'process_stderr', 'worker_protocol',
+               'graceful_job_not_empty', 'graceful_job_query_failed', 'receipt_provenance',
+               'receipt_alias', 'evidence_alias', 'evidence_file'}
+    reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
+    try:
+        with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:
+            json.dump({'reason': reason}, file)
+    except OSError:
+        pass
+
+
 def main():
     parser = startup.Parser(allow_abbrev=False)
     parser.add_argument('--executable', required=True, type=Path)
@@ -231,7 +255,11 @@ def main():
     if not startup.inside(args.work_area, args.work_area):
         raise ValueError('work_area')
     if args.worker_private:
-        worker(entry, args.sha256, args.worker_private, args.work_area)
+        try:
+            worker(entry, args.sha256, args.worker_private, args.work_area)
+        except BaseException as error:
+            record_failure(args.worker_private, error)
+            raise
         return None
     ui = startup.repo_module('acceptance_ui', 'prototypes/uno-desktop/run_ui_smoke.py')
     identity = startup.repo_module('acceptance_identity', 'prototypes/uno-native-target/run_identity_harness.py')
@@ -239,7 +267,11 @@ def main():
     command = [sys.executable, '-I', '-B', str(Path(__file__).resolve()), '--executable', str(entry),
                '--sha256', args.sha256, '--authorized-screen-slot', '--work-area', *map(str, args.work_area),
                '--worker-private', str(private)]
-    supervise(command, identity.WindowsJob)
+    try:
+        supervise(command, identity.WindowsJob)
+    except BaseException as error:
+        record_failure(private, error)
+        raise
     return {'privateEvidenceToken': private.name, 'artifactSha256': args.sha256.lower(),
             'fixtureSourceSha256': source_fingerprint(),
             'observerSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}

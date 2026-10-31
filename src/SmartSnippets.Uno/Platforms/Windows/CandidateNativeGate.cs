@@ -46,10 +46,32 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
     public bool TrySetText(string text)
     {
         if (!IsAvailable) return false;
-        try { return _capability!.Operations.TrySetText(text); }
+        // A false/throwing Copy can still have published before recovery failed.
+        // Keep admission closed until the adapter explicitly verifies settlement.
+        _untrackedRecovery = true;
+        try
+        {
+            var copied = _capability!.Operations.TrySetText(text);
+            if (copied) _untrackedRecovery = false;
+            return copied;
+        }
         catch { return false; }
+        finally { NotifyAvailabilityChanged(); }
     }
     public void SetText(string text) => _ = TrySetText(text);
+    internal async Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct = default)
+    {
+        if (!IsAvailable) return false;
+        try { return await _capability!.Operations.WaitForCopyAdmissionAsync(ct) && IsAvailable; }
+        catch { return false; }
+    }
+
+    internal bool TryFocusOwnedPopup()
+    {
+        if (!IsIdle || _captured is null || !Allows(CandidateNativeOperation.Focus)) return false;
+        try { return _capability!.Operations.TryFocusOwnedPopup(); }
+        catch { return false; }
+    }
 
     internal InsertionTarget? Capture()
     {
@@ -106,7 +128,9 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
     private async Task<bool> DrainCoreAsync()
     {
         if (_active is { } active) await active.Task;
-        if (!HasRecovery) return true;
+        if (_capability is null) return !HasRecovery;
+        // Adapter-owned Copy/control/keyboard recovery can exist without a local snapshot.
+        // Always ask the authorized adapter, including when no insertion was started.
         // This is recovery of already-owned state, not permission to begin a new mutation.
         // The adapter must verify clipboard ownership and retain its RAM backup on failure.
         try

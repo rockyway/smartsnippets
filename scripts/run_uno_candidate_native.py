@@ -24,7 +24,8 @@ def source_fingerprint():
     paths = []
     for relative in ('src/SmartSnippets.Core', 'src/SmartSnippets.Presentation', 'src/SmartSnippets.Uno',
                      'scripts/uno_candidate_native_fixture', 'prototypes/uno-native-target/identity',
-                     'prototypes/uno-native-target/windows-insertion', 'prototypes/uno-candidate-native'):
+                     'prototypes/uno-native-target/windows-insertion', 'prototypes/uno-native-target/windows',
+                     'prototypes/uno-candidate-native'):
         paths.extend(p for p in (REPO / relative).rglob('*') if p.is_file()
                      and not {'bin', 'obj', '__pycache__'}.intersection(p.relative_to(REPO / relative).parts))
     paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props', 'scripts/run_uno_candidate_native.py'))
@@ -39,6 +40,16 @@ def source_fingerprint():
 def validate_image(path, digest, basename):
     path = Path(os.path.abspath(path))
     if path.name != basename or not re.fullmatch('[0-9a-fA-F]{64}', digest):
+        raise ValueError('native_image_identity')
+    if basename == ENTRY:
+        if path.parent.parent != ROOT / 'bin/publish-native' or not re.fullmatch('[0-9a-f]{32}', path.parent.name):
+            raise ValueError('native_build_provenance')
+    elif basename in ('SmartSnippets.Target018.exe', 'SmartSnippets.UnoCandidate.Guardian.exe'):
+        expected_root = REPO / ('prototypes/uno-native-target/windows/bin' if basename == 'SmartSnippets.Target018.exe'
+                                else 'prototypes/uno-candidate-native/bin')
+        if not path.is_relative_to(expected_root):
+            raise ValueError('native_image_provenance')
+    else:
         raise ValueError('native_image_identity')
     data = helpers.owned_bytes(path, path.parent, 134217728)
     pe = helpers.startup.repo_module('native_pe', 'prototypes/uno-desktop/verify_evidence.py')
@@ -87,6 +98,20 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         raise ValueError('native_scene_failed')
 
 
+def verify_result(private, data, expected):
+    if data[0].splitlines() != [b'native_phase=guardian_ready', b'native_phase=published', expected] or data[1]:
+        raise ValueError('native_result_receipt')
+    log = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private)
+    text = log.decode('utf-8-sig')
+    if sum(line.endswith(' INFO candidate_started') for line in text.splitlines()) != 1 or ' ERROR ' in text:
+        raise ValueError('native_host_readiness_cleanup')
+    privacy = helpers.startup.repo_module('native_privacy', 'scripts/uno_candidate_privacy.py')
+    canaries = ('AΩ中🙂e\u0301\r\nsecond line', 'AΩ中🙂e\u0301\nsecond line', 'second line', str(private), str(private.parent))
+    privacy.verify_negative_controls(canaries)
+    if privacy.scan_evidence([log, *data], canaries)['privacy'] != 'CLEAN':
+        raise ValueError('native_privacy')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--capture-source', type=Path)
@@ -113,8 +138,6 @@ def main(argv=None):
     entry = validate_build(args.executable, args.sha256)
     target = validate_image(args.target, args.target_sha256, 'SmartSnippets.Target018.exe')
     guardian = validate_image(args.guardian, args.guardian_sha256, 'SmartSnippets.UnoCandidate.Guardian.exe')
-    target.relative_to(REPO / 'prototypes/uno-native-target/windows/bin')
-    guardian.relative_to(REPO / 'prototypes/uno-candidate-native/bin')
     ui = helpers.startup.repo_module('native_private_directory', 'prototypes/uno-desktop/run_ui_smoke.py')
     private = ui.private_directory() / ('ss-uno019-native-' + uuid.uuid4().hex)
     private.mkdir()  # Inherits current-user-only ACL from existing reviewed owner-private helper.
@@ -135,10 +158,9 @@ def main(argv=None):
             monitor(process, desktop, foreground, paths)
         data = [helpers.owned_bytes(p, private, 65536) for p in paths]
         expected = ('native_result=regular_restored' if args.scene == 'restore' else 'native_result=abort_restored').encode()
-        if expected not in data[0].splitlines() or data[1]:
-            raise ValueError('native_result_receipt')
+        verify_result(private, data, expected)
         print(json.dumps({'result': 'clipboard_control_settled', 'scene': args.scene,
-                          'privateEvidenceToken': private.name, 'sourceSha256': source_fingerprint(),
+                          'privateEvidenceToken': f'{private.parent.name}/{private.name}', 'sourceSha256': source_fingerprint(),
                           'positiveInputImplemented': False}))
     finally:
         desktop.close()  # Never terminates the coordinator or guardian.

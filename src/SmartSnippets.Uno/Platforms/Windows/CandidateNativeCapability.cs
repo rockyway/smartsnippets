@@ -20,6 +20,8 @@ internal interface ICandidateNativeOperations : ITargetProbe, IPasteDispatcher, 
     bool Validate(CandidateNativeOperation operation, Guid sessionId, nint window, uint processId);
     InsertionTarget? CaptureOwnedTarget(nint window, uint processId);
     Task<bool> DrainOwnedRecoveryAsync();
+    Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => Task.FromResult(false);
+    bool TryFocusOwnedPopup() => false;
 }
 
 /// <summary>One revocable, operation-scoped, monotonic bounded lease for one harness-owned target.</summary>

@@ -17,6 +17,12 @@ namespace SmartSnippets.Uno.Pages;
 public sealed partial class SnippetsPage : Page, IGuardedPage
 {
     internal Func<Func<Task>, Task> RunOperation { get; set; } = operation => operation();
+    private Func<Action, Task> _runCopy = _ => Task.CompletedTask;
+    internal Func<Action, Task> RunCopy
+    {
+        get => _runCopy;
+        set { _runCopy = value; EditorControl.RunCopy = value; }
+    }
 
     // Browse 200 + list 320 + an editor that still fits its fields (~360).
     private const double WideMinWidth = 880;
@@ -262,7 +268,7 @@ public sealed partial class SnippetsPage : Page, IGuardedPage
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = vm.CanInsertRow };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
-        copy.Click += (_, _) => vm.CopyRow(row.Id);
+        copy.Click += async (_, _) => await RunCopy(() => vm.CopyRow(row.Id));
         insert.Click += async (_, _) => await RunOperation(() => vm.InsertRowAsync(row.Id));
         edit.Click += async (_, _) => await RunOperation(() => vm.RequestEditAsync(row.Id));
         delete.Click += async (_, _) => await RunOperation(() => vm.DeleteRowAsync(row.Id));

@@ -171,8 +171,28 @@ class AcceptanceTests(unittest.TestCase):
                 target._obj.active = active
                 return success
             job.kernel.QueryInformationJobObject = Mock(side_effect=query)
-            with self.assertRaisesRegex(ValueError, 'graceful_job_not_empty'):
-                s.require_empty_job(job)
+            reason = 'graceful_job_not_empty' if success else 'graceful_job_query_failed'
+            with self.assertRaisesRegex(ValueError, reason):
+                s.require_empty_job(job, clock=Mock(side_effect=[0, 4]), sleep=lambda _: None)
+
+    def test_job_exit_accounting_may_drain_but_is_never_killed_to_pass(self):
+        job = Mock(); active = iter((1, 0))
+        def query(handle, kind, target, size, returned):
+            target._obj.active = next(active)
+            return True
+        job.kernel.QueryInformationJobObject = Mock(side_effect=query)
+        s.require_empty_job(job, clock=lambda: 0, sleep=lambda _: None)
+        self.assertEqual(2, job.kernel.QueryInformationJobObject.call_count)
+        job.kernel.TerminateJobObject.assert_not_called()
+
+    def test_failure_diagnostic_never_echoes_payload_or_exception_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            s.record_failure(root, ValueError('PRIVATE-CONTENT ' + str(root)))
+            data = next(root.glob('observer-*-failure.json')).read_text()
+            self.assertEqual({'reason': 'observer_failure'}, json.loads(data))
+            self.assertNotIn('PRIVATE-CONTENT', data)
+            self.assertNotIn(str(root), data)
 
     def test_owned_diagnostic_hardlink_refused_before_content_read(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -190,6 +210,12 @@ class AcceptanceTests(unittest.TestCase):
                 (root / name).write_text('fixed')
             before = s.source_fingerprint(); driver.write_text('changed')
             self.assertNotEqual(before, s.source_fingerprint())
+            for relative in ('prototypes/uno-native-target/identity/OwnedFixtureLease.cs',
+                             'prototypes/uno-native-target/windows-insertion/InputPreflight.cs'):
+                linked = root / relative; linked.parent.mkdir(parents=True, exist_ok=True)
+                linked.write_text('linked source')
+                before = s.source_fingerprint(); linked.write_text('modified linked source')
+                self.assertNotEqual(before, s.source_fingerprint())
 
     def test_bad_worker_protocol_cannot_report_success(self):
         for output in ((b'startup_observed\n', b''), (b'full_host_observed\n', b'warning')):

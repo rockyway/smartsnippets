@@ -639,6 +639,87 @@ public sealed class CandidateAuthorizedHostFlowTests
         Assert.True(f.Host.ShowCapturedPopup()); Assert.False(f.Host.Popup.IsPreview);
     });
 
+    [Fact]
+    public Task ReadySurfaceFocus_RequiresCapturedLiveNonPreviewIdleCapability() => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, clock, _) = await Start(); using var owner = f;
+        Assert.False(f.Host.Gate.TryFocusOwnedPopup());
+        Assert.Equal(0, native.PopupFocuses);
+        Assert.True(f.Host.ShowCapturedPopup());
+        Assert.True(f.Host.Gate.TryFocusOwnedPopup()); Assert.Equal(1, native.PopupFocuses);
+        f.Host.ShowPreview();
+        Assert.False(f.Host.Gate.TryFocusOwnedPopup()); Assert.Equal(1, native.PopupFocuses);
+        f.Boundary.Popups.Last().Hide();
+        Assert.True(f.Host.ShowCapturedPopup());
+        clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.False(f.Host.Gate.TryFocusOwnedPopup()); Assert.Equal(1, native.PopupFocuses);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task FailedCopy_RetainsUnknownRecoveryBlocksAdmissionAndAlwaysDrains(bool throws) => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, _, id) = await Start(); using var owner = f;
+        native.CopyResult = false; native.ThrowCopy = throws; native.RecoveryResult = false;
+        f.Host.Snippets.CopyRow(id);
+        Assert.Equal(1, native.Copies); Assert.False(f.Host.Snippets.CanCopyRow);
+        Assert.False(f.Host.Gate.IsIdle); Assert.False(f.Host.ShowCapturedPopup());
+        await f.Host.ExitAsync();
+        Assert.Equal(1, native.Drains); Assert.Equal(0, f.Boundary.Exits);
+        native.RecoveryResult = true; await f.Host.ExitAsync();
+        Assert.Equal(2, native.Drains); Assert.Equal(1, f.Boundary.Exits);
+    });
+
+    [Fact]
+    public Task AdapterRecoveryWithoutLocalSnapshot_StillBlocksShutdownUntilSettled() => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, _, _) = await Start(); using var owner = f;
+        native.RecoveryResult = false;
+        await f.Host.ExitAsync();
+        Assert.Equal(1, native.Drains); Assert.Equal(0, f.Boundary.Exits);
+        native.RecoveryResult = true; await f.Host.ExitAsync();
+        Assert.Equal(1, f.Boundary.Exits);
+    });
+
+    [Fact]
+    public Task UiCopy_WaitsForQuietAdmissionThenUsesRealVmWithoutUsage() => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, _, id) = await Start(); using var owner = f;
+        native.CopyPause = new();
+        var copy = f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+        Assert.False(copy.IsCompleted); Assert.Equal(0, native.Copies);
+        native.CopyPause.SetResult(true); await copy;
+        Assert.Equal(1, native.CopyWaits); Assert.Equal(1, native.Copies);
+        Assert.Equal(0, f.Host.Store.Snippets.Single().Snippet.UsageCount);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task UiCopy_RechecksExpiryOrPreviewAfterQuietWait(bool preview) => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, clock, id) = await Start(); using var owner = f;
+        native.CopyPause = new();
+        var copy = f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+        if (preview) f.Host.ShowPreview(); else clock.Advance(TimeSpan.FromMinutes(2));
+        native.CopyPause.SetResult(true); await copy;
+        Assert.Equal(0, native.Copies);
+        Assert.Equal(0, f.Host.Store.Snippets.Single().Snippet.UsageCount);
+    });
+
+    [Fact]
+    public Task UiCopy_ShutdownDrainsWaitAndRefusesLateMutation() => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, _, id) = await Start(); using var owner = f;
+        native.CopyPause = new();
+        var copy = f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+        var exit = f.Host.ExitAsync();
+        await UiTurn(); Assert.False(exit.IsCompleted);
+        native.CopyPause.SetResult(true); await Task.WhenAll(copy, exit);
+        Assert.Equal(0, native.Copies); Assert.Equal(1, f.Boundary.Exits);
+    });
+
     private static Task UiTurn()
     {
         var turn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -702,13 +783,18 @@ public sealed class CandidateAuthorizedHostFlowTests
         internal int Captures, Copies, Sends, Swaps, Restores, Placements, KeyCleanups, Drains, Focuses, Modifiers;
         internal int SideEffects => Copies + Sends + Swaps + Restores + Placements + KeyCleanups + Focuses + Modifiers;
         internal bool Safe = true, CopyResult = true, RecoveryResult = true, ThrowAfterSwap;
-        internal bool NullSnapshot, ThrowWithoutSnapshot;
+        internal bool NullSnapshot, ThrowWithoutSnapshot, ThrowCopy;
         internal int ForegroundChecks, ThrowForegroundAt;
         internal SwapStatus Swap = SwapStatus.Swapped;
         internal string? SwappedText;
         internal Action<string>? After;
         internal TaskCompletionSource<FocusPath?>? FocusPause;
         internal TaskCompletionSource<bool>? RecoveryPause;
+        internal TaskCompletionSource<bool>? CopyPause;
+        internal int CopyWaits, PopupFocuses;
+        public bool TryFocusOwnedPopup() { PopupFocuses++; return Safe; }
+        public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct)
+        { CopyWaits++; return CopyPause?.Task ?? Task.FromResult(true); }
         internal TaskCompletionSource RecoveryEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal DispatchState Dispatch = DispatchState.Dispatched;
         internal RestoreStatus Restore = RestoreStatus.Restored;
@@ -722,7 +808,8 @@ public sealed class CandidateAuthorizedHostFlowTests
         public InsertionTarget? CaptureOwnedTarget(nint window, uint processId)
         { Captures++; Trace.Add("capture"); After?.Invoke("capture"); return CaptureResult ?? Target; }
         public bool IsAvailable => true;
-        public bool TrySetText(string text) { Copies++; return CopyResult; }
+        public bool TrySetText(string text)
+        { Copies++; if (ThrowCopy) throw new InvalidOperationException("synthetic copy failure"); return CopyResult; }
         public void SetText(string text) => throw new InvalidOperationException("The result-aware path is required.");
         public TargetCheck Check(InsertionTarget target)
         { Targets.Add(target); After?.Invoke("check"); return TargetCheck.Ok; }

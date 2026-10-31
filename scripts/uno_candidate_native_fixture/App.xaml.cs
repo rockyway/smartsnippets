@@ -61,10 +61,12 @@ public partial class App : Application
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "restore") throw new InvalidOperationException("native_restore_order");
             lease = false; broker.Close();
             if (!await session.DrainOwnedRecoveryAsync()) throw new InvalidOperationException("native_recovery_pending");
-            await BootstrapProtocol.WriteAsync(Program.Responses, "restored", ct);
             await host.ExitAsync();
+            if (!boundary.Exited) throw new InvalidOperationException("native_host_exit");
             session.Dispose(); session = null;
             await fixture.DisposeAsync(); fixture = null;
+            await BootstrapProtocol.WriteAsync(Program.Responses, "restored", ct);
+            boundary.ExitApplication();
         }
         catch
         {
@@ -94,6 +96,7 @@ internal sealed class NativeFixtureBoundary(CandidateNativeCapability capability
 {
     private readonly WindowsCandidateBoundary native = new();
     internal ICandidatePopupWindow? Popup;
+    internal bool Exited { get; private set; }
     internal override CandidateNativeCapability NativeCapability => capability;
     internal override IUiDispatcher Dispatcher => native.Dispatcher;
     internal override IThemeService CreateTheme(AppSettings settings) => native.CreateTheme(settings);
@@ -104,5 +107,6 @@ internal sealed class NativeFixtureBoundary(CandidateNativeCapability capability
     internal override ICandidatePopupWindow CreatePopup(UnoAppHost host) => Popup = native.CreatePopup(host);
     internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit) => native.CreateTray(open, preview, settings, exit);
     internal override void ReportStartupFailure() => throw new InvalidOperationException("native_startup_failed");
-    internal override void Exit() => native.Exit();
+    internal override void Exit() => Exited = true;
+    internal void ExitApplication() => native.Exit();
 }

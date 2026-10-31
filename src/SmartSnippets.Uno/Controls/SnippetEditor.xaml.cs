@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -21,6 +22,8 @@ public sealed partial class SnippetEditor : UserControl
     private bool _rebinding;
 
     public event EventHandler? EscapePressed;
+    internal Func<Action, Task> RunCopy { get; set; } = _ => Task.CompletedTask;
+    public IAsyncRelayCommand CopyAfterAdmissionCommand { get; }
 
     public bool IsCompact
     {
@@ -30,8 +33,19 @@ public sealed partial class SnippetEditor : UserControl
 
     public SnippetEditor()
     {
+        CopyAfterAdmissionCommand = new AsyncRelayCommand(async () =>
+        {
+            var editor = _viewModel;
+            if (editor is null) return;
+            await RunCopy(() =>
+            {
+                if (ReferenceEquals(editor, _viewModel) && editor.CopyTextCommand.CanExecute(null))
+                    editor.CopyTextCommand.Execute(null);
+            });
+        }, () => _viewModel?.CopyTextCommand.CanExecute(null) == true);
         InitializeComponent();
     }
+    private void OnCopyAvailabilityChanged(object? sender, EventArgs args) => CopyAfterAdmissionCommand.NotifyCanExecuteChanged();
 
     /// <summary>The edit session to show; null clears the editor. Not a dependency property, so hosts set it in code.</summary>
     public SnippetEditorViewModel? ViewModel
@@ -43,12 +57,18 @@ public sealed partial class SnippetEditor : UserControl
             try
             {
                 if (_viewModel is not null)
+                {
                     _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+                    _viewModel.CopyTextCommand.CanExecuteChanged -= OnCopyAvailabilityChanged;
+                }
 
                 _viewModel = value;
                 if (_viewModel is not null)
+                {
                     _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-
+                    _viewModel.CopyTextCommand.CanExecuteChanged += OnCopyAvailabilityChanged;
+                }
+                CopyAfterAdmissionCommand.NotifyCanExecuteChanged();
                 Bindings.Update();
             }
             finally { _rebinding = false; }

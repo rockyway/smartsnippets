@@ -33,7 +33,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     {
         UIElement CreatePage(PageKind page) => page switch
         {
-            PageKind.Snippets => new SnippetsPage { RunOperation = host.RunOperationAsync, TextSize = host.TextSize, ViewModel = host.Snippets },
+            PageKind.Snippets => new SnippetsPage { RunOperation = host.RunOperationAsync, RunCopy = host.RunCopyOperationAsync, TextSize = host.TextSize, ViewModel = host.Snippets },
             PageKind.Folders => new FoldersPage { RunOperation = host.RunOperationAsync, TextSize = host.TextSize, ViewModel = host.Folders },
             _ => new SettingsPage { ViewModel = host.SettingsPage },
         };
@@ -47,8 +47,10 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         _popup = window;
         window.CanShow = () => ReferenceEquals(_popup, window) && host.CanPresentPopup;
         window.CanInsertNative = () => ReferenceEquals(_popup, window) && host.Gate.CanInsert;
+        window.TryFocusCapturedPopup = () => ReferenceEquals(_popup, window) && host.Gate.TryFocusOwnedPopup();
         window.ViewModel = host.Popup;
         window.RunOperation = host.RunOperationAsync;
+        window.RunCopy = host.RunCopyOperationAsync;
         _theme!.Register(window);
         window.Closed += (_, _) => { if (ReferenceEquals(_popup, window)) _popup = null; };
         var surface = new PopupSurface(window,

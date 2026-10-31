@@ -49,6 +49,9 @@ internal static class Coordinator
                 !RetainedIdentity.OutsideJob(guardian) || !RetainedIdentity.OutsideJob(worker.SafeHandle) ||
                 !RetainedIdentity.OutsideJob(fixture) || NativeFixtureOs.Foreground() != foreground)
                 throw new InvalidOperationException("native_bootstrap_provenance");
+            using (var recoveryReceipt = new StreamWriter(new FileStream(
+                Path.Combine(Program.PrivateRoot, "recovery-control.txt"), FileMode.CreateNew, FileAccess.Write, FileShare.Read)))
+                recoveryReceipt.WriteLine(ready[3]); // Allowlisted pipe token only; never clipboard bytes.
             state.Ready();
             // This is the FIRST Job assignment, after the guardian's authenticated ready handshake.
             NativeFixtureOs.Assign(job, worker.SafeHandle); assigned = true;
@@ -63,6 +66,7 @@ internal static class Coordinator
             {
                 NativeFixtureOs.TerminateWorkers(job);
                 await WaitStoppedAsync(worker.SafeHandle, TimeSpan.FromSeconds(5));
+                await WaitStoppedAsync(fixture, TimeSpan.FromSeconds(5));
                 var code = await RetainGuardianAsync(guardian);
                 state.GuardianStopped(code);
                 Console.WriteLine("native_result=abort_restored");
@@ -86,10 +90,23 @@ internal static class Coordinator
             Console.WriteLine("native_result=failed");
             await NativeRecoveryLifetime.CleanupAsync(async () =>
             {
-                if (assigned) NativeFixtureOs.TerminateWorkers(job);
-                else if (!worker.HasExited) worker.Kill(entireProcessTree: false);
-                await WaitStoppedAsync(worker.SafeHandle, TimeSpan.FromSeconds(5));
-                if (fixture is not null && RetainedIdentity.Alive(fixture)) NativeFixtureOs.TerminateFixture(fixture);
+                try
+                {
+                    if (assigned) NativeFixtureOs.TerminateWorkers(job);
+                    else if (!worker.HasExited) worker.Kill(entireProcessTree: false);
+                }
+                finally
+                {
+                    try { await WaitStoppedAsync(worker.SafeHandle, TimeSpan.FromSeconds(5)); }
+                    finally
+                    {
+                        if (fixture is not null)
+                        {
+                            try { if (RetainedIdentity.Alive(fixture)) NativeFixtureOs.TerminateFixture(fixture); }
+                            finally { await WaitStoppedAsync(fixture, TimeSpan.FromSeconds(5)); }
+                        }
+                    }
+                }
             }, async () =>
             {
                 if (guardian is not null) _ = await RetainGuardianAsync(guardian);
@@ -138,7 +155,7 @@ internal static partial class NativeFixtureOs
     internal static void TerminateWorkers(SafeFileHandle job)
     { if (TerminateJobObject(job, 2) == 0) throw new InvalidOperationException("native_job_terminate"); }
     internal static void TerminateFixture(SafeProcessHandle process)
-    { if (TerminateProcess(process, 2) == 0) throw new InvalidOperationException("native_fixture_cleanup"); }
+    { if (TerminateProcess(process, 2) == 0 && !RetainedIdentity.Stopped(process)) throw new InvalidOperationException("native_fixture_cleanup"); }
     [LibraryImport("kernel32.dll")] private static partial int TerminateProcess(SafeProcessHandle process, uint exitCode);
     internal static uint ExitCode(SafeProcessHandle process)
     { if (GetExitCodeProcess(process, out var code) == 0 || code == 259) throw new InvalidOperationException("native_exit_unknown"); return code; }
