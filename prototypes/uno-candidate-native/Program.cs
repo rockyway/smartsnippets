@@ -88,6 +88,10 @@ internal static class Program
             probe.Check(target) == TargetCheck.Ok && NativeOwnedPopup.QuietAllInput() &&
             NativeDesktop.IsVisibleCurrent();
         var copied = false;
+        var controlPublished = false;
+        OwnedOwnerWindow? secondOwner = null;
+        OwnedOwnerControl? ownerControl = null;
+        RestoreStatus RecoverOwnedControl() => ownerControl?.CleanupAndRestore() ?? clipboard.Restore();
         try
         {
             await FixedPipe.WriteAsync(writer, "ready");
@@ -100,6 +104,22 @@ internal static class Program
                 if (command is null) break;
                 string answer;
                 if (command == "restore") answer = clipboard.Restore().ToString();
+                else if (command == "verify-owned-owner-refusal")
+                {
+                    if (allowClipboardControl && controlPublished && clipboard.RecoveryPending && ControlAdmitted() && secondOwner is null)
+                    {
+                        // Fresh own HWND, exact retained thread/class/run identity; same guardian PID.
+                        secondOwner = new OwnedOwnerWindow(Guid.NewGuid());
+                        ownerControl = new OwnedOwnerControl(clipboard,
+                            new NativeClipboardOs(owner.Handle, publication.MarkerFormat, publication.PrivacyFormats),
+                            new NativeClipboardOs(secondOwner.Handle, publication.MarkerFormat, publication.PrivacyFormats),
+                            owner.IsPinned, secondOwner.IsPinned, publication.MarkerFormat, publication.Expected);
+                    }
+                    answer = allowClipboardControl && controlPublished && ownerControl is not null &&
+                        ownerControl.VerifyRefusal(ControlAdmitted) ? "owner-change-refused" : "refused";
+                }
+                else if (command == "cleanup-owned-owner-control")
+                    answer = (allowClipboardControl && controlPublished ? RecoverOwnedControl() : RestoreStatus.Failed).ToString();
                 else if (command == "commit-copy")
                 {
                     copied = copied && allowCopy && clipboard.CommitCopy(() => Admitted(copy: true));
@@ -113,6 +133,7 @@ internal static class Program
                         ? allowClipboardControl && ControlAdmitted()
                         : (copy ? allowCopy : allowInsert) && Admitted(copy));
                     copied = copy && status == SwapStatus.Swapped;
+                    controlPublished |= control && status == SwapStatus.Swapped;
                     answer = FormattableString.Invariant($"{status} saved={clipboard.SavedCount} bytes={clipboard.ByteCount}");
                 }
                 else break;
@@ -122,17 +143,19 @@ internal static class Program
         catch (Exception) { } // Every postpublication failure stays in this guardian's recovery path.
         // EOF is not proof of worker death, and SendInput may still be in flight.
         await GuardianRecovery.RetainUntilSettledAsync(() => RetainedIdentity.Stopped(worker), () => clipboard.HasBackup,
-            clipboard.Restore, () => Task.Delay(100), async status =>
+            RecoverOwnedControl, () => Task.Delay(100), async status =>
             {
                 // Foreign ownership / busy / partial never discard RAM or overwrite foreign data.
                 try
                 {
                     await recovery.WaitForConnectionAsync();
                     using var retry = new StreamReader(recovery, leaveOpen: true);
-                    return await RecoveryPipeProtocol.RespondAsync(recovery, retry, status, clipboard.Restore, () => clipboard.HasBackup);
+                    return await RecoveryPipeProtocol.RespondAsync(recovery, retry, status, RecoverOwnedControl, () => clipboard.HasBackup);
                 }
                 finally { try { recovery.Disconnect(); } catch (Exception) { } }
             });
+        // Retain the B window until original RAM has been verified and settled, including abort recovery.
+        if (!clipboard.HasBackup) secondOwner?.Dispose();
         return 0;
     }
 

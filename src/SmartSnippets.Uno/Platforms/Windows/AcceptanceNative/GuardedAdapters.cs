@@ -8,7 +8,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace SmartSnippets.Uno.Platforms.Windows.AcceptanceNative;
 
-internal enum AcceptanceOperation { Capture, Insert, Copy, Shortcut, Focus, Input, Clipboard, ClipboardControl }
+internal enum AcceptanceOperation { Capture, Insert, Copy, Shortcut, Focus, Input, Clipboard, ClipboardControl, MetadataCapture }
 
 internal interface IGuardianChannel : IDisposable
 {
@@ -21,6 +21,8 @@ internal interface IGuardianChannel : IDisposable
     long ByteCount { get; }
     SwapStatus Publish(AcceptanceOperation operation);
     bool CommitCopy();
+    bool VerifyOwnedOwnerChangeRefusal() => false;
+    RestoreStatus CleanupOwnedOwnerControl() => Restore();
     RestoreStatus Restore();
     void CloseAdmission();
     nint DuplicateGuardianHandle(SafeProcessHandle recipient) => throw new InvalidOperationException("Guardian transfer unavailable.");

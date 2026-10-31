@@ -194,6 +194,8 @@ public sealed class GuardedAdaptersTests
         Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Copy, false, true, false));
         Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.ClipboardControl, false, false, true));
         Assert.False(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Capture, false, true, true));
+        Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.MetadataCapture, false, false, true));
+        Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.MetadataCapture, false, true, false));
         Assert.True(NativeAcceptanceFactory.AllowsOperation(AcceptanceOperation.Capture, true, false, false));
     }
 

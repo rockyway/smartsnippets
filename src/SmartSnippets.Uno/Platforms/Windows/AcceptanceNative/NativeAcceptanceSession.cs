@@ -27,6 +27,12 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
             || !(quietInput ?? NativeOwnedPopup.QuietAllInput)()) return SwapStatus.NotPreserved;
         return guardian.Publish(AcceptanceOperation.ClipboardControl);
     }
+    internal bool VerifyOwnedOwnerChangeRefusal() => !closed && permitted(AcceptanceOperation.ClipboardControl) &&
+        guardian.RecoveryPending && guardian.IsPinned && popup.PopupPinned && owned.Check(target) == TargetCheck.Ok &&
+        (visibleDesktop ?? NativeDesktop.IsVisibleCurrent)() && (quietInput ?? NativeOwnedPopup.QuietAllInput)() &&
+        guardian.VerifyOwnedOwnerChangeRefusal();
+    // Cleanup does not authorize new control mutation and must survive admission expiry.
+    internal RestoreStatus CleanupOwnedOwnerControl() => guardian.CleanupOwnedOwnerControl();
     public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
     internal RestoreStatus RestoreClipboardControl() => guardian.Restore();
     internal Task<bool> ReadyForAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);

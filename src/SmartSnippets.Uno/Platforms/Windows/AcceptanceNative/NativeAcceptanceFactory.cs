@@ -25,6 +25,7 @@ internal static class NativeAcceptanceFactory
         AcceptanceOperation.Copy => allowCopy,
         AcceptanceOperation.Focus => allowInsert || allowCopy,
         AcceptanceOperation.ClipboardControl => allowClipboardControl,
+        AcceptanceOperation.MetadataCapture => allowInsert || allowCopy || allowClipboardControl,
         _ => false
     };
 

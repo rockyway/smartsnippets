@@ -102,6 +102,31 @@ public sealed class NativeAcceptanceSessionTests
     }
 
     [Fact]
+    public void OwnerRefusalControl_RequiresScopedPermissionQuietInputAndPendingBackup()
+    {
+        using var fixture = new SessionFixture();
+        Assert.False(fixture.Session.VerifyOwnedOwnerChangeRefusal());
+        Assert.Equal(SwapStatus.Swapped, fixture.Session.PublishClipboardControl());
+        fixture.Popup.Quiet = false;
+        Assert.False(fixture.Session.VerifyOwnedOwnerChangeRefusal());
+        fixture.Popup.Quiet = true; fixture.Allowed = false;
+        Assert.False(fixture.Session.VerifyOwnedOwnerChangeRefusal());
+        fixture.Allowed = true; fixture.Popup.PopupPinned = false;
+        Assert.False(fixture.Session.VerifyOwnedOwnerChangeRefusal());
+        fixture.Popup.PopupPinned = true;
+        Assert.True(fixture.Session.VerifyOwnedOwnerChangeRefusal());
+        Assert.Equal(1, fixture.Guardian.RefusalChecks);
+        Assert.True(fixture.Session.RecoveryPending);
+        // Explicit cleanup survives revocation; ordinary restore is still a refusal.
+        fixture.Allowed = false;
+        fixture.Guardian.RestoreResult = RestoreStatus.ClipboardChanged;
+        Assert.Equal(RestoreStatus.ClipboardChanged, fixture.Session.RestoreClipboardControl());
+        Assert.Equal(RestoreStatus.Restored, fixture.Session.CleanupOwnedOwnerControl());
+        Assert.False(fixture.Session.RecoveryPending);
+        Assert.Equal(0, fixture.Popup.FocusCalls);
+    }
+
+    [Fact]
     public void ControlOnlyProbe_ChecksIdentityButCannotCapture()
     {
         var popup = new PopupOs();
@@ -178,7 +203,7 @@ public sealed class NativeAcceptanceSessionTests
     private sealed class Channel : IGuardianChannel
     {
         internal bool Pending, Closed;
-        internal int Publications;
+        internal int Publications, RefusalChecks;
         internal AcceptanceOperation LastOperation;
         internal RestoreStatus RestoreResult = RestoreStatus.Restored;
         public string RecoveryControl => "fake";
@@ -190,6 +215,8 @@ public sealed class NativeAcceptanceSessionTests
         public long ByteCount => 4;
         public SwapStatus Publish(AcceptanceOperation operation)
         { Publications++; LastOperation = operation; Pending = true; return SwapStatus.Swapped; }
+        public bool VerifyOwnedOwnerChangeRefusal() { RefusalChecks++; return true; }
+        public RestoreStatus CleanupOwnedOwnerControl() { Pending = false; return RestoreStatus.Restored; }
         public bool CommitCopy() { Pending = false; return true; }
         public RestoreStatus Restore() { if (RestoreResult == RestoreStatus.Restored) Pending = false; return RestoreResult; }
         public void CloseAdmission() => Closed = true;

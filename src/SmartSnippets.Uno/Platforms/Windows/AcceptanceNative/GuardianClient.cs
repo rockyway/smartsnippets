@@ -148,6 +148,33 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
             throw Break();
         }
     }
+    public bool VerifyOwnedOwnerChangeRefusal()
+    {
+        lock (sync)
+        {
+            if (closed || !pending || !allowClipboardControl || !IsPinned) return false;
+            var answer = Exchange("verify-owned-owner-refusal");
+            if (answer == "owner-change-refused") return true;
+            if (answer == "refused") return false;
+            throw Break();
+        }
+    }
+    public RestoreStatus CleanupOwnedOwnerControl()
+    {
+        lock (sync)
+        {
+            if (!pending) return RestoreStatus.Restored;
+            if (!allowClipboardControl || broken || !IsPinned) return RestoreStatus.Failed;
+            try
+            {
+                var answer = Exchange("cleanup-owned-owner-control");
+                if (!Enum.TryParse<RestoreStatus>(answer, out var status) || !Enum.IsDefined(status)) throw Break();
+                if (status == RestoreStatus.Restored) pending = false;
+                return status;
+            }
+            catch (Exception) { return RestoreStatus.Failed; }
+        }
+    }
     public RestoreStatus Restore()
     {
         lock (sync)
