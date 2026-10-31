@@ -17,7 +17,8 @@ public partial class App : Application
     public App() { InitializeComponent(); DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown; }
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(50));
+        // Bootstrap must cancel and clean its target before the coordinator's 35s deadline.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         var ct = deadline.Token;
         try
         {

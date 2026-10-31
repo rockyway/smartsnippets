@@ -93,7 +93,17 @@ internal static class Coordinator
                 try
                 {
                     if (assigned) NativeFixtureOs.TerminateWorkers(job);
-                    else if (!worker.HasExited) worker.Kill(entireProcessTree: false);
+                    else
+                    {
+                        // Before fixture-handle transfer the worker is the only owner that can
+                        // reap its child. EOF asks its bounded bootstrap to unwind first.
+                        try { commands.Dispose(); } catch (IOException) { }
+                        try { await WaitStoppedAsync(worker.SafeHandle, TimeSpan.FromSeconds(5)); }
+                        catch (InvalidOperationException)
+                        {
+                            if (!worker.HasExited) worker.Kill(entireProcessTree: false);
+                        }
+                    }
                 }
                 finally
                 {
