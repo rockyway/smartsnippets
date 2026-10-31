@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsTestProject>true</IsTestProject><IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />
+    <ProjectReference Include="../../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
+    <Compile Include="../BootstrapProtocol.cs;../LateNativeOperations.cs" LinkBase="Fixture" />
+    <Compile Include="../../../src/SmartSnippets.Uno/Platforms/Windows/CandidateNativeCapability.cs" Link="CandidateNativeCapability.cs" />
+  </ItemGroup>
+</Project>
