@@ -1,4 +1,5 @@
-param([Parameter(Mandatory=$true)][int]$OwnedPid,
+param([ValidateSet('snippets','folders')][string]$Scene = 'snippets',
+      [Parameter(Mandatory=$true)][int]$OwnedPid,
       [Parameter(Mandatory=$true)][long]$OwnedHwnd,
       [Parameter(Mandatory=$true)][long]$InitialForeground,
       [Parameter(Mandatory=$true)][uint32]$InputEpoch,
@@ -36,6 +37,7 @@ public static class Owned019 {
     $epoch = $InputEpoch
     if ([Owned019]::Epoch() -ne $epoch) { throw 'input' }
     $focused = $false
+    $script:invokes = 0; $script:values = 0; $script:focuses = 0
     $ownedProcess = [Diagnostics.Process]::GetProcessById($OwnedPid)
     try { $started = $ownedProcess.StartTime.ToUniversalTime().Ticks } finally { $ownedProcess.Dispose() }
     function Guard {
@@ -79,6 +81,13 @@ public static class Owned019 {
         $r = [Windows.Automation.AutomationElement]::FromHandle($h)
         if ($r.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
         switch -CaseSensitive ($key) {
+            'folder-new-name' { $name='New folder name'; $id=$null; $type=[Windows.Automation.ControlType]::Edit }
+            'folder-create' { $name='Create folder'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'folder-rename' { $name='Rename folder'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'folder-name' { $name='Folder name'; $id='RenameBox'; $type=[Windows.Automation.ControlType]::Edit }
+            'folder-save' { $name='Save folder name'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'folder-delete' { $name='Delete folder'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'folder-confirm' { $name='Delete folder'; $id='PrimaryButton'; $type=[Windows.Automation.ControlType]::Button }
             'new' { $name='New snippet'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             'text' { $name='Snippet text'; $id='SnippetTextBox'; $type=[Windows.Automation.ControlType]::Edit }
             'save' { $name='Save snippet'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
@@ -106,11 +115,14 @@ public static class Owned019 {
                 $selected = SelectOwnedLeave $items
                 if ($null -ne $selected) { Guard; return $selected }
             } else {
-                if ($items.Count -gt 1) { throw 'schema' }
-                if ($items.Count -eq 1) {
-                    if ($items[0].Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
-                    if (-not $items[0].Current.IsOffscreen -and $items[0].Current.IsEnabled) { Guard; return $items[0] }
+                if ($Scene -ceq 'snippets' -and $items.Count -gt 1) { throw 'schema' }
+                $eligible = @()
+                foreach ($item in $items) {
+                    if ($item.Current.ProcessId -ne $OwnedPid) { throw 'uia_owner' }
+                    if (-not $item.Current.IsOffscreen -and $item.Current.IsEnabled) { $eligible += $item }
                 }
+                if ($eligible.Count -gt 1) { throw 'schema' }
+                if ($eligible.Count -eq 1) { Guard; return $eligible[0] }
             }
             Start-Sleep -Milliseconds 50
         }
@@ -120,15 +132,18 @@ public static class Owned019 {
         $e = Find $key
         Guard
         ([Windows.Automation.InvokePattern]$e.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        $script:invokes++
     }
-    function Value([string]$value) {
-        $e = Find 'text'
+    function Value([string]$value, [string]$key = 'text') {
+        $e = Find $key
         Guard
         $e.SetFocus() # Explicitly authorized management activation; not nonactivation QA.
         $script:focused = $true
+        $script:focuses++
         Guard
         if (-not $e.Current.HasKeyboardFocus) { throw 'focus' }
         ([Windows.Automation.ValuePattern]$e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue($value)
+        $script:values++
         Guard
         if (([Windows.Automation.ValuePattern]$e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -cne $value) { throw 'value' }
     }
@@ -148,29 +163,52 @@ public static class Owned019 {
         try { $bytes=[Text.Encoding]::ASCII.GetBytes("continue`n"); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
     }
     $stage = 'ready'; WaitPhase 'ui-ready'
-    # Focus only this retained owned window before invoking callbacks.
-    $e=Find 'new'; Guard; $e.SetFocus(); $script:focused=$true; Guard
-    $stage = 'new'; Invoke 'new'; Start-Sleep -Milliseconds 400; Ack 'ui-ready'
-    WaitPhase 'ui-new'
-    $stage = 'edit_saved'; Value 'ui019 synthetic saved'
-    $stage = 'save'; Invoke 'save'; Start-Sleep -Milliseconds 700; Ack 'ui-new'
-    WaitPhase 'ui-saved'
-    $stage = 'edit_dirty'; Value 'ui019 synthetic dirty'
-    $stage = 'dirty_leave'
-    $leave = Find 'leave'
-    $backToList = $leave.Current.Name -ceq 'Back to list'
-    Guard
-    ([Windows.Automation.InvokePattern]$leave.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
-    # Back changes only the narrow presentation, retaining the dirty editor. New then runs its real guard.
-    if ($backToList) { Invoke 'new' }
-    Start-Sleep -Milliseconds 400
-    $stage = 'cancel'; Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
-    # The observer acknowledges final shutdown only after this helper exits successfully.
-    $stage = 'finish'; WaitPhase 'ui-cancel'; Guard
+    if ($Scene -ceq 'folders') {
+        # Fixed scene only: no selectors, names or mutation payloads supplied by the caller.
+        $stage = 'folder_create'
+        Value 'ui019 synthetic folder' 'folder-new-name'
+        Invoke 'folder-create'; Start-Sleep -Milliseconds 400; Ack 'ui-ready'
+        WaitPhase 'ui-folder-created'
+        $stage = 'folder_rename'
+        Invoke 'folder-rename'
+        Value 'ui019 synthetic renamed' 'folder-name'
+        Invoke 'folder-save'; Start-Sleep -Milliseconds 400; Ack 'ui-folder-created'
+        WaitPhase 'ui-folder-renamed'
+        $stage = 'folder_delete'
+        Invoke 'folder-delete'
+        Invoke 'folder-confirm'; Start-Sleep -Milliseconds 400; Ack 'ui-folder-renamed'
+        WaitPhase 'ui-folder-deleted'; Guard
+        if ($script:invokes -ne 5 -or $script:values -ne 2 -or $script:focuses -ne 2) { throw 'actions' }
+        $file = [IO.File]::Open((Join-Path $root 'ui-folder-actions.receipt'), [IO.FileMode]::CreateNew)
+        try {
+            $bytes = [Text.Encoding]::ASCII.GetBytes("invoke=$script:invokes`nvalue=$script:values`nfocus=$script:focuses`n")
+            $file.Write($bytes,0,$bytes.Length)
+        } finally { $file.Dispose() }
+    } else {
+        # Focus only this retained owned window before invoking callbacks.
+        $e=Find 'new'; Guard; $e.SetFocus(); $script:focused=$true; Guard
+        $stage = 'new'; Invoke 'new'; Start-Sleep -Milliseconds 400; Ack 'ui-ready'
+        WaitPhase 'ui-new'
+        $stage = 'edit_saved'; Value 'ui019 synthetic saved'
+        $stage = 'save'; Invoke 'save'; Start-Sleep -Milliseconds 700; Ack 'ui-new'
+        WaitPhase 'ui-saved'
+        $stage = 'edit_dirty'; Value 'ui019 synthetic dirty'
+        $stage = 'dirty_leave'
+        $leave = Find 'leave'
+        $backToList = $leave.Current.Name -ceq 'Back to list'
+        Guard
+        ([Windows.Automation.InvokePattern]$leave.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        # Back changes only the narrow presentation, retaining the dirty editor. New then runs its real guard.
+        if ($backToList) { Invoke 'new' }
+        Start-Sleep -Milliseconds 400
+        $stage = 'cancel'; Invoke 'cancel'; Start-Sleep -Milliseconds 400; Ack 'ui-saved'
+        # The observer acknowledges final shutdown only after this helper exits successfully.
+        $stage = 'finish'; WaitPhase 'ui-cancel'; Guard
+    }
     [Console]::Out.WriteLine('ui_callbacks_observed')
 } catch {
     $reason = 'operation'
-    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout')
+    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions')
     if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
     [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason")
     exit 1

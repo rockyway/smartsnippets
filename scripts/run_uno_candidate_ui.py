@@ -38,6 +38,19 @@ def source_fingerprint():
     return digest.hexdigest()
 
 
+def scene_phases(scene):
+    if scene == 'snippets':
+        return ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel')
+    if scene == 'folders':
+        return ('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted')
+    raise ValueError('ui_scene')
+
+
+def validate_folder_actions(value):
+    if value != b'invoke=5\nvalue=2\nfocus=2\n':
+        raise ValueError('ui_folder_actions')
+
+
 def system_powershell():
     kernel = startup.C.WinDLL('kernel32', use_last_error=True)
     kernel.GetSystemDirectoryW.argtypes = [startup.W.LPWSTR, startup.W.UINT]
@@ -157,7 +170,8 @@ def save_helper_diagnostics(private, out, err):
             file.write(value)
 
 
-def worker(entry, digest, private, work, stream=sys.stdin.buffer):
+def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippets'):
+    phases = scene_phases(scene)
     if stream.readline(64) != startup.PERMIT:
         raise ValueError('permit')
     startup.require_job_membership()
@@ -174,6 +188,9 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
         epoch = settle_quiet_epoch(None, desktop, initial, work)
         (private / 'fixture-launch-permit').write_bytes(b'owned_fixture_only\n')
         (private / 'fixture-rendered-ui-permit').write_bytes(b'owned_rendered_ui_019\n')
+        if scene == 'folders':
+            with (private / 'fixture-folder-scene-permit').open('xb') as permit:
+                permit.write(b'owned_folder_ui_019\n')
         with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
             process = subprocess.Popen([str(entry)], cwd=private, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
             hwnd = retain_window(process, private, desktop, work, ui.visible_windows, initial)
@@ -181,7 +198,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
             # System Windows PowerShell only, STA, no profiles, no generic UIA selector/operation input.
             powershell = system_powershell()
             command = [str(powershell), '-NoLogo', '-NoProfile', '-NonInteractive', '-STA',
-                       '-File', str(HELPER), '-OwnedPid', str(process.pid), '-OwnedHwnd', str(hwnd),
+                       '-File', str(HELPER), '-Scene', scene, '-OwnedPid', str(process.pid), '-OwnedHwnd', str(hwnd),
                        '-InitialForeground', str(initial[0]), '-InputEpoch', str(epoch), '-PrivateRoot', str(private), '-Artifact', str(entry)]
             helper = subprocess.Popen(command, cwd=private, stdin=subprocess.DEVNULL,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -204,12 +221,14 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
             helper_diagnostics_saved = True
             save_helper_diagnostics(private, out, err)
             validate_helper_output(helper.returncode, out, err)
-            for phase in ('ui-ready', 'ui-new', 'ui-saved', 'ui-cancel'):
+            for phase in phases:
                 if not base.receipt(private, phase, process.pid):
                     raise ValueError('ui_receipt')
-            for phase in ('ui-ready', 'ui-new', 'ui-saved'):
+            for phase in phases[:-1]:
                 if base.owned_bytes(private / (phase + '.continue'), private) != b'continue\n':
                     raise ValueError('ui_receipt')
+            if scene == 'folders':
+                validate_folder_actions(base.owned_bytes(private / 'ui-folder-actions.receipt', private))
             # Release shutdown only after helper exit and every actual callback postcondition.
             quiet_input(desktop, epoch)
             fg, clip = observe_desktop(desktop)
@@ -217,7 +236,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
                 raise ValueError('clipboard_changed')
             if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
                 raise ValueError('foreground_changed')
-            with (private / 'ui-cancel.continue').open('xb') as ack:
+            with (private / (phases[-1] + '.continue')).open('xb') as ack:
                 ack.write(b'continue\n')
             deadline = time.monotonic() + 12
             closed_seen = False
@@ -239,7 +258,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
                 json.dump({'foregroundAfterClose': 'initial' if fg == initial[0] else 'none' if not fg else 'other'}, observation)
             # Extend the existing privacy scanner and its negative controls with this mode's canaries.
             privacy = startup.repo_module('ui_privacy', 'scripts/uno_candidate_privacy.py')
-            canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', str(private))
+            canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', 'ui019 synthetic folder',
+                        'ui019 synthetic renamed', 'ui019 synthetic attached', str(private))
             privacy.verify_negative_controls(canaries)
             records = [base.owned_bytes(p, private) for p in
                        (private / 'stdout.log', private / 'stderr.log', private / 'fixture-profile/logs/app.log',
@@ -284,6 +304,7 @@ def supervise(command, job_factory, popen=subprocess.Popen):
 
 def main():
     parser = startup.Parser(allow_abbrev=False)
+    parser.add_argument('--scene', choices=('snippets', 'folders'), default='snippets')
     parser.add_argument('--executable', required=True, type=Path)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--authorized-screen-slot', action='store_true')
@@ -295,13 +316,13 @@ def main():
     if not startup.inside(args.work_area, args.work_area):
         raise ValueError('work_area')
     if args.worker_private:
-        worker(entry, args.sha256, args.worker_private, args.work_area)
+        worker(entry, args.sha256, args.worker_private, args.work_area, scene=args.scene)
         return None
     ui = startup.repo_module('ui_private', 'prototypes/uno-desktop/run_ui_smoke.py')
     identity = startup.repo_module('ui_identity', 'prototypes/uno-native-target/run_identity_harness.py')
     private = ui.private_directory()
     command = [sys.executable, '-I', '-B', str(Path(__file__).resolve()), '--executable', str(entry),
-               '--sha256', args.sha256, '--authorized-screen-slot', '--work-area', *map(str, args.work_area),
+               '--sha256', args.sha256, '--scene', args.scene, '--authorized-screen-slot', '--work-area', *map(str, args.work_area),
                '--worker-private', str(private)]
     try:
         supervise(command, identity.WindowsJob)
@@ -312,7 +333,9 @@ def main():
     if after_close not in ({'foregroundAfterClose': 'initial'}, {'foregroundAfterClose': 'none'},
                            {'foregroundAfterClose': 'other'}):
         raise ValueError('ui_receipt')
-    return {**after_close, 'renderedNewEditSaveDirtyCancel': 'OBSERVED', 'folders': 'NOT_RUN', 'settings': 'NOT_RUN',
+    return {**after_close, 'renderedNewEditSaveDirtyCancel': 'OBSERVED' if args.scene == 'snippets' else 'NOT_RUN',
+            'folders': 'OBSERVED' if args.scene == 'folders' else 'NOT_RUN', 'settings': 'NOT_RUN',
+            'folderSnippetAssignment': 'FIXTURE_SEED_ONLY' if args.scene == 'folders' else 'NOT_RUN',
             'rowSelection': 'NOT_RUN', 'dirtySaveDiscard': 'NOT_RUN', 'filePicker': 'NOT_RUN',
             'nativeAdapters': 'DEFAULT_DENIED', 'stop': 'GRACEFUL', 'job': 'ZERO_ACTIVE',
             'privateEvidenceToken': private.name, 'sourceSha256': source_fingerprint()}

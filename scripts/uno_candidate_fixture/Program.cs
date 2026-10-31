@@ -10,10 +10,11 @@ public static class Program
 {
     private static AppInstance? _instance;
     internal static bool StartInBackground => false;
-    internal static LaunchOptions InitialOptions => new(PageKind.Snippets, false, null);
+    internal static LaunchOptions InitialOptions => new(FolderScene ? PageKind.Folders : PageKind.Snippets, false, null);
     internal static string PrivateRoot { get; private set; } = "";
     internal static string ProfileRoot => Path.Combine(PrivateRoot, "fixture-profile");
     internal static bool RenderedUiMode { get; private set; }
+    internal static bool FolderScene { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
@@ -36,6 +37,15 @@ public static class Program
                 || File.ReadAllText(uiPermit) != "owned_rendered_ui_019\n")
                 throw new InvalidOperationException("fixture_ui_permit");
             RenderedUiMode = true;
+        }
+        var folderPermit = Path.Combine(PrivateRoot, "fixture-folder-scene-permit");
+        if (File.Exists(folderPermit))
+        {
+            var info = new FileInfo(folderPermit);
+            if (!RenderedUiMode || (info.Attributes & FileAttributes.ReparsePoint) != 0
+                || info.Length != 20 || File.ReadAllText(folderPermit) != "owned_folder_ui_019\n")
+                throw new InvalidOperationException("fixture_folder_permit");
+            FolderScene = true;
         }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         _instance = AppInstance.FindOrRegisterForKey("SmartSnippets.UnoAcceptanceFixture019." + name);

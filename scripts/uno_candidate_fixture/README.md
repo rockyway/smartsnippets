@@ -85,3 +85,61 @@ oldest Windows runtime, positive clipboard/shortcut/input/recovery and Plan019
 completion remain open. Native positive clipboard work is parent-owned. Do not
 promote programmatic fixture assertions or this separate fixture's eventual run to
 production candidate parity without source-equivalence review.
+
+
+## Fixed rendered folder checkpoint (review closed)
+
+Test-only executable linking the actual candidate XAML/handlers/host and shared
+Core/Presentation. No executable CLI arguments or production profile override.
+The owned private directory, launch permit and exact rendered permit are required;
+production native capability remains null. This fixture is not production parity.
+
+## Fixed rendered scenes
+
+`scripts/run_uno_candidate_ui.py --scene snippets|folders` selects only a fixed
+scene in the observer, never arbitrary selectors or mutation text. All source
+execution gates remain false. **All visible tests remain PAUSED pending operator
+remaining-monitor authorization and independent review.** No scene was executed
+for this checkpoint.
+
+The default snippets scene retains New/edit/save/dirty-leave/Keep-editing checks.
+The folders scene additionally requires the test-only
+`fixture-folder-scene-permit` containing exactly `owned_folder_ui_019\n`; it cannot
+be selected by the production executable. Initial fixture navigation is Folders.
+
+| Phase | Required evidence |
+|---|---|
+| ui-ready | Fresh empty store, actual retained owned main HWND |
+| ui-folder-created | UIA New folder name ValuePattern + Create folder InvokePattern; real VM/store create; SQLite reload verifies exact name/id |
+| explicit setup | Fixture **seeds** one synthetic snippet attached to that actual newly created folder; this is NOT rendered snippet creation/assignment evidence |
+| ui-folder-renamed | UIA Rename folder, Folder name, Save folder name; actual Click handlers/shared VM/store; reload verifies unchanged id and attached snippet |
+| ui-folder-deleted | UIA Delete folder then actual confirmation PrimaryButton; reload verifies zero folders, same snippet text, null FolderId, zero usage and Unfiled count 1 |
+| actions | Exclusive content-free receipt: exactly 5 completed InvokePattern calls, 2 SetValue calls, 2 SetFocus calls; observer verifies before shutdown acknowledgment |
+| graceful | Actual host ExitAsync, released profile lease, zero process exit, zero job descendants |
+
+Only exact allowlisted name/type/id controls under the retained HWND, owned PID,
+uniquely enabled and onscreen are admitted. Discovery may wait; mutations never
+retry. The snippets scene retains its stricter duplicate-selector rejection.
+The observer's idle/input epoch, clipboard sequence, identity, work-area geometry,
+foreground monotonicity, bounded watchdog and monotonic shutdown checks are
+unchanged. SetFocus is authorized management activation, not nonactivation proof.
+Signed system Windows PowerShell, STA and strongly typed UIA remain required.
+
+Fixture binaries require fresh strict Native AOT publication and existing fixture
+provenance validation; source hashing includes the linked assertions, fixture and
+observer/helper. App/helper stdout/stderr and app log are privacy-scanned including
+folder, renamed-folder and seeded-snippet canaries with planted negative controls.
+Private profiles/evidence are retained, not automatically deleted. Forced cleanup
+is never graceful success. The database intentionally contains synthetic text and
+is not diagnostic evidence to scan.
+
+## Remaining unproven paths
+
+Rendered execution of both scenes is NOT RUN. Settings theme/text-size and
+persist/reload are not implemented in this bounded folder checkpoint. Folder
+unsaved rename Save/Discard/Cancel, validation/failure paths, rendered snippet
+assignment, file pickers/import/export, row selection, tray/close/background,
+legacy coexistence, hover/DPI/oldest runtime and all positive native clipboard,
+hotkey/input/recovery acceptance remain open. The existing non-rendered full-host
+management/preview/recreation fixture remains available, but its VM/store calls
+are not rendered-event proof. Plan019 remains incomplete.

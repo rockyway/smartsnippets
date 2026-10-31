@@ -18,6 +18,22 @@ public partial class App : Application
             CandidateAcceptanceFlow.RequireReady(_host, Program.ProfileRoot);
             if (Program.RenderedUiMode)
             {
+                if (Program.FolderScene)
+                {
+                    UiAssertDriver.RequireFresh(_host);
+                    Program.Receipt("ui-ready"); await Program.WaitAsync("ui-ready");
+                    var folderId = UiAssertDriver.RequireFolderCreated(_host);
+                    // Explicit fixture setup ONLY: not evidence of rendered snippet assignment.
+                    var snippetId = FolderSceneSeed.AttachSyntheticSnippet(_host, folderId);
+                    UiAssertDriver.RequireFolderAttached(_host, folderId);
+                    Program.Receipt("ui-folder-created"); await Program.WaitAsync("ui-folder-created");
+                    UiAssertDriver.RequireFolderRenamed(_host, folderId);
+                    Program.Receipt("ui-folder-renamed"); await Program.WaitAsync("ui-folder-renamed");
+                    UiAssertDriver.RequireFolderDeleted(_host, snippetId);
+                    Program.Receipt("ui-folder-deleted"); await Program.WaitAsync("ui-folder-deleted");
+                    await _host.ExitAsync();
+                    return;
+                }
                 UiAssertDriver.RequireFresh(_host);
                 Program.Receipt("ui-ready"); await Program.WaitAsync("ui-ready");
                 UiAssertDriver.RequireNew(_host);

@@ -21,6 +21,34 @@ class UiManagementTests(unittest.TestCase):
                 s.main()
             validate.assert_not_called()
 
+    def test_fixed_scenes_and_exact_completed_action_receipt(self):
+        self.assertEqual(('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted'),
+                         s.scene_phases('folders'))
+        self.assertEqual('ui-cancel', s.scene_phases('snippets')[-1])
+        for value in ('settings', '', '../folders', 'Folders'):
+            with self.assertRaisesRegex(ValueError, 'ui_scene'):
+                s.scene_phases(value)
+        s.validate_folder_actions(b'invoke=5\nvalue=2\nfocus=2\n')
+        for value in (b'', b'invoke=4\nvalue=2\nfocus=2\n', b'invoke=6\nvalue=2\nfocus=2\n',
+                      b'invoke=5\nvalue=2\nfocus=2\nextra'):
+            with self.assertRaisesRegex(ValueError, 'ui_folder_actions'):
+                s.validate_folder_actions(value)
+
+    def test_folder_scene_is_fixture_only_and_uses_fixed_rendered_controls(self):
+        program = (s.REPO / 'scripts/uno_candidate_fixture/Program.cs').read_text()
+        helper = s.HELPER.read_text()
+        self.assertIn('fixture-folder-scene-permit', program)
+        self.assertIn('!RenderedUiMode', program)
+        self.assertIn('FileAttributes.ReparsePoint', program)
+        self.assertIn("[ValidateSet('snippets','folders')]", helper)
+        for key in ('folder-new-name', 'folder-create', 'folder-rename', 'folder-name',
+                    'folder-save', 'folder-delete', 'folder-confirm'):
+            self.assertIn("'" + key + "' {", helper)
+        self.assertIn("$id='PrimaryButton'", helper)
+        self.assertIn('$script:invokes++', helper)
+        self.assertIn('$script:values++', helper)
+        self.assertNotIn('SendKeys', helper)
+
     def test_slot_required_even_after_source_review(self):
         with patch.object(s, 'UI_SOURCE_REVIEWED', True), patch.object(s.sys, 'platform', 'win32'):
             with self.assertRaises(ValueError):
