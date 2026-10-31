@@ -62,7 +62,7 @@
   </Target>
   <ItemGroup>
     <!-- Standalone serializer investigation is not source for the Uno application. -->
-    <Compile Remove="macos-json-risk/**/*.cs" />
+    <Compile Remove="macos-json-risk/**/*.cs;tests/**/*.cs" />
     <ProjectReference Include="../../src/SmartSnippets.Core/SmartSnippets.Core.csproj" />
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
   </ItemGroup>

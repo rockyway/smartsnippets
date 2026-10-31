@@ -153,3 +153,73 @@ one actual ItemClick, shared row activation, unchanged real SQLite usage and
 clipboard epoch, and zero forbidden calls are required for PASS. Existing
 `--preview-row` remains programmatic and makes no native-pointer claim.
 The reviewed native Windows run passes with actual ItemClick and complete mouse recovery: build `51e5f7715c2c466cafbd2bf3e0639e1d`, SHA256 `352a6cb8cc7c6b9de3d23ca1f45a23ed8b2315b841efd4053d479de715e3dadc`, runtime token `ss-uno018-ui-kgeb18nj`. No macOS pointer evidence is provided by this scene. See [research 024](../../docs/research/024-windows-native-preview-row.md) for safety fixes and limits.
+
+### Actual external companion pointer scene (T3; native acceptance NOT RUN)
+
+`--probe-ui-companion` / runner `--companion` remains the **programmatic** policy/scroll scene.
+The separate executable flag `--companion-native-pointer` (with `--authorized-probe-ui`)
+requires actual root-row PointerEntered/Exited and companion PointerEntered/Exited.
+They call `CompanionPointerRoute`, which uses the actual Presentation
+`HoverDetailsCoordinator`: 500ms open, 120ms handoff grace, held-open observation
+for 250ms after companion entry, then surface exit -> delayed native hide -> close.
+No programmatic Enter/OpenPinned fallback exists in this scene. Receipt counts and
+ordering are exact; a missed/duplicate callback or timeout fails, not PASS.
+
+Windows runner (only after independent safety review and exclusive screen authorization):
+`python prototypes/uno-desktop/run_ui_smoke.py --executable <fresh-owned-exe> --sha256 <hash> --authorized-screen-slot --companion-native-pointer`.
+It uses a bounded owned child helper, read-only allowlisted UIA bounds, PMv2 physical
+mapping, active-desktop/all-VK-up/idle guards and exact PID/root/leaf hit-tests.
+Only cursor moves occur: row -> owned intra-main nonrow point -> external surface
+-> owned editor (no button/key events, clipboard, focus or Z-order calls). Every
+callback receipt is flushed and awaited. Surface UIA bounds are precomputed while
+still over the row; the intra-main row exit receipt is followed promptly by surface
+entry within the real 120ms policy grace. System Windows PowerShell runs UIA in STA
+with strong-named assemblies, not a PATH-resolved shell.
+
+Version-2 pointer-only recovery journals atomically persist both previous and planned
+cursor candidates before **every** move, including original-cursor restoration.
+They retain truthful `wasTopmost`, explicit `zorderChanged=false`, and the original
+physical-input epoch; legacy row-click journals remain supported. Unknown cursor
+positions, changed input epochs, held input or uncertain moves retain the journal
+and report pending/incomplete, never false COMPLETE or unowned key/button release.
+Pointer-only replay never calls SetWindowPos. Linked journal files/parents are refused
+before resolution. Original cursor positions already over any owned probe are refused.
+The helper restores only after native hide and callback detachment. On **every**
+still-alive pointer path, the runner stops its exact owned child and awaits teardown
+before journal replay. Native execution also must confirm that the OS preserves the
+physical-input epoch during cursor-only movement; a change fails closed without an
+input-guard exemption. No input helper was executed during implementation; fake-API
+unit tests do not prove OS callback delivery or UIA bounds availability.
+
+Both platform heads accept the executable flag and share the XAML callbacks.
+The automated pointer runner is deliberately Windows-only. Mac mirroring/build and
+native acceptance belong to the coordinating operator; existing held-input refusal
+is unchanged, with no exemptions or key releases. Mac native pointer acceptance,
+Windows native pointer acceptance and full FG3 remain **NOT RUN**. The Windows
+native insertion entry remains hard-disabled; this scene has no insertion, store,
+clipboard or hotkey path. Existing preview/NoDispatch scenes are unchanged.
+
+Portable route tests:
+`dotnet test prototypes/uno-desktop/tests/CompanionPointer.Tests`.
+These fail if the actual Presentation delay is bypassed, stale row-leave closes the
+companion, surface leave does not hide, missed handoff is called complete, or disposed
+pending work opens a surface. Python tests additionally falsify receipt deletion,
+wrong HWND, held-input/wrong-leaf movement and missing-hidden recovery claims.
+
+### T5 actual-host portable flow composition (CI boundary substitution only)
+
+`--authorized-probe-ui --probe-ui-flow` selects an explicit interactive page backed
+by the same factory and portable popup driver exercised by
+[../uno-flow-tests](../uno-flow-tests/README.md). Actual Core SQLite,
+Popup/Snippets VMs, popup coordinator, insertion service and shutdown coordinator
+are composed once. Null-adapter forwarding, cloak/timer/close/retry policy and the
+actual thin page handlers execute in CI with OS/UI-boundary substitutions.
+Default native injection stays null: capture and main Copy refuse (including after
+preview); popup preview Copy never reaches the clipboard. Native insertion gates
+remain closed. Footer focus has a cancel/dismiss control; inline Editor focus is
+explicitly NOT IMPLEMENTED, not mapped to Search. Owned profile removal waits
+asynchronously for insertion restoration and VM completion. Static XAML/native
+wrapper audits and Windows AOT compilation are **not native runtime acceptance**.
+This mode has not been launched. Native GUI/input/clipboard/global-shortcut and
+FG3/FG4/FG5 acceptance remain NOT RUN; consolidated review and separate screen
+approval are required before native trials. See the linked README for exact scope.

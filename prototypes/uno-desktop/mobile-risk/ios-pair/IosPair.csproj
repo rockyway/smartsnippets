@@ -1,0 +1,35 @@
+<Project Sdk="Uno.Sdk/6.7.30">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures>
+    <ApplicationTitle>018 iOS Pair Probe</ApplicationTitle>
+    <ApplicationId>org.smartsnippets.feasibility018.iospair</ApplicationId>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <UnoDisableHotDesign>true</UnoDisableHotDesign>
+    <UnoDisableMCPSupport>true</UnoDisableMCPSupport>
+    <EnableCodeSigning>false</EnableCodeSigning>
+    <CodesignRequireProvisioningProfile>false</CodesignRequireProvisioningProfile>
+    <BuildIpa>false</BuildIpa>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Keyboard/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <AdditionalAppExtensions Include="$(MSBuildProjectDirectory)/native">
+      <Name>PairKeyboard</Name>
+      <BuildOutput>.</BuildOutput>
+      <CodesignEntitlements>$(MSBuildProjectDirectory)/Keyboard/Entitlements.plist</CodesignEntitlements>
+    </AdditionalAppExtensions>
+  </ItemGroup>
+  <Target Name="RecordSkiaLinkerInputs" BeforeTargets="_RunILLink">
+    <WriteLinesToFile File="$(IntermediateOutputPath)skia-linker-inputs.txt"
+                      Lines="@(ManagedAssemblyToLink->'%(FullPath)')" Overwrite="true" />
+  </Target>
+  <Target Name="BuildNativeKeyboard" BeforeTargets="PrepareForBuild">
+    <Exec Command="bash &quot;$(MSBuildProjectDirectory)/build_keyboard.sh&quot;" />
+  </Target>
+</Project>

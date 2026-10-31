@@ -138,7 +138,7 @@ class NativePolicyTests(unittest.TestCase):
         n = self.make_native()
         n.u.CreateWindowStationW.return_value = None
         surface = probe.Surface(n, "S-1-5-21-1")
-        with self.assertRaises(probe.CreationBlocked):
+        with patch.object(probe, "NAMED_CREATE_ONLY_REVIEWED", False), self.assertRaises(probe.CreationBlocked):
             surface.open()
         args = n.u.CreateWindowStationW.call_args.args
         self.assertIsNone(args[0])
@@ -149,6 +149,55 @@ class NativePolicyTests(unittest.TestCase):
         n.a.ConvertStringSecurityDescriptorToSecurityDescriptorW.assert_called_once()
         self.assertEqual("O:S-1-5-21-1D:P(A;;GA;;;S-1-5-21-1)",
                          n.a.ConvertStringSecurityDescriptorToSecurityDescriptorW.call_args.args[0])
+
+    def test_named_create_only_failure_is_terminal_and_names_are_unique(self):
+        n = self.make_native()
+        n.u.CreateWindowStationW.return_value = None
+        with patch.object(probe, "NAMED_CREATE_ONLY_REVIEWED", True):
+            for _ in range(2):
+                with self.assertRaises(probe.CreationBlocked):
+                    probe.Surface(n, "S-1-5-21-1").open()
+        names = []
+        for call in n.u.CreateWindowStationW.call_args_list:
+            name, flags = call.args[:2]
+            self.assertTrue(name.startswith("ss_probe018_"))
+            self.assertEqual(44, len(name))
+            self.assertEqual(name[12:], probe.uuid.UUID(hex=name[12:]).hex)
+            self.assertEqual(1, flags)
+            names.append(name)
+        self.assertNotEqual(*names)
+        n.u.OpenWindowStationW.assert_not_called()
+        n.u.SetThreadDesktop.assert_called_with(n.u.GetThreadDesktop.return_value)
+        n.u.CreateDesktopW.assert_not_called()
+        n.u.OpenClipboard.assert_not_called()
+
+    def test_named_result_must_match_requested_name_before_binding(self):
+        n = self.make_native()
+        n.u.CreateWindowStationW.return_value = 10
+        n.private = MagicMock(return_value="unexpected_private_name")
+        surface = probe.Surface(n, "S-1-5-21-1")
+        with patch.object(probe, "NAMED_CREATE_ONLY_REVIEWED", True), self.assertRaises(probe.Closed):
+            surface.open()
+        n.u.SetProcessWindowStation.assert_called_once_with(surface.original_station)
+        n.u.OpenWindowStationW.assert_not_called()
+        n.u.CreateDesktopW.assert_not_called()
+        n.u.OpenClipboard.assert_not_called()
+
+    def test_named_success_uses_only_created_private_station(self):
+        n = self.make_native()
+        n.u.CreateWindowStationW.return_value = 10
+        n.u.CreateDesktopW.return_value = 20
+        n.u.CreateWindowExW.return_value = 30
+        n.private = MagicMock(side_effect=lambda handle: n.u.CreateWindowStationW.call_args.args[0])
+        n.owner_pid = MagicMock()
+        surface = probe.Surface(n, "S-1-5-21-1")
+        n.name = MagicMock(side_effect=lambda handle: surface.desktop_name)
+        with patch.object(probe, "NAMED_CREATE_ONLY_REVIEWED", True):
+            surface.open()
+        n.u.SetProcessWindowStation.assert_called_once_with(10)
+        n.u.OpenWindowStationW.assert_not_called()
+        n.u.OpenClipboard.assert_not_called()
+        surface.close()
 
     def test_cleanup_restores_station_then_desktop_and_closes_reverse(self):
         n = self.make_native()

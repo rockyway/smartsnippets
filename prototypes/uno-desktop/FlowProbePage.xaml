@@ -1,0 +1,43 @@
+<Page x:Class="SmartSnippets.UnoProbe.FlowProbePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:vm="using:SmartSnippets.Presentation.ViewModels">
+    <StackPanel Padding="16" Spacing="8">
+        <TextBlock Text="Portable flow probe — native adapter unavailable; no clipboard/input. Native acceptance NOT RUN." TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Shortcut callback" Click="ShortcutClicked" />
+            <Button Content="Menu callback" Click="MenuClicked" />
+            <Button Content="Preview" Click="PreviewClicked" />
+        </StackPanel>
+        <TextBox x:Name="Search" Visibility="{x:Bind PopupOnly}" Text="{x:Bind Flow.Popup.Query, Mode=TwoWay}" KeyDown="SearchKeyDown" />
+        <ListView x:Name="PopupRows" Visibility="{x:Bind PopupOnly}" ItemsSource="{x:Bind Flow.Popup.Items, Mode=OneWay}"
+                  SelectedIndex="{x:Bind Flow.Popup.SelectedIndex, Mode=TwoWay}"
+                  IsItemClickEnabled="True" ItemClick="RowClicked" MaxHeight="180">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:PopupItemViewModel">
+                    <TextBlock Text="{x:Bind Label}" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <ListView x:Name="MainRows" Visibility="{x:Bind MainOnly}" ItemsSource="{x:Bind Flow.Main.List.Items}" MaxHeight="100">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:SnippetRowViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{x:Bind Label}" />
+                        <Button Content="Main row Insert" Tag="{x:Bind Id}" Click="MainInsertClicked" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Open main" Click="OpenMainClicked" />
+            <Button Visibility="{x:Bind MainOnly}" Content="Main Copy (adapter required)" Click="CopyClicked" />
+            <Button Content="Hide popup" Click="HideClicked" />
+        </StackPanel>
+        <TextBlock Text="{x:Bind Flow.Popup.FooterMessage, Mode=OneWay}" TextWrapping="Wrap" />
+        <Button x:Name="FooterAction" Visibility="{x:Bind PopupOnly}" Content="Cancel confirmation / dismiss caution" Click="FooterDismissClicked" />
+        <Button Visibility="{x:Bind PopupOnly}" Content="Popup Copy" Click="PopupCopyClicked" />
+        <TextBlock Text="Inline editor focus: NOT IMPLEMENTED in this probe." />
+        <TextBlock x:Name="Status" />
+    </StackPanel>
+</Page>

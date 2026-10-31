@@ -43,6 +43,16 @@ One authorized Windows trial returned exit **3** with exactly `blocked_createwin
 
 This is a recorded unavailable isolation prerequisite, **not a successful ownership proof**. No elevation, station/display/security changes or interactive fallback were attempted. See [isolation README](../../prototypes/uno-native-target/isolation/README.md).
 
+## Follow-up isolation and allocation prerequisites
+
+A separate read-only creation diagnostic captured `ERROR_ALREADY_EXISTS` (183) immediately after a later NULL/create-only call, before cleanup could overwrite LastError. The normal clipboard was not opened and its sequence was unchanged. This classifies that later attempt only; the first historical trial did not capture LastError.
+
+A separately security-reviewed alternative requests a fresh `ss_probe018_<uuid>` name with the same create-only flag, owner-only protected DACL, unelevated token, non-visible/non-WinSta0 and exact-returned-name checks, job containment and interpreter/script/parent pinning. It is **not a fallback** after a failed call. The committed `NAMED_CREATE_ONLY_REVIEWED` default remains false; only an isolated trial copy enabled it. Thirty pure tests pass, including terminal create failure without opening an existing station, name mismatch before binding and unique requested names.
+
+The single authorized named trial also returned **BLOCKED 3**, with `blocked_createwindowstation_named_create_only` and `general_sequence_unchanged`. No private clipboard seed/read/write was reached. Its source SHA256 was `fda861645671a2eaa7f75c42d7ae6596513f5bc8912b56160b23643a1ef5d0da`. The named trial did not capture a LastError value, so no particular cause is claimed. No elevation, policy bypass or interactive-clipboard fallback was attempted.
+
+An independent allocation-only Win32 API check requested zero-initialized movable HGLOBAL blocks of 4, 16, 23 and 46 bytes: each actual `GlobalSize` equaled the requested size, and all allocations were freed. No clipboard API was accessed. This narrows the allocation-size prerequisite but does **not** prove clipboard synthesis sizes, cross-process ownership or restoration. These Python/ctypes observations are native API prerequisites, not Native AOT execution evidence.
+
 ## Next acceptance steps
 
 1. Obtain an isolated Windows session or an explicitly operator-prepared harmless clipboard. Keep committed insertion entry false; any temporary reviewed native-test enablement requires a fresh strict build.

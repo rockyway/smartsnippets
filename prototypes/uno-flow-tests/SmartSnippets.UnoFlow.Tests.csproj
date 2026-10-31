@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
+    <Compile Include="../uno-desktop/Flow/*.cs" Link="Flow/%(Filename)%(Extension)" />
+    <Compile Include="../uno-desktop/FlowProbePage.xaml.cs" Link="FlowProbePage.xaml.cs" />
+    <None Include="../uno-desktop/FlowProbePage.xaml;../uno-desktop/FlowProbePage.xaml.cs;../uno-desktop/UiFlowProbe.cs;../uno-desktop/App.xaml.cs" Link="HostContracts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

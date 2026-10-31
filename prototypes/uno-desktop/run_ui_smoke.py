@@ -110,6 +110,28 @@ COMPANION_RECEIPTS = [
 ]
 
 
+def companion_pointer_ready(stdout):
+    matches = re.findall(r"^ui_companion_pointer_ready hwnd=([1-9][0-9]*)$", stdout, re.M)
+    return int(matches[0]) if len(matches) == 1 else None
+
+
+def companion_pointer_completed(stdout, stderr, code):
+    lines = stdout.splitlines()
+    if code != 0 or stderr.strip() or len(lines) != 11:
+        return False
+    return (lines[0] == "ui_companion_pointer_started"
+            and companion_pointer_ready(stdout) is not None
+            and re.fullmatch(r"ui_companion_pointer_ready hwnd=[1-9][0-9]*", lines[1]) is not None
+            and lines[2] == "ui_companion_pointer_row_entered"
+            and re.fullmatch(r"ui_companion_pointer_opened hwnd=[1-9][0-9]*", lines[3]) is not None
+            and lines[1].split("=")[1] != lines[3].split("=")[1]
+            and lines[4:] == ["ui_companion_pointer_row_exited", "ui_companion_pointer_surface_entered",
+                "ui_companion_pointer_held geometry=EXTERNAL foreground=UNCHANGED",
+                "ui_companion_pointer_surface_exited", "ui_companion_pointer_hidden",
+                "ui_companion_pointer_native_closed",
+                "ui_companion_pointer_complete managed_closed=2 native_absence=1 clipboard=UNTOUCHED dispatch=0"])
+
+
 def companion_completed(stdout, stderr, code):
     return code == 0 and not stderr.strip() and stdout.splitlines() == COMPANION_RECEIPTS
 
@@ -244,10 +266,11 @@ def main():
     scene.add_argument("--coordinator", action="store_true", help="Require cloaked native warmup and coordinator-only focus")
     scene.add_argument("--preview-row", action="store_true", help="Programmatic shared row handler only; no pointer/UIA input")
     scene.add_argument("--preview", action="store_true", help="Require native Enter through the actual preview view-model")
+    scene.add_argument("--companion-native-pointer", action="store_true", help="Windows guarded pointer-only real callback scene")
     scene.add_argument("--companion", action="store_true", help="Require external companion geometry and real hover-policy handoff, without input")
     scene.add_argument("--preview-row-native", action="store_true", help="Windows-only authorized real owned row click")
     args = parser.parse_args()
-    if args.preview_row_native and sys.platform != "win32":
+    if (args.preview_row_native or args.companion_native_pointer) and sys.platform != "win32":
         raise ValueError("Native row requires Windows")
     interactive = args.coordinator or args.preview
     if not args.authorized_screen_slot or sys.platform not in ("win32", "darwin"):
@@ -271,7 +294,7 @@ def main():
     private = private_directory()
     process = None
     observed = False
-    preparation_ok = not (interactive or args.preview_row_native)
+    preparation_ok = not (interactive or args.preview_row_native or args.companion_native_pointer)
     recovery_ok = True
     recovery_required = False
     code = None
@@ -279,7 +302,9 @@ def main():
     with (private / "stdout.log").open("wb") as stdout, (private / "stderr.log").open("wb") as stderr:
         try:
             arguments = [str(entry), "--authorized-probe-ui"]
-            if args.preview_row_native:
+            if args.companion_native_pointer:
+                arguments.append("--companion-native-pointer")
+            elif args.preview_row_native:
                 arguments.append("--preview-row-native")
             elif args.preview_row:
                 arguments.append("--preview-row")
@@ -294,7 +319,7 @@ def main():
             process = subprocess.Popen(arguments, stdout=stdout, stderr=stderr,
                                        cwd=entry.parent, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL,
                                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
-            deadline = time.monotonic() + (45 if interactive or args.preview_row_native else 30 if args.lifecycle or args.companion or args.preview_row else 15)
+            deadline = time.monotonic() + (45 if interactive or args.preview_row_native or args.companion_native_pointer else 30 if args.lifecycle or args.companion or args.preview_row else 15)
             observe_deadline = min(deadline, time.monotonic() + 10) if interactive else deadline
             while time.monotonic() < observe_deadline:
                 code = process.poll()
@@ -313,30 +338,30 @@ def main():
                     raise ValueError("Window observer failed")
                 if int(helper.stdout.strip()) > 0:
                     observed = True
-                    if args.preview_row_native:
+                    if args.preview_row_native or args.companion_native_pointer:
                         hwnd = None
                         while time.monotonic() < deadline and process.poll() is None:
-                            hwnd = native_row_ready((private / "stdout.log").read_text(errors="replace"))
+                            hwnd = (companion_pointer_ready if args.companion_native_pointer else native_row_ready)((private / "stdout.log").read_text(errors="replace"))
                             if hwnd is not None:
                                 break
                             time.sleep(0.1)
                         if hwnd is None:
                             break
-                        preparation_budget = min(20.0, deadline - time.monotonic() - 8)
+                        preparation_budget = min(32.0 if args.companion_native_pointer else 20.0, deadline - time.monotonic() - 8)
                         if preparation_budget <= 0:
                             break
                         try:
                             prepared = subprocess.run(
-                                [sys.executable, str(BASE / "prepare_owned_focus.py"), "--pid", str(process.pid),
+                                [sys.executable, str(BASE / ("owned_pointer_hover.py" if args.companion_native_pointer else "prepare_owned_focus.py")), "--pid", str(process.pid),
                                  "--executable", str(entry), "--sha256", args.sha256,
-                                 "--journal", str(private / "focus.json"), "--row-hwnd", str(hwnd)],
+                                 "--journal", str(private / "focus.json"), "--hwnd" if args.companion_native_pointer else "--row-hwnd", str(hwnd)],
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                 timeout=preparation_budget, creationflags=subprocess.CREATE_NO_WINDOW)
                         except subprocess.TimeoutExpired:
                             (private / "prepare.log").write_text("owned_focus_prepare_timeout\n", encoding="utf-8")
                             break
                         (private / "prepare.log").write_text(prepared.stdout + prepared.stderr, encoding="utf-8")
-                        preparation_ok = prepared.returncode == 0 and prepared.stdout.strip() == "owned_focus_prepared" and not prepared.stderr.strip()
+                        preparation_ok = prepared.returncode == 0 and prepared.stdout.strip() == ("owned_pointer_prepared" if args.companion_native_pointer else "owned_focus_prepared") and not prepared.stderr.strip()
                         if not preparation_ok:
                             break
                     if interactive:
@@ -362,7 +387,7 @@ def main():
                         except OSError:
                             break
                         preparation_ok = True
-                    if args.lifecycle or args.companion or args.preview_row or args.preview_row_native or interactive:
+                    if args.lifecycle or args.companion or args.preview_row or args.preview_row_native or args.companion_native_pointer or interactive:
                         try:
                             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
@@ -374,7 +399,16 @@ def main():
         finally:
             if process is not None:
                 try:
-                    if (interactive or args.preview_row_native) and sys.platform == "win32" and (private / "focus.json").exists():
+                    # No pointer traversal may restore across a still-live
+                    # companion. Stop only our child, await native teardown, then replay.
+                    if args.companion_native_pointer and process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=3)
+                    if (interactive or args.preview_row_native or args.companion_native_pointer) and sys.platform == "win32" and (private / "focus.json").exists():
                         recovery_required = True
                         recovery_ok = replay_mouse_journal(private, process.pid, entry, args.sha256)
                 finally:
@@ -390,7 +424,7 @@ def main():
                             process.kill()
                             process.wait(timeout=3)
                         raise
-    interaction = "GUARDED_OWNED_ROW_MOUSE" if args.preview_row_native else ("GUARDED_MOUSE_AND_OWNED_ENTER" if sys.platform == "win32" else "OWNED_PID_ENTER") if args.preview else "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
+    interaction = "GUARDED_POINTER_ONLY" if args.companion_native_pointer else "GUARDED_OWNED_ROW_MOUSE" if args.preview_row_native else ("GUARDED_MOUSE_AND_OWNED_ENTER" if sys.platform == "win32" else "OWNED_PID_ENTER") if args.preview else "GUARDED_MOUSE_PREPARATION" if args.coordinator and sys.platform == "win32" else "NONE"
     print("ui_smoke_window=" + ("OBSERVED" if observed else "NOT_OBSERVED") +
           " owned_process_stopped=true clipboard=UNTOUCHED input=" + interaction)
     print("private_evidence_token=" + private.name)
@@ -399,12 +433,13 @@ def main():
     # Keep exception payloads and OS diagnostics private, including native crash logs.
     if not observed:
         print("ui_smoke_early_exit=" + (str(code) if code is not None else "timeout"))
-    if args.lifecycle or args.companion or args.preview_row or args.preview_row_native or interactive:
-        name = "preview_row_native" if args.preview_row_native else "preview_row" if args.preview_row else "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
-        validate = {"preview_row_native": preview_row_native_completed, "preview_row": preview_row_completed, "companion": companion_completed, "preview": preview_completed,
+    if args.lifecycle or args.companion or args.preview_row or args.preview_row_native or args.companion_native_pointer or interactive:
+        name = "companion_native_pointer" if args.companion_native_pointer else "preview_row_native" if args.preview_row_native else "preview_row" if args.preview_row else "companion" if args.companion else "preview" if args.preview else "coordinator" if args.coordinator else "lifecycle"
+        validate = {"companion_native_pointer": companion_pointer_completed, "preview_row_native": preview_row_native_completed, "preview_row": preview_row_completed, "companion": companion_completed, "preview": preview_completed,
                     "coordinator": coordinator_completed, "lifecycle": lifecycle_completed}[name]
         stdout_text = (private / "stdout.log").read_text(errors="replace")
-        identity_ok = not args.preview_row_native or (hwnd is not None and native_row_ready(stdout_text) == hwnd)
+        identity_ok = (not (args.preview_row_native or args.companion_native_pointer) or
+                       (hwnd is not None and (companion_pointer_ready if args.companion_native_pointer else native_row_ready)(stdout_text) == hwnd))
         completed = observed and preparation_ok and recovery_ok and identity_ok and validate(
             stdout_text,
             (private / "stderr.log").read_text(errors="replace"), code)

@@ -9,7 +9,7 @@ namespace SmartSnippets.UnoProbe;
 
 /// <summary>Native companion alternative, driven by the real hover policy.
 /// No pointer/keyboard synthesis, target, clipboard, store or shortcut access.</summary>
-internal sealed class CompanionSurfaceProbe
+internal sealed partial class CompanionSurfaceProbe
 {
     internal static int ExitCode { get; private set; } = 1;
     private readonly Application _app;
@@ -19,7 +19,8 @@ internal sealed class CompanionSurfaceProbe
     private readonly DispatcherQueueTimer _timer;
     private readonly List<DispatcherQueueTimer> _scheduled = [];
     private readonly HoverDetailsCoordinator _policy;
-    private readonly long _deadline = Stopwatch.GetTimestamp() + 20 * Stopwatch.Frequency;
+    private readonly CompanionPointerRoute? _pointer;
+    private readonly long _deadline;
     private Window? _companion;
     private CompanionProbePage? _details;
     private ProbeWindowSurface? _mainSurface, _surface;
@@ -30,18 +31,27 @@ internal sealed class CompanionSurfaceProbe
     private long _foregroundBefore, _handoffUntil;
     private bool _failed, _expectedClose;
 
-    internal CompanionSurfaceProbe(Application app, Window main, MainPage page)
+    internal CompanionSurfaceProbe(Application app, Window main, MainPage page, bool nativePointer = false)
     {
         ExitCode = 1;
+        _deadline = Stopwatch.GetTimestamp() + (nativePointer ? 45 : 20) * Stopwatch.Frequency;
         _app = app; _main = main; _mainPage = page;
         _queue = DispatcherQueue.GetForCurrentThread();
         _policy = new HoverDetailsCoordinator(Schedule, Open, Hide);
+        if (nativePointer)
+        {
+            _pointer = new CompanionPointerRoute(Schedule, Open, Hide, PointerReceipt);
+            _mainPage.EnableCompanionPointerRow();
+            _mainPage.PointerRow.PointerEntered += RowEntered;
+            _mainPage.PointerRow.PointerExited += RowExited;
+        }
         _timer = _queue.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(50);
         _timer.Tick += (_, _) => Guard(Tick);
         _main.Closed += (_, _) => MainClosed();
         _timer.Start();
-        Console.WriteLine("ui_companion_started");
+        Console.WriteLine(nativePointer ? "ui_companion_pointer_started" : "ui_companion_started");
+        Console.Out.Flush();
     }
 
     private void Schedule(TimeSpan delay, Action callback)
@@ -57,6 +67,7 @@ internal sealed class CompanionSurfaceProbe
     private void Tick()
     {
         Require(_queue.HasThreadAccess && Stopwatch.GetTimestamp() < _deadline);
+        if (_pointer is not null) { PointerTick(); return; }
         switch (_stage)
         {
             case 0 when _mainPage.IsLoaded && _mainPage.ActualWidth > 0 && _mainPage.ActualHeight > 0:
@@ -132,6 +143,11 @@ internal sealed class CompanionSurfaceProbe
         {
             _title = "SS-Companion018-" + Guid.NewGuid().ToString("N");
             _details = new CompanionProbePage { RequestedTheme = _mainPage.ActualTheme };
+            if (_pointer is not null)
+            {
+                _details.PointerRoot.PointerEntered += SurfaceEntered;
+                _details.PointerRoot.PointerExited += SurfaceExited;
+            }
             _companion = new Window { Title = _title, Content = _details };
             _companion.Closed += (_, _) =>
             {
@@ -155,7 +171,7 @@ internal sealed class CompanionSurfaceProbe
 
     private void RevealChecked()
     {
-        Require(_policy.IsOpen && _surface is { IsVisible: true, IsWarmupCloaked: true });
+        Require((_pointer?.IsOpen ?? _policy.IsOpen) && _surface is { IsVisible: true, IsWarmupCloaked: true });
         _surface!.SetFrame(_placed);
         VerifyGeometry();
         _surface.SetWarmupCloak(false);
@@ -183,10 +199,18 @@ internal sealed class CompanionSurfaceProbe
         if (_failed) return;
         Guard(() =>
         {
-            Require(_stage == 7 && _closed == 1 && _absent!() && _opens == 2 && _hides == 2);
+            if (_pointer is not null)
+            {
+                Require(_stage == 7 && _closed == 1 && _absent!() && _pointer.Complete && _opens == 1 && _hides == 1);
+                DetachPointerCallbacks();
+                _pointer.Dispose();
+            }
+            else Require(_stage == 7 && _closed == 1 && _absent!() && _opens == 2 && _hides == 2);
             StopTimers();
             _policy.Dispose();
-            Console.WriteLine("ui_companion_complete managed_closed=2 native_absence=1 input=NONE clipboard=UNTOUCHED");
+            Console.WriteLine(_pointer is not null
+                ? "ui_companion_pointer_complete managed_closed=2 native_absence=1 clipboard=UNTOUCHED dispatch=0"
+                : "ui_companion_complete managed_closed=2 native_absence=1 input=NONE clipboard=UNTOUCHED");
             Console.Out.Flush();
             ExitCode = 0;
             Require(_queue.TryEnqueue(() => Guard(_app.Exit)));

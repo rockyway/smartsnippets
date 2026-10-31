@@ -16,11 +16,13 @@ import time
 import uuid
 
 REVIEWED = True  # Reviewed private-station-only trial; interactive clipboard is never opened.
+NAMED_CREATE_ONLY_REVIEWED = False  # Separate reviewed experiment; never a fallback after failure.
 TIMEOUT = 12
 SCRIPT = Path(__file__).resolve()
 SAMPLES = (b"private-fixture-a\0", b"private-fixture-b\0", b"private-fixture-c\0")
 RECEIPTS = frozenset({"cross_process_guardian_owner", "same_owner_external_write",
                       "general_sequence_unchanged", "blocked_createwindowstation_null_create_only",
+                      "blocked_createwindowstation_named_create_only",
                       "probe_failed", "not_run_abort_after_clear", "not_run_foreign_owner_refusal"})
 
 
@@ -335,13 +337,17 @@ class Surface:
                     f"O:{self.sid}D:P(A;;GA;;;{self.sid})", 1, C.byref(sd), None))
                 self.sd = sd
                 sa = SA(C.sizeof(SA), sd, False)
-                self.station = n.u.CreateWindowStationW(None, 1, 0xF037F, C.byref(sa))
+                requested_name = ("ss_probe018_" + uuid.uuid4().hex
+                                  if NAMED_CREATE_ONLY_REVIEWED else None)
+                self.station = n.u.CreateWindowStationW(requested_name, 1, 0xF037F, C.byref(sa))
                 if not self.station:
                     raise CreationBlocked()
             else:
                 self.station = require(n.u.OpenWindowStationW(self.station_name, False, 0xF037F))
             name = n.private(self.station)
             require(self.station_name is None or name == self.station_name)
+            if self.station_name is None and NAMED_CREATE_ONLY_REVIEWED:
+                require(name == requested_name)
             self.station_name = name
             require(n.u.SetProcessWindowStation(self.station))
             if self.desktop_name is None:
@@ -444,7 +450,8 @@ def guardian(n, incoming):
         surface = Surface(n, config["sid"]).open()
     except CreationBlocked:
         send(sys.stdout, {"run": config["run"], "receipts": [
-            receipt("blocked_createwindowstation_null_create_only")]})
+            receipt("blocked_createwindowstation_named_create_only" if NAMED_CREATE_ONLY_REVIEWED
+                    else "blocked_createwindowstation_null_create_only")]})
         return 3
     child = channel = None
     try:
@@ -529,7 +536,8 @@ def launcher(n):
         require(code in (0, 3))
         expected = ({"cross_process_guardian_owner", "same_owner_external_write",
                      "not_run_abort_after_clear", "not_run_foreign_owner_refusal"} if code == 0
-                    else {"blocked_createwindowstation_null_create_only"})
+                    else {"blocked_createwindowstation_named_create_only" if NAMED_CREATE_ONLY_REVIEWED
+                          else "blocked_createwindowstation_null_create_only"})
         require({row["receipt"] for row in rows} == expected)
     finally:
         try:

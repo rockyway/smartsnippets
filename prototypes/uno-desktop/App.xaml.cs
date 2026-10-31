@@ -11,6 +11,7 @@ public partial class App : Application
     private CoordinatedPopupProbe? _coordinator;
     private PreviewProbe? _preview;
     private CompanionSurfaceProbe? _companionProbe;
+    private UiFlowProbe? _uiFlow;
 
     public App() => InitializeComponent();
 
@@ -28,7 +29,11 @@ public partial class App : Application
 #if WINDOWS
         ProbeWindowPlacement.Park(_window, 640, 520);
 #endif
-        if (Environment.GetCommandLineArgs().Contains("--probe-ui-companion", StringComparer.Ordinal))
+        if (Environment.GetCommandLineArgs().Contains("--probe-ui-flow", StringComparer.Ordinal))
+            _uiFlow = new UiFlowProbe(_window);
+        else if (Environment.GetCommandLineArgs().Contains("--companion-native-pointer", StringComparer.Ordinal))
+            _companionProbe = new CompanionSurfaceProbe(this, _window, page, nativePointer: true);
+        else if (Environment.GetCommandLineArgs().Contains("--probe-ui-companion", StringComparer.Ordinal))
             _companionProbe = new CompanionSurfaceProbe(this, _window, page);
         else if (Environment.GetCommandLineArgs().Contains("--preview-row-native", StringComparer.Ordinal))
             _preview = new PreviewProbe(this, _window, page, rowMode: true, nativeRow: true);

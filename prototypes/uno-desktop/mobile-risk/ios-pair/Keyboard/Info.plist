@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>org.smartsnippets.feasibility018.iospair.keyboard</string>
+<key>CFBundleExecutable</key><string>PairKeyboard</string>
+<key>CFBundleName</key><string>PairKeyboard</string>
+<key>CFBundlePackageType</key><string>XPC!</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>MinimumOSVersion</key><string>15.0</string>
+<key>NSExtension</key><dict>
+<key>NSExtensionPointIdentifier</key><string>com.apple.keyboard-service</string>
+<key>NSExtensionPrincipalClass</key><string>KeyboardViewController</string>
+<key>NSExtensionAttributes</key><dict>
+<key>IsASCIICapable</key><true/>
+<key>PrimaryLanguage</key><string>en-US</string>
+<key>RequestsOpenAccess</key><false/>
+</dict></dict>
+</dict></plist>

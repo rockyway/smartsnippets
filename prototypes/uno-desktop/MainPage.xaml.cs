@@ -17,6 +17,13 @@ public sealed partial class MainPage : Page, INotifyPropertyChanged
 
     public MainPage() => InitializeComponent();
 
+    internal Microsoft.UI.Xaml.FrameworkElement PointerRow => CompanionRow;
+    internal void EnableCompanionPointerRow()
+    {
+        BodyEditor.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        CompanionRow.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+    }
+
     private void Changed([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
