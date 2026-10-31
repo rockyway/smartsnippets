@@ -49,24 +49,29 @@ def system_powershell():
     return Path(value.value) / 'WindowsPowerShell/v1.0/powershell.exe'
 
 
+def require_all_input_up(desktop):
+    user = desktop.user
+    user.GetAsyncKeyState.argtypes = [startup.C.c_int]
+    user.GetAsyncKeyState.restype = startup.C.c_short
+    if any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 256)):
+        raise ValueError('input')
+
+
 def quiet_input(desktop, expected=None):
     class LastInput(startup.C.Structure):
         _fields_ = [('size', startup.W.UINT), ('time', startup.W.DWORD)]
     user = desktop.user
     user.GetLastInputInfo.argtypes = [startup.C.POINTER(LastInput)]
     user.GetLastInputInfo.restype = startup.W.BOOL
-    user.GetAsyncKeyState.argtypes = [startup.C.c_int]
-    user.GetAsyncKeyState.restype = startup.C.c_short
     state = LastInput(startup.C.sizeof(LastInput), 0)
     if not user.GetLastInputInfo(startup.C.byref(state)):
-        raise ValueError('input')
+        raise ValueError('input_query_failed')
     kernel = startup.C.WinDLL('kernel32')
     kernel.GetTickCount.restype = startup.W.DWORD
     idle = (kernel.GetTickCount() - state.time) & 0xffffffff
     if (expected is not None and state.time != expected) or idle < 1500:
         raise ValueError('input')
-    if any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 256)):
-        raise ValueError('input')
+    require_all_input_up(desktop)
     return state.time
 
 
@@ -75,6 +80,7 @@ def retain_window(process, private, desktop, work, visible_windows, initial, epo
     while time.monotonic() < deadline:
         if desktop.snapshot() != initial:
             raise ValueError('desktop_changed')
+        require_all_input_up(desktop)
         if epoch is not None:
             quiet_input(desktop, epoch)
         if process.poll() is not None:
@@ -86,6 +92,32 @@ def retain_window(process, private, desktop, work, visible_windows, initial, epo
                 return handles[0]
         time.sleep(.05)
     raise ValueError('ui_ready')
+
+
+def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sleep=time.sleep):
+    # Startup creates nonactivating surfaces only. Establish the immutable input epoch
+    # after they are ready, before the first UIA lookup/focus/action.
+    deadline = clock() + 4
+    while clock() < deadline:
+        if desktop.snapshot() != initial:
+            raise ValueError('desktop_changed')
+        if process.poll() is not None:
+            raise ValueError('early_exit')
+        require_all_input_up(desktop)
+        rects = desktop.windows(process.pid)
+        if len(rects) != 1 or not startup.inside(rects[0], work):
+            raise ValueError('geometry')
+        try:
+            epoch = quiet_input(desktop)
+        except ValueError as error:
+            if str(error) != 'input':
+                raise
+        else:
+            if desktop.snapshot() != initial:
+                raise ValueError('desktop_changed')
+            return epoch
+        sleep(.05)
+    raise ValueError('ui_quiet_timeout')
 
 
 def save_helper_diagnostics(private, out, err):
@@ -115,7 +147,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
         (private / 'fixture-rendered-ui-permit').write_bytes(b'owned_rendered_ui_019\n')
         with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
             process = subprocess.Popen([str(entry)], cwd=private, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
-            hwnd = retain_window(process, private, desktop, work, ui.visible_windows, initial, epoch)
+            hwnd = retain_window(process, private, desktop, work, ui.visible_windows, initial)
+            epoch = settle_quiet_epoch(process, desktop, initial, work)
             # System Windows PowerShell only, STA, no profiles, no generic UIA selector/operation input.
             powershell = system_powershell()
             command = [str(powershell), '-NoLogo', '-NoProfile', '-NonInteractive', '-STA',

@@ -235,7 +235,9 @@ def record_failure(private, error):
                'missing_preview', 'missing_recreated', 'missing_graceful_cleanup', 'graceful_timeout',
                'host_readiness_cleanup', 'privacy', 'process_stderr', 'worker_protocol',
                'graceful_job_not_empty', 'graceful_job_query_failed', 'receipt_provenance',
-               'receipt_alias', 'evidence_alias', 'evidence_file'}
+               'receipt_alias', 'evidence_alias', 'evidence_file', 'input', 'input_query_failed',
+               'ui_ready', 'ui_timeout', 'ui_quiet_timeout', 'ui_helper_protocol', 'ui_receipt',
+               'ui_helper_output_limit'}
     reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:

@@ -82,6 +82,25 @@ class UiManagementTests(unittest.TestCase):
             s.retain_window(Mock(),None,desktop,None,Mock(),(1,2))
         desktop.windows.assert_not_called()
 
+    def test_post_ready_epoch_is_settled_before_any_uia_action(self):
+        desktop = Mock(); desktop.snapshot.return_value = (1, 2)
+        desktop.windows.return_value = [(0, 0, 10, 10)]
+        process = Mock(); process.poll.return_value = None
+        with patch.object(s, 'require_all_input_up') as up, \
+             patch.object(s, 'quiet_input', side_effect=[ValueError('input'), 77]):
+            self.assertEqual(77, s.settle_quiet_epoch(process, desktop, (1, 2), (0, 0, 20, 20),
+                                                   clock=lambda: 0, sleep=lambda _: None))
+            self.assertEqual(2, up.call_count)
+        with patch.object(s, 'require_all_input_up', side_effect=ValueError('input')), \
+             patch.object(s, 'quiet_input') as quiet:
+            with self.assertRaisesRegex(ValueError, 'input'):
+                s.settle_quiet_epoch(process, desktop, (1, 2), (0, 0, 20, 20))
+            quiet.assert_not_called()
+        with patch.object(s, 'require_all_input_up'), \
+             patch.object(s, 'quiet_input', side_effect=ValueError('input_query_failed')):
+            with self.assertRaisesRegex(ValueError, 'input_query_failed'):
+                s.settle_quiet_epoch(process, desktop, (1, 2), (0, 0, 20, 20))
+
     def test_helper_exact_allowlist_and_no_foreign_discovery_or_input_synthesis(self):
         source=s.HELPER.read_text()
         for required in ('WinUIDesktopWin32WindowClass','FromHandle($h)', 'GetWindowThreadProcessId',
