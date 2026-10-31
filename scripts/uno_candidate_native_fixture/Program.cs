@@ -39,6 +39,14 @@ public static class Program
                 if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("native_alias");
             using var self = Process.GetCurrentProcess();
             if (!RetainedIdentity.OutsideJob(self.SafeHandle)) throw new InvalidOperationException("native_outer_job");
+            var sceneIndex = args.Length == 6 && args[0] == "--coordinate" ? 1 : args.Length == 9 && args[0] == "--internal-worker" ? 4 : -1;
+            if (sceneIndex < 0) throw new InvalidOperationException("native_arguments");
+            if (PositiveProtocol.IsPositive(args[sceneIndex]))
+            {
+                PositiveProtocol.RequireReviewed(args[sceneIndex]);
+                if (File.ReadAllText(Path.Combine(PrivateRoot, "native-launch-permit")) != PositiveProtocol.Permit)
+                    throw new InvalidOperationException("native_positive_baseline");
+            }
             if (args.Length == 6 && args[0] == "--coordinate") return Coordinator.RunAsync(args[1..]).GetAwaiter().GetResult();
             if (args.Length != 9 || args[0] != "--internal-worker" || Directory.Exists(ProfileRoot) || File.Exists(ProfileRoot)) throw new InvalidOperationException("native_arguments");
             Commands = new(PipeDirection.In, args[1]); Responses = new(PipeDirection.Out, args[2]);

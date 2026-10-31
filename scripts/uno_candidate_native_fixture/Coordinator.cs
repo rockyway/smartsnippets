@@ -13,8 +13,12 @@ internal static class Coordinator
     internal static string Digest(string path) { using var file = File.OpenRead(path); return Convert.ToHexString(SHA256.HashData(file)); }
     internal static async Task<int> RunAsync(string[] config)
     {
-        var scene = config[0] switch { "restore" => NativeScene.Restore, "abort" => NativeScene.Abort, _ => throw new InvalidOperationException("native_scene") };
+        var isPositive = PositiveProtocol.IsPositive(config[0]);
+        var scene = config[0] == "abort" ? NativeScene.Abort : NativeScene.Restore;
+        if (isPositive) PositiveProtocol.RequireReviewed(config[0]);
+        else if (config[0] is not ("restore" or "abort")) throw new InvalidOperationException("native_scene");
         var state = new NativeSceneState(scene);
+        var keyboard = new PositiveKeyboardLifetime();
         using var self = Process.GetCurrentProcess();
         if (!RetainedIdentity.OutsideJob(self.SafeHandle)) throw new InvalidOperationException("native_coordinator_job");
         using var targetImage = PinnedNativeImage.Open(config[1], config[2], "SmartSnippets.Target018.exe");
@@ -35,7 +39,7 @@ internal static class Coordinator
         var assigned = false;
         try
         {
-            using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+            using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(isPositive ? 75 : 35));
             var owned = (await BootstrapProtocol.ReadAsync(responses, ct.Token)).Split(' ');
             if (owned.Length != 2 || owned[0] != "fixture_owned") throw new InvalidOperationException("native_fixture_receipt");
             fixture = new(BootstrapProtocol.Handle(owned[1]), ownsHandle: true);
@@ -58,6 +62,38 @@ internal static class Coordinator
             NativeFixtureOs.Assign(job, fixture); state.Assign();
             if (!RetainedIdentity.OutsideJob(guardian)) throw new InvalidOperationException("native_guardian_job");
             Console.WriteLine("native_phase=guardian_ready");
+            if (isPositive)
+            {
+                var surfaces = await BootstrapProtocol.ReadAsync(responses, ct.Token);
+                PositiveProtocol.RequireSurfaces(surfaces);
+                var fields = surfaces.Split(' ').Skip(1).Select(BootstrapProtocol.Handle).ToArray();
+                if (!NativeFixtureOs.WindowOwnedBy(fields[0], (uint)RetainedIdentity.Id(fixture)) ||
+                    !NativeFixtureOs.WindowOwnedBy(fields[1], (uint)RetainedIdentity.Id(fixture)) ||
+                    !NativeFixtureOs.WindowOwnedBy(fields[2], (uint)worker.Id) || !NativeFixtureOs.WindowOwnedBy(fields[3], (uint)worker.Id))
+                    throw new InvalidOperationException("native_surfaces_identity");
+                // External observer accepts only these exact owned surfaces plus the unchanged initial foreground.
+                var surfacesPath = Path.Combine(Program.PrivateRoot, "positive-surfaces.txt");
+                await File.WriteAllTextAsync(surfacesPath + ".tmp", string.Join(" ", fields), ct.Token);
+                File.Move(surfacesPath + ".tmp", surfacesPath);
+                Console.WriteLine("native_phase=awaiting_owned_a");
+                await BootstrapProtocol.WriteAsync(commands, "lease_positive", ct.Token);
+                if (PositiveProtocol.Inserts(config[0]))
+                {
+                    if (await BootstrapProtocol.ReadAsync(responses, ct.Token) != "keyboard_begin") throw new InvalidOperationException("native_keyboard_order");
+                    keyboard.Arm(); // Must precede permit. EOF/timeout after this point never kills possibly held keys.
+                    await BootstrapProtocol.WriteAsync(commands, "keyboard_permit", ct.Token);
+                    if (await BootstrapProtocol.ReadAsync(responses, ct.Token) != "keyboard_settled") throw new InvalidOperationException("native_keyboard_pending");
+                    keyboard.Settle();
+                }
+                if (await BootstrapProtocol.ReadAsync(responses, ct.Token) != "positive_verified" ||
+                    await BootstrapProtocol.ReadAsync(responses, ct.Token) != "positive_restored") throw new InvalidOperationException("native_positive_receipt");
+                await worker.WaitForExitAsync(ct.Token);
+                if (worker.ExitCode != 0) throw new InvalidOperationException("native_worker_exit");
+                await WaitStoppedAsync(fixture, TimeSpan.FromSeconds(5));
+                if (await RetainGuardianAsync(guardian) != 0) throw new InvalidOperationException("native_guardian_exit");
+                Console.WriteLine(PositiveProtocol.Result(config[0]));
+                return 0;
+            }
             await BootstrapProtocol.WriteAsync(commands, "lease_clipboard_control", ct.Token);
             if (await BootstrapProtocol.ReadAsync(responses, ct.Token) != "published recovery_pending") throw new InvalidOperationException("native_publish_receipt");
             state.Publish(); Console.WriteLine("native_phase=published");
@@ -88,6 +124,8 @@ internal static class Coordinator
         catch
         {
             Console.WriteLine("native_result=failed");
+            if (keyboard.Armed)
+                await keyboard.RetainAsync(() => Console.WriteLine("native_result=KEYBOARD_RECOVERY_PENDING coordinator_retained=1"), () => Task.Delay(1000));
             await NativeRecoveryLifetime.CleanupAsync(async () =>
             {
                 try
@@ -143,6 +181,8 @@ internal static class Coordinator
 internal static partial class NativeFixtureOs
 {
     [LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")] internal static partial nint Foreground();
+    internal static bool WindowOwnedBy(nint window, uint expectedPid) => expectedPid != 0 && GetWindowThreadProcessId(window, out var pid) != 0 && pid == expectedPid;
+    [LibraryImport("user32.dll")] private static partial uint GetWindowThreadProcessId(nint window, out uint pid);
     internal static SafeProcessHandle InheritableSelf(SafeProcessHandle self)
     {
         if (DuplicateHandle(GetCurrentProcess(), self, GetCurrentProcess(), out var duplicate, 0x101040, 1, 0) == 0) throw new InvalidOperationException("native_parent_handle");

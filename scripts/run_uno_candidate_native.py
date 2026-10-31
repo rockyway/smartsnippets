@@ -1,4 +1,4 @@
-"""Review-closed clipboard-control bootstrap. NEVER wrap coordinator/guardian in a kill Job."""
+"""Review-closed native fixture. NEVER wrap coordinator/guardian in a kill Job or timeout-kill."""
 import argparse
 import hashlib
 import importlib.util
@@ -13,6 +13,11 @@ import uuid
 
 REPO = Path(__file__).resolve().parents[1]
 NATIVE_SCENES_SOURCE_REVIEWED = False
+POSITIVE_SCENES_SOURCE_REVIEWED = False
+POSITIVE_INPUT_SOURCE_REVIEWED = False
+POSITIVE_SCENES = ('posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
+INSERT_SCENES = ('posted-enter', 'posted-row', 'posted-main')
+POSITIVE_PERMIT = b'owned_positive_row6_verified_operator_recopied_baseline\n'
 ENTRY = 'SmartSnippets.UnoCandidate.exe'
 ROOT = REPO / 'scripts/uno_candidate_native_fixture'
 spec = importlib.util.spec_from_file_location('native_nonmutating_helpers', REPO / 'scripts/run_uno_candidate_acceptance.py')
@@ -83,13 +88,37 @@ def require_authorization(authorized):
         raise ValueError('native_source_review_and_slot_required')
 
 
-def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep):
+def require_positive_authorization(scene, row6, recopied):
+    if scene in POSITIVE_SCENES and (not POSITIVE_SCENES_SOURCE_REVIEWED or not row6 or not recopied
+                                    or (scene in INSERT_SCENES and not POSITIVE_INPUT_SOURCE_REVIEWED)):
+        raise ValueError('native_positive_review_row6_and_operator_recopy_required')
+
+
+def positive_foregrounds(private, foreground):
+    path = private / 'positive-surfaces.txt'
+    if not path.exists():
+        return {foreground}
+    text = helpers.owned_bytes(path, private, 256).decode('ascii')
+    if not re.fullmatch(r'[1-9][0-9]*( [1-9][0-9]*){3}', text):
+        raise ValueError('native_surfaces')
+    windows = [int(field) for field in text.split(' ')]
+    if len(set(windows)) != 4 or any(window > 2**63 - 1 for window in windows):
+        raise ValueError('native_surfaces')
+    return {foreground, 0, *windows}  # Includes owned B for observation only, never admission/input.
+
+
+def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None):
     """No timeout kill: coordinator retains independent RAM recovery on a pending scene."""
     failed = False
+    announced = False
     while process.poll() is None:
         try:
             desktop.validate_input_desktop()
-            failed |= desktop.user.GetForegroundWindow() != foreground
+            allowed = {foreground} if positive_private is None else positive_foregrounds(positive_private, foreground)
+            if positive_private is not None and len(allowed) > 1 and not announced:
+                print('native_phase=awaiting_owned_a operator_select_A_then_release_all_input', flush=True)
+                announced = True
+            failed |= desktop.user.GetForegroundWindow() not in allowed
             failed |= any(p.stat().st_size > 65536 for p in output)
         except Exception:
             failed = True
@@ -98,12 +127,14 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         raise ValueError('native_scene_failed')
 
 
-def verify_result(private, data, expected):
-    if data[0].splitlines() != [b'native_phase=guardian_ready', b'native_phase=published', expected] or data[1]:
+def verify_result(private, data, expected, positive=False):
+    phase = b'native_phase=awaiting_owned_a' if positive else b'native_phase=published'
+    if data[0].splitlines() != [b'native_phase=guardian_ready', phase, expected] or data[1]:
         raise ValueError('native_result_receipt')
     log = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private)
     text = log.decode('utf-8-sig')
-    if sum(line.endswith(' INFO candidate_started') for line in text.splitlines()) != 1 or ' ERROR ' in text:
+    if (sum(line.endswith(' INFO candidate_started') for line in text.splitlines()) != 1 or ' ERROR ' in text
+            or (positive and sum(line.endswith(' INFO candidate_shutdown_complete') for line in text.splitlines()) != 1)):
         raise ValueError('native_host_readiness_cleanup')
     privacy = helpers.startup.repo_module('native_privacy', 'scripts/uno_candidate_privacy.py')
     canaries = ('AΩ中🙂e\u0301\r\nsecond line', 'AΩ中🙂e\u0301\nsecond line', 'second line', str(private), str(private.parent))
@@ -123,7 +154,9 @@ def main(argv=None):
     parser.add_argument('--guardian', type=Path)
     parser.add_argument('--guardian-sha256')
     parser.add_argument('--authorized-screen-slot', action='store_true')
-    parser.add_argument('--scene', choices=('restore', 'abort'))
+    parser.add_argument('--scene', choices=('restore', 'abort', *POSITIVE_SCENES))
+    parser.add_argument('--row6-controls-verified', action='store_true', help='Operator attests independently accepted ordinary+abort controls for this exact source/artifact.')
+    parser.add_argument('--operator-recopied-baseline', action='store_true', help='Operator has freshly copied a harmless supported baseline since the previous marked session; never auto-cleared.')
     args = parser.parse_args(argv)
     if args.capture_source:
         args.capture_source.write_text(source_fingerprint() + '\n', encoding='ascii')
@@ -133,6 +166,7 @@ def main(argv=None):
         print('BUILD_CHECKS_ONLY')
         return
     require_authorization(args.authorized_screen_slot)  # Before artifact inspection or process/private-root creation.
+    require_positive_authorization(args.scene, args.row6_controls_verified, args.operator_recopied_baseline)
     if not all((args.executable, args.sha256, args.target, args.target_sha256, args.guardian, args.guardian_sha256, args.scene)):
         raise ValueError('native_arguments')
     entry = validate_build(args.executable, args.sha256)
@@ -148,20 +182,27 @@ def main(argv=None):
         foreground = desktop.user.GetForegroundWindow()
         if not foreground:
             raise ValueError('native_foreground_unavailable')
-        (private / 'native-launch-permit').write_bytes(b'owned_clipboard_controls_only\n')
+        positive = args.scene in POSITIVE_SCENES
+        (private / 'native-launch-permit').write_bytes(POSITIVE_PERMIT if positive else b'owned_clipboard_controls_only\n')
+        if positive:
+            print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
         paths = [private / 'stdout.log', private / 'stderr.log']
         with paths[0].open('xb') as out, paths[1].open('xb') as err:
             # Deliberately no WindowsJob, communicate(timeout), process-tree termination or outer watchdog.
             process = subprocess.Popen([str(entry), '--coordinate', args.scene, str(target), args.target_sha256,
                                         str(guardian), args.guardian_sha256], cwd=private, stdin=subprocess.DEVNULL,
                                        stdout=out, stderr=err)
-            monitor(process, desktop, foreground, paths)
+            monitor(process, desktop, foreground, paths, positive_private=private if positive else None)
         data = [helpers.owned_bytes(p, private, 65536) for p in paths]
-        expected = ('native_result=regular_restored' if args.scene == 'restore' else 'native_result=abort_restored').encode()
-        verify_result(private, data, expected)
-        print(json.dumps({'result': 'clipboard_control_settled', 'scene': args.scene,
+        expected = (f'native_result={args.scene}_settled' if positive else
+                    'native_result=regular_restored' if args.scene == 'restore' else 'native_result=abort_restored').encode()
+        verify_result(private, data, expected, positive)
+        print(json.dumps({'result': 'positive_scene_settled' if positive else 'clipboard_control_settled', 'scene': args.scene,
                           'privateEvidenceToken': f'{private.parent.name}/{private.name}', 'sourceSha256': source_fingerprint(),
-                          'positiveInputImplemented': False}))
+                          'positiveInputImplemented': positive and args.scene in INSERT_SCENES,
+                          'shortcutProof': 'registered_posted_callback_not_physical' if args.scene in INSERT_SCENES else 'none',
+                          'actionProof': 'native_enter' if args.scene == 'posted-enter' else 'vm_callback' if positive else 'clipboard_control',
+                          'operatorReCopyRequiredBeforeNextSession': True}))
     finally:
         desktop.close()  # Never terminates the coordinator or guardian.
 

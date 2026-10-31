@@ -28,7 +28,7 @@ class NativeBootstrapTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertEqual(b'native_harness_blocked\n', result.stderr.replace(b'\r\n', b'\n'))
 
-    def test_fixed_scene_allowlist_rejects_positive_input(self):
+    def test_fixed_scene_allowlist_rejects_unapproved_input(self):
         with patch.object(native.sys, 'stderr', io.StringIO()), self.assertRaises(SystemExit):
             native.main(['--scene', 'paste'])
 
@@ -102,6 +102,55 @@ class NativeBootstrapTests(unittest.TestCase):
             def validate_input_desktop(self): pass
         with self.assertRaisesRegex(ValueError, 'failed'):
             native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None)
+
+    def test_positive_review_and_operator_attestations_precede_image_or_root_work(self):
+        with patch.object(native, 'require_authorization'), patch.object(native, 'validate_build') as validate, patch.object(native.subprocess, 'Popen') as start:
+            for scene in native.POSITIVE_SCENES:
+                with self.assertRaisesRegex(ValueError, 'positive_review'):
+                    native.main(['--scene', scene, '--row6-controls-verified', '--operator-recopied-baseline'])
+            validate.assert_not_called()
+            start.assert_not_called()
+        with patch.object(native, 'POSITIVE_SCENES_SOURCE_REVIEWED', True), patch.object(native, 'POSITIVE_INPUT_SOURCE_REVIEWED', True):
+            for row6, recopied in ((False, True), (True, False), (False, False)):
+                with self.assertRaisesRegex(ValueError, 'operator_recopy'):
+                    native.require_positive_authorization('copy', row6, recopied)
+            native.require_positive_authorization('copy', True, True)
+        self.assertFalse(native.POSITIVE_SCENES_SOURCE_REVIEWED)
+        self.assertFalse(native.POSITIVE_INPUT_SOURCE_REVIEWED)
+
+    def test_input_has_separate_source_gate_even_after_positive_review(self):
+        with patch.object(native, 'POSITIVE_SCENES_SOURCE_REVIEWED', True):
+            native.require_positive_authorization('copy', True, True)
+            for scene in native.INSERT_SCENES:
+                with self.assertRaisesRegex(ValueError, 'positive_review'):
+                    native.require_positive_authorization(scene, True, True)
+
+    def test_positive_observer_accepts_only_distinct_exact_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            private = Path(directory)
+            self.assertEqual({11}, native.positive_foregrounds(private, 11))
+            path = private / 'positive-surfaces.txt'
+            path.write_text('1 2 3 4', encoding='ascii')
+            self.assertEqual({0, 1, 2, 3, 4, 11}, native.positive_foregrounds(private, 11))
+            for text in ('1 1 3 4', '0 2 3 4', '1 2 3 4 extra', '-1 2 3 4', '1 2 3 9223372036854775808'):
+                path.write_text(text, encoding='ascii')
+                with self.assertRaisesRegex(ValueError, 'surfaces'):
+                    native.positive_foregrounds(private, 11)
+
+    def test_positive_receipt_requires_phase_order_and_complete_actual_host_shutdown(self):
+        private = Path(tempfile.gettempdir()) / 'owned-parent-directory' / 'owned-child-directory'
+        expected = b'native_result=posted-enter_settled'
+        good = b'native_phase=guardian_ready\nnative_phase=awaiting_owned_a\n' + expected + b'\n'
+        log = b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n'
+        with patch.object(native.helpers, 'owned_bytes', return_value=log):
+            native.verify_result(private, [good, b''], expected, True)
+            with self.assertRaisesRegex(ValueError, 'receipt'):
+                native.verify_result(private, [good.replace(b'awaiting_owned_a', b'published'), b''], expected, True)
+            with self.assertRaisesRegex(ValueError, 'receipt'):
+                native.verify_result(private, [good + b'native_result=KEYBOARD_RECOVERY_PENDING\n', b''], expected, True)
+        with patch.object(native.helpers, 'owned_bytes', return_value=b'fixed INFO candidate_started\n'):
+            with self.assertRaisesRegex(ValueError, 'readiness_cleanup'):
+                native.verify_result(private, [good, b''], expected, True)
 
     def test_build_capture_does_not_require_or_grant_native_authorization(self):
         with tempfile.TemporaryDirectory() as directory:
