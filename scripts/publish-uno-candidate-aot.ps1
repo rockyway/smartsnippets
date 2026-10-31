@@ -40,7 +40,7 @@ try {
     $stage = 'locked_restore'
     & dotnet restore SmartSnippets.Uno.csproj -r win-x64 @common 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'locked_restore_failed' }
-    $names = 'PublishAot,PublishTrimmed,PublishSingleFile,IsAotCompatible,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,DisableImplicitUnoPackages,ImplicitUsings,RuntimeIdentifier,TargetFramework,NETCoreSdkVersion,MSBuildVersion,WindowsPackageType,WindowsAppSDKSelfContained,AssemblyName,SupportedOSPlatformVersion,TargetPlatformMinVersion,RestorePackagesWithLockFile,RestoreLockedMode'
+    $names = 'PublishAot,PublishTrimmed,PublishSingleFile,IsAotCompatible,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,DisableImplicitUnoPackages,ImplicitUsings,RuntimeIdentifier,RuntimeIdentifiers,TargetFramework,NETCoreSdkVersion,MSBuildVersion,WindowsPackageType,WindowsAppSDKSelfContained,AssemblyName,SupportedOSPlatformVersion,TargetPlatformMinVersion,RestorePackagesWithLockFile,RestoreLockedMode'
     $stage = 'effective_properties'
     # Inspect authored settings without global AOT/trim/NoWarn/RID overrides masking defects.
     $evaluation = @('-p:Configuration=Release', '-p:ContinuousIntegrationBuild=true', '-p:_IsPublishing=true')

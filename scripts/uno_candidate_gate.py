@@ -20,7 +20,8 @@ TRUE_PROPERTIES = ("PublishAot", "PublishTrimmed", "EnableTrimAnalyzer", "Enable
                    "WindowsAppSDKSelfContained", "RestorePackagesWithLockFile", "RestoreLockedMode")
 FALSE_PROPERTIES = ("SuppressTrimAnalysisWarnings", "TrimmerSingleWarn", "PublishSingleFile")
 EXACT_PROPERTIES = {
-    "RuntimeIdentifier": "win-x64", "TargetFramework": "net10.0-windows10.0.26100",
+    "RuntimeIdentifier": "win-x64", "RuntimeIdentifiers": "win-x64",
+    "TargetFramework": "net10.0-windows10.0.26100",
     "WindowsPackageType": "None", "NETCoreSdkVersion": "10.0.403",
     "AssemblyName": "SmartSnippets.UnoCandidate", "ImplicitUsings": "disable",
     "SupportedOSPlatformVersion": "10.0.17763.0", "TargetPlatformMinVersion": "10.0.17763.0",

@@ -108,6 +108,12 @@ class CandidateGateTests(unittest.TestCase):
             with patch.object(Path, 'read_bytes', side_effect=AssertionError('must not read link')):
                 self.assertIn('artifact:link', self.errors())
 
+    def test_multi_architecture_restore_is_rejected(self):
+        for value in ('win-x86;win-x64;win-arm64', 'win-arm64', ''):
+            with self.subTest(value=value):
+                self.properties['RuntimeIdentifiers'] = value
+                self.assertIn('property:RuntimeIdentifiers', self.errors())
+
     def test_il_suppression_patterns_rejected(self):
         for value in ('IL2121', '1701;IL3050', '*', 'all', 'il2*', '1701,IL2026'):
             with self.subTest(value=value):
