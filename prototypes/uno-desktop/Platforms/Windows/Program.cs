@@ -11,6 +11,8 @@ internal static class WindowsProgram
     public static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "--probe-data") return DataProbe.Run(args);
+        if (args.Length == 2 && args[0] == "--probe-shortcut-register" && args[1] == "--authorized-probe-shortcut")
+            return NativeShortcutRegistrationProbe.Run();
         if (!args.Contains("--authorized-probe-ui", StringComparer.Ordinal)) return 0;
         if (new[] { "--probe-ui-lifecycle", "--probe-ui-coordinator", "--probe-ui-preview" }
             .Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1) return 2;

@@ -40,4 +40,15 @@ Before adding a dependency: check license/native distribution obligations, resto
 3. Carry supervision, sleep/resume recovery, short callbacks, generation guards and injected tests into whichever backend is selected. Route popup focus through `PopupShowCoordinator` and keep store/cache work on the UI thread.
 4. Linux remains outside the approved release targets; use its source as a lifecycle reference, not an expansion of scope.
 
+## Isolated registered-shortcut candidate (registration-only PASS)
+
+A no-dependency probe candidate now compares the existing Windows registration primitive with macOS Carbon registration, not a global event tap. Installed Xcode `CarbonEvents.h` confirms the 8-byte `EventHotKeyID`, process-owned `EventHotKeyRef`, non-thread-safe registration/unregistration (kept on the main thread), and exclusive-registration conflict behavior. `Events.h` confirms F20 key code 90 and Shift/Option/Control modifier bits. The synthetic chord is not the product's default. The candidate verifies acquire → release → re-acquire → release, idle/chord/pointer preflight and unchanged platform foreground token; it cannot prove actual callback delivery, target capture, shortcut conflict UX or sleep/resume recovery. A bounded native runner and refusal/receipt tests are implemented. Independent high-effort pre-live review cleared the candidate; native registration-only execution then passed on both hosts with exact ordered receipts, natural exit zero and empty stderr.
+
+| Host | Fresh build | Entry SHA256 | Private runtime token |
+|---|---|---|---|
+| Windows x64 | `37ba62cb20564e08907eb008fd287a31` | `941fd554c8854eba31d52bdd8dc95a790e9f44d6a9f9ad7f5c311baea0247a40` | `ss-uno018-ui-0tb0eyfu` |
+| Apple Silicon macOS | `WrKfGg` | `124b80cf1094bf02ddf1002ec0ac3e4813d01c6d0b893bc4c00475739c868394` | `ss-uno018-ui-g7m01rsl` |
+
+Both runs reported `cleanup=VERIFIED foreground_token=UNCHANGED input=NONE delivery=NOT_RUN`. Foreground identity here means exact HWND on Windows and frontmost PID only on macOS, not AX window identity. No chord was synthesized or callback handler installed. These results do not complete T4 or Plan 018. Post-run regression verification passed on both hosts: 432 Core tests, 599 Presentation tests and 115 Python harness tests (one Windows skip; 28 macOS skips for platform-specific tests). Platform skips are not native acceptance evidence. No SharpHook package or production source changes are made.
+
 InkSpoke's stale **application modifier-tracker** repair is not a repair for the current Mac host guard: our preview queries the OS key-state table directly and reports a held non-modifier. Resetting an application tracker must not be used to bypass that external-input safety condition.

@@ -13,6 +13,8 @@ internal static class Program
         if (args.Length == 1 && args[0] == "--probe-native-capabilities") return MacCapabilityProbe.Run();
         if (args.Length == 1 && args[0] == "--probe-private-pasteboard") return MacPrivatePasteboardProbe.Run();
         // Guard before constructing a native host. This probe has no implicit GUI mode.
+        if (args.Length == 2 && args[0] == "--probe-shortcut-register" && args[1] == "--authorized-probe-shortcut")
+            return NativeShortcutRegistrationProbe.Run();
         if (!args.Contains("--authorized-probe-ui", StringComparer.Ordinal)) return 0;
         if (new[] { "--probe-ui-lifecycle", "--probe-ui-coordinator", "--probe-ui-preview" }
             .Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1) return 2;
