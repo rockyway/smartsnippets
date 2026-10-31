@@ -16,7 +16,7 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishSingleFile>false</PublishSingleFile>
-    <DefaultItemExcludes>$(DefaultItemExcludes);vendor/**;macos-json-risk/**;mobile-risk/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);vendor/**;macos-json-risk/**;macos-pasteboard-risk/**;mobile-risk/**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
     <WinAppSdkVersion>1.8.260921001</WinAppSdkVersion>

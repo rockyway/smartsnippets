@@ -11,6 +11,7 @@ internal static class Program
         // any native callbacks. All database work stays on this single thread.
         if (args.Length > 0 && args[0] == "--probe-data") return DataProbe.Run(args);
         if (args.Length == 1 && args[0] == "--probe-native-capabilities") return MacCapabilityProbe.Run();
+        if (args.Length == 1 && args[0] == "--probe-private-pasteboard") return MacPrivatePasteboardProbe.Run();
         // Guard before constructing a native host. This probe has no implicit GUI mode.
         if (!args.Contains("--authorized-probe-ui", StringComparer.Ordinal)) return 0;
         if (new[] { "--probe-ui-lifecycle", "--probe-ui-coordinator", "--probe-ui-preview" }
