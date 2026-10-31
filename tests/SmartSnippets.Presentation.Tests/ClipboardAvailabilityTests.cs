@@ -114,6 +114,23 @@ public sealed class ClipboardAvailabilityTests : IDisposable
     }
 
     [Fact]
+    public async Task SuccessfulCopyRetry_ClearsOnlyCopyErrorAndPreservesDirtyDraft()
+    {
+        using var popup = Popup(); popup.Open(new(11, 22, 33, "Target"));
+        popup.CopyRow(popup.Items[0]); Assert.Equal(UiText.CopyFailed, popup.StatusText);
+        _clipboard.Succeeds = true;
+        popup.CopyRow(popup.Items[0]); Assert.Equal(string.Empty, popup.StatusText);
+        using var page = new SnippetsPageViewModel(_store, _dialogs, _clipboard);
+        await page.RequestSelectAsync(Id); page.Editor!.Text = "PRIVATE-DRAFT";
+        _clipboard.Succeeds = false; page.Editor.CopyTextCommand.Execute(null);
+        Assert.Equal(UiText.CopyFailed, page.Editor.GeneralError);
+        _clipboard.Succeeds = true; page.Editor.CopyTextCommand.Execute(null);
+        Assert.Equal(string.Empty, page.Editor.GeneralError);
+        Assert.True(page.Editor.IsDirty); Assert.Equal("PRIVATE-DRAFT", page.Editor.Text);
+        Assert.Equal(0, _store.Snippets[0].Snippet.UsageCount);
+    }
+
+    [Fact]
     public void PopupAvailabilityRefresh_ReachesActiveEditorAndRowPredicate()
     {
         using var popup = Popup(); popup.Open(new(11, 22, 33, "Target"));

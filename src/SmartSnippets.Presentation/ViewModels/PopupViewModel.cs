@@ -241,6 +241,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         if (!_clipboard.IsAvailable) { StatusText = UiText.CopyFailed; return; }
         var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
         if (!_clipboard.TrySetText(snippet.Text)) { StatusText = UiText.CopyFailed; return; }
+        if (StatusText == UiText.CopyFailed) StatusText = string.Empty;
         AppLog.Info("popup_row_copied", $"id={snippet.Id}");
     }
     public Task InsertRowAsync(PopupItemViewModel item) => CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;

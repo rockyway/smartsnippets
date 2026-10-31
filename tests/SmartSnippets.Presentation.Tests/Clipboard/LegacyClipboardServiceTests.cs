@@ -1,10 +1,12 @@
 using Microsoft.UI.Dispatching;
 using SmartSnippets.App.Services;
+using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Services;
 using Windows.ApplicationModel.DataTransfer;
 
-namespace SmartSnippets.ClipboardCompatibility.Tests;
+namespace SmartSnippets.Presentation.Tests.ClipboardCompatibility;
 
+[Collection("AppLog")]
 public sealed class LegacyClipboardServiceTests : IDisposable
 {
     public LegacyClipboardServiceTests() { Clipboard.Calls.Clear(); Clipboard.FailAt = null; DispatcherQueue.HasCurrentThread = true; }
@@ -36,12 +38,26 @@ public sealed class LegacyClipboardServiceTests : IDisposable
     [InlineData("Flush")]
     public void LegacyClipboard_ComFailureFalse_DelegatingVoidDoesNotThrow(string failAt)
     {
-        Clipboard.FailAt = failAt;
-        var service = new ClipboardService();
-        Assert.False(service.TrySetText("synthetic"));
-        Clipboard.Calls.Clear();
-        service.SetText("synthetic");
-        Assert.Equal(failAt == "Flush" ? 2 : 1, Clipboard.Calls.Count);
+        var directory = Path.Combine(Path.GetTempPath(), "ss-clipboard-log-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            AppLog.Initialize(directory);
+            Clipboard.FailAt = failAt;
+            var service = new ClipboardService();
+            Assert.False(service.TrySetText("synthetic"));
+            Clipboard.Calls.Clear();
+            service.SetText("synthetic");
+            Assert.Equal(failAt == "Flush" ? 2 : 1, Clipboard.Calls.Count);
+            var log = File.ReadAllText(Path.Combine(directory, "app.log"));
+            Assert.Contains("clipboard_copy_failed", log);
+            Assert.Contains("COMException (HResult=0x", log);
+            Assert.DoesNotContain("PRIVATE-PAYLOAD", log);
+        }
+        finally
+        {
+            AppLog.Shutdown();
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
     }
     [Fact]
     public void LegacyClipboard_VoidDelegatesThroughFlush()

@@ -329,6 +329,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private void CopyText()
     {
         if (!CanCopyText() || !_clipboard!.TrySetText(Text)) GeneralError = UiText.CopyFailed;
+        else if (GeneralError == UiText.CopyFailed) GeneralError = string.Empty;
     }
 
     public void RefreshClipboardAvailability() => CopyTextCommand.NotifyCanExecuteChanged();

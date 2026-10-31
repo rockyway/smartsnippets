@@ -10,6 +10,21 @@ public sealed class AppLogPrivacyTests : IDisposable
     public void Dispose() { AppLog.Shutdown(); Directory.Delete(_directory, true); }
 
     [Fact]
+    public void Error_PreservesExistingLoadAndPortingDiagnosticFields()
+    {
+        AppLog.Error("store_write_failed", null, "op=load error=InvalidDataException sqlite=5 hresult=0x80004005");
+        AppLog.Error("import_error", null, "stage=in_commit error=InvalidDataException");
+        AppLog.Error("export_error", null, "stage=in_write error=TaskCanceledException");
+        AppLog.Error("export_error", null, "error=PRIVATE-PAYLOADException path=C:\\PRIVATE-DOCUMENT");
+        var log = File.ReadAllText(Path.Combine(_directory, "app.log"));
+        Assert.Contains("op=load error=InvalidDataException sqlite=5 hresult=0x80004005", log);
+        Assert.Contains("stage=in_commit error=InvalidDataException", log);
+        Assert.Contains("stage=in_write error=TaskCanceledException", log);
+        Assert.DoesNotContain("PRIVATE-PAYLOAD", log);
+        Assert.DoesNotContain("PRIVATE-DOCUMENT", log);
+    }
+
+    [Fact]
     public void Error_OmitsMessageInnerExceptionAndUserPath()
     {
         string[] planted = ["PRIVATE-BODY", "PRIVATE-LABEL", "PRIVATE-TAG", "PRIVATE-TITLE", "PRIVATE-QUERY", @"C:\PRIVATE-DOCUMENT\secret.txt"];

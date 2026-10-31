@@ -68,14 +68,16 @@ public static class AppLog
                     return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
                         || (value.StartsWith("0x", StringComparison.Ordinal) && value.Length <= 18
                             && ulong.TryParse(value.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _));
+                if (key == "error" && value.EndsWith("Exception", StringComparison.Ordinal)
+                    && value.Length <= 128 && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '`'))
+                    return true;
                 return (key, value) switch
                 {
                     ("reason", "backup" or "newer") => true,
-                    ("stage", "before_commit" or "after_commit" or "before_write" or "after_write") => true,
+                    ("stage", "before_commit" or "in_commit" or "after_commit" or "before_write" or "in_write" or "after_write") => true,
                     ("format", "Native" or "TermFlow" or "Rephlo" or "InkSpoke") => true,
-                    ("error", "SqliteException" or "InvalidOperationException" or "IOException" or "UnauthorizedAccessException") => true,
                     ("kind", "SnippetCreated" or "SnippetUpdated" or "SnippetDeleted" or "FolderCreated" or "FolderRenamed" or "FolderDeleted" or "UsageRecorded" or "Reloaded" or "Imported") => true,
-                    ("op", "import_snippets" or "create_snippet" or "update_snippet" or "delete_snippet"
+                    ("op", "load" or "import_snippets" or "create_snippet" or "update_snippet" or "delete_snippet"
                         or "create_folder" or "rename_folder" or "delete_folder" or "record_usage") => true,
                     _ => false,
                 };
