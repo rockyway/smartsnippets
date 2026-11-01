@@ -127,17 +127,43 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
 The independent monitor's posted/captured-Copy/context policy accepts initial
 foreground only before observed A, then the pinned A; only the exact popup HWND
 of the coordinator-authenticated live worker PID can interrupt A after an atomic
-successful Target018 grant marker. Main, B, zero, other candidate windows and
-wrong-PID/reused HWNDs are not exceptions. The popup window ends on first observed
-return to A, host-exit closure, or 20 seconds after observing the grant. Main-row
-`copy` uses the same monitor but never permits popup foreground. Other scenes'
-foreground policies are unchanged. Sampling is not continuous native-focus proof;
-a missed A/return sample fails closed, not success. Monitoring never kills recovery.
+successful Target018 grant marker. Main, B, other candidate windows and wrong-PID
+HWNDs are not exceptions. Zero is allowed only after observed popup and before
+observed return to A, within the grant deadline and before closure; any nonzero
+non-A/non-popup handoff still fails. The popup window ends on first observed return
+to A, host-exit closure, or 20 seconds after observing the grant. Main-row `copy`
+uses the same monitor but never permits popup foreground or pre-closure zero.
+
+Closure is published before Target018 disposal. Already-pinned A may remain while
+that disposal drains. After closure and observed A, initial foreground or zero
+enters a terminal teardown state accepting **only initial or zero**: no A reentry,
+B, main, popup, guardian, shell/desktop or other foreign window. Closure does not
+require a sampled return to A after popup destruction; final scene receipts and
+independent boundary checks remain mandatory. Other scenes' policies are unchanged.
+Every monitor caller must supply an explicit scene; there is no implicit legacy
+fallback. Sampling is not continuous native-focus proof: missing A before an
+observed popup fails; missing popup entirely is not detected by samples alone;
+missing return after an observed popup fails unless closed teardown is observed.
+Monitoring never kills recovery.
+
+A plausible **nr-06 hypothesis, not a demonstrated cause**, is that Windows handed
+foreground to another window when Target018's A was destroyed while the coordinator
+was still waiting for target/guardian settlement. The old allowlist accepted initial
+and zero but not an arbitrary replacement foreground. Microsoft's
+[GetForegroundWindow reference](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getforegroundwindow)
+allows NULL while losing activation; its
+[DestroyWindow reference](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-destroywindow)
+describes deactivation/removal of focus, not a guarantee to restore our initial HWND.
+A shell/desktop/other replacement is not ruled out. Keep it rejected, not allowlisted;
+the failure record's `closed` boolean distinguishes post-closure observations.
+The historical predicate remains unknown.
 A latched failure is retained after process exit in `native-monitor-failure.json`:
 `predicate` (`foreground_foreign`, `foreground_unexpected_candidate`,
 `output_oversized`, `observation_exception`, `process_exit`), integer `exitCode`,
-positive integer `sampleOrder`, and `relation` using the control diagnostic tokens.
-The first predicate wins; final output size is checked even on immediate exit.
+positive integer `sampleOrder`, `relation` using the control diagnostic tokens,
+and boolean `closed` (validated closure observed at the failed sample, false for
+legacy scene policies). The first predicate, relation, order and closure phase win;
+final output size is checked even on immediate exit.
 Python validates the exact schema before reporting failure. This is diagnostics,
 not review approval or permission to rerun.
 

@@ -231,11 +231,12 @@ def validate_monitor_failure(private):
         return result
     record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 4096).decode('ascii'),
                         object_pairs_hook=unique)
-    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation'}
+    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed'}
             or type(record['predicate']) is not str or record['predicate'] not in MONITOR_PREDICATES
             or type(record['relation']) is not str or record['relation'] not in MONITOR_RELATIONS
             or type(record['exitCode']) is not int or not -2**31 <= record['exitCode'] <= 2**32-1
             or type(record['sampleOrder']) is not int or record['sampleOrder'] < 1
+            or type(record['closed']) is not bool
             or (record['predicate'] == 'process_exit' and record['exitCode'] == 0)):
         raise ValueError('native_monitor_record')
     return record
@@ -255,12 +256,14 @@ class PostedForegroundMonitor:
 
     Coordinator retains worker/target/guardian handles until settlement (no PID reuse).
     First observed return to A ends the popup window; file closure/deadline also end it.
+    After closure, A may drain until initial/zero enters the terminal-only state.
     """
     def __init__(self, private, initial, clock, popup_allowed=True):
         self.private, self.initial, self.clock = private, initial, clock
         self.popup_allowed = popup_allowed
         self.surfaces = self.identities = None
         self.seen_a = self.seen_popup = self.returned = False
+        self.closed = self.ended = False
         self.granted_at = None
 
     def sample(self, desktop, window):
@@ -291,24 +294,36 @@ class PostedForegroundMonitor:
             self.granted_at = self.clock()
         closed = self.private / 'positive-foreground-closed'
         is_closed = closed.exists()
-        if is_closed and helpers.owned_bytes(closed, self.private, 32) != b'closed\n':
-            raise ValueError('native_monitor_grant')
-        if relation == 'owned_target_a':
+        if is_closed:
+            if helpers.owned_bytes(closed, self.private, 32) != b'closed\n':
+                raise ValueError('native_monitor_grant')
+            self.closed = True
+        # Closure precedes Target018 disposal: A may still be alive while it drains.
+        # After initial/zero is observed in teardown, no owned surface is accepted again.
+        if self.closed and self.seen_a and window in (self.initial, 0) and window not in self.surfaces:
+            self.ended = True
+            return None, relation
+        if not self.ended and relation == 'owned_target_a':
             self.seen_a = True
             self.returned |= self.seen_popup
             return None, relation
         if window == self.initial and not self.seen_a:
             return None, relation
-        if (self.popup_allowed and window == popup and relation == 'candidate' and self.seen_a and not self.returned
-                and self.granted_at is not None and self.clock() - self.granted_at <= 20 and not is_closed):
+        grant_window = (self.popup_allowed and self.seen_a and not self.returned and not self.closed
+                        and self.granted_at is not None and self.clock() - self.granted_at <= 20)
+        if grant_window and window == popup and relation == 'candidate':
             self.seen_popup = True
+            return None, relation
+        if grant_window and window == 0 and self.seen_popup:
             return None, relation
         return ('foreground_unexpected_candidate' if relation == 'candidate' else 'foreground_foreign'), relation
 
 
 def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None, registered=False,
-            scene=None, evidence_private=None):
+            *, scene, evidence_private=None):
     """No timeout kill: coordinator retains independent RAM recovery on a pending scene."""
+    if scene not in ('restore', 'abort', 'owner-refusal', *POSITIVE_SCENES):
+        raise ValueError('native_monitor_scene')
     failure = None
     order = 0
     relation = 'none'
@@ -331,30 +346,30 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             predicate, relation = (policy.sample(desktop, window) if policy is not None else
                                    (None if window in allowed else 'foreground_foreign', 'none' if not window else 'foreign'))
             if predicate and failure is None:
-                failure = (predicate, order, relation)
+                failure = (predicate, order, relation, bool(policy and policy.closed))
             if any(p.stat().st_size > 65536 for p in output) and failure is None:
-                failure = ('output_oversized', order, relation)
+                failure = ('output_oversized', order, relation, bool(policy and policy.closed))
         except Exception:
             if failure is None:
-                failure = ('observation_exception', order, relation)
+                failure = ('observation_exception', order, relation, bool(policy and policy.closed))
         sleep(.05)
     # Check final output too: a process can write oversized output immediately before exit.
     order += 1
     try:
         if any(p.stat().st_size > 65536 for p in output) and failure is None:
-            failure = ('output_oversized', order, relation)
+            failure = ('output_oversized', order, relation, bool(policy and policy.closed))
     except Exception:
         if failure is None:
-            failure = ('observation_exception', order, relation)
+            failure = ('observation_exception', order, relation, bool(policy and policy.closed))
     if process.returncode and failure is None:
-        failure = ('process_exit', order, relation)
-    if policy is not None and policy.seen_popup and not policy.returned and failure is None:
-        failure = ('foreground_unexpected_candidate', order, relation)
+        failure = ('process_exit', order, relation, bool(policy and policy.closed))
+    if policy is not None and policy.seen_popup and not policy.returned and not policy.ended and failure is None:
+        failure = ('foreground_unexpected_candidate', order, relation, policy.closed)
     if failure:
-        predicate, sample, relation = failure
+        predicate, sample, relation, closed = failure
         private = evidence_private or positive_private
         if private is not None:
-            record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation)
+            record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation, closed=closed)
             with (private / 'native-monitor-failure.json').open('x', encoding='ascii') as stream:
                 json.dump(record, stream)
             validate_monitor_failure(private)

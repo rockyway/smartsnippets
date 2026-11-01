@@ -89,7 +89,7 @@ class NativeBootstrapTests(unittest.TestCase):
             user = User()
             def validate_input_desktop(self): pass
         with patch.object(native, 'positive_foregrounds', return_value={1}), patch.object(native, 'registered_operator_ready', side_effect=[False, True]) as ready, patch('builtins.print') as output:
-            native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None, positive_private=Path('private'), registered=True)
+            native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None, positive_private=Path('private'), registered=True, scene='registered-row')
             self.assertEqual(2, ready.call_count)
             output.assert_called_once_with('native_phase=operator_ready press_Ctrl_Alt_Shift_F11_then_release_all_input', flush=True)
 
@@ -168,7 +168,7 @@ class NativeBootstrapTests(unittest.TestCase):
             user = User()
             def validate_input_desktop(self): pass
         process = Process()
-        native.monitor(process, Desktop(), 1, [], sleep=lambda _: None)
+        native.monitor(process, Desktop(), 1, [], sleep=lambda _: None, scene='restore')
         self.assertEqual(4, process.polls)
 
     def test_oracle_failure_is_failure_without_process_tree_cleanup(self):
@@ -184,7 +184,7 @@ class NativeBootstrapTests(unittest.TestCase):
             user = User()
             def validate_input_desktop(self): pass
         with self.assertRaisesRegex(ValueError, 'failed'):
-            native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None)
+            native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None, scene='restore')
 
     def test_positive_review_and_operator_attestations_precede_image_or_root_work(self):
         with patch.object(native, 'require_authorization'), patch.object(native, 'validate_build') as validate, patch.object(native.subprocess, 'Popen') as start:
