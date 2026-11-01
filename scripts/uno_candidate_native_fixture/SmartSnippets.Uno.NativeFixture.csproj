@@ -44,7 +44,7 @@
     <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
     <ProjectReference Include="../../src/SmartSnippets.Core/SmartSnippets.Core.csproj" />
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
-    <Compile Include="Program.cs;App.xaml.cs;BootstrapProtocol.cs;Coordinator.cs;LateNativeOperations.cs;PositiveProtocol.cs;PositiveNativeInput.cs;PositiveHostScene.cs" />
+    <Compile Include="Program.cs;App.xaml.cs;BootstrapProtocol.cs;Coordinator.cs;LateNativeOperations.cs;PositiveProtocol.cs;PositiveNativeInput.cs;PositiveHostScene.cs;OwnedTargetPreparation.cs;OwnedTargetPreparationNative.cs;OwnedPreparationAutomation.cs" />
     <Compile Include="../../src/SmartSnippets.Uno/**/*.cs" Exclude="../../src/SmartSnippets.Uno/bin/**;../../src/SmartSnippets.Uno/obj/**;../../src/SmartSnippets.Uno/Program.cs;../../src/SmartSnippets.Uno/App.xaml.cs" LinkBase="Candidate" />
     <ApplicationDefinition Include="../../src/SmartSnippets.Uno/App.xaml" Link="App.xaml" />
     <Page Include="../../src/SmartSnippets.Uno/**/*.xaml" Exclude="../../src/SmartSnippets.Uno/App.xaml;../../src/SmartSnippets.Uno/bin/**;../../src/SmartSnippets.Uno/obj/**" LinkBase="Candidate" />

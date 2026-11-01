@@ -58,7 +58,7 @@ public partial class App : Application
             if (isPositive)
             {
                 // RunAsync reads the distinct post-guardian/post-Job lease; binding never admits.
-                positive = new(host, boundary, fixture, session, broker, capability, () => lease = true);
+                positive = new(host, boundary, fixture, session, broker, capability, () => lease = true, foreground);
                 await positive.RunAsync(config[0], ct);
                 lease = false;
                 await host.ExitAsync();
@@ -106,8 +106,9 @@ public partial class App : Application
             await BootstrapProtocol.WriteAsync(Program.Responses, "restored", ct);
             boundary.ExitApplication();
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error("native_positive_failed", ex);
             lease = false; broker.Close();
             if (positive?.Keyboard.Armed == true)
             {

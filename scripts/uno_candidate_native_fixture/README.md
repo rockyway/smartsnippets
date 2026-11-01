@@ -188,3 +188,36 @@ operator recovery has no automatic endpoint and must not be inferred from clipbo
 settlement or guardian exit. No production host/adapters were edited. Plan019 T5/T7,
 018 obligations and final acceptance are not complete. Independent review of exact
 source/build/protocol and a separately authorized screen slot are still mandatory.
+
+## Initial owned A preparation (closed review gate)
+
+`OwnedTargetPreparation.SourceReviewed` is independently hard-false. With it closed,
+positive scenes retain the original 15-second operator-selection/quiet wait. With it
+reviewed open, only positive scenes after guardian readiness, Job assignment and
+`lease_positive` may prepare A, before `keyboard_begin` or clipboard mutation. A
+preparation refusal aborts; it never falls back to manual activation or synthetic input.
+The original foreground snapshot from `App.OnLaunched` is the only non-A foreground
+allowed. An already-foreground A needs no UIA call.
+
+The in-process Native-AOT bridge uses CUIAutomation/IUIAutomation, exact retained
+`EditorA` HWND resolution, and one `SetFocus`. This is intentional owned activation,
+**not nonactivation QA evidence**. No tree traversal, external automation process,
+foreign focus, input synthesis or clipboard API is involved. Pin, exact A/editor
+PID/thread/child/classes, session Focus permission, visible input desktop and all-VK
+quiet checks surround provider calls. Changed input epoch requires a fresh bounded
+1500ms quiet period; final foreground/session checks precede the retained manual
+check. COM references are released on every return/HRESULT failure. A hung provider
+remains before keyboard arming: existing coordinator-owned pre-keyboard timeout and
+Job cleanup apply; uncertain keyboard retention is unchanged.
+
+ABI verified against installed Windows SDK **10.0.26100.0**
+`um/UIAutomationClient.h`: line 669 (`UIA_HWND = void*`), lines 19092–19136
+(`IUIAutomationVtbl`, `ElementFromHandle` slot 6), lines 1869–1891
+(`IUIAutomationElementVtbl`, `SetFocus` slot 3), IID at 18848 and CLSID at 23181.
+IUnknown Release is slot 2; HRESULT is 32-bit, HWND/interface pointers pointer-sized,
+and calls use STDMETHODCALLTYPE/Stdcall. Tests exercise those actual bridge slots
+with unmanaged fake vtables, never COM activation. Policy tests use fake OS/clock/COM;
+they do not prove real provider behavior, desktop activation or live HWND identities.
+`owned_initial_focus phase=waiting|ready|refused` and fixed preparation reason codes
+are content-free. `native_positive_failed` records only exception type/HResult, not
+messages/titles/paths. A generic prior failure does not identify its failed predicate.

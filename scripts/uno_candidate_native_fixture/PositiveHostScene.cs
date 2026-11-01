@@ -9,7 +9,7 @@ namespace SmartSnippets.Uno;
 
 /// <summary>Actual host/store/VMs and native surfaces. Posted WM_HOTKEY is callback proof, NOT physical shortcut proof.</summary>
 internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary boundary, AcceptanceFixture fixture,
-    NativeAcceptanceSession session, LateNativeOperations broker, CandidateNativeCapability capability, Action admitSession)
+    NativeAcceptanceSession session, LateNativeOperations broker, CandidateNativeCapability capability, Action admitSession, nint originalForeground)
 {
     internal readonly PositiveKeyboardLifetime Keyboard = new();
     private readonly PositiveEnterGuard enter = new();
@@ -30,9 +30,27 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "lease_positive") throw new InvalidOperationException("native_positive_lease");
         admitSession();
         if (scene != "expired") { broker.Admit(); host.RefreshClipboardAvailability(); }
-        // Operator explicitly selects A after guardian-ready. Never activate a foreign window to make admission pass.
-        await WaitAsync(() => session.IsTargetForeground(session.Target) && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(15), ct);
-        await fixture.Lease.CommandAsync("focus_a", ct); // Already foreground, fixed owned editor only.
+        SmartSnippets.Core.Logging.AppLog.Info("owned_initial_focus", "phase=waiting");
+        try
+        {
+            if (OwnedTargetPreparation.ShouldPrepare(scene))
+            {
+                var result = await OwnedTargetPreparation.PrepareAsync(new OwnedPreparationWindows(fixture, session, capability),
+                    () => new OwnedPreparationAutomation(), originalForeground, ready.WindowA, ready.EditorA, ct);
+                SmartSnippets.Core.Logging.AppLog.Info("owned_target_preparation", $"reason={result}");
+                if (result is not (OwnedPreparationResult.Prepared or OwnedPreparationResult.AlreadyA))
+                    throw new InvalidOperationException("native_owned_preparation_refused");
+            }
+            // Original manual check remains even after reviewed preparation. No fallback on preparation failure.
+            await WaitAsync(() => session.IsTargetForeground(session.Target) && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(15), ct);
+            await fixture.Lease.CommandAsync("focus_a", ct); // Already foreground, fixed owned editor only.
+            SmartSnippets.Core.Logging.AppLog.Info("owned_initial_focus", "phase=ready");
+        }
+        catch
+        {
+            SmartSnippets.Core.Logging.AppLog.Info("owned_initial_focus", "phase=refused");
+            throw;
+        }
         await fixture.Lease.CommandAsync("empty_a", ct);
         await fixture.Lease.CommandAsync("empty_b", ct);
         if (PositiveProtocol.Inserts(scene)) await InsertAsync(scene, id, ct);
