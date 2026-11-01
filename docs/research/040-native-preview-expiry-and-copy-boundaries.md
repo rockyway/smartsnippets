@@ -72,4 +72,5 @@ ordering gap for unexpected operator popup input before keyboard-lifetime arming
 The accepted 039/040 traces remain valid within their operator-input scope; no
 further interactive positive trial may run until that gap and the adjacent
 undispatched-settlement race are fixed, tested and reviewed. All source gates
-remain closed in the meantime.
+remain closed in the meantime. The subsequent correction and confirming security
+clearance are recorded in research 041; no unreviewed native retry occurred.

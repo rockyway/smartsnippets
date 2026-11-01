@@ -12,6 +12,9 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
     NativeAcceptanceSession session, LateNativeOperations broker, CandidateNativeCapability capability, Action admitSession, nint originalForeground)
 {
     internal readonly PositiveKeyboardLifetime Keyboard = new();
+    private readonly PositiveNativeMutation mutation = new();
+    internal bool NativeMutationArmed => Keyboard.Armed && mutation.Armed;
+    internal void CloseNativeMutationAdmission() => mutation.Close();
     private readonly PositiveEnterGuard enter = new();
     private readonly HotkeyGesture gesture = new(HotkeyGesture.ModControl | HotkeyGesture.ModAlt | HotkeyGesture.ModShift, 0x7A); // F11, operator-selected after reported F9 conflict; never production.
     private AcceptanceHotkey? hotkey;
@@ -128,7 +131,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         await BootstrapProtocol.WriteAsync(Program.Responses, "positive_verified", ct);
     }
     internal Task<bool> DrainFailedKeyboardAsync() => Keyboard.DrainAndSettleAsync(
-        host.Gate.CloseAdmission,
+        () => { CloseNativeMutationAdmission(); host.Gate.CloseAdmission(); },
         async () =>
         {
             _ = await host.Gate.DrainAsync();
@@ -174,18 +177,17 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             // Coordinator must arm BEFORE Enter or the insertion callback can possibly dispatch native keys.
             await BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_begin", ct);
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "keyboard_permit") throw new InvalidOperationException("native_keyboard_permit");
-            Keyboard.Arm();
+            Keyboard.Arm(); // Match the coordinator permit even when unexpected UI work started during pipe awaits.
+            if (!mutation.TryArm(Keyboard.Armed, boundary.PopupShown, host.Popup.IsInserting, host.Gate.IsIdle))
+                throw new InvalidOperationException("native_mutation_admission_busy");
             if (PositiveShortcutRoute.NativeEnter(scene))
             {
                 using var popup = new NativeOwnedPopup(boundary.Popup!.NativeHandle);
                 var state = enter.Send(() => host.Gate.CanInsert && capability.Allows(CandidateNativeOperation.Focus),
                     () => PositiveNativeInput.Enter(popup, () => host.Gate.CanInsert && capability.Allows(CandidateNativeOperation.Focus)));
-                if (state == DispatchState.NotDispatched)
-                {
-                    // Zero accepted events / preflight refusal proves no Enter downs, and no VM callback was started.
-                    await BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_settled", ct);
-                    Keyboard.Settle();
-                }
+                _ = await mutation.TrySettleUndispatchedAsync(state, host.Popup.IsInserting, host.Gate.IsIdle,
+                    session.RecoveryPending, Keyboard,
+                    () => BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_settled", ct));
                 if (state != DispatchState.Dispatched) throw new InvalidOperationException("native_enter_delivery");
                 // Actual native Enter is delivered to SearchBox, through PopupWindow.OnKeyDown and host RunOperation.
                 await WaitAsync(() => host.Popup.IsInserting, TimeSpan.FromSeconds(3), ct);
@@ -204,6 +206,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         }
         finally
         {
+            CloseNativeMutationAdmission();
             boundary.Message.MessageReceived -= OnMessage;
             hotkey.Dispose(); hotkey = null;
         }

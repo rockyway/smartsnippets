@@ -45,6 +45,34 @@ internal static class PositiveProtocol
     }
 }
 
+/// <summary>Native mutation is a separate, one-shot grant after the keyboard permit and idle-state recheck.</summary>
+internal sealed class PositiveNativeMutation
+{
+    private bool armed, closed;
+    internal bool Armed => armed && !closed;
+    internal static bool Permits(bool capture, bool lease, bool positive, bool clipboardControl,
+        bool needsMutationArm, bool mutationArmed) => capture ||
+        (lease && (positive ? !needsMutationArm || mutationArmed : clipboardControl));
+    internal bool TryArm(bool keyboardArmed, bool popupShown, bool inserting, bool gateIdle)
+    {
+        if (closed || armed || !keyboardArmed || !popupShown || inserting || !gateIdle)
+        { Close(); return false; }
+        armed = true;
+        return true;
+    }
+    internal void Close() { armed = false; closed = true; }
+    internal async Task<bool> TrySettleUndispatchedAsync(SmartSnippets.Presentation.Services.DispatchState state,
+        bool inserting, bool gateIdle, bool recoveryPending, PositiveKeyboardLifetime keyboard, Func<Task> receipt)
+    {
+        if (!Armed || !keyboard.Armed || state != SmartSnippets.Presentation.Services.DispatchState.NotDispatched ||
+            inserting || !gateIdle || recoveryPending) return false;
+        Close(); // Revoke before the await: queued UI input cannot gain native permission during acknowledgement.
+        await receipt();
+        keyboard.Settle();
+        return true;
+    }
+}
+
 /// <summary>Loss of a keyboard completion receipt is NOT permission to abort a Job containing possible downs.</summary>
 internal static class PositiveInputPreflight
 {

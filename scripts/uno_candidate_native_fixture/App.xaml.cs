@@ -48,7 +48,9 @@ public partial class App : Application
             if (NativeFixtureOs.Foreground() != foreground) throw new InvalidOperationException("native_host_activation");
             session = NativeAcceptanceFactory.Create(fixture, "a", boundary.Popup.NativeHandle, config[3], config[4],
                 DateTimeOffset.UtcNow.AddSeconds(55), isPositive && PositiveProtocol.RequiresInputReview(config[0]), isPositive && !PositiveProtocol.Inserts(config[0]),
-                operation => operation == AcceptanceOperation.Capture || (lease && (isPositive || operation == AcceptanceOperation.ClipboardControl)),
+                operation => PositiveNativeMutation.Permits(operation == AcceptanceOperation.Capture, lease, isPositive,
+                    operation == AcceptanceOperation.ClipboardControl,
+                    operation is AcceptanceOperation.Input or AcceptanceOperation.Clipboard, positive?.NativeMutationArmed == true),
                 allowClipboardControl: !isPositive, ownedMainWindow: isPositive ? boundary.Main.NativeHandle : 0, knownPriorToken: Program.KnownPriorToken);
             broker.Bind(session, session.SessionId);
             using var self = Process.GetCurrentProcess();
@@ -108,6 +110,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            positive?.CloseNativeMutationAdmission();
             AppLog.Error("native_positive_failed", ex);
             lease = false; broker.Close();
             if (positive?.Keyboard.Armed == true)
