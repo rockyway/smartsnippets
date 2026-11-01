@@ -46,6 +46,6 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved", true));
         Assert.Contains("IsEnabled = CanInsert()", Read("Popup/PopupWindow.xaml.cs"));
         // Source supplement only; PositiveCopySceneTests drives this shared callback behaviorally.
-        Assert.Contains("await Platforms.Windows.AcceptanceNative.PopupContextInsert.InvokeAsync", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("await PopupContextInsert.InvokeAsync", Read("Popup/PopupWindow.xaml.cs"));
     }
 }

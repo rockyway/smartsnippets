@@ -202,13 +202,21 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   the truthful pre-dispatch error footer, resumes admission and invokes the footer Copy
   command. No Copy scene arms keyboard mutation, swaps insertion clipboard or pastes.
   Each requires exactly one capture and Copy commit, empty A/B and zero usage/paste.
-  Capture/Insert/Focus are scoped solely to showing the captured popup; these scenes
-  have no Input/Clipboard capability. The session's insertion wiring is present for
-  capture/shortcut admission, but mutation remains unarmed throughout.
+  Capture/Insert/Focus permit captured-popup and shortcut admission. Footer Copy also
+  makes a real insertion attempt while gate admission is suspended, yielding the
+  intentional pre-dispatch refusal. Session/guardian insertion wiring is present, but
+  these Copy capabilities have no Input/Clipboard/ClipboardLoss flags and native
+  mutation remains unarmed throughout. Each consumer returns observed fixed fields:
+  popup has no editor/footer; editor records failed Save, an open/editable editor
+  after Copy and subsequent cancellation; footer records Error immediately before Copy.
+  The native scene and behavioral tests require the distinct record for each scene.
 - `context-insert`: same posted preparation and keyboard permit as `posted-row`, but
-  invokes the menu's shared invocation-time eligibility/host-operation callback seam.
-  The rendered context menu and native pointer delivery are **NOT** exercised. Preview,
-  stale row, busy state and revoked native permission refuse before host operation;
+  invokes the menu's neutral `Popup.PopupContextInsert` invocation-time eligibility /
+  host-operation callback seam. The Copy-scene driver lives only in the fixture,
+  not the ordinary candidate or its AcceptanceNative namespace.
+  The rendered context menu and native pointer delivery are **NOT** exercised. Tests
+  require the success run wrapper exactly once; preview, a deleted/stale row, busy
+  state and refused native permission must refuse before host operation;
   successful insertion requires exact A, empty B, one paste/usage and no Copy.
 - `preview/expired`: active preview refuses main/popup Copy and Insert callbacks;
   selection closes without insertion. `expired` waits for the real monotonic capability
@@ -239,12 +247,20 @@ use their original exact protocol and do not arm input.
 
 For every positive scene the independent Python parent snapshots the clipboard sequence
 before launch and after actual exit and opens the owned SQLite database with `mode=ro`
-and `query_only=ON`. It reads only usage counts: exactly one row with usage 1 for Insert,
+and `query_only=ON`. Before opening, metadata-only `lstat` checks reject symlinks,
+reparse points and multiply-linked database/WAL/SHM files; no whole-database byte read
+is performed. Its SQL reads only usage counts: exactly one row with usage 1 for Insert,
 0 for Copy/preview/expiry. Epoch must change for Copy/Insert and remain identical for
 preview/expiry. Missing/extra rows, wrong usage, unavailable epoch or wrong mutation
 boundary fail. Fixed JSON fields `usageVerified` and `clipboardEpochChanged` report
 these checks without persisting text or queries. Copy never supplies a restorative
 baseline witness; a fresh operator recopy remains required.
+
+The global ERROR-log gate remains closed: only `editor-copy` requires and permits
+exactly one timestamped fixed line, `ERROR store_write_failed op=update_snippet
+error=SqliteException sqlite=19 hresult=0x80004005`. Any added field, content, raw
+exception, duplicate, missing line or any other ERROR fails; the same line is forbidden
+in every other scene. Privacy scanning still examines the original unfiltered log.
 
 Success requires ordered guardian-ready/awaiting-A/result receipts, zero worker/
 fixture/guardian exit codes, actual host shutdown-complete log and privacy scan.

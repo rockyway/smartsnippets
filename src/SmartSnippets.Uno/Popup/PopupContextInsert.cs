@@ -1,6 +1,6 @@
 using SmartSnippets.Presentation.ViewModels;
 
-namespace SmartSnippets.Uno.Platforms.Windows.AcceptanceNative;
+namespace SmartSnippets.Uno.Popup;
 
 /// <summary>The popup menu's invocation-time checks, shared with closed-gate callback acceptance.
 /// This is callback evidence, not evidence of a rendered menu or physical pointer delivery.</summary>

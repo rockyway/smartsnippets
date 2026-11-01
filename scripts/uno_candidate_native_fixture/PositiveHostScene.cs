@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using SmartSnippets.Presentation.ViewModels;
+using SmartSnippets.Uno.Popup;
 using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
@@ -150,6 +152,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
     private async Task InsertAsync(string scene, long id, CancellationToken ct)
     {
         if (boundary.Message is null) throw new InvalidOperationException("native_message_missing");
+        var popupWindow = boundary.Popup ?? throw new InvalidOperationException("native_popup_missing");
         hotkey = session.CreateHotkey(gesture, boundary.MessageHandle, () => _ = ShortcutAsync(ct));
         boundary.Message.MessageReceived += OnMessage;
         try
@@ -194,7 +197,15 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             }
             if (PositiveProtocol.CapturedCopy(scene))
             {
-                await PopupCopyConsumer.RunAsync(scene, host, id, Program.ProfileRoot);
+                var observed = await PopupCopyConsumer.RunAsync(scene, host, id, Program.ProfileRoot);
+                var expected = scene switch
+                {
+                    "popup-copy" => new PopupCopyObservation(false, PopupFooterState.None, false, false, false),
+                    "editor-copy" => new PopupCopyObservation(true, PopupFooterState.None, true, true, true),
+                    "footer-copy" => new PopupCopyObservation(false, PopupFooterState.Error, false, false, false),
+                    _ => throw new InvalidOperationException("native_copy_scene")
+                };
+                if (observed != expected) throw new InvalidOperationException("native_copy_consumer");
                 if (broker.CopyCommits != 1 || broker.PasteCalls != 0 || !PositiveNativeInput.VerifyCopiedSyntheticText())
                     throw new InvalidOperationException("native_copy_readback");
                 await fixture.Lease.CommandAsync("empty_a", ct);
@@ -225,7 +236,8 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                 // Actual shared row/main callback wiring; intentionally NOT represented as native pointer/UI event proof.
                 var row = host.Popup.Items.Single(item => item.SnippetId == id);
                 var first = scene == "context-insert"
-                    ? PopupContextInsert.InvokeAsync(host.Popup, row, () => host.Gate.CanInsert, host.RunOperationAsync)
+                    ? PopupContextInsert.InvokeAsync(host.Popup, row,
+                        () => ReferenceEquals(boundary.Popup, popupWindow) && host.Gate.CanInsert, host.RunOperationAsync)
                     : PositiveShortcutRoute.MainRow(scene) ? host.Snippets.InsertRowAsync(id) : host.Popup.InsertRowAsync(row);
                 await DuplicateBusyAsync(id);
                 await first.WaitAsync(TimeSpan.FromSeconds(8), ct);

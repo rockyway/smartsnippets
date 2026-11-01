@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -191,7 +192,22 @@ def verify_positive_boundary(private, scene, before_epoch, after_epoch):
     if scene not in POSITIVE_SCENES:
         raise ValueError('native_scene')
     database = private / 'native-fixture-profile/smartsnippets.db'
-    helpers.owned_bytes(database, private, 134217728)  # Reject aliases/hardlinks before SQLite opens it.
+    # Metadata-only pin validation: never load the database's content into parent memory.
+    for path in (database, *database.parents):
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+            raise ValueError('native_database_alias')
+        if path == database and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 134217728):
+            raise ValueError('native_database_identity')
+    for suffix in ('-wal', '-shm'):
+        sidecar = database.with_name(database.name + suffix)
+        try:
+            info = sidecar.lstat()
+        except FileNotFoundError:
+            continue
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                getattr(info, 'st_file_attributes', 0) & 0x400):
+            raise ValueError('native_database_sidecar')
     with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
         connection.execute('PRAGMA query_only=ON')
         rows = connection.execute('SELECT usage_count FROM snippets').fetchall()
@@ -238,6 +254,15 @@ def verify_result(private, data, expected, positive=False):
         raise ValueError('native_registered_readiness')
     log = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private)
     text = log.decode('utf-8-sig')
+    # Exactly one deliberate, content-free SQLite constraint failure belongs to editor-copy.
+    # Remove only that exact full line, then retain the global ERROR rejection unchanged.
+    errors = [line for line in text.splitlines() if ' ERROR ' in line]
+    if positive and expected == b'native_result=editor-copy_settled':
+        if len(errors) != 1 or not re.fullmatch(
+                r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z ERROR store_write_failed '
+                r'op=update_snippet error=SqliteException sqlite=19 hresult=0x80004005', errors[0]):
+            raise ValueError('native_host_readiness_cleanup')
+        text = '\n'.join(line for line in text.splitlines() if line != errors[0])
     if (sum(line.endswith(' INFO candidate_started') for line in text.splitlines()) != 1 or ' ERROR ' in text
             or (positive and sum(line.endswith(' INFO candidate_shutdown_complete') for line in text.splitlines()) != 1)):
         raise ValueError('native_host_readiness_cleanup')
@@ -400,7 +425,7 @@ def main(argv=None, *, prior_restorative_session=None):
         elif positive:
             print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
         before_epoch = desktop.user.GetClipboardSequenceNumber()
-        if not before_epoch:
+        if positive and not before_epoch:
             raise ValueError('native_clipboard_epoch')
         paths = [private / 'stdout.log', private / 'stderr.log']
         with paths[0].open('xb') as out, paths[1].open('xb') as err:
