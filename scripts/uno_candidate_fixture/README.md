@@ -213,7 +213,12 @@ not rendered callback proof. No native run has verified these new dialog templat
 identities or the responsive path. Save failure and folder dirty dialogs remain
 unproven, as do file pickers and the other outstanding Plan019 acceptance paths.
 
-## Fixed native file-picker checkpoint (review closed; NOT RUN)
+## Fixed native file-picker checkpoint (review BLOCKED; NOT RUN)
+
+Review `3ca40b49` found foreground-latch, atomic phase/close ordering, alias/permit
+and privacy-canary defects. Keep the source gate closed until the single-batch
+fixes and confirming review in [research 042](../../docs/research/042-rendered-file-picker-review-block.md)
+are complete. Existing tests/build-only results are not native clearance.
 
 `run_uno_candidate_ui.py --scene file-picker` adds a separate rendered management
 scene. `UI_SOURCE_REVIEWED=False` remains closed. Independent security/source
