@@ -177,6 +177,13 @@ def shutdown_frame(desktop, pid, hwnd, initial, work, closed_seen, owned_foregro
     return False
 
 
+def save_fixture_exit(private, code):
+    if type(code) is not int:
+        raise ValueError('ui_exit_code')
+    with (private / 'fixture-exit.json').open('x', encoding='ascii') as report:
+        json.dump({'exitCode': code}, report)
+
+
 def save_helper_diagnostics(private, out, err):
     if any(not isinstance(value, bytes) or len(value) > 65536 for value in (out, err)):
         raise ValueError('ui_helper_output_limit')
@@ -269,6 +276,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if time.monotonic() > deadline:
                     raise ValueError('graceful_timeout')
                 time.sleep(.05)
+            save_fixture_exit(private, process.returncode)
             base.require_graceful(process, private)
             quiet_input(desktop, epoch)
             shutdown_frame(desktop, process.pid, hwnd, initial, work, True,

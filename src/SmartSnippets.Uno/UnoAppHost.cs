@@ -380,6 +380,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     {
         if (_disposed) return;
         _disposed = true;
+        if (_ownsLog) AppLog.Info("candidate_cleanup_stage", "stage=begin");
         if (_nativeCapability is { } capability)
         {
             capability.AuthorizationChanged -= OnAuthorizationChanged;
@@ -389,12 +390,18 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         if (Popup is not null) Popup.PropertyChanged -= OnPopupPropertyChanged;
         _popupHost?.Commit();
         if (_main is not null) _main.HiddenByClose -= OnHiddenByClose;
-        Release(() => _tray?.Dispose()); Release(() => Popup?.Dispose());
-        Release(() => _popup?.Dispose()); _popup = null;
-        Release(() => Snippets?.Dispose()); Release(() => Folders?.Dispose()); Release(() => SettingsPage?.Dispose());
-        Release(() => _main?.Dispose()); Release(() => (_theme as IDisposable)?.Dispose()); Release(() => _message?.Dispose());
+        ReleaseResource("tray", () => _tray?.Dispose()); ReleaseResource("popup_vm", () => Popup?.Dispose());
+        ReleaseResource("popup_window", () => _popup?.Dispose()); _popup = null;
+        ReleaseResource("snippets", () => Snippets?.Dispose()); ReleaseResource("folders", () => Folders?.Dispose());
+        ReleaseResource("settings", () => SettingsPage?.Dispose()); ReleaseResource("main_window", () => _main?.Dispose());
+        ReleaseResource("theme", () => (_theme as IDisposable)?.Dispose()); ReleaseResource("message_window", () => _message?.Dispose());
         if (_ownsLog) { AppLog.Info("candidate_shutdown_complete"); AppLog.Shutdown(); _ownsLog = false; }
         _profile?.Dispose();
+    }
+    private void ReleaseResource(string stage, Action release)
+    {
+        if (_ownsLog) AppLog.Info("candidate_cleanup_stage", $"stage={stage}");
+        Release(release);
     }
     private void Release(Action release)
     {

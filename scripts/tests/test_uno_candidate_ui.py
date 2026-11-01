@@ -124,6 +124,20 @@ class UiManagementTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'ui_helper_protocol'):
                 s.validate_helper_output(code, out, err)
 
+    def test_fixture_exit_diagnostic_is_numeric_and_never_overwrites(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            s.save_fixture_exit(root, -1073741819)
+            self.assertEqual({'exitCode': -1073741819}, json.loads((root / 'fixture-exit.json').read_text()))
+            with self.assertRaises(FileExistsError):
+                s.save_fixture_exit(root, 0)
+        for code in (None, True, 'payload'):
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaisesRegex(ValueError, 'ui_exit_code'):
+                    s.save_fixture_exit(Path(tmp), code)
+                self.assertFalse(list(Path(tmp).iterdir()))
+
     def test_helper_diagnostics_are_bounded_and_never_overwrite_existing_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

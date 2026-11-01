@@ -8,7 +8,13 @@ public partial class App : Application
 {
     private readonly FixtureBoundary _boundary = new();
     private UnoAppHost? _host;
-    public App() { InitializeComponent(); DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown; }
+    public App()
+    {
+        InitializeComponent();
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+        UnhandledException += (_, args) => SmartSnippets.Core.Logging.AppLog.Error("fixture_unhandled", args.Exception);
+        // Diagnostic only: do not set Handled or alter the framework's failure policy.
+    }
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         try
