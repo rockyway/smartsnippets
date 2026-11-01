@@ -25,7 +25,7 @@ public partial class App : Application
         var startupSamples = new List<string>();
         var diagnostics = new NativeStartupDiagnostics(NativeFixtureOs.Foreground,
             window => { NativeFixtureOs.GetWindowThreadProcessId(window, out var pid); return pid; },
-            (uint)Environment.ProcessId, () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0);
+            RetainedIdentity.Parent(Program.CoordinatorHandle), () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0);
         void FlushSamples()
         {
             foreach (var sample in startupSamples) AppLog.Info("native_startup_foreground", sample);

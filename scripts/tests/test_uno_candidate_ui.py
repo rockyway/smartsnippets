@@ -35,16 +35,52 @@ class UiManagementTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     s.base.record_failure(root, caught.exception)
-                    self.assertEqual({'reason': 'input', 'inputSubreason': expected},
-                                     json.loads(next(root.glob('observer-*-failure.json')).read_text()))
+                    record = {'reason': 'input', 'inputSubreason': expected}
+                    if expected == 'epoch_changed':
+                        record.update(inputEpochDelta=1, inputIdleMs=1900, inputPhase='unspecified')
+                    self.assertEqual(record, json.loads(next(root.glob('observer-*-failure.json')).read_text()))
         desktop.user.GetAsyncKeyState.return_value = 0
         kernel.GetTickCount.return_value = 1600  # original inclusive 1500ms boundary
+        with patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
+            for phase in (*s.PICKER_PHASES, 'management', 'verification', 'shutdown'):
+                self.assertEqual(100, s.quiet_input(desktop, 100, phase))
         with patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
             self.assertEqual(100, s.quiet_input(desktop, 100))
             desktop.user.GetLastInputInfo.return_value = False
             desktop.user.GetLastInputInfo.side_effect = None
             with self.assertRaisesRegex(ValueError, '^input_query_failed$'):
                 s.quiet_input(desktop, 100)
+
+    def test_epoch_delta_phase_wrap_and_privacy_do_not_rebaseline(self):
+        import json
+        desktop = Mock()
+        desktop.user.GetAsyncKeyState.return_value = 0
+        kernel = Mock()
+        kernel.GetTickCount.return_value = 2000
+        for before, after, delta in [(99, 100, 1), (101, 100, 0xffffffff), (0xffffffff, 0, 1)]:
+            def epoch(pointer):
+                pointer._obj.time = after
+                return True
+            desktop.user.GetLastInputInfo.side_effect = epoch
+            with patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
+                with self.assertRaises(s.InputRefused) as caught:
+                    s.quiet_input(desktop, before, 'import-cancel')
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                s.base.record_failure(root, caught.exception)
+                self.assertEqual({'reason': 'input', 'inputSubreason': 'epoch_changed',
+                                  'inputEpochDelta': delta, 'inputIdleMs': (2000-after) & 0xffffffff,
+                                  'inputPhase': 'import-cancel'},
+                                 json.loads(next(root.glob('observer-*-failure.json')).read_text()))
+        for delta, idle, phase in [(True, 2, 'import-cancel'), (-1, 2, 'import-cancel'),
+                                   (1, 2**32, 'import-cancel'), (1, 2, 'private title')]:
+            error = s.InputRefused('epoch_changed')
+            error.input_epoch_delta, error.input_idle_ms, error.input_phase = delta, idle, phase
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                s.base.record_failure(root, error)
+                self.assertEqual({'reason': 'input', 'inputSubreason': 'epoch_changed'},
+                                 json.loads(next(root.glob('observer-*-failure.json')).read_text()))
 
     def test_input_subreason_never_persists_arbitrary_text(self):
         import json

@@ -25,6 +25,46 @@ public sealed class NativeStartupDiagnosticsTests
     }
 
     [Theory]
+    [InlineData(0, 0, "none", "not_applicable")]
+    [InlineData(1, 10, "owned_a", "not_applicable")]
+    [InlineData(2, 10, "a_other_window", "owned_by_a")]
+    [InlineData(2, 10, "a_other_window", "ime")]
+    [InlineData(2, 10, "a_other_window", "tooltip")]
+    [InlineData(2, 10, "a_other_window", "toplevel_other")]
+    [InlineData(2, 10, "a_other_window", "private title")]
+    [InlineData(3, 20, "worker", "not_applicable")]
+    [InlineData(4, 30, "guardian", "not_applicable")]
+    [InlineData(5, 40, "coordinator", "not_applicable")]
+    [InlineData(6, 50, "launcher", "not_applicable")]
+    [InlineData(7, 60, "foreign", "not_applicable")]
+    [InlineData(1, 60, "foreign", "not_applicable")]
+    public void HighRateRelationsUsePidAndAllowlistedKind(int window, uint pid, string relation, string kind)
+    {
+        var reads = 0;
+        var trace = new OwnedForegroundTrace(() => { reads++; return window; }, _ => pid,
+            1, 10, 20, 30, 40, 50, 7, _ => kind, () => 0, () => Task.CompletedTask);
+        var safeKind = kind == "private title" ? "toplevel_other" : kind;
+        Assert.Equal($"relation={relation} kind={safeKind} initial_foreground={window == 7} sample_order=1 elapsed_ms=0",
+            trace.Sample(1, 0));
+        Assert.Equal(1, reads);
+    }
+
+    [Theory]
+    [InlineData(5, 51)] [InlineData(130, 2)] [InlineData(0, 51)]
+    public async Task HighRateTraceIsTimeAndCountBounded(int step, int count)
+    {
+        long time = 0;
+        var window = 1;
+        var trace = new OwnedForegroundTrace(() => window, _ => 10, 1, 10, 20, 30, 40, 50, 7,
+            _ => "ime", () => time, () => { time += step; window = 2; return Task.CompletedTask; });
+        var records = await trace.RecordAsync();
+        Assert.Equal(count, records.Count);
+        Assert.Contains("relation=owned_a", records[0]);
+        Assert.All(records.Skip(1), record => Assert.Contains("relation=a_other_window kind=ime", record));
+        Assert.DoesNotContain(records, record => record.Contains("elapsed_ms=260"));
+    }
+
+    [Theory]
     [InlineData(0, "popup_missing")]
     [InlineData(1, "popup_handle_missing")]
     [InlineData(2, "main_missing")]

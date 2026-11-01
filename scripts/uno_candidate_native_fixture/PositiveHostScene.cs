@@ -49,7 +49,13 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                     var result = await OwnedTargetPreparation.PrepareAsync(new OwnedPreparationWindows(fixture, session, capability),
                         () => new OwnedPreparationAutomation(), originalForeground, ready.WindowA, ready.EditorA, ct,
                         reason => SmartSnippets.Core.Logging.AppLog.Info("owned_preparation_admission", $"reason={reason}"),
-                        phase => SmartSnippets.Core.Logging.AppLog.Info("native_startup_foreground", diagnostics.Sample(phase)));
+                        phase => SmartSnippets.Core.Logging.AppLog.Info("native_startup_foreground", diagnostics.Sample(phase)),
+                        async () =>
+                        {
+                            var records = await OwnedPreparationWindows.TraceAsync(fixture, session, originalForeground);
+                            foreach (var record in records)
+                                SmartSnippets.Core.Logging.AppLog.Info("owned_foreground_trace", record);
+                        });
                     SmartSnippets.Core.Logging.AppLog.Info("owned_target_preparation", $"reason={result}");
                     if (result is not (OwnedPreparationResult.Prepared or OwnedPreparationResult.AlreadyA))
                         throw new InvalidOperationException("native_owned_preparation_refused");

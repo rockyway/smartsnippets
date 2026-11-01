@@ -350,6 +350,14 @@ def record_failure(private, error, *, helper_failure=None):
             subreason = getattr(error, 'input_subreason', None)
             if reason == 'input' and subreason in ('held', 'epoch_changed', 'idle'):
                 record['inputSubreason'] = subreason
+                delta = getattr(error, 'input_epoch_delta', None)
+                idle = getattr(error, 'input_idle_ms', None)
+                phase = getattr(error, 'input_phase', None)
+                if (subreason == 'epoch_changed' and type(delta) is int and 0 <= delta <= 0xffffffff
+                        and type(idle) is int and 0 <= idle <= 0xffffffff
+                        and phase in ('unspecified', 'management', 'verification', 'shutdown',
+                                      'import-cancel', 'import', 'export-cancel', 'export')):
+                    record.update(inputEpochDelta=delta, inputIdleMs=idle, inputPhase=phase)
             if (safe_helper_failure is not None and reason == 'operation'
                     and safe_helper_failure['reason'] == 'operation'):
                 record['operationClass'] = safe_helper_failure['operationClass']

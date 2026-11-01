@@ -202,7 +202,13 @@ def require_all_input_up(desktop):
         raise InputRefused('held')
 
 
-def quiet_input(desktop, expected=None):
+INPUT_PHASES = ('unspecified', 'management', 'verification', 'shutdown',
+                'import-cancel', 'import', 'export-cancel', 'export')
+
+
+def quiet_input(desktop, expected=None, phase='unspecified'):
+    if phase not in INPUT_PHASES:
+        raise ValueError('input_query_failed')
     class LastInput(startup.C.Structure):
         _fields_ = [('size', startup.W.UINT), ('time', startup.W.DWORD)]
     user = desktop.user
@@ -215,7 +221,12 @@ def quiet_input(desktop, expected=None):
     kernel.GetTickCount.restype = startup.W.DWORD
     idle = (kernel.GetTickCount() - state.time) & 0xffffffff
     if expected is not None and state.time != expected:
-        raise InputRefused('epoch_changed')
+        error = InputRefused('epoch_changed')
+        # Unsigned timestamp difference, NOT an event count or source attribution.
+        error.input_epoch_delta = (state.time - expected) & 0xffffffff
+        error.input_idle_ms = idle
+        error.input_phase = phase
+        raise error
     if idle < 1500:
         raise InputRefused('idle')
     require_all_input_up(desktop)
@@ -543,8 +554,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             while helper.poll() is None:
                 if process.poll() is not None:
                     raise ValueError('early_exit')
-                quiet_input(desktop, epoch)
                 phase = picker_phase(private) if scene == 'file-picker' else None
+                quiet_input(desktop, epoch, phase or 'management')
                 if previous_phase is not None and phase != previous_phase and previous_phase not in visible_phases:
                     raise ValueError('ui_picker_phase')
                 previous_phase = phase
@@ -590,7 +601,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 base.owned_bytes(files / 'import.json', private, 4096)
                 base.owned_bytes(files / 'export.json', private, 16384)
             # Release shutdown only after helper exit and every actual callback postcondition.
-            quiet_input(desktop, epoch)
+            quiet_input(desktop, epoch, 'verification')
             fg, clip = observe_desktop(desktop)
             if clip != initial[1]:
                 raise ValueError('clipboard_changed')
@@ -601,7 +612,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             deadline = time.monotonic() + 12
             closed_seen = False
             while process.poll() is None:
-                quiet_input(desktop, epoch)
+                quiet_input(desktop, epoch, 'shutdown')
                 closed_seen = shutdown_frame(desktop, process.pid, hwnd, initial, work, closed_seen,
                                              owned_foreground_seen, ui.visible_windows)
                 if time.monotonic() > deadline:
@@ -609,7 +620,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 time.sleep(.05)
             save_fixture_exit(private, process.returncode)
             base.require_graceful(process, private)
-            quiet_input(desktop, epoch)
+            quiet_input(desktop, epoch, 'shutdown')
             shutdown_frame(desktop, process.pid, hwnd, initial, work, True,
                            owned_foreground_seen, ui.visible_windows)
             fg, clip = observe_desktop(desktop, allow_zero_fg=True)

@@ -304,8 +304,9 @@ Fixed phases are `target_launch` (before fixture bootstrap, not an atomic proces
 observation), `host_ready`, `preparation_start`, `before_focus`, `after_focus`.
 Each records only `relation=none|owned_a|owned_b|launcher|foreign`,
 `launcher_foreground=True|False` and a worker-local increasing `sample_order`.
-The launcher is the candidate worker which starts Target018, not the Python parent
-or coordinator. A foreground sample is not proof of Windows foreground eligibility.
+In nd-04/nr-09 the field called launcher was actually the candidate worker which
+starts Target018. nd-05 corrects it to the coordinator's direct parent (the trusted
+Python launcher); the high-rate trace separately distinguishes worker/coordinator. A foreground sample is not proof of Windows foreground eligibility.
 The launch record is buffered until the host log opens; samples are not atomic with
 subsequent OS calls and do not identify a foreign process or explain Windows denial.
 `native_host_readiness reason=` records the first failing existing predicate (or
@@ -315,6 +316,23 @@ The UI runner retains `reason=input` and adds allowlisted
 `inputSubreason=held|epoch_changed|idle` in its failure JSON. All guards stay intact.
 These diagnostics do not fix or accept repeated-scene activation. All source review
 gates remain false; a new reviewed screen slot is required for runtime evidence.
+
+nd-05 adds `owned_foreground_trace` after the single SetFocus returns: up to 51
+read-only samples over 250ms, requesting 5ms delays on non-UI continuations. Records
+are buffered in RAM and emitted before COM disposal/scene teardown, including on
+refusal. Scheduling can miss transitions; actual `elapsed_ms` is recorded, not a
+promise of 5ms resolution. Fixed relations: `owned_a`, `a_other_window`, `worker`,
+`guardian`, `coordinator`, `launcher`, `foreign`, `none`. For `a_other_window`, the
+fixed kind is `ime`, `tooltip`, `owned_by_a` (direct GW_OWNER), or `toplevel_other`;
+other relations use `not_applicable`. `initial_foreground` identifies a return to
+the original snapshot without disclosing identity. Same PID is observation only,
+never permission; an original refusal is latched before awaiting the trace, and
+all original later checks still run. No settling/retry/other-window exception.
+The UI worker's epoch refusal additionally retains unsigned `inputEpochDelta`,
+`inputIdleMs` and fixed `inputPhase` (current picker marker phase, management,
+verification, shutdown or unspecified). Delta is a timestamp difference, not an
+event count or evidence of a human/system source. No epoch rebaseline is added.
+See [research 051](../../docs/research/051-owned-foreground-loss-analysis.md).
 
 The global ERROR-log gate remains closed: only `editor-copy` requires and permits
 exactly one timestamped fixed line, `ERROR store_write_failed op=update_snippet

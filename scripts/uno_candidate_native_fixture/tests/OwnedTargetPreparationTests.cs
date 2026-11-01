@@ -233,6 +233,55 @@ public sealed class OwnedTargetPreparationTests
         Assert.Equal(refuse ? 0 : 1, os.EditorCommands);
     }
 
+    [Theory]
+    [InlineData(true)] [InlineData(false)]
+    public async Task TraceFinishesBeforeDisposalAndCannotRescueLatchedRefusal(bool foregroundRefusal)
+    {
+        var os = new Os();
+        var com = new Com(os) { FocusAction = () =>
+        {
+            if (foregroundRefusal) os.Foreground = 99;
+            else os.Identity = false;
+        } };
+        var started = false;
+        var finish = new TaskCompletionSource();
+        var pending = OwnedTargetPreparation.PrepareAsync(os, () => com, 1, 2, 3, CancellationToken.None,
+            traceAfterFocus: () => { started = true; return finish.Task; });
+        Assert.True(started); Assert.False(pending.IsCompleted); Assert.False(com.Released);
+        os.Foreground = 2; os.Identity = true;
+        finish.SetResult();
+        Assert.Equal(foregroundRefusal ? OwnedPreparationResult.ForegroundRefused : OwnedPreparationResult.Refused, await pending);
+        Assert.Equal(1, com.Focuses); Assert.True(com.Released); Assert.Equal(0, os.EditorCommands);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task TraceWaitCannotBroadenEpochChangeAllowance(bool epochChangedByFocus)
+    {
+        var os = new Os();
+        var com = new Com(os) { FocusAction = () => { if (epochChangedByFocus) os.Epoch++; } };
+        var finish = new TaskCompletionSource();
+        var pending = OwnedTargetPreparation.PrepareAsync(os, () => com, 1, 2, 3, CancellationToken.None,
+            traceAfterFocus: () => finish.Task);
+        os.Epoch++;
+        finish.SetResult();
+        Assert.Equal(OwnedPreparationResult.Refused, await pending);
+        Assert.Equal(1, com.Focuses); Assert.Equal(0, os.EditorCommands);
+    }
+
+    [Fact]
+    public async Task SuccessfulImmediateCheckStillRevalidatesAfterReadOnlyTrace()
+    {
+        var os = new Os(); var com = new Com(os);
+        var finish = new TaskCompletionSource();
+        var pending = OwnedTargetPreparation.PrepareAsync(os, () => com, 1, 2, 3, CancellationToken.None,
+            traceAfterFocus: () => finish.Task);
+        os.Foreground = 99;
+        finish.SetResult();
+        Assert.Equal(OwnedPreparationResult.Refused, await pending);
+        Assert.Equal(1, com.Focuses); Assert.Equal(0, os.EditorCommands);
+    }
+
     private static Task<OwnedPreparationResult> Prepare(Os os, Func<IOwnedPreparationAutomation> com) =>
         OwnedTargetPreparation.PrepareAsync(os, com, 1, 2, 3, CancellationToken.None);
     private sealed class Os : IOwnedPreparationOs

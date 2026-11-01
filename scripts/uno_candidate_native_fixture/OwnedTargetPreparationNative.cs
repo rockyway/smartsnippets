@@ -9,6 +9,27 @@ internal sealed partial class OwnedPreparationWindows(AcceptanceFixture fixture,
     CandidateNativeCapability capability) : IOwnedPreparationOs
 {
     private uint windowThread, editorThread;
+    internal static Task<List<string>> TraceAsync(AcceptanceFixture fixture, NativeAcceptanceSession session, nint initial)
+    {
+        var coordinator = checked((uint)RetainedIdentity.Id(Program.CoordinatorHandle));
+        var trace = new OwnedForegroundTrace(NativeFixtureOs.Foreground,
+            window => { GetWindowThreadProcessId(window, out var pid); return pid; },
+            fixture.Lease.Readiness.WindowA, fixture.Lease.ExpectedPid, (uint)Environment.ProcessId,
+            session.DiagnosticGuardianPid, coordinator, RetainedIdentity.Parent(Program.CoordinatorHandle), initial,
+            window => WindowKind(window, fixture.Lease.Readiness.WindowA),
+            () => (long)Stopwatch.GetElapsedTime(0).TotalMilliseconds, () => Task.Delay(5));
+        // RecordAsync takes its first sample synchronously, then resumes off the UI context.
+        return trace.RecordAsync();
+    }
+    private static unsafe string WindowKind(nint window, nint a)
+    {
+        var text = stackalloc char[128];
+        var count = GetClassNameW(window, text, 128);
+        var name = new ReadOnlySpan<char>(text, count);
+        return name.SequenceEqual("IME") || name.SequenceEqual("MSCTFIME UI") ? "ime" :
+            name.SequenceEqual("tooltips_class32") ? "tooltip" : GetWindow(window, 4) == a ? "owned_by_a" : "toplevel_other";
+    }
+    [LibraryImport("user32.dll")] private static partial nint GetWindow(nint window, uint command);
     public bool Permitted() => capability.Allows(CandidateNativeOperation.Focus) &&
         session.Validate(CandidateNativeOperation.Focus, session.SessionId, session.Target.WindowHandle, session.Target.ProcessId);
     public unsafe bool PinnedIdentity()

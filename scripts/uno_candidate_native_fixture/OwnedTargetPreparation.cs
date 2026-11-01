@@ -29,7 +29,7 @@ internal static class OwnedTargetPreparation
 
     internal static async Task<OwnedPreparationResult> PrepareAsync(IOwnedPreparationOs os,
         Func<IOwnedPreparationAutomation> automation, nint originalForeground, nint windowA, nint editorA, CancellationToken ct,
-        Action<string>? initialReceipt = null, Action<string>? sample = null)
+        Action<string>? initialReceipt = null, Action<string>? sample = null, Func<Task>? traceAfterFocus = null)
     {
         sample?.Invoke("preparation_start");
         bool Guard() => !ct.IsCancellationRequested && os.Permitted() && os.PinnedIdentity() && os.VisibleDesktop();
@@ -64,6 +64,7 @@ internal static class OwnedTargetPreparation
         if (!Initial() || os.Foreground != initialForeground) return OwnedPreparationResult.Refused;
         var alreadyA = os.Foreground == windowA;
         uint epoch;
+        uint? tracedEpoch = null;
         if (!os.TryInputEpoch(out epoch)) return OwnedPreparationResult.Refused;
         if (!alreadyA)
         {
@@ -78,13 +79,26 @@ internal static class OwnedTargetPreparation
                 sample?.Invoke("before_focus");
                 var focused = client.SetFocus(); // Exactly once; a failure never falls back to manual activation.
                 sample?.Invoke("after_focus");
-                if (!Guard()) return OwnedPreparationResult.Refused;
-                if (!focused) return OwnedPreparationResult.AutomationFailed;
-                if (os.Foreground != windowA) return OwnedPreparationResult.ForegroundRefused;
+                // Start a read-only independent sampler before the expensive identity guard.
+                // Latch the original refusal BEFORE awaiting diagnostics: a transient recovery is never authority.
+                var trace = traceAfterFocus?.Invoke();
+                try
+                {
+                    if (!Guard()) return OwnedPreparationResult.Refused;
+                    if (!focused) return OwnedPreparationResult.AutomationFailed;
+                    if (os.Foreground != windowA) return OwnedPreparationResult.ForegroundRefused;
+                    if (trace is not null)
+                    {
+                        if (!os.TryInputEpoch(out var frozen)) return OwnedPreparationResult.Refused;
+                        tracedEpoch = frozen; // Diagnostic wait must not enlarge the UIA epoch-change allowance.
+                    }
+                }
+                finally { if (trace is not null) await trace; }
             }
             catch { return OwnedPreparationResult.AutomationFailed; }
         }
         if (!Guard() || os.Foreground != windowA || !os.TryInputEpoch(out var after)) return OwnedPreparationResult.Refused;
+        if (tracedEpoch is uint frozenEpoch && after != frozenEpoch) return OwnedPreparationResult.Refused;
         var changed = after != epoch;
         if (alreadyA && changed) return OwnedPreparationResult.Refused;
         bool EpochStable() => os.TryInputEpoch(out var current) && current == after;
