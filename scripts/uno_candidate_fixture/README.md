@@ -264,7 +264,9 @@ Python and PowerShell independently authenticate the foreground HWND itself or
 `GW_OWNER == retainedMain`, **same candidate PID, any nonzero thread**, exact `#32770`.
 The first observed dialog is retained per phase, even before visibility; replacement
 refuses. Each phase must observe that exact dialog visible at least once before
-completion. PowerShell waits for visibility before accessing picker controls.
+completion. Python refuses leaving an observed active phase without a visible
+observation and checks all four phases again before accepting run completion.
+PowerShell waits for visibility before accessing picker controls.
 `fgThreadIsMainThread` remains informational in the unchanged 13-field record. Foreground
 allowance applies only during that exact fixed active phase and to that authenticated
 dialog. No title/global desktop discovery, broker PID adoption, unowned focus or

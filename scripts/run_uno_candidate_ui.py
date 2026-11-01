@@ -85,7 +85,7 @@ def validate_picker_phase_actions(phase, value):
         raise ValueError('ui_picker_phase_actions')
 
 
-def validate_picker_identity(main, popup, owner, pid, expected_pid, thread, main_thread, cls, visible):
+def validate_picker_identity(main, popup, owner, pid, expected_pid, thread, main_thread, cls):
     if (not popup or popup == main or owner != main or pid != expected_pid
             or not thread or not main_thread or cls != '#32770'):
         raise ValueError('ui_picker_identity')
@@ -115,7 +115,7 @@ def picker_phase(private):
     return active
 
 
-def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None):
+def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None, *, sample_foreground=True):
     user = desktop.user
     user.GetWindow.argtypes = [startup.W.HWND, startup.W.UINT]
     user.GetWindow.restype = startup.W.HWND
@@ -128,6 +128,10 @@ def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None):
     popup = user.GetWindow(hwnd, 6)  # GW_ENABLEDPOPUP, never desktop enumeration.
     from_foreground = not popup or popup == hwnd
     if from_foreground:
+        # Pre-sample authentication checks only GW_ENABLEDPOPUP; the frame later
+        # supplies its sampled foreground to avoid taking a second focus sample.
+        if foreground is None and not sample_foreground:
+            return None
         popup = foreground if foreground is not None else user.GetForegroundWindow()
         if not popup or popup == hwnd:
             return None
@@ -154,7 +158,7 @@ def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None):
     if not class_ok:
         raise ValueError('ui_picker_identity')
     return validate_picker_identity(hwnd, popup, owner, actual.value, pid, thread, main_thread,
-                                    cls.value, visible)
+                                    cls.value)
 
 
 def picker_foreground(desktop, fg, popup, authenticated):
@@ -342,7 +346,7 @@ def observe_desktop(desktop, allow_zero_fg=False):
 def observe_foreground_frame(desktop, hwnd, pid, initial, phase, picker_handles, owned_foreground_seen, sample_order, visible_phases=None):
     # Authenticate before sampling; if activation raced that query, authenticate once more
     # before judging the sampled HWND. Both queries preserve the same ownership/latch checks.
-    popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase), 0) if phase else None
+    popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase), sample_foreground=False) if phase else None
     if popup is not None:
         if picker_handles.setdefault(phase, popup) != popup:
             raise ForegroundChanged(desktop.user.GetForegroundWindow(), popup,
@@ -441,12 +445,16 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             owned_foreground_seen = False
             picker_handles = {}
             visible_phases = set()
+            previous_phase = None
             samples = 0
             while helper.poll() is None:
                 if process.poll() is not None:
                     raise ValueError('early_exit')
                 quiet_input(desktop, epoch)
                 phase = picker_phase(private) if scene == 'file-picker' else None
+                if previous_phase is not None and phase != previous_phase and previous_phase not in visible_phases:
+                    raise ValueError('ui_picker_phase')
+                previous_phase = phase
                 samples += 1
                 owned_foreground_seen = observe_foreground_frame(
                     desktop, hwnd, process.pid, initial, phase, picker_handles, owned_foreground_seen, samples, visible_phases)

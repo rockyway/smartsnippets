@@ -170,7 +170,7 @@ class UiManagementTests(unittest.TestCase):
         self.assertIn("base.owned_bytes(files / 'export.json', private, 16384)", source)
 
     def test_picker_identity_refuses_foreign_owner_pid_thread_class_and_main(self):
-        args = [10, 20, 10, 30, 30, 40, 40, '#32770', True]
+        args = [10, 20, 10, 30, 30, 40, 40, '#32770']
         self.assertEqual(20, s.validate_picker_identity(*args))
         for index, value in ((1, 0), (1, 10), (2, 11), (3, 31), (5, 0),
                              (7, 'other')):

@@ -387,7 +387,7 @@ public static class Owned019 {
             Start-Sleep -Milliseconds 50
         } while ($true)
         Guard
-        if ($script:pickerHwnd -ne $dialog) { throw 'picker_replaced' }
+        if ($script:pickerHwnd -ne $dialog) { ForegroundFailure ([Owned019]::GetForegroundWindow().ToInt64()) $dialog; throw 'picker_replaced' }
         $r = [Windows.Automation.AutomationElement]::FromHandle($dialog)
         if ($r.Current.ProcessId -ne $OwnedPid -or $r.Current.NativeWindowHandle -ne $dialog.ToInt64()) { throw 'picker_uia_owner' }
         if (-not $cancel) {

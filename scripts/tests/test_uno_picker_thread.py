@@ -8,6 +8,38 @@ from test_uno_candidate_ui import s, FakeWindows
 
 
 class PickerThreadTests(unittest.TestCase):
+    def test_no_phase_never_latches_foreground_picker(self):
+        world = FakeWindows(enabled_popup=20, foreground=20)
+        handles, visible = {}, set()
+        with self.assertRaises(s.ForegroundChanged):
+            s.observe_foreground_frame(world.desktop, 10, 30, (1, 2), None,
+                                      handles, True, 1, visible)
+        self.assertEqual({}, handles)
+        self.assertEqual(set(), visible)
+        self.assertNotIn('popup', world.calls)
+
+    def test_worker_visibility_completion_gates_execute(self):
+        # Execute the actual worker AST gates, not a copy of their predicates.
+        # Deleting either production gate fails discovery as well as the oracle.
+        import ast
+        tree = ast.parse(Path(s.__file__).read_text())
+        worker = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'worker')
+        gates = [n for n in ast.walk(worker) if isinstance(n, ast.If)
+                 and any(isinstance(x, ast.Raise) and 'ui_picker_phase' in ast.unparse(x)
+                         for x in n.body)
+                 and 'visible_phases' in ast.unparse(n.test)]
+        self.assertEqual(2, len(gates))
+        for gate in gates:
+            code = compile(ast.fix_missing_locations(ast.Module(body=[gate], type_ignores=[])), '<worker-gate>', 'exec')
+            env = dict(previous_phase='import-cancel', phase=None, visible_phases=set(), PICKER_PHASES=s.PICKER_PHASES)
+            with self.assertRaisesRegex(ValueError, '^ui_picker_phase$'):
+                exec(code, env)
+            env['visible_phases'] = set(s.PICKER_PHASES)
+            exec(code, env)
+            if 'previous_phase' in ast.unparse(gate.test):
+                env.update(phase='import-cancel', visible_phases=set())
+                exec(code, env)  # still-open invisible phase may wait, never complete
+
     def test_other_thread_invisible_then_visible_and_never_visible(self):
         world = FakeWindows(foreground=20)
         world.table[20]['thread'] = 41
@@ -103,6 +135,32 @@ if((OwnedPicker) -ne [IntPtr]::Zero){throw 'pid'}
         script += latch.rsplit('        }', 1)[0]
         script += "\n} catch { if($_.Exception.Message -cne 'picker_replaced'){throw}; $refused=$true }\n"
         script += "if(-not $refused -or -not $script:recorded){throw 'replacement'}\n"
+        # Also execute the second Guard replacement site, including its branch.
+        recheck = helper.split('        if (-not $pickerForeground -and $unexpected', 1)[1].split(
+            '        if (-not $pickerForeground -and (($script:focused', 1)[0]
+        script += "\n$pickerForeground=$false; $unexpected=$true; $dialog=[IntPtr]::Zero; $Scene='file-picker'; $script:pickerPhase='import-cancel'\n"
+        script += "$script:recorded=$false; $refused=$false; try {\n"
+        script += 'if (-not $pickerForeground -and $unexpected' + recheck
+        script += "\n} catch { if($_.Exception.Message -cne 'picker_replaced'){throw}; $refused=$true }\n"
+        script += "if(-not $refused -or -not $script:recorded){throw 'second_replacement'}\n"
+        run_picker = helper.split('    function RunPicker', 1)[1]
+        final_latch = next(line for line in run_picker.splitlines()
+                           if 'if ($script:pickerHwnd -ne $dialog)' in line)
+        script += "\n$dialog=[IntPtr]20; $script:pickerHwnd=[IntPtr]19; $script:recorded=$false; $refused=$false; try {\n"
+        script += final_latch
+        script += "\n} catch { if($_.Exception.Message -cne 'picker_replaced'){throw}; $refused=$true }\n"
+        script += "if(-not $refused -or -not $script:recorded){throw 'runpicker_replacement'}\n"
+        # Execute RunPicker's real bounded visibility wait, with clock/input and
+        # picker lookup stubbed. Removing IsWindowVisible makes the negative pass
+        # through without timeout and therefore fails this oracle.
+        wait = helper.split('    function RunPicker', 1)[1].split('        do {', 1)[1].split('        Guard\n', 1)[0]
+        wait = 'do {' + wait
+        script += "\nfunction OwnedPicker { return [IntPtr]20 }\nfunction Start-Sleep {}\n"
+        script += "function Guard { $script:waits++; if($script:waits -ge 2){$script:until=[DateTime]::UtcNow.AddSeconds(-1)} }\n"
+        for visible in ('$false', '$true'):
+            script += f"\n[Owned019]::Visible={visible}; $script:waits=0; $script:until=[DateTime]::UtcNow.AddSeconds(6); $timedOut=$false\n"
+            script += 'try {\n' + wait + "\n} catch { if($_.Exception.Message -cne 'picker_timeout'){throw}; $timedOut=$true }\n"
+            script += f"if($timedOut -ne (-not {visible})){{throw 'visibility_gate'}}\n"
         result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
                                 capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
         self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
