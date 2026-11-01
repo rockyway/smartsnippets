@@ -191,3 +191,33 @@ image/run/PID/thread/window/editor101/IsChild checks. Review `7e058313` found no
 issues. Validation: 106 fixture tests and strict false-gate AOT build
 `08210fd25a7244e1b90086eab6fed1d0`, SHA256
 `354dce3723e12c1bcbd5fd4a8c81ceae98ffdd390af53dd4ddfca909cd02fc08`.
+
+## Preparation succeeds; popup readiness now isolated
+
+Enabled exact-class build `fb292b7ca8b343f694fdc1f45627674a` (SHA256
+`670efc2ba9cdec748cadf28a1b59976c5942fd3ce30286f8602202ff9e7a5609`, source
+`27815a318866da135cf1b4202564b2cae1049df73aebdb0d66049c1116068426`)
+passed ordinary restore, stopped-worker abort and owned-owner refusal:
+
+- restore: `ss-uno018-ui-88ccd9a66b1dfe55e1a074fb2ba7466f/ss-uno019-native-e31bcea2e4a04d6e9ce188be2a1b2bae`;
+- abort: `ss-uno018-ui-bcfdc75ca5faa6d3ac129016c5631028/ss-uno019-native-1e5b5be8e1ef487798d7f31ea69e7b0e`;
+- owner-refusal: `ss-uno018-ui-65d7b93d587ff3e98b6955cda87dd52c/ss-uno019-native-dbbdf7cbbb364962851f030e79e9b219`.
+
+The restore witness was retained across wrappers after an intervening abort
+attempt refused `TimedOut` before publication. Several other preflights refused
+transient mouse/keyboard states without launch. No timed-out refusal was counted
+as PASS or bypassed. Successful abort and owner-refusal returned exact ordered
+receipts and were chained in trusted parent memory.
+
+Positive session
+`ss-uno018-ui-f3e58f870da3c41a5383a0a2237be258/ss-uno019-native-d2b6925b10974c6f9e1825bb40c73288`
+now logged `owned_preparation_admission reason=ready`,
+`owned_target_preparation reason=Prepared`, and `owned_initial_focus phase=ready`.
+It passed the previous boundary and logged `popup_opened mode=Fresh`, then failed
+about five seconds later before the popup-readiness wait completed and before
+keyboard arm. No insertion acceptance is claimed. Source inspection cannot yet
+distinguish lifecycle visibility, target match, popup foreground or input quiet
+as the failed predicate. All eight source flags were restored false.
+
+Commit `112e9cf` adds only fixed boolean diagnostics on that existing wait's
+failure path, without focus retries or admission changes; 106 fixture tests pass.

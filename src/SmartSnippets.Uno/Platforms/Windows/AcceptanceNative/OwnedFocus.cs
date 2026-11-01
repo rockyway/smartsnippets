@@ -27,7 +27,8 @@ internal interface IOwnedFocusOs
 }
 
 internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nint popup, IOwnedFocusOs os,
-    Func<bool> permitted, Func<bool> focusPermitted, nint main = 0, Func<bool>? mainPinned = null) : IAcceptanceFocus
+    Func<bool> permitted, Func<bool> focusPermitted, nint main = 0, Func<bool>? mainPinned = null,
+    Action<string>? focusReceipt = null) : IAcceptanceFocus
 {
     public bool AdmissionIdentityReady() => popup != 0 && permitted() && os.PopupPinned &&
         (main == 0 || mainPinned?.Invoke() == true) && probe.Check(target) == TargetCheck.Ok;
@@ -66,8 +67,17 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
         }
         return false;
     }
-    public bool TryFocusPopup() => focusPermitted() && ReadyForAdmission() &&
-        (os.Foreground == popup || (probe.IsTargetForeground(target) && os.PopupPinned && os.SetForeground(popup)));
+    public bool TryFocusPopup()
+    {
+        bool Result(bool value, string reason) { focusReceipt?.Invoke(reason); return value; }
+        if (!focusPermitted()) return Result(false, "permission");
+        if (!ReadyForAdmission()) return Result(false, "admission");
+        if (os.Foreground == popup) return Result(true, "already_popup");
+        if (!probe.IsTargetForeground(target)) return Result(false, "target");
+        if (!os.PopupPinned) return Result(false, "popup");
+        var focused = os.SetForeground(popup); // Same single attempt and short-circuit order.
+        return Result(focused, focused ? "foreground_accepted" : "foreground_refused");
+    }
 }
 
 /// <summary>An unguessable HWND property dies with the exact popup, preventing same-class handle-reuse adoption.</summary>

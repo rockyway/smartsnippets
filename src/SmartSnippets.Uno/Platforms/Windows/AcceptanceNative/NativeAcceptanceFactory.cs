@@ -55,7 +55,8 @@ internal static class NativeAcceptanceFactory
                 var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy, allowClipboardControl, main, knownPriorToken);
                 var focus = new OwnedFocus(probe, target, ownedPopupWindow, popup,
                     () => Permission(AcceptanceOperation.Capture) || Permission(AcceptanceOperation.Copy) || Permission(AcceptanceOperation.Insert),
-                    () => Permission(AcceptanceOperation.Focus), ownedMainWindow, () => main?.PopupPinned == true);
+                    () => Permission(AcceptanceOperation.Focus), ownedMainWindow, () => main?.PopupPinned == true,
+                    reason => SmartSnippets.Core.Logging.AppLog.Info("native_popup_focus", $"reason={reason}"));
                 return new(owned, probe, target, channel, new(probe, target, Permission, channel, new NativeAcceptanceInput(), focus),
                     focus, popup, Permission, () => closed = true, () => { try { main?.Dispose(); } finally { popup.Dispose(); } });
             }

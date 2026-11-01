@@ -113,6 +113,21 @@ public sealed class OwnedFocusTests
         Assert.Equal(0, os.FocusCalls);
     }
 
+    [Theory]
+    [InlineData(false, true, true, "permission", 0)]
+    [InlineData(true, false, true, "admission", 0)]
+    [InlineData(true, true, false, "foreground_refused", 1)]
+    [InlineData(true, true, true, "foreground_accepted", 1)]
+    public void PopupFocusReceiptsPreserveSingleAttemptAndGuardOrder(bool permission, bool quiet, bool accepted, string reason, int calls)
+    {
+        var os = new FocusOs { Foreground = A.WindowHandle, Quiet = quiet, FocusAccepted = accepted };
+        var receipts = new System.Collections.Generic.List<string>();
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => permission, focusReceipt: receipts.Add);
+        Assert.Equal(permission && quiet && accepted, focus.TryFocusPopup());
+        Assert.Equal(new[] { reason }, receipts);
+        Assert.Equal(calls, os.FocusCalls);
+    }
+
     private sealed class Probe(FocusOs os) : ITargetProbe
     {
         public TargetCheck Check(InsertionTarget target) => target == A ? TargetCheck.Ok : TargetCheck.Closed;
@@ -120,12 +135,12 @@ public sealed class OwnedFocusTests
     }
     private sealed class FocusOs : IOwnedFocusOs
     {
-        internal bool Quiet = true;
+        internal bool Quiet = true, FocusAccepted = true;
         internal int FocusCalls;
         internal Action? AfterQuietCheck;
         public bool PopupPinned { get; set; } = true;
         public nint Foreground { get; set; }
         public bool QuietDesktop() { AfterQuietCheck?.Invoke(); return Quiet; }
-        public bool SetForeground(nint window) { FocusCalls++; Foreground = window; return true; }
+        public bool SetForeground(nint window) { FocusCalls++; if (FocusAccepted) Foreground = window; return FocusAccepted; }
     }
 }

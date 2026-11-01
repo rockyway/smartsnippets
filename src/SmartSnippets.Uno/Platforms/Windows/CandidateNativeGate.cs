@@ -68,9 +68,15 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
 
     internal bool TryFocusOwnedPopup()
     {
-        if (!IsIdle || _captured is null || !Allows(CandidateNativeOperation.Focus)) return false;
-        try { return _capability!.Operations.TryFocusOwnedPopup(); }
-        catch { return false; }
+        if (!IsIdle || _captured is null || !Allows(CandidateNativeOperation.Focus))
+        { AppLog.Info("candidate_popup_focus", "reason=denied"); return false; }
+        try
+        {
+            var focused = _capability!.Operations.TryFocusOwnedPopup();
+            AppLog.Info("candidate_popup_focus", focused ? "reason=accepted" : "reason=refused");
+            return focused;
+        }
+        catch { AppLog.Info("candidate_popup_focus", "reason=failed"); return false; }
     }
 
     internal InsertionTarget? Capture()
