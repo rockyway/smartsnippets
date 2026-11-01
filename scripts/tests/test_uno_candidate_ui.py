@@ -124,6 +124,26 @@ class UiManagementTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'ui_helper_protocol'):
                 s.validate_helper_output(code, out, err)
 
+    def test_foreground_failure_preserves_captured_sample_and_logs_only_relation(self):
+        import json
+        desktop = Mock()
+        def owner(hwnd, target):
+            target._obj.value = 42 if hwnd == 20 else 99
+            return 1
+        desktop.user.GetWindowThreadProcessId.side_effect = owner
+        for fg, relation in ((0, 'none'), (1, 'initial'), (10, 'owned_main'), (20, 'owned_other'), (30, 'external')):
+            with tempfile.TemporaryDirectory() as tmp:
+                error = s.ForegroundChanged(fg)
+                self.assertEqual('foreground_changed', str(error))
+                s.save_foreground_failure(Path(tmp), desktop, error.foreground, (1, 2), 10, 42)
+                self.assertEqual({'foregroundRelation': relation}, json.loads((Path(tmp) / 'foreground-failure.json').read_text()))
+        desktop.user.GetForegroundWindow.assert_not_called()
+        desktop.user.GetWindowThreadProcessId.side_effect = None
+        desktop.user.GetWindowThreadProcessId.return_value = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            s.save_foreground_failure(Path(tmp), desktop, 30, (1, 2), 10, 42)
+            self.assertEqual({'foregroundRelation': 'unknown'}, json.loads((Path(tmp) / 'foreground-failure.json').read_text()))
+
     def test_fixture_exit_diagnostic_is_numeric_and_never_overwrites(self):
         import json
         with tempfile.TemporaryDirectory() as tmp:

@@ -149,6 +149,27 @@ def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sl
     raise ValueError('ui_quiet_timeout')
 
 
+class ForegroundChanged(ValueError):
+    def __init__(self, foreground):
+        super().__init__('foreground_changed')
+        self.foreground = foreground
+
+
+def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid):
+    if not foreground:
+        relation = 'none'
+    elif foreground == initial[0]:
+        relation = 'initial'
+    elif foreground == hwnd:
+        relation = 'owned_main'
+    else:
+        owner = startup.W.DWORD()
+        thread = desktop.user.GetWindowThreadProcessId(foreground, startup.C.byref(owner))
+        relation = 'unknown' if not thread else 'owned_other' if owner.value == pid else 'external'
+    with (private / 'foreground-failure.json').open('x', encoding='ascii') as report:
+        json.dump({'foregroundRelation': relation}, report)
+
+
 def observe_desktop(desktop, allow_zero_fg=False):
     desktop.validate_input_desktop()
     fg = desktop.user.GetForegroundWindow()
@@ -173,7 +194,7 @@ def shutdown_frame(desktop, pid, hwnd, initial, work, closed_seen, owned_foregro
             raise ValueError('window_recreated')
         return True
     if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
-        raise ValueError('foreground_changed')
+        raise ForegroundChanged(fg)
     return False
 
 
@@ -235,7 +256,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if clip != initial[1]:
                     raise ValueError('clipboard_changed')
                 if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
-                    raise ValueError('foreground_changed')
+                    raise ForegroundChanged(fg)
                 owned_foreground_seen |= fg == hwnd
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
                     raise ValueError('geometry')
@@ -264,7 +285,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             if clip != initial[1]:
                 raise ValueError('clipboard_changed')
             if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
-                raise ValueError('foreground_changed')
+                raise ForegroundChanged(fg)
             with (private / (phases[-1] + '.continue')).open('xb') as ack:
                 ack.write(b'continue\n')
             deadline = time.monotonic() + 12
@@ -297,6 +318,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             if privacy.scan_evidence(records, canaries)['privacy'] != 'CLEAN':
                 raise ValueError('privacy')
     except BaseException as error:
+        if isinstance(error, ForegroundChanged) and process is not None:
+            save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid)
         base.record_failure(private, error)
         raise
     finally:
