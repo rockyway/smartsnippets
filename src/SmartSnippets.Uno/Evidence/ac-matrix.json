@@ -1,0 +1,285 @@
+{
+  "SourceFingerprint": "f966a5d2e7df08996e2ecef8764ca66eba59ad2c6feb822b9fc5be648cad1f65",
+  "Rows": [
+    {
+      "Id": "AC1",
+      "Ac": "AC1",
+      "Surface": "Coexistence registry profile redirect",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "AC2",
+      "Ac": "AC2",
+      "Surface": "Management failure discard assignment relaunch pickers",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "AC3",
+      "Ac": "AC3",
+      "Surface": "Popup lifecycle nonactivation hover tray DPI",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "AC4",
+      "Ac": "AC4",
+      "Surface": "Safe boundaries all native consumers and faults",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "AC5",
+      "Ac": "AC5",
+      "Surface": "Privacy legacy compatibility hosted CI",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "AC6",
+      "Ac": "AC6",
+      "Surface": "Fresh final-source AOT and hosted CI",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "AC7",
+      "Ac": "AC7",
+      "Surface": "Honest evidence final audit",
+      "Scene": "required acceptance",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S01",
+      "Ac": "AC1",
+      "Surface": "Startup and startup failure",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S02",
+      "Ac": "AC2",
+      "Surface": "Main snippets and editor",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S03",
+      "Ac": "AC2",
+      "Surface": "Folders",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S04",
+      "Ac": "AC2",
+      "Surface": "Settings and shortcut recorder",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S05",
+      "Ac": "AC2",
+      "Surface": "Import export and dialogs",
+      "Scene": "surface inventory",
+      "Status": "BLOCKED-NATIVE",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S06",
+      "Ac": "AC3",
+      "Surface": "Popup toolbar rows editor footer context sort",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S07",
+      "Ac": "AC3",
+      "Surface": "Hover details and keyboard preview",
+      "Scene": "surface inventory",
+      "Status": "BLOCKED-NATIVE",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S08",
+      "Ac": "AC3",
+      "Surface": "Theme palette text size brushes",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S09",
+      "Ac": "AC3",
+      "Surface": "Message window tray notifier dispatcher",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S10",
+      "Ac": "AC3",
+      "Surface": "LaunchOptions QA",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S11",
+      "Ac": "AC4",
+      "Surface": "Windows service adapters",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S12",
+      "Ac": "AC5",
+      "Surface": "Shared logging and migration",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S13",
+      "Ac": "AC4",
+      "Surface": "Clipboard and three Copy VMs",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "S14",
+      "Ac": "AC6",
+      "Surface": "Publish CI tests evidence",
+      "Scene": "surface inventory",
+      "Status": "PARTIAL",
+      "ResearchDoc": "",
+      "SessionId": "",
+      "SourceFingerprint": ""
+    },
+    {
+      "Id": "R039-registered-enter",
+      "Ac": "AC4",
+      "Surface": "Native boundaries",
+      "Scene": "registered-enter",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/039-registered-shortcut-native-insertion-pass.md",
+      "SessionId": "ss-uno019-native-805778bc12644676accd7a63f8dbced9",
+      "SourceFingerprint": "611c71a3c829e4fb6fb94f5adeee8aca930bfb2bf686d61f2959e08a7b1e73f3"
+    },
+    {
+      "Id": "R040-preview",
+      "Ac": "AC4",
+      "Surface": "Native boundaries",
+      "Scene": "preview",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/040-native-preview-expiry-and-copy-boundaries.md",
+      "SessionId": "ss-uno019-native-edf07654100047a6af066a3420358598",
+      "SourceFingerprint": "611c71a3c829e4fb6fb94f5adeee8aca930bfb2bf686d61f2959e08a7b1e73f3"
+    },
+    {
+      "Id": "R040-expired",
+      "Ac": "AC4",
+      "Surface": "Native boundaries",
+      "Scene": "expired",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/040-native-preview-expiry-and-copy-boundaries.md",
+      "SessionId": "ss-uno019-native-22601da1f9d648fb95900f697f842912",
+      "SourceFingerprint": "611c71a3c829e4fb6fb94f5adeee8aca930bfb2bf686d61f2959e08a7b1e73f3"
+    },
+    {
+      "Id": "R040-copy",
+      "Ac": "AC4",
+      "Surface": "Native boundaries",
+      "Scene": "copy",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/040-native-preview-expiry-and-copy-boundaries.md",
+      "SessionId": "ss-uno019-native-c6cd5e49b15b4752baeacff6b133fc2a",
+      "SourceFingerprint": "611c71a3c829e4fb6fb94f5adeee8aca930bfb2bf686d61f2959e08a7b1e73f3"
+    },
+    {
+      "Id": "R033-snippets",
+      "Ac": "AC2",
+      "Surface": "Rendered management",
+      "Scene": "snippets",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/033-primary-landscape-rendered-management.md",
+      "SessionId": "ss-uno018-ui-8a9a56e7ab39172a5eb3b2964d725721",
+      "SourceFingerprint": "33d11ff5929e13a2d5aaa18aff8a28ba74467138a1beb40121cb4fff300d9b17"
+    },
+    {
+      "Id": "R033-folders",
+      "Ac": "AC2",
+      "Surface": "Rendered management",
+      "Scene": "folders",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/033-primary-landscape-rendered-management.md",
+      "SessionId": "ss-uno018-ui-d2e8457d8a0d821c530d88b96f1d4316",
+      "SourceFingerprint": "33d11ff5929e13a2d5aaa18aff8a28ba74467138a1beb40121cb4fff300d9b17"
+    },
+    {
+      "Id": "R033-settings",
+      "Ac": "AC2",
+      "Surface": "Rendered management",
+      "Scene": "settings",
+      "Status": "PARTIAL",
+      "ResearchDoc": "docs/research/033-primary-landscape-rendered-management.md",
+      "SessionId": "ss-uno018-ui-a879cce72998f18ba06b7b2ccb5f0818",
+      "SourceFingerprint": "33d11ff5929e13a2d5aaa18aff8a28ba74467138a1beb40121cb4fff300d9b17"
+    }
+  ]
+}
