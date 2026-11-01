@@ -16,6 +16,7 @@ public static class Program
     internal static bool RenderedUiMode { get; private set; }
     internal static bool FolderScene { get; private set; }
     internal static bool SettingsScene { get; private set; }
+    internal static bool FilePickerScene { get; private set; }
 
     [STAThread]
     private static void Main(string[] args)
@@ -56,6 +57,15 @@ public static class Program
                 || info.Length != 22 || File.ReadAllText(settingsPermit) != "owned_settings_ui_019\n")
                 throw new InvalidOperationException("fixture_settings_permit");
             SettingsScene = true;
+        }
+        var pickerPermit = Path.Combine(PrivateRoot, "fixture-file-picker-scene-permit");
+        if (File.Exists(pickerPermit))
+        {
+            var info = new FileInfo(pickerPermit);
+            if (!RenderedUiMode || FolderScene || SettingsScene || (info.Attributes & FileAttributes.ReparsePoint) != 0
+                || File.ReadAllText(pickerPermit) != "owned_file_picker_ui_019\n")
+                throw new InvalidOperationException("fixture_picker_permit");
+            FilePickerScene = true;
         }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         _instance = AppInstance.FindOrRegisterForKey("SmartSnippets.UnoAcceptanceFixture019." + name);

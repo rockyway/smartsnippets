@@ -46,6 +46,8 @@ def scene_phases(scene):
         return ('ui-ready', 'ui-folder-created', 'ui-folder-renamed', 'ui-folder-deleted')
     if scene == 'settings':
         return ('ui-ready', 'ui-settings-theme', 'ui-settings-size', 'ui-settings-reloaded')
+    if scene == 'file-picker':
+        return ('ui-ready', 'ui-import-cancelled', 'ui-imported', 'ui-export-cancelled', 'ui-exported')
     raise ValueError('ui_scene')
 
 
@@ -64,6 +66,77 @@ def validate_snippet_actions(value):
 def validate_settings_actions(value):
     if value != b'scroll=2\nselect=2\n':
         raise ValueError('ui_settings_actions')
+
+
+PICKER_PHASES = ('import-cancel', 'import', 'export-cancel', 'export')
+
+
+def validate_picker_actions(value):
+    if value != b'main=4\npicker=4\nvalue=2\ninfo=2\n':
+        raise ValueError('ui_picker_actions')
+
+
+def validate_picker_phase_actions(phase, value):
+    if phase not in PICKER_PHASES:
+        raise ValueError('ui_picker_phase')
+    expected = b'invoke=1\npicker=1\nvalue=0\n' if phase.endswith('-cancel') else b'invoke=2\npicker=1\nvalue=1\n'
+    if value != expected:
+        raise ValueError('ui_picker_phase_actions')
+
+
+def validate_picker_identity(main, popup, owner, pid, expected_pid, thread, main_thread, cls, visible):
+    if (not popup or popup == main or owner != main or pid != expected_pid
+            or not thread or thread != main_thread or cls != '#32770' or not visible):
+        raise ValueError('ui_picker_identity')
+    return popup
+
+
+def picker_phase(private):
+    # Exactly one active fixed phase, in order. Marker content is not a selector.
+    active = None
+    pending = False
+    for phase in PICKER_PHASES:
+        opened = private / ('picker-' + phase + '.active')
+        closed = private / ('picker-' + phase + '.closed')
+        if opened.exists():
+            if pending or base.owned_bytes(opened, private) != b'owned_picker_019\n':
+                raise ValueError('ui_picker_phase')
+            if closed.exists():
+                if base.owned_bytes(closed, private) != b'owned_picker_019\n':
+                    raise ValueError('ui_picker_phase')
+            else:
+                active = phase
+                pending = True
+        else:
+            if closed.exists():
+                raise ValueError('ui_picker_phase')
+            pending = True
+    return active
+
+
+def owned_picker(desktop, hwnd, pid):
+    user = desktop.user
+    user.GetWindow.argtypes = [startup.W.HWND, startup.W.UINT]
+    user.GetWindow.restype = startup.W.HWND
+    user.GetClassNameW.argtypes = [startup.W.HWND, startup.W.LPWSTR, startup.C.c_int]
+    user.GetClassNameW.restype = startup.C.c_int
+    popup = user.GetWindow(hwnd, 6)  # GW_ENABLEDPOPUP, never desktop enumeration.
+    if not popup or popup == hwnd:
+        return None
+    owner = user.GetWindow(popup, 4)  # GW_OWNER must be the retained main, not an ancestor.
+    actual = startup.W.DWORD()
+    thread = user.GetWindowThreadProcessId(popup, startup.C.byref(actual))
+    main_pid = startup.W.DWORD()
+    main_thread = user.GetWindowThreadProcessId(hwnd, startup.C.byref(main_pid))
+    main_class = startup.C.create_unicode_buffer(256)
+    if (not user.GetClassNameW(hwnd, main_class, len(main_class))
+            or main_class.value != 'WinUIDesktopWin32WindowClass' or not user.IsWindowVisible(hwnd)):
+        raise ValueError('ui_picker_main_identity')
+    cls = startup.C.create_unicode_buffer(256)
+    if not user.GetClassNameW(popup, cls, len(cls)) or main_pid.value != pid:
+        raise ValueError('ui_picker_identity')
+    return validate_picker_identity(hwnd, popup, owner, actual.value, pid, thread, main_thread,
+                                    cls.value, bool(user.IsWindowVisible(popup)))
 
 
 def system_powershell():
@@ -234,6 +307,9 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
         if scene == 'folders':
             with (private / 'fixture-folder-scene-permit').open('xb') as permit:
                 permit.write(b'owned_folder_ui_019\n')
+        if scene == 'file-picker':
+            with (private / 'fixture-file-picker-scene-permit').open('xb') as permit:
+                permit.write(b'owned_file_picker_ui_019\n')
         if scene == 'settings':
             with (private / 'fixture-settings-scene-permit').open('xb') as permit:
                 permit.write(b'owned_settings_ui_019\n')
@@ -248,16 +324,25 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                        '-InitialForeground', str(initial[0]), '-InputEpoch', str(epoch), '-PrivateRoot', str(private), '-Artifact', str(entry)]
             helper = subprocess.Popen(command, cwd=private, stdin=subprocess.DEVNULL,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
-            deadline = time.monotonic() + 35
+            deadline = time.monotonic() + (60 if scene == 'file-picker' else 35)
             owned_foreground_seen = False
+            picker_handles = {}
             while helper.poll() is None:
+                if process.poll() is not None:
+                    raise ValueError('early_exit')
                 quiet_input(desktop, epoch)
                 fg, clip = observe_desktop(desktop)
                 if clip != initial[1]:
                     raise ValueError('clipboard_changed')
-                if fg not in (initial[0], hwnd) or (owned_foreground_seen and fg != hwnd):
+                phase = picker_phase(private) if scene == 'file-picker' else None
+                popup = owned_picker(desktop, hwnd, process.pid) if phase else None
+                if popup is not None:
+                    if picker_handles.setdefault(phase, popup) != popup:
+                        raise ValueError('ui_picker_replaced')
+                allowed = (initial[0], hwnd, popup) if not owned_foreground_seen else (hwnd, popup)
+                if fg not in allowed:
                     raise ForegroundChanged(fg)
-                owned_foreground_seen |= fg == hwnd
+                owned_foreground_seen |= fg == hwnd or (popup is not None and fg == popup)
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
                     raise ValueError('geometry')
                 if time.monotonic() > deadline:
@@ -279,6 +364,14 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 validate_folder_actions(base.owned_bytes(private / 'ui-folder-actions.receipt', private))
             if scene == 'settings':
                 validate_settings_actions(base.owned_bytes(private / 'ui-settings-actions.receipt', private))
+            if scene == 'file-picker':
+                validate_picker_actions(base.owned_bytes(private / 'ui-picker-actions.receipt', private))
+                if picker_phase(private) is not None:
+                    raise ValueError('ui_picker_phase')
+                for phase in PICKER_PHASES:
+                    if not (private / ('picker-' + phase + '.closed')).exists():
+                        raise ValueError('ui_picker_phase')
+                    validate_picker_phase_actions(phase, base.owned_bytes(private / ('picker-' + phase + '.actions'), private))
             # Release shutdown only after helper exit and every actual callback postcondition.
             quiet_input(desktop, epoch)
             fg, clip = observe_desktop(desktop)
@@ -310,7 +403,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             # Extend the existing privacy scanner and its negative controls with this mode's canaries.
             privacy = startup.repo_module('ui_privacy', 'scripts/uno_candidate_privacy.py')
             canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', 'ui019 synthetic folder',
-                        'ui019 synthetic renamed', 'ui019 synthetic attached', 'ui019 synthetic discarded', str(private))
+                        'ui019 synthetic renamed', 'ui019 synthetic attached', 'ui019 synthetic discarded',
+                        'ui019 synthetic picker', 'ui019 picker label', 'ui019 picker folder', str(private))
             privacy.verify_negative_controls(canaries)
             records = [base.owned_bytes(p, private) for p in
                        (private / 'stdout.log', private / 'stderr.log', private / 'fixture-profile/logs/app.log',
@@ -344,7 +438,7 @@ def supervise(command, job_factory, popen=subprocess.Popen):
     job = None
     try:
         job = job_factory(process)
-        out, err = process.communicate(startup.PERMIT, timeout=65)
+        out, err = process.communicate(startup.PERMIT, timeout=95)
         if process.returncode or err or out not in (b'ui_management_observed\n', b'ui_management_observed\r\n'):
             raise ValueError('worker_protocol')
         base.require_empty_job(job)
@@ -357,7 +451,7 @@ def supervise(command, job_factory, popen=subprocess.Popen):
 
 def main():
     parser = startup.Parser(allow_abbrev=False)
-    parser.add_argument('--scene', choices=('snippets', 'folders', 'settings'), default='snippets')
+    parser.add_argument('--scene', choices=('snippets', 'folders', 'settings', 'file-picker'), default='snippets')
     parser.add_argument('--executable', required=True, type=Path)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--authorized-screen-slot', action='store_true')
@@ -393,7 +487,7 @@ def main():
             'settingsRelaunch': 'NOT_RUN',
             'folderSnippetAssignment': 'FIXTURE_SEED_ONLY' if args.scene == 'folders' else 'NOT_RUN',
             'rowSelection': 'NOT_RUN', 'dirtySaveDiscard': 'OBSERVED' if args.scene == 'snippets' else 'NOT_RUN',
-            'filePicker': 'NOT_RUN',
+            'filePicker': 'OBSERVED' if args.scene == 'file-picker' else 'NOT_RUN',
             'nativeAdapters': 'DEFAULT_DENIED', 'stop': 'GRACEFUL', 'job': 'ZERO_ACTIVE',
             'privateEvidenceToken': private.name, 'sourceSha256': source_fingerprint()}
 

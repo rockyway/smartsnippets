@@ -12,6 +12,83 @@ SPEC.loader.exec_module(s)
 
 
 class UiManagementTests(unittest.TestCase):
+    def test_picker_identity_refuses_foreign_owner_pid_thread_class_and_main(self):
+        args = [10, 20, 10, 30, 30, 40, 40, '#32770', True]
+        self.assertEqual(20, s.validate_picker_identity(*args))
+        for index, value in ((1, 0), (1, 10), (2, 11), (3, 31), (5, 0), (5, 41),
+                             (7, 'other'), (8, False)):
+            altered = args.copy()
+            altered[index] = value
+            with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
+                s.validate_picker_identity(*altered)
+
+    def test_picker_markers_refuse_overlap_reordering_and_wrong_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertIsNone(s.picker_phase(root))
+            first = root / 'picker-import-cancel.active'
+            first.write_bytes(b'owned_picker_019\n')
+            self.assertEqual('import-cancel', s.picker_phase(root))
+            second = root / 'picker-import.active'
+            second.write_bytes(b'owned_picker_019\n')
+            with self.assertRaisesRegex(ValueError, 'ui_picker_phase'):
+                s.picker_phase(root)
+            (root / 'picker-import-cancel.closed').write_bytes(b'owned_picker_019\n')
+            self.assertEqual('import', s.picker_phase(root))
+            first.unlink()
+            with self.assertRaisesRegex(ValueError, 'ui_picker_phase'):
+                s.picker_phase(root)
+            first.write_bytes(b'arbitrary dialog\n')
+            with self.assertRaisesRegex(ValueError, 'ui_picker_phase'):
+                s.picker_phase(root)
+
+    def test_picker_phase_rejects_hardlinked_private_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'owned-synthetic-marker'
+            source.write_bytes(b'owned_picker_019\n')
+            (root / 'picker-import-cancel.active').hardlink_to(source)
+            with self.assertRaisesRegex(ValueError, 'evidence_file'):
+                s.picker_phase(root)
+
+    def test_picker_per_phase_action_receipts_are_exact(self):
+        for phase in s.PICKER_PHASES:
+            value = b'invoke=1\npicker=1\nvalue=0\n' if phase.endswith('-cancel') else b'invoke=2\npicker=1\nvalue=1\n'
+            s.validate_picker_phase_actions(phase, value)
+            for bad in (b'', value + b'extra', value.replace(b'picker=1', b'picker=2')):
+                with self.assertRaisesRegex(ValueError, 'ui_picker_phase_actions'):
+                    s.validate_picker_phase_actions(phase, bad)
+
+    def test_picker_action_receipt_rejects_missing_duplicate_or_extra_mutation(self):
+        s.validate_picker_actions(b'main=4\npicker=4\nvalue=2\ninfo=2\n')
+        for value in (b'', b'main=5\npicker=4\nvalue=2\ninfo=2\n',
+                      b'main=4\npicker=5\nvalue=2\ninfo=2\n',
+                      b'main=4\npicker=4\nvalue=3\ninfo=2\n',
+                      b'main=4\npicker=4\nvalue=2\ninfo=2\nextra'):
+            with self.assertRaisesRegex(ValueError, 'ui_picker_actions'):
+                s.validate_picker_actions(value)
+        self.assertEqual(('ui-ready', 'ui-import-cancelled', 'ui-imported',
+                          'ui-export-cancelled', 'ui-exported'), s.scene_phases('file-picker'))
+
+    def test_picker_ps_is_fixed_owned_schema_without_generic_discovery(self):
+        helper = s.HELPER.read_text()
+        picker = helper.split('    function RunPicker', 1)[1].split("    $stage = 'ready'", 1)[0]
+        ownership = helper.split('    function OwnedPicker', 1)[1].split('    function Guard', 1)[0]
+        for fragment in ('GetWindow($h, 6)', 'GetWindow($dialog, 4) -ne $h',
+                         '$dialogPid -ne $OwnedPid', "$cls.ToString() -cne '#32770'", '$thread -ne $mainThread'):
+            self.assertIn(fragment, ownership)
+        self.assertIn("PickerElement $dialog '1148' $r", picker)
+        self.assertIn("PickerElement $dialog '1001' $e", picker)
+        self.assertIn("$items.Count -ne 1", helper.split('    function PickerElement', 1)[1])
+        for fragment in ('ComboBox', 'Edit', 'Button', 'picker_existing_export', 'picker_alias'):
+            self.assertIn(fragment, picker)
+        self.assertEqual(1, picker.count('$value.SetValue($path)'))
+        self.assertEqual(1, picker.count('$invoke.Invoke()'))
+        for forbidden in ('RootElement', 'SendKeys', 'GetWindowText', 'SetFocus', 'SetForegroundWindow'):
+            self.assertNotIn(forbidden, picker)
+        self.assertIn('IsChild($dialog, $native)', helper)
+        self.assertFalse(s.UI_SOURCE_REVIEWED)
+
     def test_review_closed_before_artifact_access(self):
         self.assertFalse(s.UI_SOURCE_REVIEWED)
         args = ['observer', '--executable', 'untrusted.exe', '--sha256', 'a'*64,
@@ -43,7 +120,7 @@ class UiManagementTests(unittest.TestCase):
         self.assertIn('fixture-folder-scene-permit', program)
         self.assertIn('!RenderedUiMode', program)
         self.assertIn('FileAttributes.ReparsePoint', program)
-        self.assertIn("[ValidateSet('snippets','folders','settings')]", helper)
+        self.assertIn("[ValidateSet('snippets','folders','settings','file-picker')]", helper)
         for key in ('folder-new-name', 'folder-create', 'folder-rename', 'folder-name',
                     'folder-save', 'folder-delete', 'folder-confirm'):
             self.assertIn("'" + key + "' {", helper)

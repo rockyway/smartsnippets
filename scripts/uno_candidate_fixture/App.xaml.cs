@@ -24,6 +24,25 @@ public partial class App : Application
             CandidateAcceptanceFlow.RequireReady(_host, Program.ProfileRoot);
             if (Program.RenderedUiMode)
             {
+                if (Program.FilePickerScene)
+                {
+                    FilePickerAssertDriver.PrepareFilePicker(_host, Program.ProfileRoot);
+                    Program.Receipt("ui-ready"); await Program.WaitAsync("ui-ready");
+                    if (_host.Snippets.Porting.ImportCommand.ExecutionTask is { } cancelImport) await cancelImport;
+                    FilePickerAssertDriver.RequirePickerImportCancelled(_host, Program.ProfileRoot);
+                    Program.Receipt("ui-import-cancelled"); await Program.WaitAsync("ui-import-cancelled");
+                    if (_host.Snippets.Porting.ImportCommand.ExecutionTask is { } import) await import;
+                    var importedIds = FilePickerAssertDriver.RequirePickerImported(_host, Program.ProfileRoot);
+                    Program.Receipt("ui-imported"); await Program.WaitAsync("ui-imported");
+                    if (_host.Snippets.Porting.ExportCommand.ExecutionTask is { } cancelExport) await cancelExport;
+                    FilePickerAssertDriver.RequirePickerExportCancelled(_host, Program.ProfileRoot, importedIds);
+                    Program.Receipt("ui-export-cancelled"); await Program.WaitAsync("ui-export-cancelled");
+                    if (_host.Snippets.Porting.ExportCommand.ExecutionTask is { } export) await export;
+                    FilePickerAssertDriver.RequirePickerExported(_host, Program.ProfileRoot, importedIds);
+                    Program.Receipt("ui-exported"); await Program.WaitAsync("ui-exported");
+                    await _host.ExitAsync();
+                    return;
+                }
                 if (Program.SettingsScene)
                 {
                     UiAssertDriver.RequireSettingsFresh(_host);

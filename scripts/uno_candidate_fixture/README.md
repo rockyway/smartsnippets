@@ -212,3 +212,67 @@ Headless tests exercise assertion rejection and real VM Save/Discard semantics,
 not rendered callback proof. No native run has verified these new dialog template
 identities or the responsive path. Save failure and folder dirty dialogs remain
 unproven, as do file pickers and the other outstanding Plan019 acceptance paths.
+
+## Fixed native file-picker checkpoint (review closed; NOT RUN)
+
+`run_uno_candidate_ui.py --scene file-picker` adds a separate rendered management
+scene. `UI_SOURCE_REVIEWED=False` remains closed. Independent security/source
+review and a separately authorized screen slot are prerequisites to any launch.
+No production/native insertion fixture or picker service is replaced or changed.
+Headless tests exercise only assertion-driver/protocol negatives, not native parity.
+
+The fixture creates **only** `fixture-profile/picker-files/import.json` in its fresh
+owner-private session. The input is fixed synthetic native JSON (Unicode/LF text,
+custom label, folder, tag, fixed timestamps and zero usage). Export is fixed to the
+initially absent sibling `export.json`; no caller-supplied file path, existing-file
+overwrite, user-directory browsing, keyboard/shell navigation or clipboard operation
+is supported. Files/profile/evidence remain private and retained.
+
+Actual rendered Import/Export commands use the linked, unchanged
+`SnippetFileService`: Microsoft.Windows.Storage.Pickers constructed with the main
+WindowId, Import commit text, real parser/store transaction and atomic writer.
+Four ordered actions/checkpoints are required:
+
+1. Import picker Cancel: exactly one `import_cancelled`, empty reloaded store and
+   original synthetic file unchanged.
+2. Import commit: exactly one `import_done`, info dialog OK bound to the retained
+   main HWND, exact reloaded text/label/tags/folder/timestamps/usage.
+3. Export picker Cancel: exactly one `export_cancelled`, identical persisted content
+   and IDs, no export/temp/extra file.
+4. Export commit: exactly one `export_done`, main-bound info OK, valid native JSON
+   parsed by the real parser and byte-identical to canonical export of the reloaded
+   store (except the variable document timestamp), no stranded temporary file.
+
+Each phase has active/closed markers and a single-action receipt; callback
+postconditions precede PID/session/phase receipt and acknowledgement. Totals must
+be four rendered main actions, four picker commit/cancel actions, two full-path
+ValuePattern writes and two info acknowledgements. No mutation retries occur.
+A final acknowledgement releases graceful shutdown only after all receipts pass.
+Existing DPI/work-area, held-input/idle epoch, clipboard sequence, private artifact
+provenance, JobZero and graceful-exit protections remain in force.
+
+### Conservative provider boundary / unresolved runtime compatibility
+
+Python and PowerShell independently authenticate only the dialog returned by
+`GetWindow(retainedMain, GW_ENABLEDPOPUP)`: distinct visible HWND, direct
+`GW_OWNER == retainedMain`, **same candidate PID and main thread**, exact `#32770`.
+The first observed dialog is retained per phase; replacement refuses. Foreground
+allowance applies only during that exact fixed active phase and to that authenticated
+dialog. No title/global desktop discovery, broker PID adoption, unowned focus or
+provider fallback is permitted. Geometry still must fit the authorized work area.
+
+Controls must be unique in that dialog and same-owned-PID native child HWNDs:
+`1`/`2` Button for commit/cancel; filename `1148` Edit/ComboBox with ValuePattern,
+or `1001` Edit strictly below the unique `1148` ComboBox when it lacks ValuePattern.
+Native classes must be exactly Button/Edit/ComboBox respectively. Ambiguous,
+missing, offscreen, disabled, readonly, foreign or differently shaped controls refuse.
+An additional/foreign overwrite or error dialog is never dismissed.
+
+**Unknown until separately authorized runtime observation:** modern Windows App SDK
+pickers may be brokered, use another class/thread, expose different UIA/native HWND
+shapes, lack Invoke/ValuePattern, or open outside the allowed rectangle. These are
+BLOCKED outcomes, not reasons to relax guards. Missing UIA callbacks/async readiness,
+provider localization/schema differences and cleanup/clipboard/foreground changes
+also fail closed. Build success cannot resolve these unknowns or prove an atomic
+publication syscall; this scene checks real-writer linkage and completed publication
+postconditions, while existing atomic-writer tests cover failure behavior.

@@ -1,3 +1,6 @@
+using System.Text;
+using System.Text.Json;
+using SmartSnippets.Core.Porting;
 using SmartSnippets.Core;
 using SmartSnippets.Core.Data;
 using SmartSnippets.Core.Settings;
@@ -182,5 +185,91 @@ internal static class FolderSceneSeed
         var result = host.Store.CreateSnippet(new(UiAssertDriver.FolderSnippetText, "", false, folderId, ""));
         if (!result.Success) throw new InvalidOperationException("ui_folder_seed_failed");
         return result.Value!.Id;
+    }
+}
+
+/// <summary>Read-only callback postconditions, except explicit fresh synthetic file setup.</summary>
+internal static class FilePickerAssertDriver
+{
+    internal const string Text = "ui019 synthetic picker\nsecond 😀";
+    internal const string Input = """
+        {"format":"smart-snippets","version":1,"folders":[{"name":"ui019 picker folder"}],"snippets":[{"text":"ui019 synthetic picker\nsecond 😀","label":"ui019 picker label","isLabelCustom":true,"folder":"ui019 picker folder","tags":["picker-tag"],"usageCount":0,"createdAt":1700000000000,"updatedAt":1700000000000}]}
+        """;
+    internal static string Files(string root) => Path.Combine(root, "picker-files");
+    internal static void PrepareFilePicker(UnoAppHost host, string root)
+    {
+        UiAssertDriver.RequireFresh(host);
+        var directory = Files(root);
+        if (Directory.Exists(directory) || File.Exists(directory)) throw new InvalidOperationException("ui_picker_not_fresh");
+        Directory.CreateDirectory(directory);
+        using var file = new FileStream(Path.Combine(directory, "import.json"), FileMode.CreateNew);
+        file.Write(Encoding.UTF8.GetBytes(Input));
+    }
+    private static void RequireFiles(string root, bool exported)
+    {
+        var directory = Files(root);
+        for (var parent = new DirectoryInfo(directory); parent is not null; parent = parent.Parent)
+            if ((parent.Attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("ui_picker_alias");
+        var names = Directory.GetFileSystemEntries(directory).Select(Path.GetFileName).Order().ToArray();
+        var expected = exported ? new[] { "export.json", "import.json" } : new[] { "import.json" };
+        if (!names.SequenceEqual(expected)) throw new InvalidOperationException("ui_picker_files");
+        foreach (var path in Directory.GetFiles(directory))
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("ui_picker_alias");
+        if (File.ReadAllText(Path.Combine(directory, "import.json")) != Input)
+            throw new InvalidOperationException("ui_picker_input_changed");
+    }
+    private static void RequireEvents(UnoAppHost host, string root, int imports, int exportCancels, int exports)
+    {
+        if (host.Gate.IsAvailable || host.Snippets.Porting.IsBusy) throw new InvalidOperationException("ui_picker_busy");
+        var lines = File.ReadAllLines(Path.Combine(root, "logs", "app.log"));
+        foreach (var (name, count) in new[] { ("import_cancelled", 1), ("import_done", imports),
+                     ("export_cancelled", exportCancels), ("export_done", exports) })
+            if (lines.Count(line => line.Contains(" INFO " + name, StringComparison.Ordinal)) != count)
+                throw new InvalidOperationException("ui_picker_callback_count");
+    }
+    internal static void RequirePickerImportCancelled(UnoAppHost host, string root)
+    {
+        RequireEvents(host, root, 0, 0, 0);
+        host.Store.Load(); UiAssertDriver.RequireFresh(host); RequireFiles(root, false);
+    }
+    private static void RequireContent(UnoAppHost host)
+    {
+        host.Store.Load();
+        if (host.Store.Snippets.Count != 1 || host.Store.Folders.Count != 1)
+            throw new InvalidOperationException("ui_picker_counts");
+        var view = host.Store.Snippets.Single(); var row = view.Snippet;
+        if (row.Text != Text || row.Label != "ui019 picker label" || !row.IsLabelCustom
+            || view.FolderName != "ui019 picker folder" || row.FolderId != host.Store.Folders.Single().Id
+            || !row.Tags.SequenceEqual(new[] { "picker-tag" }) || row.UsageCount != 0 || row.LastUsedAt is not null
+            || row.CreatedAt.ToUnixTimeMilliseconds() != 1700000000000 || row.UpdatedAt != row.CreatedAt)
+            throw new InvalidOperationException("ui_picker_content");
+    }
+    internal static (long SnippetId, long FolderId) RequirePickerImported(UnoAppHost host, string root)
+    {
+        RequireEvents(host, root, 1, 0, 0); RequireContent(host); RequireFiles(root, false);
+        return (host.Store.Snippets.Single().Snippet.Id, host.Store.Folders.Single().Id);
+    }
+    private static void RequireIds(UnoAppHost host, (long SnippetId, long FolderId) ids)
+    {
+        if (host.Store.Snippets.Single().Snippet.Id != ids.SnippetId || host.Store.Folders.Single().Id != ids.FolderId)
+            throw new InvalidOperationException("ui_picker_ids_changed");
+    }
+    internal static void RequirePickerExportCancelled(UnoAppHost host, string root, (long SnippetId, long FolderId) ids)
+    {
+        RequireEvents(host, root, 1, 1, 0); RequireContent(host); RequireFiles(root, false); RequireIds(host, ids);
+    }
+    internal static void RequirePickerExported(UnoAppHost host, string root, (long SnippetId, long FolderId) ids)
+    {
+        RequireEvents(host, root, 1, 1, 1); RequireContent(host); RequireFiles(root, true); RequireIds(host, ids);
+        var bytes = File.ReadAllBytes(Path.Combine(Files(root), "export.json"));
+        var parsed = ImportParser.Parse(bytes, DateTimeOffset.UtcNow).Parsed;
+        if (parsed is null || parsed.Format != ImportFormat.Native || parsed.EntryCount != 1
+            || parsed.Rejected.Count != 0 || parsed.Skipped.Count != 0 || parsed.Batch.Candidates.Count != 1
+            || !parsed.Batch.FolderNames.SequenceEqual(new[] { "ui019 picker folder" }))
+            throw new InvalidOperationException("ui_picker_export_parse");
+        using var document = JsonDocument.Parse(bytes);
+        var at = DateTimeOffset.FromUnixTimeMilliseconds(document.RootElement.GetProperty("exportedAt").GetInt64());
+        var canonical = NativeExport.Write(host.Store.Folders, host.Store.Snippets, at).Utf8Json;
+        if (canonical is null || !bytes.SequenceEqual(canonical)) throw new InvalidOperationException("ui_picker_export_roundtrip");
     }
 }

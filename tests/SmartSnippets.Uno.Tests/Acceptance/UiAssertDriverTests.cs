@@ -8,6 +8,57 @@ namespace SmartSnippets.Uno.Tests.Acceptance;
 public sealed class UiAssertDriverTests
 {
     [Fact]
+    public async Task FilePickerAssertionsRequireCallbacksPersistedContentAndAtomicExport()
+    {
+        // Headless assertion-driver negative controls only: TestFiles is NOT native acceptance.
+        using var fixture = new HostFixture(); await fixture.Start();
+        var host = fixture.Host; var root = fixture.Root;
+        FilePickerAssertDriver.PrepareFilePicker(host, root);
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.PrepareFilePicker(host, root));
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerImportCancelled(host, root));
+        await host.Snippets.Porting.ImportAsync();
+        FilePickerAssertDriver.RequirePickerImportCancelled(host, root);
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerImported(host, root));
+        fixture.Boundary.Files.ImportPath = Path.Combine(FilePickerAssertDriver.Files(root), "import.json");
+        await host.Snippets.Porting.ImportAsync();
+        var ids = FilePickerAssertDriver.RequirePickerImported(host, root);
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerExportCancelled(host, root, ids));
+        await host.Snippets.Porting.ExportAsync();
+        FilePickerAssertDriver.RequirePickerExportCancelled(host, root, ids);
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerExportCancelled(host, root, (0, 0)));
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerExported(host, root, ids));
+        var exported = Path.Combine(FilePickerAssertDriver.Files(root), "export.json");
+        fixture.Boundary.Files.ExportPath = exported;
+        await host.Snippets.Porting.ExportAsync();
+        FilePickerAssertDriver.RequirePickerExported(host, root, ids);
+        var bytes = File.ReadAllBytes(exported);
+        File.WriteAllText(exported, "{}");
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerExported(host, root, ids));
+        File.WriteAllBytes(exported, bytes);
+        var temp = exported + ".stranded.tmp";
+        File.WriteAllText(temp, "synthetic");
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerExported(host, root, ids));
+        File.Delete(temp);
+        Assert.True(host.Store.RecordUsage(ids.SnippetId).Success);
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerExported(host, root, ids));
+    }
+
+    [Fact]
+    public async Task FilePickerCancelRejectsDuplicateCallbacksAndInputModification()
+    {
+        using var fixture = new HostFixture(); await fixture.Start();
+        FilePickerAssertDriver.PrepareFilePicker(fixture.Host, fixture.Root);
+        await fixture.Host.Snippets.Porting.ImportAsync();
+        var path = Path.Combine(FilePickerAssertDriver.Files(fixture.Root), "import.json");
+        File.WriteAllText(path, "{}");
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerImportCancelled(fixture.Host, fixture.Root));
+        File.WriteAllText(path, FilePickerAssertDriver.Input);
+        FilePickerAssertDriver.RequirePickerImportCancelled(fixture.Host, fixture.Root);
+        await fixture.Host.Snippets.Porting.ImportAsync();
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerImportCancelled(fixture.Host, fixture.Root));
+    }
+
+    [Fact]
     public async Task FreshHostCannotPassNewSaveOrCancelWithoutCallbacks()
     {
         using var fixture = new HostFixture(); await fixture.Start();
