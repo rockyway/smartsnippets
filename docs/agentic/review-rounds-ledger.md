@@ -7,3 +7,4 @@
 | 2026-11-01 | feature/uno019-diag-fixes | 3 | 1 | 1 | 1 | 0 | rv-05 GO; A (unguarded save_foreground_failure) + C folded by leader; B behavioural worker() test deferred |
 | 2026-11-01 | feature/uno019-picker-thread | 1 | 1 | 1 | 1 | 1 | rv-06 GO; visibility-gate oracles + 3rd replacement site + wording folded (pt-01b) |
 | 2026-11-01 | feature/uno019-popup-grant | 1 | 0 | 1 | 1 | 1 | rv-07 GO; wiring pins, refused/failed receipt split, stage wording folded (pg-01b) |
+| 2026-11-01 | uno019-native-diag2 (nd-02) | 1 | 1 | 2 | 0 | 3 | rv-08 BLOCK: PS poll test never read the record; validator rejections untested; refusal callback unguarded; all folded (nd-02b), leader verified |
