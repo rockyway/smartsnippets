@@ -447,9 +447,10 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             out, err = helper.communicate(timeout=2)
             helper_diagnostics_saved = True
             save_helper_diagnostics(private, out, err)
+            # A failed helper exit is a protocol failure; a failure file is unexpected only after success.
+            validate_helper_output(helper.returncode, out, err)
             if validate_helper_foreground_failure(private):
                 raise ValueError('ui_foreground_unexpected')
-            validate_helper_output(helper.returncode, out, err)
             for phase in phases:
                 if not base.receipt(private, phase, process.pid):
                     raise ValueError('ui_receipt')
@@ -518,18 +519,25 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid,
                                     error.popup, error.phase_index, error.sample_order)
         # Reap the writer before inspecting its evidence, including failures mid-frame.
+        # Diagnostics errors never skip failure-file validation or failure recording.
+        diagnostics_error = None
         if helper is not None:
-            if helper.poll() is None:
-                startup.stop_app(helper)
-            out, err = helper.communicate(timeout=2)
-            if not helper_diagnostics_saved:
-                helper_diagnostics_saved = True
-                save_helper_diagnostics(private, out, err)
+            try:
+                if helper.poll() is None:
+                    startup.stop_app(helper)
+                if not helper_diagnostics_saved:
+                    helper_diagnostics_saved = True
+                    out, err = helper.communicate(timeout=2)
+                    save_helper_diagnostics(private, out, err)
+            except (OSError, ValueError, subprocess.TimeoutExpired) as caught:
+                diagnostics_error = caught
         try:
             validate_helper_foreground_failure(private)
         except ValueError as schema_error:
             error = schema_error
         base.record_failure(private, error)
+        if diagnostics_error is not None:
+            raise error from diagnostics_error
         raise error
     finally:
         try:

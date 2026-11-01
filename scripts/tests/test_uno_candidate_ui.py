@@ -729,6 +729,13 @@ class PickerObserverLoopTests(unittest.TestCase):
         self.assertLess(failure.index('helper.communicate'), failure.index('validate_helper_foreground_failure'))
         normal = source.split('            out, err = helper.communicate(timeout=2)', 1)[1].split('    except BaseException', 1)[0]
         self.assertIn("if validate_helper_foreground_failure(private):\n                raise ValueError('ui_foreground_unexpected')", normal)
+        self.assertLess(normal.index('validate_helper_output(helper.returncode, out, err)'),
+                        normal.index("raise ValueError('ui_foreground_unexpected')"))
+        guarded = failure.split('            try:', 1)[1].split('        try:', 1)[0]
+        self.assertIn('save_helper_diagnostics(private, out, err)', guarded)
+        self.assertIn('except (OSError, ValueError, subprocess.TimeoutExpired) as caught:', guarded)
+        self.assertLess(failure.index('diagnostics_error = caught'), failure.index('validate_helper_foreground_failure(private)'))
+        self.assertLess(failure.index('validate_helper_foreground_failure(private)'), failure.index('base.record_failure(private, error)'))
 
     @unittest.skipUnless(s.sys.platform == 'win32', 'system PowerShell schema execution')
     def test_powershell_foreground_failure_executes_real_function(self):
@@ -764,8 +771,11 @@ ForegroundFailure 20 ([IntPtr]20)
             self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
             data = (Path(tmp) / 'ui-helper-foreground-failure.json').read_bytes()
             record = s.privacy_schema().validate_foreground_failure(json.loads(data))
-            self.assertTrue(record['popupPresent'] and record['fgIsPopup'])
-            self.assertEqual((0, 7), (record['phaseIndex'], record['sampleOrder']))
+            self.assertEqual({'foregroundRelation': 'owned_other', 'fgIsMain': False, 'fgIsPopup': True,
+                              'popupPresent': True, 'fgSamePid': True, 'fgThreadIsMainThread': True,
+                              'fgOwnerIsMain': True, 'fgRootOwnerIsMain': True, 'fgClassIs32770': True,
+                              'fgVisible': True, 'fgEnabled': True, 'phaseIndex': 0, 'sampleOrder': 7}, record)
+            self.assertEqual(list(record), list(json.loads(data)))
             mutated = json.loads(data)
             mutated['hwnd'] = 20
             with self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
