@@ -279,3 +279,215 @@ No active recovery/operator decision is pending. Remaining picker actions and
 posted-main/posted-enter are unrun; both changed paths still need separately
 reviewed/authorized native acceptance under a stable environment. No further
 runtime retry is authorized by this completed run. Commit scope: **only this doc**.
+
+## nr-05 — exclusive-slot continuation: restore foreground FAIL; picker schema FAIL
+
+Authorized continuation of nr-04, same worktree/branch, starting commit `737f04c`.
+The requested scope was one picker scene and posted-row → posted-main →
+posted-enter, with same-artifact controls only as required for the positive
+witness chain. The previous parent had exited: its trusted in-memory observation
+could not be reconstructed from nr-04 evidence. Fresh controls were therefore
+required. No old evidence, receipt or serialized observation supplied authority.
+
+### Preparation and grant
+
+The same nine flags listed above were temporarily re-enabled. All four artifacts
+were freshly built again into new private output directories, rather than reusing
+nr-04 binaries. The phase-0 commands were the same fixture build wrappers and
+copied `nr05-build-support.ps1`; all builds ran sequentially. Strict native x64,
+SQLite, effective-property/reference/freshness gates and four warning/error scans
+passed. No IL suppression, gate weakening or additional test-suite run.
+
+Exact diff: `nr05-enabled-flags.diff`, SHA256
+`9ba25a3902ba69ea4bac874b7cad43ab2e23f028a57af200d4d94faf13d3548d`.
+The enabled source receipts remained exactly nr-04's:
+
+- Native: `7fb69a67f791042e3c86a6cf3e7af1ca8a188600d95e408fab9ba1f18664c8d9`.
+- Management base: `51f8567ee0ac1b10e74d9cef0437059b23da4b9d03e2a3e9773c01e131534450`.
+
+| Artifact | New build token | SHA256 |
+|---|---|---|
+| Native fixture | `40aea43aba824e56858c4fac3d8da889` | `3e68c941cfa985e21510c26463179a9fb849b1662d493ec09aa7f8ffa3ea92bf` |
+| Target018 | `1c2b5e9cc4524363a61138017ea6c572` | `bdb0881e9f3220e31fc338257f47103319ab015920e299ed93285a5f35d00a88` |
+| Guardian | `a30c67af017643f6aeea7d129694bc4b` | `894e1cfb2a358fae6444a67cf8dfbc289ec551af6779a8212c9f453151fe0af7` |
+| Management fixture | `f7032ac0f29a4934a9584b458eb5502f` | `e6c54c67f1449c5a0f0d69c89230f06dde2838b2c557a28739b85990b74993cd` |
+
+All four hashes were independently recomputed after the attempts and matched.
+Native/management output roots are unchanged; target/guardian outputs use fresh
+`bin/nr05-<token>` children. Original nr04 helpers were not edited. Scratchpad
+copies changed only run names/pins and the filesystem wait limit to 120 minutes;
+no placement or tracked behavior/helper change was needed.
+
+**No windows, clipboard access or app launch before the grant.** Filesystem-only
+polling began at `2026-11-01T20:20:36.822211Z`, checked every 30 seconds, and
+observed the grant on poll 37 at `20:38:36.843127Z`, after 1080.022 seconds.
+No DENIED/REVOKED was observed. The exact grant was:
+
+```text
+GRANTED nr-05 14:38 EXCLUSIVE ~30min. Use bottom-left DISPLAY29 (-1920,1506 1920x1080) only; never DISPLAY3/primary. Desktop quiet: no other screen/build grants during the window.
+```
+
+The granted slot was shorter than the original 60-minute budget. Admission was
+therefore bounded to **30 minutes from the grant-file update**, conservatively
+subtracting its 4.469-second age at observation, not to a new 60-minute window.
+The grant was rechecked before the control and the separate picker invocation.
+
+Live PMv2 enumeration again confirmed nonprimary bottom-left bounds
+`(-1920,1506,0,2586)`, work `(-1920,1506,0,2538)`. Primary/top-left were not used.
+Held-input preflight was clear. At `20:38:49.4047500Z`, all candidate, management
+fixture, guardian, Target018, nr05 run/picker and UI-helper counts were zero;
+there was no pending recovery. Only then was the authorized system `clip.exe`
+seed command above used **once**. Initial locked RAM-only comparison matched the
+fixed baseline with stable sequence: builtin text 4, marker 0, protective 0,
+unsupported 0, owner absent. No reseed or later clipboard write.
+
+### Commands and per-step disposition
+
+```text
+pwsh -NoProfile -File scripts/uno_candidate_native_fixture/build.ps1 -BuildOnly
+pwsh -NoProfile -File <scratchpad>/nr05-build-support.ps1
+pwsh -NoProfile -File scripts/verify-uno-candidate.ps1 -BuildOnly
+python -I -B <scratchpad>/nr05-wait-grant.py
+python -I -B <scratchpad>/nr05-preflight.py
+pwsh -NoProfile -File <scratchpad>/nr05-process-check.ps1
+# authorized system clip.exe seed, then:
+python -I -B <scratchpad>/nr05-clipboard-check.py
+python -I -B <scratchpad>/nr05-run.py
+# after failed control, confirmed zero survivors/no recovery and rechecked grant:
+python -I -B <scratchpad>/nr05-picker.py
+python -I -B <scratchpad>/nr05-evidence-check.py
+```
+
+The control parent invokes the native runner with the new native/target/guardian
+paths and hashes, `--authorized-screen-slot --scene restore`. The picker wrapper
+invokes the actual UI runner with `--scene file-picker`, the new management
+executable/hash and `--authorized-screen-slot --work-area -1920 1506 0 2538`.
+No registered scene, operator action/request, external keyboard/mouse synthesis,
+focus workaround, timeout extension, download, clock change, real-profile access
+or failed-scene/mutation retry occurred.
+
+| Phase/step | Result |
+|---|---|
+| 0: flags, fresh artifacts, hashes and build gates | PASS |
+| 1: restore | FAIL: `ForegroundChanged`, publication refused before swap |
+| 1: abort | BLOCKED / NOT RUN after first control failure |
+| 1: owner-refusal | BLOCKED / NOT RUN after first control failure |
+| 2: Import Cancel | FAIL: `picker_schema`; picker acceptance BLOCKED |
+| 2: Import Commit | BLOCKED / NOT RUN after first picker failure |
+| 2: Export Cancel | BLOCKED / NOT RUN after first picker failure |
+| 2: Export Commit | BLOCKED / NOT RUN after first picker failure |
+| 3: posted-row | BLOCKED / NOT RUN: no accepted control witness chain |
+| 3: posted-main | BLOCKED / NOT RUN: same prerequisite |
+| 3: posted-enter | BLOCKED / NOT RUN: same prerequisite |
+| Release | PASS: flags false, zero processes, no pending recovery, baseline verified |
+
+### Restore control failure — no restorative witness established
+
+Trusted parent `ss-uno018-ui-c1b012be9a03f711791136cd7b952472`, stderr empty,
+recorded `nr05_observer_complete=1` with no completed scenes. Exact native session:
+
+`ss-uno018-ui-16b6eddd2f3de31a103a6a1e598da9eb/ss-uno019-native-5a58fdc37ad442d99ed0ba424c781c6c`.
+
+Runner: `native_scene_failed`, **`failureStage=guardian_ready`**. Native stdout
+was exactly `native_phase=guardian_ready` → `native_result=failed`; stderr empty.
+Fixed diagnostics:
+
+```text
+2026-11-01T20:38:57.399Z INFO native_control_admission reason=ForegroundChanged
+2026-11-01T20:38:57.400Z INFO native_control_publish status=refused
+2026-11-01T20:38:57.400Z ERROR native_positive_failed stage=guardian_ready InvalidOperationException (HResult=0x80131509)
+```
+
+No publication/swap receipt, accepted control, positive witness, keyboard arm,
+insertion or recovery-pending receipt. The foreground guard failed despite the
+explicitly exclusive grant; neither the changed window nor its cause is
+identified. Do not assume concurrent activity or a specific product defect.
+The stage names the last entered stage, not an exact throw-site locator.
+Read-only owned SQLite: 0 rows / 0 usage. Privacy/negative controls: CLEAN.
+No `candidate_shutdown_complete` exists, so graceful failed-host shutdown is not
+claimed. At `20:39:28.1248009Z`, every relevant process count was zero.
+
+The parent correctly stopped the control phase without retrying. Positive scenes
+could not safely proceed without a returned control witness. The non-inserting
+picker has no such prerequisite, so it was run once separately after confirming
+zero survivors/no pending recovery and rechecking the grant; it was not a retry
+of any already attempted picker or control action.
+
+### Picker failure — authenticated visible dialog, Cancel schema refused
+
+Picker parent `ss-uno018-ui-2af0eba4c31059909e0ab4f7282f4f2e`; child and wrapper
+exit 1, parent stderr empty. Exact UI session:
+`ss-uno018-ui-19970e6581e81a07e9134339acbfe87f`.
+
+Fixed records and helper stderr:
+
+```json
+{"observer-parent-failure.json":{"reason":"worker_protocol"},"observer-worker-failure.json":{"reason":"ui_helper_protocol"}}
+```
+
+```text
+ui_helper_failed stage=picker_import_cancel reason=picker_schema
+```
+
+Both `foreground-failure.json` and `ui-helper-foreground-failure.json` are absent:
+there is no relation/boolean/phase/sample record to copy, and none was fabricated.
+Helper stdout is empty. The actual Cancel path reaches `picker_schema` only after
+waiting for an authenticated visible dialog and authenticating its UIA root.
+For Cancel it rejects a nonunique/missing AutomationId `2` descendant, or a
+resolved control whose UIA type is not Button, before invoking cancellation.
+The fixed token does **not** distinguish these alternatives, reveal actual control
+IDs/counts/types, or establish the underlying provider cause. No wider UIA search,
+alternative selector, provider fallback or guard relaxation was attempted.
+This passes the earlier dialog-observation boundary, not the full picker scene.
+
+`ui-ready.receipt` and `picker-import-cancel.active` exist; no closed marker,
+action receipt or `ui-import-cancelled.receipt`. No later phase markers/receipts.
+Read-only owned SQLite: 0 rows / 0 usage. Diagnostic privacy scan with planted
+negative controls: CLEAN. Clipboard epoch unchanged across the attempt.
+Existing owned Job/helper failure cleanup completed; no graceful failed-scene
+shutdown or pre-kill JobZero success is claimed.
+
+### Posted-scene diagnostics and proof limit
+
+No posted scene launched because the new control chain failed. Consequently,
+there is no posted-scene `failureStage`, `target_foreground_grant` receipt, popup
+focus/readiness record or posted-scene failure line. The control's failure stage
+above must not be relabelled as posted-row evidence. The new Target018 grant path
+still has no acceptance result from this continuation.
+
+Proof limit remains **`registered_posted_callback_not_physical`**. No positive
+callback/insert, physical shortcut/HID, native pointer/menu, production unlock or
+Plan 018/019 completion claim is made. No further attempt was scheduled to force
+the requested positive paths past their failed prerequisite.
+
+### Release and retained evidence
+
+All nine flags restored false. `nr05-flags-closed.txt` retains grep proof of those
+flags and the unchanged false startup/full-host/prototype gates.
+`git diff --exit-code` passed for every temporarily edited source file; no
+tracked behavior/placement/helper change remains. Ordinary candidate capability
+is unchanged/default-denied. Operator instruction edits were untouched/unstaged.
+
+At `2026-11-01T20:40:04.1913649Z`, counts were: candidate coordinator/worker 0,
+management fixture 0, guardian 0, Target018 0, nr05 run/picker Python helpers 0,
+UI PowerShell helpers 0. No pending clipboard recovery, coordinator/guardian or
+uncertain keyboard lifetime. No pending process was killed, recovery endpoint
+called or key-up repair synthesized. Bottom-left slot released safely within
+two minutes of grant; no current operator prompt exists.
+
+Final locked RAM-only clipboard comparison matched the authorized post-seed
+baseline with stable sequence: builtin text 4, marker 0, protective 0,
+unsupported 0, owner absent. This is not a successful restoration-control claim
+(the control refused before swap), restoration of pre-seed user data, or a
+guarantee against later clipboard changes. No arbitrary payload/name was logged.
+
+Private evidence: `nr05-artifacts.json`, exact enabled diff, grant result,
+wait/build/preflight/run/picker/process/clipboard/evidence helper copies,
+`nr05-evidence.txt`, `nr05-flags-closed.txt`, `nr05-process-release.json`,
+`nr05-clipboard-release.json` and the exact private sessions above. Enabled
+artifacts are retained evidence, not authority to execute against closed source.
+
+No active recovery or operator decision is pending. Remaining acceptance needs
+separate disposition of the foreground control refusal and picker Cancel schema;
+all posted scenes remain unrun. No retry is authorized by this completed nr-05
+run. Only this appended research section is committed.
