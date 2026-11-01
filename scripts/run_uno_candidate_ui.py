@@ -515,12 +515,16 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             if privacy.scan_evidence(records, canaries)['privacy'] != 'CLEAN':
                 raise ValueError('privacy')
     except BaseException as error:
-        if isinstance(error, ForegroundChanged) and process is not None:
-            save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid,
-                                    error.popup, error.phase_index, error.sample_order)
-        # Reap the writer before inspecting its evidence, including failures mid-frame.
-        # Diagnostics errors never skip failure-file validation or failure recording.
+        # Diagnostics errors (observer record or helper output) never skip failure-file
+        # validation or failure recording.
         diagnostics_error = None
+        if isinstance(error, ForegroundChanged) and process is not None:
+            try:
+                save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid,
+                                        error.popup, error.phase_index, error.sample_order)
+            except (OSError, ValueError) as caught:
+                diagnostics_error = caught
+        # Reap the writer before inspecting its evidence, including failures mid-frame.
         if helper is not None:
             try:
                 if helper.poll() is None:

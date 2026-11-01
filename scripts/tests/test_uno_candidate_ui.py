@@ -731,10 +731,14 @@ class PickerObserverLoopTests(unittest.TestCase):
         self.assertIn("if validate_helper_foreground_failure(private):\n                raise ValueError('ui_foreground_unexpected')", normal)
         self.assertLess(normal.index('validate_helper_output(helper.returncode, out, err)'),
                         normal.index("raise ValueError('ui_foreground_unexpected')"))
-        guarded = failure.split('            try:', 1)[1].split('        try:', 1)[0]
-        self.assertIn('save_helper_diagnostics(private, out, err)', guarded)
+        # Both diagnostics writes in the handler are guarded and precede validation/recording.
+        self.assertLess(failure.index('diagnostics_error = None'), failure.index('save_foreground_failure('))
+        observer = failure.split('save_foreground_failure(', 1)[1].split('diagnostics_error = caught', 1)[0]
+        self.assertIn('except (OSError, ValueError) as caught:', observer)
+        guarded = failure.split('save_helper_diagnostics(private, out, err)', 1)[1].split('diagnostics_error = caught', 1)[0]
         self.assertIn('except (OSError, ValueError, subprocess.TimeoutExpired) as caught:', guarded)
-        self.assertLess(failure.index('diagnostics_error = caught'), failure.index('validate_helper_foreground_failure(private)'))
+        self.assertEqual(failure.count('diagnostics_error = caught'), 2)
+        self.assertLess(failure.rindex('diagnostics_error = caught'), failure.index('validate_helper_foreground_failure(private)'))
         self.assertLess(failure.index('validate_helper_foreground_failure(private)'), failure.index('base.record_failure(private, error)'))
 
     @unittest.skipUnless(s.sys.platform == 'win32', 'system PowerShell schema execution')

@@ -27,8 +27,10 @@ counters: the existing relation enum, `fgIsMain`, `fgIsPopup`, `popupPresent`,
 desktop enumeration is recorded; the Python observer rejects a helper file or its
 own record with any other key or value type (`ui_foreground_schema`). The helper
 is stopped/reaped before failure-file validation; size/alias errors propagate and
-OS read errors become `ui_foreground_file`. Any helper failure file on the normal
-success path is refused (`ui_foreground_unexpected`).
+OS read errors become `ui_foreground_file`. A non-zero or malformed helper exit is
+recorded as `ui_helper_protocol` first; a failure file after a clean helper exit is
+refused (`ui_foreground_unexpected`). Errors writing the observer record or helper
+output never skip failure-file validation or failure recording.
 (B) The native fixture worker tracks the last fixed stage it entered before
 `guardian_ready` (`NativeStage.cs`; allowlist mirrored in
 `scripts/run_uno_candidate_native.py`). The sanitized failure line becomes
