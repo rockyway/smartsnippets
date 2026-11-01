@@ -3,6 +3,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />
     <Using Include="Xunit" />
+    <Compile Include="../../scripts/uno_candidate_fixture/ShellScene.cs" Link="Acceptance/ShellScene.cs" />
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
     <!-- Compile the actual composition root. Only external native/window implementations are omitted. -->
     <Compile Include="../../src/SmartSnippets.Uno/CandidateUiPolicy.cs;../../src/SmartSnippets.Uno/UnoAppHost.cs;../../src/SmartSnippets.Uno/CandidateActivationQueue.cs;../../src/SmartSnippets.Uno/CandidateProfile.cs;../../src/SmartSnippets.Uno/CandidateFileIdentity.cs;../../src/SmartSnippets.Uno/CandidateHostBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs;../../src/SmartSnippets.Uno/Popup/PopupContextInsert.cs;../../src/SmartSnippets.Uno/Services/CandidateTrayText.cs;../../src/SmartSnippets.Uno/Services/CandidateMessageWindowLifetime.cs" LinkBase="Candidate" />

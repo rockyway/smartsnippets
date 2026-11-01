@@ -56,6 +56,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private readonly PopupKeyboardPreviewPolicy _keyboardPreview = new();
     private Controls.HoverDetailsSurface? _keyboardSurface;
     private bool _movingKeyboardSelection, _isComposing, _sortMenuOpen;
+    internal bool ShellSortMenuOpen => _sortMenuOpen;
+    internal void ShellCloseSortMenu() => SortFlyout.Hide();
 
     private void RegisterHoverOwner(object sender, RoutedEventArgs args)
     {

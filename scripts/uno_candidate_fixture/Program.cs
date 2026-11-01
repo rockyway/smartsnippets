@@ -13,6 +13,7 @@ public static class Program
     internal static LaunchOptions InitialOptions => new(SettingsScene ? PageKind.Settings : FolderScene ? PageKind.Folders : PageKind.Snippets, false, null);
     internal static string PrivateRoot { get; private set; } = "";
     internal static string ProfileRoot => Path.Combine(PrivateRoot, "fixture-profile");
+    internal static string? ShellMode { get; private set; }
     internal static bool RenderedUiMode { get; private set; }
     internal static bool FolderScene { get; private set; }
     internal static bool SettingsScene { get; private set; }
@@ -67,6 +68,18 @@ public static class Program
                 throw new InvalidOperationException("fixture_picker_permit");
             FilePickerAssertDriver.RequirePickerPermit(pickerPermit);
             FilePickerScene = true;
+        }
+        var shellPermit = Path.Combine(PrivateRoot, "fixture-shell-scene-permit");
+        if (File.Exists(shellPermit))
+        {
+            var info = new FileInfo(shellPermit);
+            if (RenderedUiMode || (info.Attributes & FileAttributes.ReparsePoint) != 0 || info.Length > 64)
+                throw new InvalidOperationException("fixture_shell_permit");
+            var value = File.ReadAllText(shellPermit);
+            if (!ShellScene.Names.Any(scene => value == scene + "\n"))
+                throw new InvalidOperationException("fixture_shell_permit");
+            ShellMode = value.TrimEnd('\n');
+            if (ShellMode == "coexistence") throw new InvalidOperationException("shell_legacy_isolation_unavailable");
         }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         _instance = AppInstance.FindOrRegisterForKey("SmartSnippets.UnoAcceptanceFixture019." + name);

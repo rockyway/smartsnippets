@@ -19,9 +19,19 @@ public partial class App : Application
     {
         try
         {
+            if (Program.ShellMode == "message-window")
+            {
+                NativeShellScene.CheckMessageCycles();
+                _boundary.MessageCyclesVerified = true;
+            }
             _host = new UnoAppHost(_boundary, () => CandidateProfile.OpenOwnedRoot(Program.ProfileRoot));
             await _host.StartAsync(Program.StartInBackground, Program.InitialOptions);
             CandidateAcceptanceFlow.RequireReady(_host, Program.ProfileRoot);
+            if (Program.ShellMode is { } shell)
+            {
+                await ShellScene.Run(shell, new NativeShellScene(_host, _boundary));
+                return;
+            }
             if (Program.RenderedUiMode)
             {
                 if (Program.FilePickerScene)
@@ -121,23 +131,42 @@ public partial class App : Application
 internal sealed class FixtureBoundary : CandidateHostBoundary
 {
     private readonly WindowsCandidateBoundary _native = new();
+    internal WindowsCandidateBoundary Native => _native;
+    internal Services.MessageWindow? Message;
+    internal Action? Open, Settings, ExitCallback;
+    internal bool MessageCyclesVerified, TrayDisposed;
     internal ICandidatePopupWindow? Popup;
     internal int PopupCreations;
     internal IThemeService? Theme;
     internal override IUiDispatcher Dispatcher => _native.Dispatcher;
     internal override IThemeService CreateTheme(AppSettings settings) => Theme = _native.CreateTheme(settings);
-    internal override IDisposable CreateMessageWindow() => _native.CreateMessageWindow();
+    internal override IDisposable CreateMessageWindow()
+    {
+        var window = _native.CreateMessageWindow();
+        Message = (Services.MessageWindow)window;
+        return window;
+    }
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => _native.CreateDialogs(popup, textSize);
     internal override ISnippetFileService CreateFiles() => _native.CreateFiles();
     internal override ICandidateMainWindow CreateMain(UnoAppHost host) => _native.CreateMain(host);
     internal override ICandidatePopupWindow CreatePopup(UnoAppHost host)
     { PopupCreations++; return Popup = _native.CreatePopup(host); }
-    internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit) => _native.CreateTray(open, preview, settings, exit);
+    internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
+    {
+        Open = open; Settings = settings; ExitCallback = exit;
+        return new ObservedTray(_native.CreateTray(open, preview, settings, exit), () => TrayDisposed = true);
+    }
+    private sealed class ObservedTray(ICandidateTray inner, Action disposed) : ICandidateTray
+    {
+        public void Notify(string title, string message) => inner.Notify(title, message);
+        public void Dispose() { inner.Dispose(); disposed(); }
+    }
     internal override void ReportStartupFailure() => throw new InvalidOperationException("fixture_startup_failed");
     internal override void Exit()
     {
         var log = File.ReadAllText(Path.Combine(Program.ProfileRoot, "logs", "app.log"));
-        if (log.Contains(" ERROR ", StringComparison.Ordinal)) throw new InvalidOperationException("fixture_cleanup_failed");
+        if (log.Contains(" ERROR ", StringComparison.Ordinal) || log.Contains("candidate_tray_cleanup_failed", StringComparison.Ordinal)
+            || (Program.ShellMode is not null && !TrayDisposed)) throw new InvalidOperationException("fixture_cleanup_failed");
         // Host must release its profile lease before native Application.Exit.
         using (File.Open(Path.Combine(Program.ProfileRoot, ".candidate-owner"), FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
         Program.Receipt("graceful");

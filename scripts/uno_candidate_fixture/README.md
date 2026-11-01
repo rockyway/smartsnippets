@@ -69,6 +69,15 @@ Synthetic content/label/tag/query/path canaries exercise the diagnostic scanner;
 synthetic title is a planted negative control only (no external title is read).
 The database is intentionally **not** scanned for fixture text.
 
+## N3 shell/coexistence checkpoint (closed gate)
+
+See [N3 scene protocol and limitations](N3-README.md). Six fixed shell selectors
+are implemented behind `FULL_HOST_OBSERVER_REVIEWED=False`; `coexistence` refuses
+before launch because the production legacy executable has no safe owned-profile
+bootstrap. Owned foreground target/process redirect and legacy profile/registry
+diffs remain unimplemented. Posted callback/pointer checks are not physical input
+proof. No N3 scene has run; this checkpoint is partial, not native acceptance.
+
 ## Integration and outstanding gates
 
 No production or shared-test project patch is required: SDK default inclusion picks

@@ -20,6 +20,50 @@ spec = importlib.util.spec_from_file_location('startup_observer', REPO / 'script
 startup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(startup)
 ENTRY = 'SmartSnippets.UnoAcceptanceFixture.exe'
+SHELL_SCENES = ('preview-options', 'hover', 'tray', 'close-background', 'message-window', 'dpi', 'coexistence')
+
+
+def scene_phases(scene):
+    if scene == 'full-host':
+        return (('ready', 1), ('management', 1), ('preview', 2), ('recreated', 2))
+    if scene == 'coexistence':
+        raise ValueError('shell_legacy_isolation_unavailable')
+    phases = {
+        'preview-options': (('shell-preview', 2),),
+        'hover': (('shell-hover-open', 2), ('shell-hover-closed', 2)),
+        'tray': (('shell-tray-open', 1), ('shell-tray-settings', 1)),
+        'close-background': (('shell-background', 0), ('shell-reopened', 1)),
+        'message-window': (('shell-message-cycles', 1),),
+        'dpi': (('shell-dpi', 1),),
+    }
+    if scene not in phases:
+        raise ValueError('shell_scene')
+    return (('shell-ready', 1), *phases[scene], ('shell-verified', 2 if scene in ('preview-options', 'hover') else 1))
+
+
+def require_nonprimary_monitor(desktop, work):
+    """Current physical bottom-left monitor only, never a stale rectangle/primary."""
+    desktop.validate_work_area(work)
+    C, W = startup.C, startup.W
+    class MonitorInfo(C.Structure):
+        _fields_ = [('size', W.DWORD), ('monitor', W.RECT), ('work', W.RECT), ('flags', W.DWORD)]
+    desktop.user.MonitorFromRect.argtypes = [C.POINTER(W.RECT), W.DWORD]
+    desktop.user.MonitorFromRect.restype = W.HANDLE
+    desktop.user.GetMonitorInfoW.argtypes = [W.HANDLE, C.POINTER(MonitorInfo)]
+    desktop.user.GetMonitorInfoW.restype = W.BOOL
+    monitor = desktop.user.MonitorFromRect(C.byref(W.RECT(*work)), 0)
+    info = MonitorInfo(); info.size = C.sizeof(info)
+    if not monitor or not desktop.user.GetMonitorInfoW(monitor, C.byref(info)) or info.flags & 1:
+        raise ValueError('shell_primary_monitor')
+    if tuple(work) != (info.work.left, info.work.top, info.work.right, info.work.bottom):
+        raise ValueError('shell_monitor_geometry')
+    shcore = C.WinDLL('shcore')
+    shcore.GetDpiForMonitor.argtypes = [W.HANDLE, C.c_int, C.POINTER(W.UINT), C.POINTER(W.UINT)]
+    shcore.GetDpiForMonitor.restype = C.c_long
+    x, y = W.UINT(), W.UINT()
+    if shcore.GetDpiForMonitor(monitor, 0, C.byref(x), C.byref(y)) or not x.value or x.value != y.value:
+        raise ValueError('shell_monitor_dpi')
+    return x.value
 
 
 def source_fingerprint():
@@ -110,7 +154,7 @@ def receipt(private, phase, pid):
 
 
 def observe_phase(process, private, phase, desktop, initial, work, minimum_windows=1,
-                  clock=time.monotonic, sleep=time.sleep):
+                  clock=time.monotonic, sleep=time.sleep, maximum_windows=None, frame_check=None):
     deadline = clock() + 12
     stable = None
     while clock() < deadline:
@@ -119,9 +163,12 @@ def observe_phase(process, private, phase, desktop, initial, work, minimum_windo
         if process.poll() is not None:
             raise ValueError('early_exit')
         rects = desktop.windows(process.pid)
+        if frame_check is not None:
+            frame_check(process.pid)
         if any(not startup.inside(rect, work) for rect in rects):
             raise ValueError('geometry')
-        if receipt(private, phase, process.pid) and len(rects) >= minimum_windows:
+        if (receipt(private, phase, process.pid) and len(rects) >= minimum_windows
+                and (maximum_windows is None or len(rects) <= maximum_windows)):
             stable = clock() if stable is None else stable
             if clock() - stable >= .5:
                 if desktop.snapshot() != initial:
@@ -152,7 +199,8 @@ def require_graceful(process, private):
         raise ValueError('process_stderr')
 
 
-def worker(entry, digest, private, work, stream=sys.stdin.buffer):
+def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='full-host'):
+    phases = scene_phases(scene)  # Refuse unsafe/unknown scenes before touching a desktop/profile.
     if stream.readline(64) != startup.PERMIT:
         raise ValueError('permit')
     startup.require_job_membership()
@@ -165,16 +213,36 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
     try:
         desktop.enable_dpi()
         desktop.validate_work_area(work)
+        if scene != 'full-host':
+            input_guard = startup.repo_module('acceptance_shell_input', 'scripts/run_uno_candidate_ui.py')
+            input_epoch = input_guard.quiet_input(desktop)
+            expected_dpi = require_nonprimary_monitor(desktop, work)
+            desktop.user.GetDpiForWindow.argtypes = [startup.W.HWND]
+            desktop.user.GetDpiForWindow.restype = startup.W.UINT
+        def shell_frame(pid):
+            input_guard.quiet_input(desktop, input_epoch)
+            if require_nonprimary_monitor(desktop, work) != expected_dpi:
+                raise ValueError('shell_monitor_dpi')
+            for hwnd in desktop.visible_windows(pid, identities=True):
+                if desktop.user.IsWindowVisible(hwnd) and desktop.user.GetDpiForWindow(hwnd) != expected_dpi:
+                    raise ValueError('shell_window_dpi')
         initial = desktop.snapshot()
         (private / 'fixture-launch-permit').write_bytes(b'owned_fixture_only\n')
+        if scene != 'full-host':
+            with (private / 'fixture-shell-scene-permit').open('xb') as permit:
+                permit.write((scene + '\n').encode('ascii'))
         with (private / 'stdout.log').open('xb') as out, (private / 'stderr.log').open('xb') as err:
             try:
                 process = subprocess.Popen([str(entry)], cwd=private, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
-                for phase, count in (('ready', 1), ('management', 1), ('preview', 2), ('recreated', 2)):
-                    observe_phase(process, private, phase, desktop, initial, work, count)
+                for phase, count in phases:
+                    observe_phase(process, private, phase, desktop, initial, work, count,
+                                  maximum_windows=0 if phase == 'shell-background' else None,
+                                  frame_check=shell_frame if scene != 'full-host' else None)
                 # Keep observing foreground/epoch until actual process exit, not only before it.
                 deadline = time.monotonic() + 12
                 while process.poll() is None:
+                    if scene != 'full-host':
+                        shell_frame(process.pid)
                     if desktop.snapshot() != initial:
                         raise ValueError('desktop_changed')
                     if time.monotonic() >= deadline:
@@ -186,6 +254,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer):
                     startup.stop_app(process)  # Failure cleanup never becomes graceful PASS.
                 if desktop.snapshot() != initial:
                     raise ValueError('desktop_changed')
+                if scene != 'full-host':
+                    input_guard.quiet_input(desktop, input_epoch)
     finally:
         desktop.close()
     print('full_host_observed', flush=True)
@@ -241,7 +311,12 @@ def record_failure(private, error):
                'desktop_unavailable', 'window_recreated', 'ui_exit_code',
                'ui_picker_identity', 'ui_picker_main_identity', 'ui_picker_replaced',
                'ui_picker_phase', 'ui_picker_actions', 'ui_picker_phase_actions',
-               'ui_picker_schema_record', 'ui_foreground_schema', 'ui_foreground_file', 'ui_foreground_unexpected'}
+               'ui_picker_schema_record', 'ui_foreground_schema', 'ui_foreground_file', 'ui_foreground_unexpected',
+               'shell_legacy_isolation_unavailable', 'shell_scene', 'shell_primary_monitor',
+               'shell_monitor_geometry', 'shell_monitor_dpi', 'shell_window_dpi',
+               'missing_shell-ready', 'missing_shell-preview', 'missing_shell-hover-open', 'missing_shell-hover-closed',
+               'missing_shell-tray-open', 'missing_shell-tray-settings', 'missing_shell-background',
+               'missing_shell-reopened', 'missing_shell-message-cycles', 'missing_shell-dpi', 'missing_shell-verified'}
     reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:
@@ -256,6 +331,7 @@ def record_failure(private, error):
 
 def main():
     parser = startup.Parser(allow_abbrev=False)
+    parser.add_argument('--scene', choices=('full-host', *SHELL_SCENES), default='full-host')
     parser.add_argument('--executable', required=True, type=Path)
     parser.add_argument('--sha256', required=True)
     parser.add_argument('--authorized-screen-slot', action='store_true')
@@ -264,12 +340,13 @@ def main():
     args = parser.parse_args()
     if not FULL_HOST_OBSERVER_REVIEWED or not args.authorized_screen_slot or sys.platform != 'win32':
         raise ValueError('authorization')
+    scene_phases(args.scene)
     entry = validate_fixture(args.executable, args.sha256)
     if not startup.inside(args.work_area, args.work_area):
         raise ValueError('work_area')
     if args.worker_private:
         try:
-            worker(entry, args.sha256, args.worker_private, args.work_area)
+            worker(entry, args.sha256, args.worker_private, args.work_area, scene=args.scene)
         except BaseException as error:
             record_failure(args.worker_private, error)
             raise
@@ -278,14 +355,16 @@ def main():
     identity = startup.repo_module('acceptance_identity', 'prototypes/uno-native-target/run_identity_harness.py')
     private = ui.private_directory()
     command = [sys.executable, '-I', '-B', str(Path(__file__).resolve()), '--executable', str(entry),
-               '--sha256', args.sha256, '--authorized-screen-slot', '--work-area', *map(str, args.work_area),
+               '--sha256', args.sha256, '--scene', args.scene, '--authorized-screen-slot', '--work-area', *map(str, args.work_area),
                '--worker-private', str(private)]
     try:
         supervise(command, identity.WindowsJob)
     except BaseException as error:
         record_failure(private, error)
         raise
-    return {'privateEvidenceToken': private.name, 'artifactSha256': args.sha256.lower(),
+    return {'scene': args.scene, 'shellDelivery': 'POSTED_NOT_PHYSICAL' if args.scene != 'full-host' else 'NOT_RUN',
+            'ownedForegroundTarget': 'NOT_IMPLEMENTED', 'legacyCoexistence': 'BLOCKED',
+            'privateEvidenceToken': private.name, 'artifactSha256': args.sha256.lower(),
             'fixtureSourceSha256': source_fingerprint(),
             'observerSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
 
@@ -295,8 +374,9 @@ def cli():
     try:
         token = main()
         if token is not None:
-            print(json.dumps({'fullHost': 'OBSERVED', 'management': 'PROGRAMMATIC_INVARIANTS',
-                              'previewLifecycle': 'PROGRAMMATIC_WITH_WINDOW_OBSERVATIONS',
+            print(json.dumps({'fullHost': 'OBSERVED',
+                              'management': 'PROGRAMMATIC_INVARIANTS' if token['scene'] == 'full-host' else 'NOT_RUN',
+                              'previewLifecycle': 'PROGRAMMATIC_WITH_WINDOW_OBSERVATIONS' if token['scene'] == 'full-host' else 'NOT_RUN',
                               'renderedEventDelivery': 'NOT_RUN', 'nativeMutation': 'NOT_RUN',
                               'stop': 'GRACEFUL', 'job': 'ZERO_ACTIVE', 'profile': 'PRIVATE_RETAINED',
                               **token}))

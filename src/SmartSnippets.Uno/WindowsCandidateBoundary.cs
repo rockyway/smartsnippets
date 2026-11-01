@@ -16,6 +16,9 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     private PopupWindow? _popup;
     private MessageWindow? _message;
     private ThemeService? _theme;
+    // Read-only linked-fixture observation; no production activation or native unlock.
+    internal MainWindow? MainWindow => _main;
+    internal PopupWindow? PopupWindow => _popup;
     internal override IUiDispatcher Dispatcher { get; } = new UiDispatcher(DispatcherQueue.GetForCurrentThread());
     internal override IThemeService CreateTheme(AppSettings settings) => _theme = new ThemeService(settings.Theme, settings.ColorPalette);
     internal override IDisposable CreateMessageWindow()
