@@ -8,3 +8,4 @@
 | 2026-11-01 | feature/uno019-picker-thread | 1 | 1 | 1 | 1 | 1 | rv-06 GO; visibility-gate oracles + 3rd replacement site + wording folded (pt-01b) |
 | 2026-11-01 | feature/uno019-popup-grant | 1 | 0 | 1 | 1 | 1 | rv-07 GO; wiring pins, refused/failed receipt split, stage wording folded (pg-01b) |
 | 2026-11-01 | uno019-native-diag2 (nd-02) | 1 | 1 | 2 | 0 | 3 | rv-08 BLOCK: PS poll test never read the record; validator rejections untested; refusal callback unguarded; all folded (nd-02b), leader verified |
+| 2026-11-01 | uno019-copy-scenes (cs-01) | 1 | 0 | 3 | 3 | 1 | rv-09 BLOCK: editor-copy deliberate store_write_failed ERROR fails parent log gate; Copy-scene/context-insert oracles too weak; all folded (cs-01b), leader verified |
