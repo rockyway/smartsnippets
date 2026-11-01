@@ -88,3 +88,26 @@ zero candidate, guardian and Target018 fixture processes. No recovery was killed
 The native registered-shortcut/Enter/usage acceptance remains unproven; a future
 operator-ready slot must not reuse the expired prompt. The ACL follow-up adds
 one Python test, bringing the current candidate script suite to 125 passing tests.
+
+After a new explicit operator-ready message, a second attempt reused the exact
+unchanged source/artifacts and accepted control witness above (no rebuild or
+repeat clipboard control mutations). Trusted wrapper
+`ss-uno018-ui-b4d1abf55691a9fb30449dc203e680cc` observed registered session
+`ss-uno018-ui-5618e66328cbc20948bcc38995903cda/ss-uno019-native-ab8f8b76db104496acde20644f44bd53`.
+It again passed owned Target A preparation and exact registered-readiness
+observation, then expired at the 25-second callback bound without popup opening
+or agent keyboard arm. The parent withdrew the prompt and asked whether the
+operator's keypress occurred within the window, rather than inferring user action
+or OS delivery from the timeout. All eight flags returned false; read-only
+process enumeration again found zero candidate, guardian or target processes.
+No insertion or global-shortcut PASS is claimed.
+
+The operator subsequently reported that the F9 combination conflicts with another
+application and explicitly requested another combination. The test-only gesture
+is changed to Ctrl+Alt+Shift+F11 (VK `0x7A`), with matching observer instructions,
+README and assertion. This is a reported conflict, not proof that `RegisterHotKey`
+itself returned a conflict (both prior runs reached registered readiness). No
+registration is stolen or unregistered from another application; all original
+conflict, release/reacquire, source-gate and input guards remain. The 125 Python
+and 114 fixture tests pass after this narrow operator-selected gesture change.
+The changed source requires a fresh fixture fingerprint/artifact before retry.

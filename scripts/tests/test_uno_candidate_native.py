@@ -82,7 +82,7 @@ class NativeBootstrapTests(unittest.TestCase):
         with patch.object(native, 'positive_foregrounds', return_value={1}), patch.object(native, 'registered_operator_ready', side_effect=[False, True]) as ready, patch('builtins.print') as output:
             native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None, positive_private=Path('private'), registered=True)
             self.assertEqual(2, ready.call_count)
-            output.assert_called_once_with('native_phase=operator_ready press_Ctrl_Alt_Shift_F9_then_release_all_input', flush=True)
+            output.assert_called_once_with('native_phase=operator_ready press_Ctrl_Alt_Shift_F11_then_release_all_input', flush=True)
 
     def test_source_gate_precedes_any_launch_or_profile_access(self):
         with patch.object(native.subprocess, 'Popen') as start, patch.object(native, 'validate_build') as validate:

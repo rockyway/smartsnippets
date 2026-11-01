@@ -152,7 +152,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
                       'native_phase=awaiting_owned_a operator_select_A_then_release_all_input', flush=True)
                 announced = True
             if registered and positive_private is not None and not operator_announced and registered_operator_ready(positive_private):
-                print('native_phase=operator_ready press_Ctrl_Alt_Shift_F9_then_release_all_input', flush=True)
+                print('native_phase=operator_ready press_Ctrl_Alt_Shift_F11_then_release_all_input', flush=True)
                 operator_announced = True
             failed |= desktop.user.GetForegroundWindow() not in allowed
             failed |= any(p.stat().st_size > 65536 for p in output)
@@ -332,7 +332,7 @@ def main(argv=None, *, prior_restorative_session=None):
         positive = args.scene in POSITIVE_SCENES
         (private / 'native-launch-permit').write_bytes(launch_permit(positive, prior_token))
         if args.scene == 'registered-enter':
-            print('Operator: wait for operator_ready, then press Ctrl+Alt+Shift+F9 once and release all input. Do not click or type before that receipt.', flush=True)
+            print('Operator: wait for operator_ready, then press Ctrl+Alt+Shift+F11 once and release all input. Do not click or type before that receipt.', flush=True)
         elif positive:
             print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
         paths = [private / 'stdout.log', private / 'stderr.log']

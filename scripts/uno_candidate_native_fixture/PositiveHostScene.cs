@@ -13,7 +13,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
 {
     internal readonly PositiveKeyboardLifetime Keyboard = new();
     private readonly PositiveEnterGuard enter = new();
-    private readonly HotkeyGesture gesture = new(HotkeyGesture.ModControl | HotkeyGesture.ModAlt | HotkeyGesture.ModShift, 0x78); // F9, never production.
+    private readonly HotkeyGesture gesture = new(HotkeyGesture.ModControl | HotkeyGesture.ModAlt | HotkeyGesture.ModShift, 0x7A); // F11, operator-selected after reported F9 conflict; never production.
     private AcceptanceHotkey? hotkey;
     private readonly PositiveShortcutRoute shortcut = new();
     private readonly TaskCompletionSource captured = new();

@@ -124,7 +124,7 @@ Target A editor and releases all input within 15 seconds. No initial synthetic f
 is used; the fixed `focus_a` command is allowed only after A is already foreground
 and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing commands.
 
-- `posted-enter/row/main`: register Ctrl+Alt+Shift+F9 on the real host message HWND,
+- `posted-enter/row/main`: register Ctrl+Alt+Shift+F11 on the real host message HWND,
   unregister/reacquire, then **post WM_HOTKEY**. Its actual native callback awaits
   bounded session admission and calls actual `host.ShowCapturedPopup`. The unchanged
   popup coordinator alone requests ready-surface focus through the late broker to
@@ -132,7 +132,7 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   quiet/all-up before continuing. This proves native registration and posted callback
   delivery, **not physical shortcut delivery**.
 - `registered-enter`: same owned-A preparation, real host/session and exact temporary
-  Ctrl+Alt+Shift+F9 release/reacquire, but **never posts WM_HOTKEY or synthesizes the
+  Ctrl+Alt+Shift+F11 release/reacquire, but **never posts WM_HOTKEY or synthesizes the
   shortcut**. After preparation and registration, exclusively/atomically publishes
   `registered-shortcut-ready` in the owner-private fixture cwd, containing exactly
   `registered_os_shortcut_operator_ready
