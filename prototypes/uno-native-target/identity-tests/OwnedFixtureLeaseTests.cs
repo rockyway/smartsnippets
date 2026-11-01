@@ -23,6 +23,9 @@ public sealed class OwnedFixtureLeaseTests
             Assert.Equal(2, info.ArgumentList.Count);
             Assert.Equal("--authorized-probe-target", info.ArgumentList[0]);
             Assert.True(Guid.TryParseExact(info.ArgumentList[1], "D", out _));
+            using var current = Process.GetCurrentProcess();
+            Assert.Equal(current.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), info.Environment["SS_TARGET_GRANTEE_PID"]);
+            Assert.Equal(current.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(System.Globalization.CultureInfo.InvariantCulture), info.Environment["SS_TARGET_GRANTEE_STARTED"]);
             Assert.DoesNotContain("DYLD_INSERT_LIBRARIES", info.Environment.Keys);
             Assert.DoesNotContain("DOTNET_STARTUP_HOOKS", info.Environment.Keys);
             return child;
@@ -52,6 +55,24 @@ public sealed class OwnedFixtureLeaseTests
         if (accepted) await lease.VerifyMultilineAAsync(CancellationToken.None);
         else Assert.Equal("readback_failed", (await Assert.ThrowsAsync<ProbeFailure>(() => lease.VerifyMultilineAAsync(CancellationToken.None))).Token);
         Assert.Equal(new[] { "verify_multiline_a" }, child.Commands);
+    }
+
+    [Theory]
+    [InlineData("target_foreground_grant result=granted", true)]
+    [InlineData("target_foreground_grant result=refused", false)]
+    [InlineData("target_foreground_grant result=granted extra", false)]
+    [InlineData("target_command name=foreground_grant ok=1", false)]
+    public async Task ForegroundGrantRequiresExactReceipt(string receipt, bool accepted)
+    {
+        using var fixture = new ArtifactFixture();
+        var child = new FakeChild { GrantReceipt = receipt };
+        await using var lease = await OwnedFixtureLease.StartAsync(await fixture.OpenAsync(), (_, _) => child, CancellationToken.None);
+        if (accepted) await lease.GrantForegroundAsync(CancellationToken.None);
+        else Assert.Equal("foreground_grant_refused", (await Assert.ThrowsAsync<ProbeFailure>(() => lease.GrantForegroundAsync(CancellationToken.None))).Token);
+        Assert.Equal(new[] { "foreground_grant" }, child.Commands);
+        child.Alive = false;
+        await Assert.ThrowsAsync<ProbeFailure>(() => lease.GrantForegroundAsync(CancellationToken.None));
+        Assert.Single(child.Commands); // Stale target identity cannot receive another request.
     }
 
     [Fact]
@@ -221,6 +242,7 @@ public sealed class OwnedFixtureLeaseTests
         internal nint Foreground;
         internal int DisposeCount;
         internal int VerifyCount = 22;
+        internal string GrantReceipt = "target_foreground_grant result=refused";
         public uint Id => 424242;
         public ChildProtocol Protocol { get; }
 
@@ -234,6 +256,7 @@ public sealed class OwnedFixtureLeaseTests
         {
             if (BreakInput) throw new IOException();
             Commands.Add(command);
+            if (command == "foreground_grant") { output.Feed(GrantReceipt + "\n"); return; }
             if (command == "focus_a") Foreground = 1;
             if (command == "focus_b") Foreground = 2;
             if (command == "close_a") ClosedA = true;

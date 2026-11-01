@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,12 +14,51 @@ internal static unsafe partial class Program
     private const string UnicodeFixture = "AΩ中🙂e\u0301";
     private const string MultilineFixture = "AΩ中🙂e\u0301\r\nsecond line\r\n";
     internal static bool AllowedCommand(string command) => command is
-        "close_a" or "close_b" or "empty_a" or "empty_b" or "focus_a" or "focus_b" or
+        "foreground_grant" or "close_a" or "close_b" or "empty_a" or "empty_b" or "focus_a" or "focus_b" or
         "verify_unicode_a" or "verify_unicode_b" or "verify_multiline_a" or "verify_multiline_b";
 
     internal static bool VerifyFixture(string command, ReadOnlySpan<char> text) =>
         command is "verify_unicode_a" or "verify_unicode_b" ? text.SequenceEqual(UnicodeFixture) :
         command is "verify_multiline_a" or "verify_multiline_b" && text.SequenceEqual(MultilineFixture);
+
+    // Retained handle pins the bootstrap-selected candidate lifetime, not just its numeric PID.
+    private static Process? grantee;
+    internal static bool MatchesGrantee(uint expectedPid, long expectedStarted, uint actualPid, long actualStarted, bool alive) =>
+        expectedPid != 0 && expectedPid != uint.MaxValue && expectedStarted > 0 && alive &&
+        expectedPid == actualPid && expectedStarted == actualStarted;
+
+    private static Process? PinGrantee()
+    {
+        var pidText = Environment.GetEnvironmentVariable("SS_TARGET_GRANTEE_PID");
+        var startedText = Environment.GetEnvironmentVariable("SS_TARGET_GRANTEE_STARTED");
+        Environment.SetEnvironmentVariable("SS_TARGET_GRANTEE_PID", null);
+        Environment.SetEnvironmentVariable("SS_TARGET_GRANTEE_STARTED", null);
+        if (!uint.TryParse(pidText, NumberStyles.None, CultureInfo.InvariantCulture, out var pid) ||
+            !long.TryParse(startedText, NumberStyles.None, CultureInfo.InvariantCulture, out var started) ||
+            pid == (uint)Environment.ProcessId || pid > int.MaxValue || pid == 0) return null;
+        Process? process = null;
+        try
+        {
+            process = Process.GetProcessById((int)pid);
+            _ = process.SafeHandle; // Keep the exact process object alive through the grant.
+            if (MatchesGrantee(pid, started, (uint)process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc(), !process.HasExited))
+                return process;
+        }
+        catch (Exception) { /* Fixed refused receipt only; no process details. */ }
+        process?.Dispose();
+        return null;
+    }
+
+    private static bool GrantForeground(nint a)
+    {
+        try
+        {
+            if (grantee is null || grantee.HasExited || IsWindow(a) == 0 || GetForegroundWindow() != a) return false;
+            VerifyOwner(a);
+            return AllowSetForegroundWindow((uint)grantee.Id) != 0;
+        }
+        catch (Exception) { return false; }
+    }
 
     private static int _closed;
     private const uint CommandMessage = 0x8001;
@@ -69,6 +110,8 @@ internal static unsafe partial class Program
 
     private static int Run(Guid run)
     {
+        using var pinnedGrantee = PinGrantee();
+        grantee = pinnedGrantee;
         var selected = new Selection();
         Require(EnumDisplayMonitors(0, 0, &VisitMonitor, (nint)(&selected)) != 0 && selected.Failed == 0 && selected.Found != 0);
         var area = selected.Work;
@@ -143,6 +186,13 @@ internal static unsafe partial class Program
 
     private static void ExecuteCommand(string command, nint a, nint b, nint editA, nint editB)
     {
+        if (command == "foreground_grant")
+        {
+            var granted = GrantForeground(a);
+            Console.WriteLine("target_foreground_grant result=" + (granted ? "granted" : "refused"));
+            Console.Out.Flush();
+            return;
+        }
         var window = command.EndsWith("_a", StringComparison.Ordinal) ? a : b;
         var editor = window == a ? editA : editB;
         var ok = IsWindow(window) != 0 && IsWindow(editor) != 0;
@@ -280,6 +330,8 @@ internal static unsafe partial class Program
     private static partial int ShowWindow(nint window, int command);
     [LibraryImport("user32.dll")]
     private static partial int SetForegroundWindow(nint window);
+    [LibraryImport("user32.dll")]
+    private static partial int AllowSetForegroundWindow(uint processId);
     [LibraryImport("user32.dll")]
     private static partial nint GetForegroundWindow();
     [LibraryImport("user32.dll")]

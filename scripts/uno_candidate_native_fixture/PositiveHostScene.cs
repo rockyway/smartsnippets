@@ -160,7 +160,23 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             if (!hotkey.TryChange(gesture).Success) throw new InvalidOperationException("native_shortcut_reacquire");
             var callbackTimeout = await PositiveShortcutRoute.BeginAsync(scene,
                 () => PositiveNativeInput.PostShortcut(boundary.MessageHandle, gesture.Modifiers, gesture.Key),
-                () => PositiveShortcutRoute.WriteReadyAsync(ct));
+                () => PositiveShortcutRoute.WriteReadyAsync(ct),
+                async () =>
+                {
+                    NativeStage.Reach("target_foreground_grant");
+                    try
+                    {
+                        if (!session.IsTargetForeground(session.Target) || !NativeOwnedPopup.QuietAllInput())
+                            throw new InvalidOperationException("native_foreground_grant_refused");
+                        await fixture.Lease.GrantForegroundAsync(ct);
+                        SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", "result=granted");
+                    }
+                    catch
+                    {
+                        SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", "result=refused");
+                        throw;
+                    }
+                });
             await captured.Task.WaitAsync(callbackTimeout, ct);
             try
             {

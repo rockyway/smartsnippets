@@ -15,14 +15,33 @@ public sealed class PositiveProtocolTests
     [InlineData("posted-main", 1, 0, 5)]
     public async Task PositiveShortcutRoute_OperatorSceneNeverPostsAndHasBoundedWait(string scene, int posts, int readies, int seconds)
     {
-        var posted = 0; var ready = 0;
-        var timeout = await PositiveShortcutRoute.BeginAsync(scene, () => posted++, () => { ready++; return Task.CompletedTask; });
+        var posted = 0; var ready = 0; var grants = 0;
+        var timeout = await PositiveShortcutRoute.BeginAsync(scene, () => { Assert.Equal(1, grants); posted++; },
+            () => { ready++; return Task.CompletedTask; }, () => { grants++; return Task.CompletedTask; });
+        Assert.Equal(posts, grants); // Registered scenes never request a grant.
         Assert.Equal(posts, posted); Assert.Equal(readies, ready);
         Assert.Equal(TimeSpan.FromSeconds(seconds), timeout);
         Assert.Equal(scene is "registered-enter" or "posted-enter", PositiveShortcutRoute.NativeEnter(scene));
         Assert.Equal(scene is "registered-enter" or "registered-row" or "registered-main", PositiveShortcutRoute.IsRegistered(scene));
         Assert.Equal(scene is "registered-main" or "posted-main", PositiveShortcutRoute.MainRow(scene));
     }
+    [Theory]
+    [InlineData("posted-enter")] [InlineData("posted-row")] [InlineData("posted-main")]
+    public async Task PostedTriggerWaitsForGrantReceiptAndRefusalNeverPosts(string scene)
+    {
+        var receipt = new TaskCompletionSource();
+        var posts = 0;
+        var route = PositiveShortcutRoute.BeginAsync(scene, () => posts++,
+            () => throw new Exception("must not request operator input"), () => receipt.Task);
+        Assert.Equal(0, posts);
+        receipt.SetResult();
+        await route;
+        Assert.Equal(1, posts);
+        await Assert.ThrowsAsync<IOException>(() => PositiveShortcutRoute.BeginAsync(scene,
+            () => throw new Exception("must not post after refusal"), () => Task.CompletedTask,
+            () => throw new IOException("foreground_grant_refused")));
+    }
+
     [Fact]
     public void PositiveShortcutRoute_OnlyFirstCallbackCanReachAdmission()
     {
@@ -47,7 +66,8 @@ public sealed class PositiveProtocolTests
         Assert.Equal("registered-shortcut-ready", PositiveShortcutRoute.ReadyFile);
         Assert.Equal("registered_os_shortcut_operator_ready\n", PositiveShortcutRoute.ReadyReceipt);
         await Assert.ThrowsAsync<IOException>(() => PositiveShortcutRoute.BeginAsync(scene,
-            () => throw new Exception("must never post"), () => throw new IOException("publication refused")));
+            () => throw new Exception("must never post"), () => throw new IOException("publication refused"),
+            () => throw new Exception("registered scenes must never grant")));
     }
     [Theory]
     [InlineData(false)]

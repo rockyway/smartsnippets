@@ -135,7 +135,7 @@ internal sealed class PositiveShortcutRoute
     internal static bool IsRegistered(string scene) => scene is "registered-enter" or "registered-row" or "registered-main";
     internal static bool MainRow(string scene) => scene is "registered-main" or "posted-main";
     internal static bool NativeEnter(string scene) => scene is "registered-enter" or "posted-enter";
-    internal static async Task<TimeSpan> BeginAsync(string scene, Action post, Func<Task> ready)
+    internal static async Task<TimeSpan> BeginAsync(string scene, Action post, Func<Task> ready, Func<Task> grant)
     {
         if (!PositiveProtocol.Inserts(scene)) throw new InvalidOperationException("native_scene");
         if (IsRegistered(scene))
@@ -143,6 +143,7 @@ internal sealed class PositiveShortcutRoute
             await ready();
             return TimeSpan.FromSeconds(25);
         }
+        await grant(); // A fixed successful Target018 receipt is required before callback delivery.
         post();
         return TimeSpan.FromSeconds(5);
     }

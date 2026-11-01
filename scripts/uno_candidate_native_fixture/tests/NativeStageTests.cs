@@ -13,7 +13,7 @@ public sealed class NativeStageTests
         Assert.Equal("start", NativeStage.Tokens[0]);
         Assert.Equal(NativeStage.Tokens.Length, NativeStage.Tokens.Distinct().Count());
         Assert.All(NativeStage.Tokens, token => Assert.Matches("^[a-z_]+$", token));
-        Assert.Equal("guardian_ready", NativeStage.Tokens[^1]);
+        Assert.Equal("target_foreground_grant", NativeStage.Tokens[^1]);
     }
 
     [Fact]
@@ -47,6 +47,7 @@ public sealed class NativeStageTests
 
     [Theory]
     [InlineData("review_gate")] [InlineData("fixture_start")] [InlineData("host_ready")]
+    [InlineData("target_foreground_grant")]
     [InlineData("session_create")] [InlineData("guardian_bootstrap")] [InlineData("guardian_dup")]
     public void FailureEvent_LogsStageTypeAndHResultOnly(string stage)
     {

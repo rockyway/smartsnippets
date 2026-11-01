@@ -64,6 +64,9 @@ internal sealed class OwnedFixtureLease : IOwnedFixtureLease, IAsyncDisposable
             {
                 info.Environment["SystemRoot"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
                 info.Environment["WINDIR"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                using var grantee = Process.GetCurrentProcess();
+                info.Environment["SS_TARGET_GRANTEE_PID"] = grantee.Id.ToString(CultureInfo.InvariantCulture);
+                info.Environment["SS_TARGET_GRANTEE_STARTED"] = grantee.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture);
             }
             else info.Environment["PATH"] = "/usr/bin:/bin";
             info.ArgumentList.Add("--authorized-probe-target");
@@ -103,6 +106,17 @@ internal sealed class OwnedFixtureLease : IOwnedFixtureLease, IAsyncDisposable
         await child.Protocol.SendAsync(command, TimeSpan.FromSeconds(2), ct);
         var line = await child.Protocol.ReadAsync(TimeSpan.FromSeconds(4), ct);
         if (line != "target_command name=" + command + " ok=1" || !IsAliveAndPinned()) throw new ProbeFailure("command_failed");
+    }
+
+    internal async Task GrantForegroundAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (Platform != TargetPlatform.Windows || !IsAliveAndPinned() || child.Protocol.HasUnexpectedOutput)
+            throw new ProbeFailure("foreground_grant_refused");
+        await child.Protocol.SendAsync("foreground_grant", TimeSpan.FromSeconds(2), ct);
+        var line = await child.Protocol.ReadAsync(TimeSpan.FromSeconds(4), ct);
+        if (line != "target_foreground_grant result=granted" || !IsAliveAndPinned())
+            throw new ProbeFailure("foreground_grant_refused");
     }
 
     internal async Task VerifyMultilineAAsync(CancellationToken ct)

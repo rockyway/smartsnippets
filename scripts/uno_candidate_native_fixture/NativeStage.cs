@@ -1,7 +1,7 @@
 namespace SmartSnippets.Uno;
 
 /// <summary>
-/// Last fixed pre-guardian-ready stage reached by the native fixture worker. Only the allowlisted
+/// Last fixed orchestration stage reached by the native fixture worker. Only the allowlisted
 /// tokens below are ever recorded or logged; exception messages, stacks and identities never are.
 /// scripts/run_uno_candidate_native.py mirrors this list (NATIVE_STAGES) and a test keeps them equal.
 /// </summary>
@@ -13,7 +13,7 @@ internal static class NativeStage
         "start", "review_gate", "fixture_start", "fixture_owned", "host_start", "host_ready",
         "session_create", "session_probe", "session_capture", "guardian_image", "guardian_spawn",
         "guardian_bootstrap", "guardian_wait", "session_focus", "broker_bind", "outside_job",
-        "guardian_dup", "guardian_ready",
+        "guardian_dup", "guardian_ready", "target_foreground_grant",
     ];
     private static volatile string last = "start";
     internal static string Last => last;

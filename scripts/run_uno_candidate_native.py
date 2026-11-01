@@ -30,7 +30,7 @@ ENTRY = 'SmartSnippets.UnoCandidate.exe'
 NATIVE_STAGES = ('start', 'review_gate', 'fixture_start', 'fixture_owned', 'host_start', 'host_ready',
                  'session_create', 'session_probe', 'session_capture', 'guardian_image', 'guardian_spawn',
                  'guardian_bootstrap', 'guardian_wait', 'session_focus', 'broker_bind', 'outside_job',
-                 'guardian_dup', 'guardian_ready')
+                 'guardian_dup', 'guardian_ready', 'target_foreground_grant')
 STAGE_LINE = re.compile(r'^\S+ ERROR native_positive_failed stage=([a-z_]+) [A-Za-z0-9_`]+ \(HResult=0x[0-9A-F]{8}\)$')
 ROOT = REPO / 'scripts/uno_candidate_native_fixture'
 spec = importlib.util.spec_from_file_location('native_nonmutating_helpers', REPO / 'scripts/run_uno_candidate_acceptance.py')

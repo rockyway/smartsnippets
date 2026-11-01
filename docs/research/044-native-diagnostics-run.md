@@ -294,3 +294,25 @@ under the posted route remain unresolved; posted-main/posted-enter remain unrun.
 These need a separate reviewed disposition and screen authorization before new
 runtime attempts. No active recovery work, operator prompt or decision is pending.
 Commit scope for this run is **only this research document**.
+
+## pg-01 — posted-scene foreground grant design (no acceptance claim)
+
+D27 supplies the missing foreground authority in the fixture, not in candidate
+product focus code. The owned lease bootstraps Target018 with the launching
+candidate's exact PID and creation time; Target018 validates them and retains the
+process handle before readiness. One fixed `foreground_grant` control-channel
+message carries no caller-selected PID. Only while owned A remains foreground
+and the retained candidate is live does Target018 call
+`AllowSetForegroundWindow(exactCandidatePid)` once. The fixed receipt is
+`target_foreground_grant result=granted` or `target_foreground_grant result=refused`.
+A refused/malformed receipt or changed target identity fails closed before posting.
+
+Only posted-enter/row/main await this receipt immediately before posting the
+existing callback. Registered scenes request no grant. The candidate's single
+ready-coordinator foreground request, exact popup foreground/quiet readiness and
+keyboard-permit-before-mutation gates are unchanged. No ASFW_ANY, candidate
+self-grant, AttachThreadInput, retry or weakened foreground check is introduced.
+The fixed `target_foreground_grant` stage locates grant/posted readiness failures.
+Windows can still revoke or refuse foreground rights; such failures remain FAIL.
+Unit tests and builds are not native acceptance: no UI/native scene is run for
+pg-01, all source-review gates remain false, and 018/019 closure stays open.

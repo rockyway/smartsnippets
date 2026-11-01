@@ -48,7 +48,7 @@ The Python runner starts this executable in coordinator mode **without any Job o
 outer timeout-kill**. Both coordinator and worker verify no pre-existing Job. A
 private inherited command/response pipe and retained inherited coordinator process
 handle bind the worker to its direct parent, same exact native image and user/token.
-The worker directly starts Target018. The unchanged target source uses
+The worker directly starts Target018. The target source uses
 SW_SHOWNOACTIVATE/SetWindowPos no-activate; the worker and external observer also
 check foreground, and refuse any observed change. No focus or input call is used
 to make a control admissible. There is no clipboard sequence-number dependency.
@@ -125,7 +125,18 @@ is used; the fixed `focus_a` command is allowed only after A is already foregrou
 and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing commands.
 
 - `posted-enter/row/main`: register Ctrl+Alt+Shift+F11 on the real host message HWND,
-  unregister/reacquire, then **post WM_HOTKEY**. Its actual native callback awaits
+  unregister/reacquire, then request `foreground_grant` over the retained owned
+  Target018 stdin/stdout control channel. Before readiness, Target018 pins the
+  launching candidate PID plus process creation time from the lease's sanitized
+  child environment and retains its process handle (missing/mismatched/dead pins
+  refuse). No PID is accepted in the command. While exact owned A is foreground,
+  Target018 makes one `AllowSetForegroundWindow(exactCandidatePid)` call and replies
+  exactly `target_foreground_grant result=granted` or `target_foreground_grant result=refused`.
+  Only a granted receipt plus a still-pinned target permits the immediately following
+  **posted WM_HOTKEY**. Refusal fails closed (`foreground_grant_refused`); diagnostics
+  use the fixed `target_foreground_grant` stage. Registered scenes never request
+  this grant. No ASFW_ANY, self-grant, input queue attachment or focus retry exists.
+  This models foreground authority, not a physical shortcut. Its actual native callback awaits
   bounded session admission and calls actual `host.ShowCapturedPopup`. The unchanged
   popup coordinator alone requests ready-surface focus through the late broker to
   `session.TryFocusOwnedPopup`. Wait for presentation, exact popup foreground and
