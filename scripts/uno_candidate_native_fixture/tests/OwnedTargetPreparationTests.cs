@@ -116,6 +116,35 @@ public sealed class OwnedTargetPreparationTests
     }
 
     [Fact]
+    public async Task AlreadyARejectsAnyEpochDriftWithoutCallingEditor()
+    {
+        var os = new Os { Foreground = 2 };
+        var reads = 0;
+        os.OnEpoch = () => { if (++reads == 2) os.Epoch++; };
+        Assert.Equal(OwnedPreparationResult.Refused, await Prepare(os, () => throw new Exception()));
+        Assert.Equal(0, os.EditorCommands);
+    }
+
+    [Fact]
+    public async Task EpochDriftAfterFocusDuringSettleCannotRebaseline()
+    {
+        var os = new Os();
+        var com = new Com(os) { FocusAction = () => os.Epoch++ };
+        os.OnDelay = () => os.Epoch++;
+        Assert.Equal(OwnedPreparationResult.Refused, await Prepare(os, () => com));
+        Assert.Equal(0, os.EditorCommands); Assert.True(com.Released);
+    }
+
+    [Fact]
+    public async Task EpochDriftDuringOwnedEditorCommandRefuses()
+    {
+        var os = new Os { OnEditor = null };
+        os.OnEditor = () => os.Epoch++;
+        Assert.Equal(OwnedPreparationResult.Refused, await Prepare(os, () => new Com(os)));
+        Assert.Equal(1, os.EditorCommands);
+    }
+
+    [Fact]
     public async Task FailedFinalSessionCheckRefuses()
     {
         var os = new Os();
@@ -139,14 +168,14 @@ public sealed class OwnedTargetPreparationTests
         internal bool Identity = true, Permission = true, Desktop = true, Quiet = true;
         internal uint Epoch = 10;
         internal int EditorCommands;
-        internal Action? OnDelay, OnEditor;
+        internal Action? OnDelay, OnEditor, OnEpoch;
         public nint Foreground { get; set; } = 1;
         public long Milliseconds { get; private set; }
         public bool PinnedIdentity() => Identity;
         public bool Permitted() => Permission;
         public bool VisibleDesktop() => Desktop;
         public bool QuietAllInput() => Quiet;
-        public bool TryInputEpoch(out uint epoch) { epoch = Epoch; return true; }
+        public bool TryInputEpoch(out uint epoch) { OnEpoch?.Invoke(); epoch = Epoch; return true; }
         public Task DelayAsync(CancellationToken ct) { Milliseconds += 25; OnDelay?.Invoke(); return Task.CompletedTask; }
         public Task FocusEditorAsync(CancellationToken ct) { EditorCommands++; OnEditor?.Invoke(); return Task.CompletedTask; }
         public bool TargetForeground() => Foreground == 2;

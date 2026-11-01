@@ -129,6 +129,54 @@ public sealed class PositiveActualHostTests
         await f.Host.ExitAsync();
     });
 
+    [Fact]
+    public Task ExpiredScenePreparation_AdmitsOnlyFocusValidationWithoutOpeningBroker() => CandidateHostThread.RunAsync(async () =>
+    {
+        var clock = new ExpiryClock();
+        using var f = new Fixture(clock);
+        await f.Host.StartAsync(true, new(null, false, null));
+        Assert.Throws<InvalidOperationException>(() => f.Broker.BeginPreparationFocus());
+        f.Broker.Bind(f.Operations, f.Operations.Id);
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus));
+        f.Broker.BeginPreparationFocus();
+        Assert.True(f.Capability.Allows(CandidateNativeOperation.Focus));
+        foreach (var operation in new[] { CandidateNativeOperation.Capture, CandidateNativeOperation.Copy,
+            CandidateNativeOperation.Insert, CandidateNativeOperation.Input, CandidateNativeOperation.Clipboard,
+            CandidateNativeOperation.Focus | CandidateNativeOperation.Insert })
+            Assert.False(f.Capability.Allows(operation));
+        Assert.False(f.Broker.IsAvailable); Assert.False(f.Broker.TryFocusOwnedPopup());
+        f.Operations.Valid = false;
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus));
+        f.Operations.Valid = true;
+        clock.Seconds = 31;
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus)); // Monotonic expiry is never bypassed.
+        f.Broker.EndPreparationFocus();
+        f.Broker.Admit();
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus));
+        Assert.Equal(0, f.Broker.CopyCommits); Assert.Equal(0, f.Broker.PasteCalls); Assert.Equal(0, f.Broker.CaptureCalls);
+        await f.Host.ExitAsync();
+    });
+
+    [Fact]
+    public Task PreparationFocus_EndAndCloseRevokeTheNarrowValidation() => CandidateHostThread.RunAsync(async () =>
+    {
+        using var f = new Fixture();
+        await f.Host.StartAsync(true, new(null, false, null));
+        f.Broker.Bind(f.Operations, f.Operations.Id);
+        f.Broker.BeginPreparationFocus();
+        Assert.Throws<InvalidOperationException>(() => f.Broker.BeginPreparationFocus());
+        Assert.True(f.Capability.Allows(CandidateNativeOperation.Focus));
+        f.Broker.EndPreparationFocus();
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus));
+        f.Broker.BeginPreparationFocus(); f.Broker.Close();
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus));
+        f.Broker.Admit();
+        Assert.True(f.Capability.Allows(CandidateNativeOperation.Focus));
+        f.Operations.Valid = false;
+        Assert.False(f.Capability.Allows(CandidateNativeOperation.Focus));
+        await f.Host.ExitAsync();
+    });
+
     private sealed class ExpiryClock : TimeProvider
     {
         internal long Seconds;
@@ -165,10 +213,10 @@ public sealed class PositiveActualHostTests
         internal Guid ValidatedSession;
         internal int Restores, CopyWaits, PopupFocus;
         internal bool Drained;
-        internal bool DrainSettled = true;
+        internal bool DrainSettled = true, Valid = true;
         internal string? Text;
         public bool Validate(CandidateNativeOperation operation, Guid id, nint window, uint pid)
-        { ValidatedSession = id; return id == Id && window == 123 && pid == 456; }
+        { ValidatedSession = id; return Valid && id == Id && window == 123 && pid == 456; }
         public InsertionTarget? CaptureOwnedTarget(nint window, uint pid) => Target;
         public TargetCheck Check(InsertionTarget target) => target == Target ? TargetCheck.Ok : TargetCheck.Closed;
         public bool IsTargetForeground(InsertionTarget target) => target == Target;

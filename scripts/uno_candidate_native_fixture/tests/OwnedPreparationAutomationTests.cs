@@ -8,8 +8,8 @@ public sealed unsafe class OwnedPreparationAutomationTests
 {
     // Fake COM objects have private counters/result slots after their vtable pointer.
     [Theory]
-    [InlineData(0, 0)] [InlineData(-1, 0)] [InlineData(0, -1)]
-    public void SdkSlotsUseExactHwndAndReleaseEvenFailureOutputs(int elementResult, int focusResult)
+    [InlineData(0, 0, 123)] [InlineData(-1, 0, 123)] [InlineData(0, -1, 123)] [InlineData(0, 0, 0)]
+    public void SdkSlotsUseExactHwndAndReleaseEvenFailureOutputs(int elementResult, int focusResult, int hwnd)
     {
         nint* elementTable = stackalloc nint[4];
         elementTable[2] = (nint)(delegate* unmanaged[Stdcall]<nint, uint>)&Release;
@@ -23,12 +23,14 @@ public sealed unsafe class OwnedPreparationAutomationTests
         client[0] = (nint)table; client[1] = 0; client[2] = elementResult; client[3] = 0; client[4] = (nint)element;
         using (var bridge = new OwnedPreparationAutomation((nint)client))
         {
-            Assert.Equal(elementResult >= 0, bridge.ElementFromHandle(123));
-            Assert.Equal(123, client[3]);
-            if (elementResult >= 0) Assert.Equal(focusResult >= 0, bridge.SetFocus());
+            var resolved = hwnd != 0 && elementResult >= 0;
+            Assert.Equal(resolved, bridge.ElementFromHandle(hwnd));
+            Assert.Equal(hwnd, client[3]);
+            if (hwnd != 0 && elementResult < 0) Assert.Equal(1, element[1]); // Released immediately, before Dispose.
+            Assert.Equal(resolved && focusResult >= 0, bridge.SetFocus());
         }
-        Assert.Equal(1, client[1]); Assert.Equal(1, element[1]);
-        Assert.Equal(elementResult >= 0 ? 1 : 0, element[3]);
+        Assert.Equal(1, client[1]); Assert.Equal(hwnd != 0 ? 1 : 0, element[1]);
+        Assert.Equal(hwnd != 0 && elementResult >= 0 ? 1 : 0, element[3]);
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static uint Release(nint self) { ((nint*)self)[1]++; return 0; }

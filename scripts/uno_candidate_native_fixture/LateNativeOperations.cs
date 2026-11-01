@@ -8,7 +8,7 @@ internal sealed class LateNativeOperations : ICandidateNativeOperations
 {
     private ICandidateNativeOperations? session;
     private Guid sessionId;
-    private bool admitted;
+    private bool admitted, preparationFocus;
     internal int PasteCalls { get; private set; }
     internal int CopyCommits { get; private set; }
     internal int CaptureCalls { get; private set; }
@@ -17,11 +17,18 @@ internal sealed class LateNativeOperations : ICandidateNativeOperations
         if (session is not null) throw new InvalidOperationException("native_rebind");
         session = value; sessionId = id;
     }
-    internal void Admit() { if (session is null) throw new InvalidOperationException("native_unbound"); admitted = true; }
-    internal void Close() => admitted = false;
+    internal void Admit() { if (session is null) throw new InvalidOperationException("native_unbound"); preparationFocus = false; admitted = true; }
+    internal void BeginPreparationFocus()
+    {
+        if (session is null || admitted || preparationFocus) throw new InvalidOperationException("native_preparation_order");
+        preparationFocus = true;
+    }
+    internal void EndPreparationFocus() => preparationFocus = false;
+    internal void Close() { admitted = false; preparationFocus = false; }
     public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => admitted ? session!.WaitForCopyAdmissionAsync(ct) : Task.FromResult(false);
     public bool TryFocusOwnedPopup() => admitted && session!.TryFocusOwnedPopup();
-    public bool Validate(CandidateNativeOperation operation, Guid id, nint window, uint pid) => admitted && session!.Validate(operation, sessionId, window, pid);
+    public bool Validate(CandidateNativeOperation operation, Guid id, nint window, uint pid) =>
+        (admitted || (preparationFocus && operation == CandidateNativeOperation.Focus)) && session!.Validate(operation, sessionId, window, pid);
     public InsertionTarget? CaptureOwnedTarget(nint window, uint pid)
     {
         if (!admitted) return null;

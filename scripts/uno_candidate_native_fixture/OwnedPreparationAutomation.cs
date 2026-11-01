@@ -19,9 +19,12 @@ internal sealed unsafe partial class OwnedPreparationAutomation : IOwnedPreparat
     internal OwnedPreparationAutomation(nint fakeAutomation) => automation = fakeAutomation;
     public bool ElementFromHandle(nint editor)
     {
-        if (automation == 0 || element != 0) return false;
+        if (automation == 0 || element != 0 || editor == 0) return false;
+        int result;
         fixed (nint* output = &element)
-            return ((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)(*(nint**)automation)[6])(automation, editor, output) >= 0 && element != 0;
+            result = ((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)(*(nint**)automation)[6])(automation, editor, output);
+        if (result < 0) { Release(ref element); return false; }
+        return element != 0;
     }
     public bool SetFocus() => element != 0 &&
         ((delegate* unmanaged[Stdcall]<nint, int>)(*(nint**)element)[3])(element) >= 0;

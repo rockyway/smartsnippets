@@ -204,11 +204,19 @@ The in-process Native-AOT bridge uses CUIAutomation/IUIAutomation, exact retaine
 **not nonactivation QA evidence**. No tree traversal, external automation process,
 foreign focus, input synthesis or clipboard API is involved. Pin, exact A/editor
 PID/thread/child/classes, session Focus permission, visible input desktop and all-VK
-quiet checks surround provider calls. Changed input epoch requires a fresh bounded
-1500ms quiet period; final foreground/session checks precede the retained manual
-check. COM references are released on every return/HRESULT failure. A hung provider
+quiet checks surround provider calls. Only the UIA focus call may account for an
+input-epoch change, followed by a fresh bounded 1500ms quiet period. The resulting
+epoch is frozen throughout settlement and before/after the owned editor command;
+already-foreground A refuses epoch drift without any UIA call. Final foreground/session
+checks precede the retained manual check. COM references are released on every return/HRESULT failure. A hung provider
 remains before keyboard arming: existing coordinator-owned pre-keyboard timeout and
 Job cleanup apply; uncertain keyboard retention is unchanged.
+
+The `expired` scene grants the still-unadmitted broker a temporary **Focus-validation
+only** scope during initial preparation. Both capability monotonic expiry/permission
+and session checks remain mandatory; capture, Copy, Insert, Input, clipboard and
+popup-focus methods remain denied. The scope is removed in `finally` (and by Close)
+before the 21-second expiry-only test; it does not grant full broker admission.
 
 ABI verified against installed Windows SDK **10.0.26100.0**
 `um/UIAutomationClient.h`: line 669 (`UIA_HWND = void*`), lines 19092–19136

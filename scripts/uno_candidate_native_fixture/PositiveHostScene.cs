@@ -35,11 +35,19 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         {
             if (OwnedTargetPreparation.ShouldPrepare(scene))
             {
-                var result = await OwnedTargetPreparation.PrepareAsync(new OwnedPreparationWindows(fixture, session, capability),
-                    () => new OwnedPreparationAutomation(), originalForeground, ready.WindowA, ready.EditorA, ct);
-                SmartSnippets.Core.Logging.AppLog.Info("owned_target_preparation", $"reason={result}");
-                if (result is not (OwnedPreparationResult.Prepared or OwnedPreparationResult.AlreadyA))
-                    throw new InvalidOperationException("native_owned_preparation_refused");
+                // The expiry scene admits only initial Focus validation, never capture/Copy/Insert,
+                // while retaining the real capability's monotonic deadline and the session's lease.
+                var preparationOnly = scene == "expired";
+                if (preparationOnly) broker.BeginPreparationFocus();
+                try
+                {
+                    var result = await OwnedTargetPreparation.PrepareAsync(new OwnedPreparationWindows(fixture, session, capability),
+                        () => new OwnedPreparationAutomation(), originalForeground, ready.WindowA, ready.EditorA, ct);
+                    SmartSnippets.Core.Logging.AppLog.Info("owned_target_preparation", $"reason={result}");
+                    if (result is not (OwnedPreparationResult.Prepared or OwnedPreparationResult.AlreadyA))
+                        throw new InvalidOperationException("native_owned_preparation_refused");
+                }
+                finally { if (preparationOnly) broker.EndPreparationFocus(); }
             }
             // Original manual check remains even after reviewed preparation. No fallback on preparation failure.
             await WaitAsync(() => session.IsTargetForeground(session.Target) && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(15), ct);

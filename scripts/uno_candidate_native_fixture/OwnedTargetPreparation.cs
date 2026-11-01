@@ -55,17 +55,19 @@ internal static class OwnedTargetPreparation
         }
         if (!Guard() || os.Foreground != windowA || !os.TryInputEpoch(out var after)) return OwnedPreparationResult.Refused;
         var changed = after != epoch;
+        if (alreadyA && changed) return OwnedPreparationResult.Refused;
+        bool EpochStable() => os.TryInputEpoch(out var current) && current == after;
         var start = os.Milliseconds;
         while (true)
         {
-            if (!Guard() || os.Foreground != windowA) return OwnedPreparationResult.Refused;
+            if (!Guard() || os.Foreground != windowA || !EpochStable()) return OwnedPreparationResult.Refused;
             if ((!changed || os.Milliseconds - start >= 1500) && os.QuietAllInput()) break;
             if (os.Milliseconds - start >= 3000) return OwnedPreparationResult.QuietTimeout;
             await os.DelayAsync(ct);
         }
-        if (!Guard() || os.Foreground != windowA || !os.QuietAllInput()) return OwnedPreparationResult.Refused;
+        if (!Guard() || os.Foreground != windowA || !os.QuietAllInput() || !EpochStable()) return OwnedPreparationResult.Refused;
         await os.FocusEditorAsync(ct); // Existing owned command, only after A is proven foreground.
-        return Guard() && os.Foreground == windowA && os.TargetForeground() && os.QuietAllInput()
+        return Guard() && os.Foreground == windowA && os.TargetForeground() && os.QuietAllInput() && EpochStable()
             ? alreadyA ? OwnedPreparationResult.AlreadyA : OwnedPreparationResult.Prepared
             : OwnedPreparationResult.Refused;
     }
