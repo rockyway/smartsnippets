@@ -72,6 +72,33 @@ public sealed class CandidateNativeGateFlowTests
         Assert.DoesNotContain("synthetic secret body", logs); Assert.DoesNotContain("synthetic sensitive title", logs);
     }
     [Fact]
+    public async Task EvidenceScanner_DetectsPlantedFixtureLeakInRealCandidateAppLog()
+    {
+        using var f = new HostFixture(); await f.Start();
+        const string canary = "PRIVATE-CANDIDATE-LOG-CANARY-019";
+        var log = Path.Combine(f.Root, "logs", "app.log");
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "scripts", "uno_candidate_privacy.py"))) root = root.Parent;
+        Assert.NotNull(root);
+        string Scan()
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("python") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            foreach (var arg in new[] { "-B", "-c", "import runpy,sys; from pathlib import Path; m=runpy.run_path(sys.argv[1]); print(m['scan_evidence']((Path(sys.argv[2]).read_bytes(),),(sys.argv[3],))['privacy'])", Path.Combine(root.FullName, "scripts", "uno_candidate_privacy.py"), log, canary }) start.ArgumentList.Add(arg);
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            Assert.True(process.WaitForExit(15000));
+            Assert.Equal(0, process.ExitCode); Assert.Equal("", error);
+            return output.Trim();
+        }
+        Assert.Equal("CLEAN", Scan());
+        // Intentional negative control: Info detail is a real unsanitized caller leak path.
+        SmartSnippets.Core.Logging.AppLog.Info("fixture_leak_negative_control", canary);
+        Assert.Contains(canary, File.ReadAllText(log));
+        Assert.Equal("LEAK_DETECTED", Scan());
+    }
+
+    [Fact]
     public async Task Shutdown_RejectsLateInsertionAndCopy()
     {
         using var f = new HostFixture(); await f.Start(); await f.Host.ExitAsync();

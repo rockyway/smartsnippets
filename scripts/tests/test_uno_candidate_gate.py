@@ -202,6 +202,9 @@ class CandidateGateTests(unittest.TestCase):
         self.assertIn("'prototypes/uno-native-target/identity/**'", workflow)
         self.assertIn("'prototypes/uno-native-target/windows-insertion/**'", workflow)
         self.assertIn('dotnet test ../../scripts/uno_candidate_native_fixture/tests -c Release', workflow)
+        for forbidden in ('run_uno_candidate_', '-authorizedscreenslot',
+                          '--authorized-screen-slot', 'restore-harness-registry'):
+            self.assertNotIn(forbidden, workflow.lower())
         self.assertNotIn('--authorized', workflow)
         self.assertNotIn('Start-Process', workflow)
         self.assertTrue((SCRIPT.parents[1] / '.github/workflows/ci.yml').is_file())

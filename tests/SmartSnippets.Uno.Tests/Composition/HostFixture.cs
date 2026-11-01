@@ -93,6 +93,8 @@ internal sealed class PopupSurface : ICandidatePopupWindow
     }
     internal void Ready() => Lifecycle.Shows.CompleteWarmup(Lifecycle.Shows.WarmupGeneration);
     private void CompleteIfReady() { if (AutoReady) Ready(); }
+    internal string? PreviewQuery;
+    internal bool PreviewSortMenu;
     internal int Prewarms, Shows, Hides, Disposals;
     internal bool ClosedAlready;
     public event EventHandler? Closed;
@@ -101,6 +103,7 @@ internal sealed class PopupSurface : ICandidatePopupWindow
     public void Prewarm() { Prewarms++; Lifecycle.Shows.BeginWarmup(); CompleteIfReady(); }
     public void ShowPreview(string? query, bool openSortMenu)
     {
+        PreviewQuery = query; PreviewSortMenu = openSortMenu;
         Lifecycle.Preview(host.Popup, query, () => { Shows++; return new(true, null); }, () => host.CanPresentPopup);
         CompleteIfReady();
     }

@@ -720,6 +720,46 @@ public sealed class CandidateAuthorizedHostFlowTests
         Assert.Equal(0, native.Copies); Assert.Equal(1, f.Boundary.Exits);
     });
 
+    [Fact]
+    public Task DeniedTrayPopup_DoesNotProbeCaptureReadTitleOrFocus() => CandidateHostThread.RunAsync(async () =>
+    {
+        var (f, native, _, _) = await Start(); using var fixture = f;
+        f.Boundary.Capability!.Revoke();
+        native.Trace.Clear(); native.Targets.Clear();
+        f.Boundary.TrayPreview!();
+        Assert.Equal(0, native.Captures);
+        f.Boundary.Drain();
+        Assert.True(f.Host.Popup.IsPreview); Assert.Null(f.Host.Popup.Target);
+        Assert.Equal(0, native.Captures); // CaptureOwnedTarget is the only title-reading boundary.
+        Assert.Empty(native.Targets); // Check/foreground probes.
+        Assert.Empty(native.Trace);
+        Assert.Equal(0, native.SideEffects);
+        Assert.Equal(0, native.PopupFocuses);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task QaLaunchPreview_NeverCallsNativeCaptureOrProbe(bool redirected) => CandidateHostThread.RunAsync(async () =>
+    {
+        using var f = new HostFixture(); var native = new NativeOperations(); var clock = new LeaseClock();
+        f.Boundary.Capability = new(Guid.NewGuid(), native.Target.WindowHandle, native.Target.ProcessId,
+            All, TimeSpan.FromMinutes(1), clock, native);
+        var options = new SmartSnippets.Presentation.Navigation.LaunchOptions(null, true, "synthetic", true);
+        if (!redirected) await f.Start(options: options);
+        else
+        {
+            await f.Start(background: true);
+            var queue = new CandidateActivationQueue();
+            queue.Attach(f.Boundary.Dispatcher, o => f.Host.ApplyLaunchOptionsAsync(o));
+            queue.Enqueue(options); f.Boundary.Drain();
+        }
+        Assert.True(f.Host.Popup.IsPreview);
+        Assert.Equal(0, native.Captures); Assert.Empty(native.Targets);
+        Assert.Equal(0, native.SideEffects); Assert.Equal(0, native.PopupFocuses);
+        Assert.False(f.Boundary.Main.Visible);
+    });
+
     private static Task UiTurn()
     {
         var turn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

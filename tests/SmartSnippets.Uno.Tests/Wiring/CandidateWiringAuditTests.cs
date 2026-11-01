@@ -60,8 +60,8 @@ public sealed class CandidateWiringAuditTests
     public void CandidateTray_BothStatesBrandedAndDistinctOwnedIcon()
     {
         var tray = File.ReadAllText(Path.Combine(Candidate, "Services", "TrayIcon.cs"));
-        Assert.Contains("Tooltip = \"Smart Snippets — Uno candidate\"", tray);
-        Assert.Contains("TooltipHotkeyUnavailable = \"Smart Snippets — Uno candidate — hotkey unavailable\"", tray);
+        Assert.Equal("Smart Snippets — Uno candidate", Services.CandidateTrayText.Tooltip(false));
+        Assert.Equal("Smart Snippets — Uno candidate — hotkey unavailable", Services.CandidateTrayText.Tooltip(true));
         Assert.Contains("private const uint IconId = 2019;", tray);
         Assert.Contains("data.hWnd = _window.Handle;", tray);
         Assert.DoesNotContain("NIF_GUID", tray);

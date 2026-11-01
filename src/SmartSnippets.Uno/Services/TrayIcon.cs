@@ -19,8 +19,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     private const nuint CommandRestartAdmin = 3;
     private const nuint CommandExit = 5;
     private const nuint CommandShowPopup = 6;
-    private const string Tooltip = "Smart Snippets — Uno candidate";
-    private const string TooltipHotkeyUnavailable = "Smart Snippets — Uno candidate — hotkey unavailable";
+
 
     private readonly MessageWindow _window;
     private readonly Action _onOpen;
@@ -101,7 +100,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     }
 
     private static string TooltipFor(TrayState state) =>
-        state == TrayState.HotkeyUnavailable ? TooltipHotkeyUnavailable : Tooltip;
+        CandidateTrayText.Tooltip(state == TrayState.HotkeyUnavailable);
 
     private HICON GetIcon()
     {

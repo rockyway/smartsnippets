@@ -53,6 +53,55 @@ public sealed class ManagementFlowTests
         Assert.False(await f.Host.Snippets.CanLeaveAsync());
         Assert.True(f.Host.Snippets.Editor.IsDirty); Assert.Empty(f.Host.Store.Snippets);
     }
+    [Theory]
+    [InlineData(SaveChoice.Save, true, "renamed")]
+    [InlineData(SaveChoice.Discard, true, "original")]
+    [InlineData(SaveChoice.Cancel, false, "original")]
+    public async Task FolderUnsavedRename_NavigationUsesGuard(SaveChoice choice, bool allowed, string saved)
+    {
+        using var f = new HostFixture(); await f.Start();
+        await f.Host.ApplyLaunchOptionsAsync(new(SmartSnippets.Presentation.Navigation.PageKind.Folders, false, null));
+        f.Host.Folders.NewFolderName = "original"; await f.Host.Folders.CreateAsync();
+        var row = f.Host.Folders.Rows.Single(r => r.Id == Assert.Single(f.Host.Store.Folders).Id);
+        f.Host.Folders.BeginRename(row); row.EditName = "renamed";
+        f.Boundary.Dialogs.Choices.Enqueue(choice);
+        await f.Host.ApplyLaunchOptionsAsync(new(SmartSnippets.Presentation.Navigation.PageKind.Settings, false, null));
+        Assert.Equal(allowed ? SmartSnippets.Presentation.Navigation.PageKind.Settings : SmartSnippets.Presentation.Navigation.PageKind.Folders, f.Boundary.Main.Current);
+        Assert.Equal(saved, Assert.Single(f.Host.Store.Folders).Name);
+        Assert.Equal(!allowed, row.IsRenaming);
+        if (!allowed) Assert.Equal("renamed", row.EditName);
+        f.Host.Store.Load();
+        Assert.Equal(saved, Assert.Single(f.Host.Store.Folders).Name);
+    }
+
+    [Fact]
+    public async Task ExistingSnippet_StoreFailureRetainsDraftAndDiscardRestoresSavedBody()
+    {
+        using var f = new HostFixture(); await f.Start();
+        var id = f.Host.Store.CreateSnippet(new("original", "label", true, null, "")).Value!.Id;
+        Assert.True(await f.Host.Snippets.RequestEditAsync(id));
+        f.Host.Snippets.Editor!.Text = "changed";
+        var factory = new SmartSnippets.Core.Data.SqliteConnectionFactory(Path.Combine(f.Root, "smartsnippets.db"));
+        using (var connection = factory.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "CREATE TRIGGER refuse_update BEFORE UPDATE ON snippets BEGIN SELECT RAISE(ABORT,'synthetic failure'); END;";
+            command.ExecuteNonQuery();
+        }
+        f.Boundary.Dialogs.Choices.Enqueue(SaveChoice.Save);
+        Assert.False(await f.Host.Snippets.CanLeaveAsync());
+        Assert.True(f.Host.Snippets.Editor.IsDirty);
+        Assert.True(f.Host.Snippets.Editor.HasSaveFailure);
+        Assert.Equal("changed", f.Host.Snippets.Editor.Text);
+        Assert.Equal("original", Assert.Single(f.Host.Store.Snippets).Snippet.Text);
+        f.Boundary.Dialogs.Choices.Enqueue(SaveChoice.Discard);
+        Assert.True(await f.Host.Snippets.CanLeaveAsync());
+        Assert.Equal("original", f.Host.Snippets.Editor.Text);
+        Assert.False(f.Host.Snippets.Editor.IsDirty);
+        f.Host.Store.Load();
+        Assert.Equal("original", Assert.Single(f.Host.Store.Snippets).Snippet.Text);
+    }
+
     [Fact]
     public async Task Settings_ReloadsCompatibleValuesWithoutRegistration()
     {

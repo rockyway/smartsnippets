@@ -43,7 +43,9 @@ public sealed class LegacyLoggingCompatibilityTests
             var log = File.ReadAllText(Path.Combine(directory, "app.log"));
             foreach (var name in new[] { "startup_failed", "migrations_failed", "store_load_failed", "data_load_failed", "save_failed", "delete_failed" })
                 Assert.Contains(name, log);
-            Assert.DoesNotContain(secret, log); Assert.Contains(secret, log + secret);
+            Assert.DoesNotContain(secret, log);
+            Assert.Equal(secret + " dirty", page.Editor.Text);
+            Assert.Equal(secret, store.Snippets.Single().Snippet.Text);
             Assert.DoesNotContain("Legacy.AppHost", log);
         }
         finally { AppLog.Shutdown(); SqliteConnection.ClearAllPools(); Directory.Delete(directory, true); }
