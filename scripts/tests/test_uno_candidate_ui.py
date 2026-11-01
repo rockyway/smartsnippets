@@ -714,6 +714,95 @@ class PickerObserverLoopTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
                 s.validate_helper_foreground_failure(root)
 
+    def run_worker_error_path(self, *, helper_code=None, helper_output=b'', failure_file=None,
+                              observer_error=None, diagnostic_error=None, foreground_save_error=None):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            private = Path(tmp)
+            if failure_file is None:
+                failure_file = {key: (False if kind == 'bool' else 'none' if kind == 'relation' else 0)
+                                for key, kind in s.privacy_schema().FOREGROUND_FAILURE_SCHEMA}
+            (private / 'ui-helper-foreground-failure.json').write_text(
+                json.dumps(failure_file) if isinstance(failure_file, dict) else failure_file,
+                encoding='ascii')
+            process = Mock()
+            process.pid = 123
+            process.poll.return_value = None
+            helper = Mock()
+            helper.returncode = helper_code
+            helper.poll.return_value = helper_code
+            if helper_code is None:
+                helper.poll.return_value = None
+            helper.communicate.return_value = (helper_output, b'')
+            desktop = Mock()
+            desktop.snapshot.return_value = (1, 2)
+            pops = iter((process, helper))
+            original_validator = s.validate_helper_foreground_failure
+            with (patch.object(s.startup, 'require_job_membership'),
+                  patch.object(s.startup, 'validate_private'),
+                  patch.object(s.base, 'validate_fixture', return_value=Path('fixture.exe')),
+                  patch.object(s.startup, 'repo_module', return_value=Mock(visible_windows=Mock())),
+                  patch.object(s.startup, 'Desktop', return_value=desktop),
+                  patch.object(s, 'settle_quiet_epoch', return_value=object()),
+                  patch.object(s, 'retain_window', return_value=10),
+                  patch.object(s, 'system_powershell', return_value=Path('powershell.exe')),
+                  patch.object(s.subprocess, 'Popen', side_effect=lambda *args, **kwargs: next(pops)),
+                  patch.object(s.startup, 'stop_app'),
+                  patch.object(s.sys, 'argv', ['worker', '--worker-private']),
+                  patch.object(s, 'validate_helper_foreground_failure', wraps=original_validator) as validate_failure):
+                if observer_error is not None:
+                    patcher = patch.object(s, 'quiet_input', side_effect=observer_error)
+                else:
+                    patcher = patch.object(s, 'quiet_input')
+                with patcher:
+                    if diagnostic_error is not None:
+                        patch_diag = patch.object(s, 'save_helper_diagnostics', side_effect=diagnostic_error)
+                    else:
+                        patch_diag = patch.object(s, 'save_helper_diagnostics', wraps=s.save_helper_diagnostics)
+                    if foreground_save_error is not None:
+                        patch_foreground = patch.object(s, 'save_foreground_failure', side_effect=foreground_save_error)
+                    else:
+                        patch_foreground = patch.object(s, 'save_foreground_failure', wraps=s.save_foreground_failure)
+                    with patch_diag, patch_foreground:
+                        with self.assertRaises(ValueError) as caught:
+                            s.worker(Path('fixture.exe'), 'digest', private, (0, 0, 1, 1),
+                                     stream=io.BytesIO(s.startup.PERMIT))
+            validate_failure.assert_called()
+            failure_record = json.loads((private / 'observer-worker-failure.json').read_text(encoding='ascii'))
+            return caught.exception, failure_record['reason'], validate_failure.call_count
+
+    def test_worker_diagnostics_errors_preserve_original_reason_and_chain(self):
+        for diagnostics_error in (ValueError('ui_helper_output_limit'), OSError('private diagnostics')):
+            with self.subTest(error=type(diagnostics_error).__name__):
+                error, reason, validations = self.run_worker_error_path(
+                    observer_error=ValueError('ui_timeout'), diagnostic_error=diagnostics_error)
+                self.assertEqual('ui_timeout', reason)
+                self.assertIs(error.__cause__, diagnostics_error)
+                self.assertEqual(1, validations)
+
+    def test_worker_foreground_diagnostics_error_preserves_reason_and_chains(self):
+        for diagnostics_error in (ValueError('ui_foreground_schema'), OSError('foreground diagnostics')):
+            with self.subTest(error=type(diagnostics_error).__name__):
+                error, reason, validations = self.run_worker_error_path(
+                    observer_error=s.ForegroundChanged(99), foreground_save_error=diagnostics_error)
+                self.assertIsInstance(error, s.ForegroundChanged)
+                self.assertEqual('foreground_changed', reason)
+                self.assertIs(error.__cause__, diagnostics_error)
+                self.assertEqual(1, validations)
+
+    def test_worker_helper_failure_file_and_exit_reasons_are_behavioral(self):
+        valid = {key: (False if kind == 'bool' else 'none' if kind == 'relation' else 0)
+                 for key, kind in s.privacy_schema().FOREGROUND_FAILURE_SCHEMA}
+        cases = ((1, b'', valid, 'ui_helper_protocol'),
+                 (0, b'ui_callbacks_observed\n', valid, 'ui_foreground_unexpected'),
+                 (1, b'', 'not json', 'ui_foreground_schema'))
+        for code, output, failure_file, expected in cases:
+            with self.subTest(code=code, failure=expected):
+                _, reason, validations = self.run_worker_error_path(
+                    helper_code=code, helper_output=output, failure_file=failure_file)
+                self.assertEqual(expected, reason)
+                self.assertEqual(2 if expected == 'ui_foreground_unexpected' else 1, validations)
+
     def test_helper_file_read_failures_are_fixed_and_not_swallowed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -724,23 +813,6 @@ class PickerObserverLoopTests(unittest.TestCase):
                 with self.subTest(token=token), patch.object(s.base, 'owned_bytes', side_effect=error):
                     with self.assertRaisesRegex(ValueError, '^' + token + '$'):
                         s.validate_helper_foreground_failure(root)
-        source = (s.REPO / 'scripts/run_uno_candidate_ui.py').read_text()
-        failure = source.split('    except BaseException as error:', 1)[1].split('    finally:', 1)[0]
-        self.assertLess(failure.index('startup.stop_app(helper)'), failure.index('helper.communicate'))
-        self.assertLess(failure.index('helper.communicate'), failure.index('validate_helper_foreground_failure'))
-        normal = source.split('            out, err = helper.communicate(timeout=2)', 1)[1].split('    except BaseException', 1)[0]
-        self.assertIn("if validate_helper_foreground_failure(private):\n                raise ValueError('ui_foreground_unexpected')", normal)
-        self.assertLess(normal.index('validate_helper_output(helper.returncode, out, err)'),
-                        normal.index("raise ValueError('ui_foreground_unexpected')"))
-        # Both diagnostics writes in the handler are guarded and precede validation/recording.
-        self.assertLess(failure.index('diagnostics_error = None'), failure.index('save_foreground_failure('))
-        observer = failure.split('save_foreground_failure(', 1)[1].split('diagnostics_error = caught', 1)[0]
-        self.assertIn('except (OSError, ValueError) as caught:', observer)
-        guarded = failure.split('save_helper_diagnostics(private, out, err)', 1)[1].split('diagnostics_error = caught', 1)[0]
-        self.assertIn('except (OSError, ValueError, subprocess.TimeoutExpired) as caught:', guarded)
-        self.assertEqual(failure.count('diagnostics_error = caught'), 2)
-        self.assertLess(failure.rindex('diagnostics_error = caught'), failure.index('validate_helper_foreground_failure(private)'))
-        self.assertLess(failure.index('validate_helper_foreground_failure(private)'), failure.index('base.record_failure(private, error)'))
 
     @unittest.skipUnless(s.sys.platform == 'win32', 'system PowerShell schema execution')
     def test_powershell_foreground_failure_executes_real_function(self):
