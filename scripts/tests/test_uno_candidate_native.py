@@ -260,6 +260,21 @@ class PriorRestorativeLedgerTests(unittest.TestCase):
             with self.subTest(field=field.name), self.assertRaises(AttributeError):
                 setattr(self.witness, field.name, None)
 
+    def test_registered_handoff_checks_readiness_file_acl_before_trusting_receipt(self):
+        self.stdout.write_bytes(b'native_phase=guardian_ready\nnative_phase=awaiting_owned_a\nnative_result=registered-enter_settled\n')
+        ready = self.private / native.REGISTERED_READY_FILE
+        ready.write_bytes(native.REGISTERED_READY_RECEIPT)
+        witness = replace(self.witness, scene='registered-enter', result='positive_scene_settled')
+        with patch.object(native, 'require_owner_private') as checked:
+            native.verified_prior_token(witness)
+            checked.assert_any_call(ready, protected=False)
+        def deny_ready(path, **kwargs):
+            if path == ready:
+                raise ValueError('native_ledger_owner_acl')
+        with patch.object(native, 'require_owner_private', side_effect=deny_ready):
+            with self.assertRaisesRegex(ValueError, 'owner_acl'):
+                native.verified_prior_token(witness)
+
     def test_handoff_is_keyword_only_and_cannot_be_supplied_by_cli(self):
         with self.assertRaises(TypeError):
             native.main([], self.witness)

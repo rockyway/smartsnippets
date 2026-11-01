@@ -148,7 +148,8 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             desktop.validate_input_desktop()
             allowed = {foreground} if positive_private is None else positive_foregrounds(positive_private, foreground)
             if positive_private is not None and len(allowed) > 1 and not announced:
-                print('native_phase=awaiting_owned_a operator_select_A_then_release_all_input', flush=True)
+                print('native_phase=awaiting_registered_shortcut_preparation' if registered else
+                      'native_phase=awaiting_owned_a operator_select_A_then_release_all_input', flush=True)
                 announced = True
             if registered and positive_private is not None and not operator_announced and registered_operator_ready(positive_private):
                 print('native_phase=operator_ready press_Ctrl_Alt_Shift_F9_then_release_all_input', flush=True)
@@ -259,6 +260,8 @@ def verified_prior_token(observation):
     paths = [private.parent, private, private / 'stdout.log', private / 'stderr.log',
              private / 'recovery-control.txt', private / 'native-fixture-profile',
              private / 'native-fixture-profile/logs', private / 'native-fixture-profile/logs/app.log']
+    if observation.scene == 'registered-enter':
+        paths.append(private / REGISTERED_READY_FILE)
     for path in paths:
         for item in (path, *path.parents):
             info = item.lstat()
@@ -328,7 +331,9 @@ def main(argv=None, *, prior_restorative_session=None):
             raise ValueError('native_foreground_unavailable')
         positive = args.scene in POSITIVE_SCENES
         (private / 'native-launch-permit').write_bytes(launch_permit(positive, prior_token))
-        if positive:
+        if args.scene == 'registered-enter':
+            print('Operator: wait for operator_ready, then press Ctrl+Alt+Shift+F9 once and release all input. Do not click or type before that receipt.', flush=True)
+        elif positive:
             print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
         paths = [private / 'stdout.log', private / 'stderr.log']
         with paths[0].open('xb') as out, paths[1].open('xb') as err:
