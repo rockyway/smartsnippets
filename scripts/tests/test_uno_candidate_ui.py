@@ -71,6 +71,8 @@ class UiManagementTests(unittest.TestCase):
         desktop.user.IsWindowVisible.return_value = False
         self.assertTrue(s.picker_foreground(desktop, 20, None, 20))
         self.assertFalse(s.picker_foreground(desktop, 20, 21, 20))
+        self.assertTrue(s.picker_foreground(desktop, 20, 20, 20))
+        self.assertTrue(s.picker_foreground(desktop, 20, 20, None))
 
     def test_picker_refusals_are_recorded_without_collapse(self):
         import ast
@@ -220,6 +222,8 @@ class UiManagementTests(unittest.TestCase):
         for fragment in ('GetWindow($h, 6)', 'GetWindow($dialog, 4)', '$dialogOwner -ne $h',
                          '$dialogPid -ne $OwnedPid', "$cls.ToString() -cne '#32770'", '$thread -ne $mainThread'):
             self.assertIn(fragment, ownership)
+        self.assertLess(ownership.index('GetWindow($dialog, 4)'), ownership.index('IsWindowVisible($dialog)'))
+        self.assertLess(ownership.index('IsWindowVisible($dialog)'), ownership.index('IsWindow($dialog)'))
         self.assertIn("PickerElement $dialog '1148' $r", picker)
         self.assertIn("PickerElement $dialog '1001' $e", picker)
         self.assertIn("$items.Count -ne 1", helper.split('    function PickerElement', 1)[1])

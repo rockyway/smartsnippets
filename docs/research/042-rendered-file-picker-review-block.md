@@ -58,6 +58,28 @@ After integration and separate native-mutation permit hardening (research 041):
 Python tests pass. The file-picker worker also passed PowerShell parsing and a
 strict BuildOnly publish. Native acceptance is **NOT RUN / review BLOCKED**.
 No source gate was enabled for this new picker scene and no failure is hidden as
-PASS. The subsequent fixes batch implements the requested hardening and tests;
-independent confirming review remains outstanding, so this review stays BLOCKED.
-Build-only and headless checks do not establish native picker behavior.
+PASS.
+
+## Fix rounds and confirming review (2026-11-01)
+
+- `d24a0fd` implements fixes 1–4 with tests. Confirming review round 1 (argon
+  medium, static) returned BLOCK: close-time foreground sample raced the
+  authenticated picker's disappearance (Python and PowerShell), PowerShell
+  queried `GW_OWNER` after the liveness check, Python `record_failure` collapsed
+  the six `ui_picker_*` tokens, and the close-race oracle never exercised a live
+  authenticated handle.
+- `77075a3` fixes all four: phase is sampled before foreground; with no owned
+  popup, foreground is allowed only for the active phase's exact authenticated
+  picker HWND once it is gone or invisible; the monotonic owned-foreground latch
+  is unchanged. Round-2 review (scoped to `77075a3`) returned **GO** with two
+  non-blocking oracle gaps, closed by the following test-only commit (live-popup
+  positive foreground and `GW_OWNER`-before-liveness ordering assertions).
+- Verification: 138 candidate Python tests, 278 candidate and 138 native-fixture
+  tests (at `d24a0fd`, no C# change since), PowerShell parse clean, strict
+  BuildOnly fixture token `9dd70e2d367d498ca86e7f4e7e4fa46a`, entry SHA256
+  `945c0b2c224d2c87ef9f0c0a52928a8ab117f9e070f03d242a153349902ed502`.
+
+Source review for this scene is now cleared. `UI_SOURCE_REVIEWED` stays false
+and native picker acceptance remains **NOT RUN** until an authorized primary
+landscape screen slot; build-only and headless checks do not establish native
+picker behavior or provider compatibility.
