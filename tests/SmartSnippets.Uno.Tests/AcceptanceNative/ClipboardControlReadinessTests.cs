@@ -44,11 +44,13 @@ public sealed class ClipboardControlReadinessTests
     [InlineData(2, "changed")]
     public async Task RefusalReportsOrderedCheckWithoutClassifyingRefusedSample(int failAt, string expected)
     {
-        var samples = 0; var classifications = 0; var reports = 0;
+        var samples = 0; var classifications = 0; var reports = 0; var reportedOrder = 0; string? reportedCheck = null;
         Assert.Equal(ClipboardControlAdmission.ForegroundChanged, await ClipboardControlReadiness.WaitAsync(
             () => { classifications++; return ClipboardControlAdmission.Unquiet; },
             () => ++samples < failAt, default, refused: (check, order) =>
-            { reports++; Assert.Equal(expected, check); Assert.Equal(failAt, order); }));
+            { reports++; reportedCheck = check; reportedOrder = order; }));
+        Assert.Equal(expected, reportedCheck);
+        Assert.Equal(failAt, reportedOrder);
         Assert.Equal(1, reports);
         Assert.Equal(failAt - 1, classifications);
     }

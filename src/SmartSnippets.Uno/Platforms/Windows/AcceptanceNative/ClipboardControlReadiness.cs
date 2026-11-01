@@ -25,7 +25,7 @@ internal static class ClipboardControlReadiness
             sampleOrder++;
             if (!foregroundUnchanged())
             {
-                refused?.Invoke(sampleOrder == 1 ? "initial" : "changed", sampleOrder);
+                NativeControlDiagnostics.Refused(refused, sampleOrder == 1 ? "initial" : "changed", sampleOrder);
                 return ClipboardControlAdmission.ForegroundChanged;
             }
             var admission = classify();

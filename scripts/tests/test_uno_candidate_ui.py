@@ -715,7 +715,8 @@ class PickerObserverLoopTests(unittest.TestCase):
                 s.validate_helper_foreground_failure(root)
 
     def run_worker_error_path(self, *, helper_code=None, helper_output=b'', failure_file=None,
-                              observer_error=None, diagnostic_error=None, foreground_save_error=None):
+                              observer_error=None, diagnostic_error=None, foreground_save_error=None,
+                              picker_record=None, helper_stderr=b''):
         import json
         with tempfile.TemporaryDirectory() as tmp:
             private = Path(tmp)
@@ -725,6 +726,8 @@ class PickerObserverLoopTests(unittest.TestCase):
             (private / 'ui-helper-foreground-failure.json').write_text(
                 json.dumps(failure_file) if isinstance(failure_file, dict) else failure_file,
                 encoding='ascii')
+            if picker_record is not None:
+                (private / 'ui-helper-picker-schema.json').write_text(json.dumps(picker_record), encoding='ascii')
             process = Mock()
             process.pid = 123
             process.poll.return_value = None
@@ -733,7 +736,7 @@ class PickerObserverLoopTests(unittest.TestCase):
             helper.poll.return_value = helper_code
             if helper_code is None:
                 helper.poll.return_value = None
-            helper.communicate.return_value = (helper_output, b'')
+            helper.communicate.return_value = (helper_output, helper_stderr)
             desktop = Mock()
             desktop.snapshot.return_value = (1, 2)
             pops = iter((process, helper))
@@ -802,6 +805,17 @@ class PickerObserverLoopTests(unittest.TestCase):
                     helper_code=code, helper_output=output, failure_file=failure_file)
                 self.assertEqual(expected, reason)
                 self.assertEqual(2 if expected == 'ui_foreground_unexpected' else 1, validations)
+
+    def test_worker_picker_record_rejects_success_and_mismatched_stderr(self):
+        record = dict(reason='picker_schema_missing', matchCount=0, controlTypeId=0)
+        for code, out, err, expected in (
+                (0, b'ui_callbacks_observed\n', b'', 'ui_picker_schema_record'),
+                (1, b'', b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_type\n', 'ui_picker_schema_record'),
+                (1, b'', b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing\n', 'ui_helper_protocol')):
+            with self.subTest(code=code, err=err):
+                _, reason, _ = self.run_worker_error_path(helper_code=code, helper_output=out,
+                    picker_record=record, helper_stderr=err)
+                self.assertEqual(expected, reason)
 
     def test_helper_file_read_failures_are_fixed_and_not_swallowed(self):
         with tempfile.TemporaryDirectory() as tmp:

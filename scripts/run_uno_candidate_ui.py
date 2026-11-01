@@ -319,12 +319,17 @@ def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid, po
         json.dump(record, report)
 
 
-def validate_helper_picker_schema(private):
+def validate_helper_picker_schema(private, helper_code=None, helper_stderr=None):
     path = private / 'ui-helper-picker-schema.json'
     if not os.path.lexists(path):
         return False
+    def unique_fields(pairs):
+        record = dict(pairs)
+        if len(record) != len(pairs):
+            raise ValueError('ui_picker_schema_record')
+        return record
     try:
-        record = json.loads(base.owned_bytes(path, private, 4096).decode('ascii'))
+        record = json.loads(base.owned_bytes(path, private, 4096).decode('ascii'), object_pairs_hook=unique_fields)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise ValueError('ui_picker_schema_record') from None
     if (type(record) is not dict or set(record) != {'reason', 'matchCount', 'controlTypeId'}
@@ -336,11 +341,19 @@ def validate_helper_picker_schema(private):
                 'picker_schema_type' if count == 1 and 50000 <= kind <= 50040 and kind != 50000 else None)
     if expected is None or record['reason'] != expected:
         raise ValueError('ui_picker_schema_record')
+    if helper_code is not None:
+        if helper_code == 0:
+            raise ValueError('ui_picker_schema_record')  # A refusal record after success is unexpected.
+        stages = ('picker_import_cancel', 'picker_import', 'picker_export_cancel', 'picker_export')
+        lines = tuple(f'ui_helper_failed stage={stage} reason={expected}{ending}'.encode('ascii')
+                      for stage in stages for ending in ('\n', '\r\n'))
+        if helper_stderr not in lines:
+            raise ValueError('ui_picker_schema_record')
     return True
 
 
-def validate_helper_foreground_failure(private):
-    validate_helper_picker_schema(private)
+def validate_helper_foreground_failure(private, helper_code=None, helper_stderr=None):
+    validate_helper_picker_schema(private, helper_code, helper_stderr)
     # The PowerShell observer writes the same fixed schema; refuse any other shape.
     path = private / 'ui-helper-foreground-failure.json'
     if not os.path.lexists(path):
@@ -435,6 +448,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
     desktop = startup.Desktop(ui.visible_windows)
     process = helper = None
     helper_diagnostics_saved = False
+    helper_stderr = None
     try:
         desktop.enable_dpi()
         desktop.validate_work_area(work)
@@ -485,11 +499,12 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                     raise ValueError('ui_timeout')
                 time.sleep(.05)
             out, err = helper.communicate(timeout=2)
+            helper_stderr = err
             helper_diagnostics_saved = True
             save_helper_diagnostics(private, out, err)
             # A failed helper exit is a protocol failure; a failure file is unexpected only after success.
             validate_helper_output(helper.returncode, out, err)
-            if validate_helper_foreground_failure(private):
+            if validate_helper_foreground_failure(private, helper.returncode, helper_stderr):
                 raise ValueError('ui_foreground_unexpected')
             for phase in phases:
                 if not base.receipt(private, phase, process.pid):
@@ -574,11 +589,12 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if not helper_diagnostics_saved:
                     helper_diagnostics_saved = True
                     out, err = helper.communicate(timeout=2)
+                    helper_stderr = err
                     save_helper_diagnostics(private, out, err)
             except (OSError, ValueError, subprocess.TimeoutExpired) as caught:
                 diagnostics_error = caught
         try:
-            validate_helper_foreground_failure(private)
+            validate_helper_foreground_failure(private, helper.returncode if helper is not None else None, helper_stderr)
         except ValueError as schema_error:
             error = schema_error
         base.record_failure(private, error)
