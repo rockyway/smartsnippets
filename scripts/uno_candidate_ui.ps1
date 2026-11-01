@@ -59,7 +59,11 @@ public static class Owned019 {
     try { $started = $ownedProcess.StartTime.ToUniversalTime().Ticks } finally { $ownedProcess.Dispose() }
     function OwnedPicker {
         $dialog = [Owned019]::GetWindow($h, 6)
-        if ($dialog -eq [IntPtr]::Zero -or $dialog -eq $h) { return [IntPtr]::Zero }
+        $fromForeground = $dialog -eq [IntPtr]::Zero -or $dialog -eq $h
+        if ($fromForeground) {
+            $dialog = [Owned019]::GetForegroundWindow()
+            if ($dialog -eq [IntPtr]::Zero -or $dialog -eq $h) { return [IntPtr]::Zero }
+        }
         [uint32]$dialogPid = 0; [uint32]$mainPid = 0
         $thread = [Owned019]::GetWindowThreadProcessId($dialog, [ref]$dialogPid)
         $mainThread = [Owned019]::GetWindowThreadProcessId($h, [ref]$mainPid)
@@ -70,9 +74,11 @@ public static class Owned019 {
         if ($mainPid -ne $OwnedPid -or $mainThread -eq 0) { throw 'picker_identity' }
         if ($dialog -eq $script:pickerHwnd -and $script:pickerHwnd -ne [IntPtr]::Zero -and
             (-not [Owned019]::IsWindow($dialog) -or -not $visible)) { return [IntPtr]::Zero }
-        if (-not $visible -or $dialogOwner -ne $h -or
-            $dialogPid -ne $OwnedPid -or $thread -eq 0 -or $thread -ne $mainThread -or
-            $cls.ToString() -cne '#32770') { throw 'picker_identity' }
+        if ($dialogOwner -ne $h -or $dialogPid -ne $OwnedPid -or $thread -eq 0 -or
+            $cls.ToString() -cne '#32770') {
+            if ($fromForeground) { return [IntPtr]::Zero }
+            throw 'picker_identity'
+        }
         return $dialog
     }
     function ForegroundFailure([long]$fg, [IntPtr]$dialog) {
@@ -143,7 +149,7 @@ public static class Owned019 {
             $dialog = OwnedPicker
             if ($dialog -ne [IntPtr]::Zero) {
                 if ($script:pickerHwnd -eq [IntPtr]::Zero) { $script:pickerHwnd = $dialog }
-                elseif ($dialog -ne $script:pickerHwnd) { throw 'picker_replaced' }
+                elseif ($dialog -ne $script:pickerHwnd) { ForegroundFailure ([Owned019]::GetForegroundWindow().ToInt64()) $dialog; throw 'picker_replaced' }
             }
         }
         # Sample after authentication, then recheck once if picker activation raced it.
@@ -162,7 +168,7 @@ public static class Owned019 {
             $dialog = OwnedPicker
             if ($dialog -ne [IntPtr]::Zero) {
                 if ($script:pickerHwnd -eq [IntPtr]::Zero) { $script:pickerHwnd = $dialog }
-                elseif ($dialog -ne $script:pickerHwnd) { throw 'picker_replaced' }
+                elseif ($dialog -ne $script:pickerHwnd) { ForegroundFailure ([Owned019]::GetForegroundWindow().ToInt64()) $dialog; throw 'picker_replaced' }
             }
             $pickerForeground = $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64()
         }
@@ -376,7 +382,7 @@ public static class Owned019 {
         $until = [DateTime]::UtcNow.AddSeconds(6)
         do {
             Guard; $dialog = OwnedPicker
-            if ($dialog -ne [IntPtr]::Zero) { break }
+            if ($dialog -ne [IntPtr]::Zero -and [Owned019]::IsWindowVisible($dialog)) { break }
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_timeout' }
             Start-Sleep -Milliseconds 50
         } while ($true)

@@ -188,6 +188,27 @@ controls passed CLEAN. Existing owned UI/helper/Job failure cleanup completed;
 no graceful shutdown or successful pre-kill JobZero is claimed. No mutation retry,
 provider fallback, replacement HWND adoption or broadened ownership guard followed.
 
+## D26 / pt-01 — narrowed picker observation rule (headless change only)
+
+Plan 019 line 165 requires the existing Windows pickers; line 216 requires the
+candidate window as owner. The product remains on
+`Microsoft.Windows.Storage.Pickers`; no picker service is replaced. D26 supersedes
+the harness's same-main-thread prerequisite, not the historical blocked result
+above. The observed same-PID, direct-main-owner `#32770` on another thread may be
+authenticated from foreground even when `GW_ENABLEDPOPUP(main)` is empty and the
+dialog is not yet visible. This does not establish why that API returned empty or
+which internal provider mechanism created the dialog.
+
+Both observers now require exact class, direct owner and candidate PID, allowing
+any nonzero thread. They retain the exact first HWND per phase and refuse a
+replacement. Initial invisibility permits latching only: phase completion still
+requires a visible observation, and picker controls are not used before visibility.
+Other foreground classes, owners and PIDs remain refused with the existing fixed
+13-field diagnostic schema; `fgThreadIsMainThread` is informational. No title
+reads, desktop enumeration, PID adoption or input synthesis is added. Source gates
+stay closed. Headless tests are not native acceptance; no UI/native run was made
+for pt-01, and Plan 019 remains incomplete.
+
 ## Phase 3 — FAIL: posted-row; later posted scenes NOT RUN
 
 Phase 3 ran independently of the picker result because phase 1 passed. The trusted

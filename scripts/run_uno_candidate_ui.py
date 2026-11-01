@@ -87,7 +87,7 @@ def validate_picker_phase_actions(phase, value):
 
 def validate_picker_identity(main, popup, owner, pid, expected_pid, thread, main_thread, cls, visible):
     if (not popup or popup == main or owner != main or pid != expected_pid
-            or not thread or thread != main_thread or cls != '#32770' or not visible):
+            or not thread or not main_thread or cls != '#32770'):
         raise ValueError('ui_picker_identity')
     return popup
 
@@ -115,7 +115,7 @@ def picker_phase(private):
     return active
 
 
-def owned_picker(desktop, hwnd, pid, authenticated=None):
+def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None):
     user = desktop.user
     user.GetWindow.argtypes = [startup.W.HWND, startup.W.UINT]
     user.GetWindow.restype = startup.W.HWND
@@ -126,8 +126,11 @@ def owned_picker(desktop, hwnd, pid, authenticated=None):
     user.IsWindowVisible.argtypes = [startup.W.HWND]
     user.IsWindowVisible.restype = startup.W.BOOL
     popup = user.GetWindow(hwnd, 6)  # GW_ENABLEDPOPUP, never desktop enumeration.
-    if not popup or popup == hwnd:
-        return None
+    from_foreground = not popup or popup == hwnd
+    if from_foreground:
+        popup = foreground if foreground is not None else user.GetForegroundWindow()
+        if not popup or popup == hwnd:
+            return None
     owner = user.GetWindow(popup, 4)  # GW_OWNER must be the retained main, not an ancestor.
     actual = startup.W.DWORD()
     thread = user.GetWindowThreadProcessId(popup, startup.C.byref(actual))
@@ -144,6 +147,9 @@ def owned_picker(desktop, hwnd, pid, authenticated=None):
         raise ValueError('ui_picker_identity')
     # Only a previously authenticated exact HWND may disappear during close.
     if popup == authenticated and (not user.IsWindow(popup) or not visible):
+        return None
+    if from_foreground and (owner != hwnd or actual.value != pid or not thread
+                            or not class_ok or cls.value != '#32770'):
         return None
     if not class_ok:
         raise ValueError('ui_picker_identity')
@@ -243,8 +249,8 @@ def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sl
 
 
 class ForegroundChanged(ValueError):
-    def __init__(self, foreground, popup=None, phase_index=-1, sample_order=0):
-        super().__init__('foreground_changed')
+    def __init__(self, foreground, popup=None, phase_index=-1, sample_order=0, token='foreground_changed'):
+        super().__init__(token)
         self.foreground = foreground
         self.popup = popup
         self.phase_index = phase_index
@@ -333,23 +339,27 @@ def observe_desktop(desktop, allow_zero_fg=False):
     return fg, clip
 
 
-def observe_foreground_frame(desktop, hwnd, pid, initial, phase, picker_handles, owned_foreground_seen, sample_order):
+def observe_foreground_frame(desktop, hwnd, pid, initial, phase, picker_handles, owned_foreground_seen, sample_order, visible_phases=None):
     # Authenticate before sampling; if activation raced that query, authenticate once more
     # before judging the sampled HWND. Both queries preserve the same ownership/latch checks.
-    popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase)) if phase else None
+    popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase), 0) if phase else None
     if popup is not None:
         if picker_handles.setdefault(phase, popup) != popup:
-            raise ValueError('ui_picker_replaced')
+            raise ForegroundChanged(desktop.user.GetForegroundWindow(), popup,
+                                    PICKER_PHASES.index(phase), sample_order, 'ui_picker_replaced')
     fg, clip = observe_desktop(desktop)
     if clip != initial[1]:
         raise ValueError('clipboard_changed')
     picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase) if phase else None)
     allowed = (initial[0], hwnd) if not owned_foreground_seen else (hwnd,)
     if phase and popup is None and fg not in allowed and not picker_fg:
-        popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase))
+        popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase), fg)
         if popup is not None and picker_handles.setdefault(phase, popup) != popup:
-            raise ValueError('ui_picker_replaced')
+            raise ForegroundChanged(desktop.user.GetForegroundWindow(), popup,
+                                    PICKER_PHASES.index(phase), sample_order, 'ui_picker_replaced')
         picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase))
+    if popup is not None and visible_phases is not None and desktop.user.IsWindowVisible(popup):
+        visible_phases.add(phase)
     if fg not in allowed and not picker_fg:
         raise ForegroundChanged(fg, popup, PICKER_PHASES.index(phase) if phase else -1, sample_order)
     return owned_foreground_seen or fg == hwnd or picker_fg
@@ -430,6 +440,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             deadline = time.monotonic() + (60 if scene == 'file-picker' else 35)
             owned_foreground_seen = False
             picker_handles = {}
+            visible_phases = set()
             samples = 0
             while helper.poll() is None:
                 if process.poll() is not None:
@@ -438,7 +449,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 phase = picker_phase(private) if scene == 'file-picker' else None
                 samples += 1
                 owned_foreground_seen = observe_foreground_frame(
-                    desktop, hwnd, process.pid, initial, phase, picker_handles, owned_foreground_seen, samples)
+                    desktop, hwnd, process.pid, initial, phase, picker_handles, owned_foreground_seen, samples, visible_phases)
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
                     raise ValueError('geometry')
                 if time.monotonic() > deadline:
@@ -464,6 +475,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             if scene == 'settings':
                 validate_settings_actions(base.owned_bytes(private / 'ui-settings-actions.receipt', private))
             if scene == 'file-picker':
+                if visible_phases != set(PICKER_PHASES):
+                    raise ValueError('ui_picker_phase')
                 validate_picker_actions(base.owned_bytes(private / 'ui-picker-actions.receipt', private))
                 if picker_phase(private) is not None:
                     raise ValueError('ui_picker_phase')
