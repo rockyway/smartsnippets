@@ -43,3 +43,33 @@ def verify_negative_controls(canaries):
             if scan_evidence((planted,), values)['privacy'] != 'LEAK_DETECTED':
                 raise ValueError('privacy_negative_control_failed')
     return {'negativeControls': 'DETECTED', 'count': len(values) * 3}
+
+
+# Fixed foreground-failure schema shared by both picker observers. Numeric/boolean
+# fields plus one fixed relation enum; no titles, class strings, paths or HWND values.
+FOREGROUND_RELATIONS = ('none', 'initial', 'owned_main', 'owned_other', 'external', 'unknown')
+FOREGROUND_FAILURE_SCHEMA = (
+    ('foregroundRelation', 'relation'),
+    ('fgIsMain', 'bool'), ('fgIsPopup', 'bool'), ('popupPresent', 'bool'), ('fgSamePid', 'bool'),
+    ('fgThreadIsMainThread', 'bool'), ('fgOwnerIsMain', 'bool'), ('fgRootOwnerIsMain', 'bool'),
+    ('fgClassIs32770', 'bool'), ('fgVisible', 'bool'), ('fgEnabled', 'bool'),
+    ('phaseIndex', 'phase'), ('sampleOrder', 'order'))
+
+
+def validate_foreground_failure(record):
+    """Return record only when it has exactly the fixed keys with fixed value types."""
+    if type(record) is not dict or set(record) != {key for key, _ in FOREGROUND_FAILURE_SCHEMA}:
+        raise ValueError('ui_foreground_schema')
+    for key, kind in FOREGROUND_FAILURE_SCHEMA:
+        value = record[key]
+        if kind == 'bool':
+            valid = type(value) is bool
+        elif kind == 'relation':
+            valid = type(value) is str and value in FOREGROUND_RELATIONS
+        elif kind == 'phase':
+            valid = type(value) is int and -1 <= value <= 3
+        else:
+            valid = type(value) is int and 0 <= value <= 1000000
+        if not valid:
+            raise ValueError('ui_foreground_schema')
+    return record

@@ -13,8 +13,25 @@ separate same-process window caused the refusal. Both observers now authenticate
 the enabled popup before sampling foreground, without changing the ownership
 boundary. The row scout found that the recorded startup exception preceded
 `guardian_ready`, so the later row callback cannot explain that event; the throw
-site remains unknown. Fixed-schema foreground diagnostics and pre-ready stage
-tokens remain outstanding. No native or UI rerun is implied by this source fix.
+site remains unknown. No native or UI rerun is implied by these source changes.
+
+Two diagnostics were then added to the harness; neither claims or changes a cause.
+(A) On a foreground refusal, both picker observers (`scripts/run_uno_candidate_ui.py`
+into `foreground-failure.json`, `scripts/uno_candidate_ui.ps1` into
+`ui-helper-foreground-failure.json`) write one fixed schema of booleans and two
+counters: the existing relation enum, `fgIsMain`, `fgIsPopup`, `popupPresent`,
+`fgSamePid`, `fgThreadIsMainThread`, `fgOwnerIsMain` (`GW_OWNER`),
+`fgRootOwnerIsMain` (`GA_ROOTOWNER`), `fgClassIs32770`, `fgVisible`, `fgEnabled`,
+`phaseIndex` and `sampleOrder`. No title, class string, path, raw HWND value or
+desktop enumeration is recorded; the Python observer rejects a helper file or its
+own record with any other key or value type (`ui_foreground_schema`).
+(B) The native fixture worker tracks the last fixed stage it entered before
+`guardian_ready` (`NativeStage.cs`; allowlist mirrored in
+`scripts/run_uno_candidate_native.py`). The sanitized failure line becomes
+`native_positive_failed stage=<token> <ExceptionType> (HResult=0x...)`, and the
+runner prints `failureStage` in a `native_scene_failed` JSON on failure. Only
+allowlisted tokens are emitted, never messages or stacks. A future authorized
+run is needed to read either record.
 
 ## Scope, geometry and source
 

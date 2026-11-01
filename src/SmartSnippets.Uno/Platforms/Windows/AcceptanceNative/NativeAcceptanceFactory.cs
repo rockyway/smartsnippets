@@ -31,7 +31,8 @@ internal static class NativeAcceptanceFactory
 
     internal static NativeAcceptanceSession Create(AcceptanceFixture fixture, string selectedWindow,
         nint ownedPopupWindow, string guardianPath, string guardianDigest, DateTimeOffset expires,
-        bool allowInsert, bool allowCopy, Func<AcceptanceOperation, bool> permitted, bool allowClipboardControl = false, nint ownedMainWindow = 0, Guid? knownPriorToken = null)
+        bool allowInsert, bool allowCopy, Func<AcceptanceOperation, bool> permitted, bool allowClipboardControl = false, nint ownedMainWindow = 0, Guid? knownPriorToken = null,
+        Action<string>? stage = null)
     {
         RequireReviewed();
         if (expires <= DateTimeOffset.UtcNow || expires > DateTimeOffset.UtcNow.AddMinutes(2) ||
@@ -42,17 +43,20 @@ internal static class NativeAcceptanceFactory
         bool Permission(AcceptanceOperation operation) => !closed && Stopwatch.GetElapsedTime(started) < lifetime &&
             DateTimeOffset.UtcNow < expires && permitted(operation) &&
             AllowsOperation(operation, allowInsert, allowCopy, allowClipboardControl);
+        stage?.Invoke("session_probe");
         var owned = fixture.Lease.CreateProbe();
         try
         {
             var probe = new GuardedTargetProbe(owned, Permission);
+            stage?.Invoke("session_capture");
             var target = owned.Capture(selectedWindow);
             var popup = new NativeOwnedPopup(ownedPopupWindow);
             NativeOwnedPopup? main = null;
             try
             {
                 main = ownedMainWindow == 0 ? null : new NativeOwnedPopup(ownedMainWindow);
-                var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy, allowClipboardControl, main, knownPriorToken);
+                var channel = GuardianClient.Start(fixture, target, popup, guardianPath, guardianDigest, expires, allowInsert, allowCopy, allowClipboardControl, main, knownPriorToken, stage);
+                stage?.Invoke("session_focus");
                 var focus = new OwnedFocus(probe, target, ownedPopupWindow, popup,
                     () => Permission(AcceptanceOperation.Capture) || Permission(AcceptanceOperation.Copy) || Permission(AcceptanceOperation.Insert),
                     () => Permission(AcceptanceOperation.Focus), ownedMainWindow, () => main?.PopupPinned == true,

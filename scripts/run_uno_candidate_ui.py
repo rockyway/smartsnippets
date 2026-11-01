@@ -243,12 +243,37 @@ def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sl
 
 
 class ForegroundChanged(ValueError):
-    def __init__(self, foreground):
+    def __init__(self, foreground, popup=None, phase_index=-1, sample_order=0):
         super().__init__('foreground_changed')
         self.foreground = foreground
+        self.popup = popup
+        self.phase_index = phase_index
+        self.sample_order = sample_order
 
 
-def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid):
+def privacy_schema():
+    return startup.repo_module('ui_privacy_schema', 'scripts/uno_candidate_privacy.py')
+
+
+def foreground_failure_record(desktop, foreground, initial, hwnd, pid, popup=None,
+                              phase_index=-1, sample_order=0):
+    # Fixed schema only: a relation enum, booleans and two small counters, all derived from the
+    # already captured foreground HWND. No title, class string, path, HWND value or enumeration.
+    user = desktop.user
+    user.GetWindow.argtypes = [startup.W.HWND, startup.W.UINT]
+    user.GetWindow.restype = startup.W.HWND
+    user.GetAncestor.argtypes = [startup.W.HWND, startup.W.UINT]
+    user.GetAncestor.restype = startup.W.HWND
+    user.GetClassNameW.argtypes = [startup.W.HWND, startup.W.LPWSTR, startup.C.c_int]
+    user.GetClassNameW.restype = startup.C.c_int
+    user.IsWindowVisible.argtypes = [startup.W.HWND]
+    user.IsWindowVisible.restype = startup.W.BOOL
+    user.IsWindowEnabled.argtypes = [startup.W.HWND]
+    user.IsWindowEnabled.restype = startup.W.BOOL
+    fg_pid = startup.W.DWORD()
+    main_pid = startup.W.DWORD()
+    thread = user.GetWindowThreadProcessId(foreground, startup.C.byref(fg_pid)) if foreground else 0
+    main_thread = user.GetWindowThreadProcessId(hwnd, startup.C.byref(main_pid)) if hwnd else 0
     if not foreground:
         relation = 'none'
     elif foreground == initial[0]:
@@ -256,11 +281,45 @@ def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid):
     elif foreground == hwnd:
         relation = 'owned_main'
     else:
-        owner = startup.W.DWORD()
-        thread = desktop.user.GetWindowThreadProcessId(foreground, startup.C.byref(owner))
-        relation = 'unknown' if not thread else 'owned_other' if owner.value == pid else 'external'
+        relation = 'unknown' if not thread else 'owned_other' if fg_pid.value == pid else 'external'
+    live = bool(foreground and thread)
+    cls = startup.C.create_unicode_buffer(256)
+    class_ok = live and user.GetClassNameW(foreground, cls, len(cls))
+    return privacy_schema().validate_foreground_failure({
+        'foregroundRelation': relation,
+        'fgIsMain': bool(foreground and foreground == hwnd),
+        'fgIsPopup': bool(foreground and popup is not None and foreground == popup),
+        'popupPresent': popup is not None,
+        'fgSamePid': bool(live and fg_pid.value == pid),
+        'fgThreadIsMainThread': bool(live and main_thread and thread == main_thread),
+        'fgOwnerIsMain': bool(live and user.GetWindow(foreground, 4) == hwnd),  # GW_OWNER
+        'fgRootOwnerIsMain': bool(live and user.GetAncestor(foreground, 3) == hwnd),  # GA_ROOTOWNER
+        'fgClassIs32770': bool(class_ok and cls.value == '#32770'),
+        'fgVisible': bool(live and user.IsWindowVisible(foreground)),
+        'fgEnabled': bool(live and user.IsWindowEnabled(foreground)),
+        'phaseIndex': phase_index,
+        'sampleOrder': sample_order})
+
+
+def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid, popup=None,
+                            phase_index=-1, sample_order=0):
+    record = foreground_failure_record(desktop, foreground, initial, hwnd, pid, popup,
+                                       phase_index, sample_order)
     with (private / 'foreground-failure.json').open('x', encoding='ascii') as report:
-        json.dump({'foregroundRelation': relation}, report)
+        json.dump(record, report)
+
+
+def validate_helper_foreground_failure(private):
+    # The PowerShell observer writes the same fixed schema; refuse any other shape.
+    path = private / 'ui-helper-foreground-failure.json'
+    if not os.path.lexists(path):
+        return False
+    try:
+        record = json.loads(base.owned_bytes(path, private, 4096).decode('ascii'))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError('ui_foreground_schema') from None
+    privacy_schema().validate_foreground_failure(record)
+    return True
 
 
 def observe_desktop(desktop, allow_zero_fg=False):
@@ -270,6 +329,24 @@ def observe_desktop(desktop, allow_zero_fg=False):
     if not clip or (not allow_zero_fg and not fg):
         raise ValueError('desktop_unavailable')
     return fg, clip
+
+
+def observe_foreground_frame(desktop, hwnd, pid, initial, phase, picker_handles, owned_foreground_seen, sample_order):
+    # One observer-loop frame. Authenticate the owned enabled popup (and latch it) in this
+    # same frame BEFORE sampling the foreground, so a picker that activates between the two
+    # is judged against the popup that was authenticated here, never against a stale one.
+    popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase)) if phase else None
+    if popup is not None:
+        if picker_handles.setdefault(phase, popup) != popup:
+            raise ValueError('ui_picker_replaced')
+    fg, clip = observe_desktop(desktop)
+    if clip != initial[1]:
+        raise ValueError('clipboard_changed')
+    picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase) if phase else None)
+    allowed = (initial[0], hwnd) if not owned_foreground_seen else (hwnd,)
+    if fg not in allowed and not picker_fg:
+        raise ForegroundChanged(fg, popup, PICKER_PHASES.index(phase) if phase else -1, sample_order)
+    return owned_foreground_seen or fg == hwnd or picker_fg
 
 
 def shutdown_frame(desktop, pid, hwnd, initial, work, closed_seen, owned_foreground_seen, visible_windows):
@@ -347,24 +424,15 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             deadline = time.monotonic() + (60 if scene == 'file-picker' else 35)
             owned_foreground_seen = False
             picker_handles = {}
+            samples = 0
             while helper.poll() is None:
                 if process.poll() is not None:
                     raise ValueError('early_exit')
                 quiet_input(desktop, epoch)
                 phase = picker_phase(private) if scene == 'file-picker' else None
-                popup = owned_picker(desktop, hwnd, process.pid, picker_handles.get(phase)) if phase else None
-                if popup is not None:
-                    if picker_handles.setdefault(phase, popup) != popup:
-                        raise ValueError('ui_picker_replaced')
-                # Authenticate the enabled popup before observing the foreground.
-                fg, clip = observe_desktop(desktop)
-                if clip != initial[1]:
-                    raise ValueError('clipboard_changed')
-                picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase) if phase else None)
-                allowed = (initial[0], hwnd) if not owned_foreground_seen else (hwnd,)
-                if fg not in allowed and not picker_fg:
-                    raise ForegroundChanged(fg)
-                owned_foreground_seen |= fg == hwnd or picker_fg
+                samples += 1
+                owned_foreground_seen = observe_foreground_frame(
+                    desktop, hwnd, process.pid, initial, phase, picker_handles, owned_foreground_seen, samples)
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
                     raise ValueError('geometry')
                 if time.monotonic() > deadline:
@@ -439,7 +507,13 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 raise ValueError('privacy')
     except BaseException as error:
         if isinstance(error, ForegroundChanged) and process is not None:
-            save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid)
+            save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid,
+                                    error.popup, error.phase_index, error.sample_order)
+        try:
+            validate_helper_foreground_failure(private)
+        except (OSError, ValueError) as schema_error:
+            if str(schema_error) == 'ui_foreground_schema':
+                error = schema_error
         base.record_failure(private, error)
         raise
     finally:

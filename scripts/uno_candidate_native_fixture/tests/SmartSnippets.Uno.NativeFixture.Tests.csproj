@@ -8,7 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
-    <Compile Include="../BootstrapProtocol.cs;../LateNativeOperations.cs;../PositiveProtocol.cs;../OwnedTargetPreparation.cs;../OwnedPreparationAutomation.cs" LinkBase="Fixture" />
+    <Compile Include="../NativeStage.cs;../BootstrapProtocol.cs;../LateNativeOperations.cs;../PositiveProtocol.cs;../OwnedTargetPreparation.cs;../OwnedPreparationAutomation.cs" LinkBase="Fixture" />
     <Compile Include="../../../src/SmartSnippets.Uno/CandidateUiPolicy.cs;../../../src/SmartSnippets.Uno/UnoAppHost.cs;../../../src/SmartSnippets.Uno/CandidateProfile.cs;../../../src/SmartSnippets.Uno/CandidateFileIdentity.cs;../../../src/SmartSnippets.Uno/CandidateHostBoundary.cs;../../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs" LinkBase="Candidate" />
     <Compile Include="../../../tests/SmartSnippets.Uno.Tests/Composition/CandidateHostThread.cs" Link="CandidateHostThread.cs" />
   </ItemGroup>

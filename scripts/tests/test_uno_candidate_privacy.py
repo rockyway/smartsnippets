@@ -49,5 +49,52 @@ class CandidatePrivacyTests(unittest.TestCase):
                 privacy.scan_evidence((b'12345', b'6789'), CANARIES)
 
 
+def valid_foreground_failure():
+    record = {key: False for key, kind in privacy.FOREGROUND_FAILURE_SCHEMA if kind == 'bool'}
+    record.update({'foregroundRelation': 'owned_other', 'phaseIndex': 0, 'sampleOrder': 3})
+    return record
+
+
+class ForegroundFailureSchemaTests(unittest.TestCase):
+    def test_exact_schema_is_accepted_and_returned_unchanged(self):
+        record = valid_foreground_failure()
+        self.assertIs(record, privacy.validate_foreground_failure(record))
+        self.assertEqual(13, len(record))
+        self.assertTrue(all(k == 'foregroundRelation' or type(v) in (bool, int) for k, v in record.items()))
+
+    def test_any_key_outside_the_schema_is_rejected(self):
+        for extra in ('title', 'className', 'hwnd', 'path', 'foregroundTitle', 'fgClass', 'Extra', ''):
+            record = valid_foreground_failure()
+            record[extra] = True
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
+                privacy.validate_foreground_failure(record)
+
+    def test_missing_keys_and_wrong_shapes_are_rejected(self):
+        for key, _ in privacy.FOREGROUND_FAILURE_SCHEMA:
+            record = valid_foreground_failure()
+            del record[key]
+            with self.subTest(missing=key), self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
+                privacy.validate_foreground_failure(record)
+        for bad in (None, [], 'text', 3, valid_foreground_failure().items()):
+            with self.subTest(bad=type(bad).__name__), self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
+                privacy.validate_foreground_failure(bad)
+
+    def test_values_are_strictly_typed_numeric_boolean_or_fixed_enum(self):
+        cases = [('fgIsMain', 1), ('fgEnabled', 'true'), ('fgVisible', None), ('popupPresent', 0),
+                 ('phaseIndex', True), ('phaseIndex', 4), ('phaseIndex', -2), ('phaseIndex', '0'),
+                 ('sampleOrder', -1), ('sampleOrder', 1000001), ('sampleOrder', 1.5), ('sampleOrder', 'x'),
+                 ('sampleOrder', False), ('foregroundRelation', 'C:\\secret'), ('foregroundRelation', 7),
+                 ('foregroundRelation', 'Owned_Other'), ('foregroundRelation', '')]
+        for key, value in cases:
+            record = valid_foreground_failure()
+            record[key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
+                privacy.validate_foreground_failure(record)
+        for relation in privacy.FOREGROUND_RELATIONS:
+            record = valid_foreground_failure()
+            record['foregroundRelation'] = relation
+            privacy.validate_foreground_failure(record)
+
+
 if __name__ == '__main__':
     unittest.main()

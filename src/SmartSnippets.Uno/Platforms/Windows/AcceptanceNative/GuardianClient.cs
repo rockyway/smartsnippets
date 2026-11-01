@@ -41,13 +41,15 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     public long ByteCount { get; private set; }
 
     internal static GuardianClient Start(AcceptanceFixture fixture, InsertionTarget target, NativeOwnedPopup popup, string path,
-        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false, NativeOwnedPopup? main = null, Guid? knownPriorToken = null)
+        string digest, DateTimeOffset expires, bool allowInsert, bool allowCopy, bool allowClipboardControl = false, NativeOwnedPopup? main = null, Guid? knownPriorToken = null,
+        Action<string>? stage = null)
     {
         NativeAcceptanceFactory.RequireReviewed();
         using var self = Process.GetCurrentProcess();
         if (!RetainedIdentity.OutsideJob(self.SafeHandle) || !fixture.Lease.IsAliveAndPinned() ||
             RetainedIdentity.Parent(fixture.Child.SafeHandle) != (uint)Environment.ProcessId)
             throw new InvalidOperationException("Guardian must bootstrap outside all worker and observer Jobs.");
+        stage?.Invoke("guardian_image");
         var image = PinnedNativeImage.Open(path, digest, "SmartSnippets.UnoCandidate.Guardian.exe");
         var commands = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
         var responses = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
@@ -63,6 +65,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
             info.ArgumentList.Add(commands.GetClientHandleAsString());
             info.ArgumentList.Add(responses.GetClientHandleAsString());
             info.ArgumentList.Add(run.ToString("D"));
+            stage?.Invoke("guardian_spawn");
             child = Process.Start(info) ?? throw new InvalidOperationException("Guardian start failed.");
             commands.DisposeLocalCopyOfClientHandle(); responses.DisposeLocalCopyOfClientHandle();
             if (!RetainedIdentity.Pinned(child.SafeHandle, image) || !RetainedIdentity.OutsideJob(child.SafeHandle) ||
@@ -72,6 +75,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
             using var file = File.OpenRead(selfPath);
             var workerDigest = Convert.ToHexString(SHA256.HashData(file));
             using var workerImage = PinnedNativeImage.Open(selfPath, workerDigest, "SmartSnippets.UnoCandidate.exe");
+            stage?.Invoke("guardian_bootstrap");
             using (var bootstrap = new BinaryWriter(commands, Encoding.UTF8, leaveOpen: true))
             {
                 bootstrap.Write(RetainedIdentity.Duplicate(self.SafeHandle, child.SafeHandle).ToInt64());
@@ -95,6 +99,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
                 bootstrap.Flush();
             }
             var client = new GuardianClient(child, image, commands, responses, run, allowInsert, allowCopy, allowClipboardControl);
+            stage?.Invoke("guardian_wait");
             if (client.Read() != "ready") throw new InvalidOperationException("Guardian bootstrap refused.");
             return client;
         }

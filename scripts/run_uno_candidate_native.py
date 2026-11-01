@@ -26,6 +26,12 @@ PRIOR_CONTROL_PERMIT = b'owned_clipboard_controls_settled_baseline_v2\n'
 REGISTERED_READY_FILE = 'registered-shortcut-ready'
 REGISTERED_READY_RECEIPT = b'registered_os_shortcut_operator_ready\n'
 ENTRY = 'SmartSnippets.UnoCandidate.exe'
+# Mirrors NativeStage.Tokens in scripts/uno_candidate_native_fixture/NativeStage.cs (a test keeps them equal).
+NATIVE_STAGES = ('start', 'review_gate', 'fixture_start', 'fixture_owned', 'host_start', 'host_ready',
+                 'session_create', 'session_probe', 'session_capture', 'guardian_image', 'guardian_spawn',
+                 'guardian_bootstrap', 'guardian_wait', 'session_focus', 'broker_bind', 'outside_job',
+                 'guardian_dup', 'guardian_ready')
+STAGE_LINE = re.compile(r'^\S+ ERROR native_positive_failed stage=([a-z_]+) [A-Za-z0-9_`]+ \(HResult=0x[0-9A-F]{8}\)$')
 ROOT = REPO / 'scripts/uno_candidate_native_fixture'
 spec = importlib.util.spec_from_file_location('native_nonmutating_helpers', REPO / 'scripts/run_uno_candidate_acceptance.py')
 helpers = importlib.util.module_from_spec(spec)
@@ -47,6 +53,25 @@ def source_fingerprint():
         result.update(path.relative_to(REPO).as_posix().encode() + b'\0')
         result.update(hashlib.sha256(data).digest())
     return result.hexdigest()
+
+
+def failure_stage(private):
+    """Last fixed stage from the sanitized failure line; any other shape is 'unknown'. Never echoes log text."""
+    try:
+        text = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private).decode('utf-8-sig')
+    except (OSError, ValueError, UnicodeDecodeError):
+        return 'unavailable'
+    stage = 'none'
+    for line in text.splitlines():
+        if ' native_positive_failed' in line:
+            match = STAGE_LINE.match(line)
+            stage = match.group(1) if match and match.group(1) in NATIVE_STAGES else 'unknown'
+    return stage
+
+
+def failure_report(scene, private):
+    return {'result': 'native_scene_failed', 'scene': scene, 'failureStage': failure_stage(private),
+            'privateEvidenceToken': f'{private.parent.name}/{private.name}'}
 
 
 def validate_image(path, digest, basename):
@@ -377,6 +402,9 @@ def main(argv=None, *, prior_restorative_session=None):
                 'positive_scene_settled' if positive else 'clipboard_control_settled',
                 private.parent.name + '/' + private.name)
 
+    except Exception:
+        print(json.dumps(failure_report(args.scene, private)), flush=True)
+        raise
     finally:
         desktop.close()  # Never terminates the coordinator or guardian.
 

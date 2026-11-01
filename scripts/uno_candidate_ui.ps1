@@ -24,6 +24,8 @@ public static class Owned019 {
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle h, out FileInfo info);
  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint command);
+ [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
+ [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
  [DllImport("user32.dll")] public static extern bool IsChild(IntPtr parent, IntPtr child);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
@@ -46,6 +48,7 @@ public static class Owned019 {
     if ([Owned019]::Epoch() -ne $epoch) { throw 'input' }
     $focused = $false
     $script:pickerPhase = $null
+    $script:guardSamples = 0
     $script:pickerHwnd = [IntPtr]::Zero
     $script:pickerActions = 0; $script:pickerValues = 0
     $script:invokes = 0; $script:values = 0; $script:focuses = 0
@@ -72,6 +75,47 @@ public static class Owned019 {
             $cls.ToString() -cne '#32770') { throw 'picker_identity' }
         return $dialog
     }
+    function ForegroundFailure([long]$fg, [IntPtr]$dialog) {
+        # Fixed-schema numeric/boolean record, identical to the Python observer's
+        # foreground-failure.json. No titles, class strings, paths or HWND values.
+        try {
+            $f = [IntPtr]$fg
+            [uint32]$fgPid = 0; [uint32]$mainPid = 0
+            $thread = 0
+            if ($fg -ne 0) { $thread = [Owned019]::GetWindowThreadProcessId($f, [ref]$fgPid) }
+            $mainThread = [Owned019]::GetWindowThreadProcessId($h, [ref]$mainPid)
+            $relation = if ($fg -eq 0) { 'none' } elseif ($fg -eq $InitialForeground) { 'initial' }
+                elseif ($fg -eq $OwnedHwnd) { 'owned_main' } elseif ($thread -eq 0) { 'unknown' }
+                elseif ($fgPid -eq $OwnedPid) { 'owned_other' } else { 'external' }
+            $live = ($fg -ne 0) -and ($thread -ne 0)
+            $isClass = $false
+            if ($live) {
+                $cls = New-Object Text.StringBuilder 256
+                if ([Owned019]::GetClassName($f, $cls, 256) -gt 0) { $isClass = $cls.ToString() -ceq '#32770' }
+            }
+            $phaseIndex = if ($null -eq $script:pickerPhase) { -1 } else { [Array]::IndexOf(@('import-cancel','import','export-cancel','export'), $script:pickerPhase) }
+            $values = [ordered]@{
+                fgIsMain = ($fg -ne 0 -and $fg -eq $OwnedHwnd)
+                fgIsPopup = ($fg -ne 0 -and $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64())
+                popupPresent = ($dialog -ne [IntPtr]::Zero)
+                fgSamePid = ($live -and $fgPid -eq $OwnedPid)
+                fgThreadIsMainThread = ($live -and $mainThread -ne 0 -and $thread -eq $mainThread)
+                fgOwnerIsMain = ($live -and [Owned019]::GetWindow($f, 4) -eq $h)
+                fgRootOwnerIsMain = ($live -and [Owned019]::GetAncestor($f, 3) -eq $h)
+                fgClassIs32770 = $isClass
+                fgVisible = ($live -and [Owned019]::IsWindowVisible($f))
+                fgEnabled = ($live -and [Owned019]::IsWindowEnabled($f))
+            }
+            $json = '{"foregroundRelation":"' + $relation + '"'
+            foreach ($key in $values.Keys) { $json += ',"' + $key + '":' + $(if ($values[$key]) { 'true' } else { 'false' }) }
+            $json += ',"phaseIndex":' + [int]$phaseIndex + ',"sampleOrder":' + [int]$script:guardSamples + '}'
+            $file = [IO.File]::Open((Join-Path $root 'ui-helper-foreground-failure.json'), [IO.FileMode]::CreateNew)
+            try {
+                $bytes = [Text.Encoding]::ASCII.GetBytes($json)
+                $file.Write($bytes, 0, $bytes.Length)
+            } finally { $file.Dispose() }
+        } catch { }
+    }
     function Guard {
         if ([Owned019]::GetClipboardSequenceNumber() -ne $clipboardSequence) { throw 'clipboard' }
         if (-not [Owned019]::IsWindow($h) -or -not [Owned019]::IsWindowVisible($h)) { throw 'window' }
@@ -94,6 +138,7 @@ public static class Owned019 {
         if ([Owned019]::Epoch() -ne $epoch -or ([Environment]::TickCount -band 0xffffffffL) - $epoch -lt 1500) { throw 'input' }
         for ($k=1; $k -lt 256; $k++) { if (([int][Owned019]::GetAsyncKeyState($k) -band 0x8000) -ne 0) { throw 'input' } }
         $dialog = [IntPtr]::Zero
+        $script:guardSamples++
         if ($Scene -ceq 'file-picker' -and $null -ne $script:pickerPhase) {
             $dialog = OwnedPicker
             if ($dialog -ne [IntPtr]::Zero) {
@@ -111,7 +156,7 @@ public static class Owned019 {
             $pickerForeground = $true
         }
         if (-not $pickerForeground -and (($script:focused -and $fg -ne $OwnedHwnd) -or
-            (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd))) { throw 'foreground' }
+            (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd))) { ForegroundFailure $fg $dialog; throw 'foreground' }
         if ($pickerForeground -or $fg -eq $OwnedHwnd) { $script:focused = $true }
     }
     function SelectOwnedLeave($items) {

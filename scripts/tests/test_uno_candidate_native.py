@@ -344,5 +344,58 @@ class PriorRestorativeLedgerTests(unittest.TestCase):
             with self.assertRaises(ValueError): native.launch_permit(True, invalid)
 
 
+class NativeStageDiagnosticsTests(unittest.TestCase):
+    LINE = '2026-01-01T00:00:00.000Z ERROR native_positive_failed stage={} InvalidOperationException (HResult=0x80131509)'
+
+    def log(self, private, *lines):
+        path = private / 'native-fixture-profile/logs/app.log'
+        path.parent.mkdir(parents=True)
+        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+    def test_python_allowlist_equals_fixture_tokens(self):
+        import re
+        source = (native.ROOT / 'NativeStage.cs').read_text()
+        block = source.split('Tokens =', 1)[1].split('];', 1)[0]
+        self.assertEqual(tuple(re.findall(r'"([a-z_]+)"', block)), native.NATIVE_STAGES)
+        self.assertEqual(len(set(native.NATIVE_STAGES)), len(native.NATIVE_STAGES))
+        app = (native.ROOT / 'App.xaml.cs').read_text()
+        for token in re.findall(r'NativeStage\.Reach\("([a-z_]+)"\)', app):
+            self.assertIn(token, native.NATIVE_STAGES)
+        factory = (native.REPO / 'src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative')
+        for name in ('NativeAcceptanceFactory.cs', 'GuardianClient.cs'):
+            for token in re.findall(r'stage\?\.Invoke\("([a-z_]+)"\)', (factory / name).read_text()):
+                self.assertIn(token, native.NATIVE_STAGES)
+
+    def test_failure_stage_reads_only_the_last_allowlisted_token(self):
+        for stage in native.NATIVE_STAGES:
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as directory:
+                private = Path(directory)
+                self.log(private, '2026-01-01T00:00:00.000Z INFO candidate_started', self.LINE.format(stage))
+                self.assertEqual(stage, native.failure_stage(private))
+                report = native.failure_report('restore', private)
+                self.assertEqual({'result', 'scene', 'failureStage', 'privateEvidenceToken'}, set(report))
+                self.assertEqual(stage, report['failureStage'])
+
+    def test_unknown_or_malformed_stage_lines_never_echo_log_text(self):
+        for line in (self.LINE.format('not_a_stage'), self.LINE.format('Host_Ready'),
+                     self.LINE.format('host_ready').replace('InvalidOperationException', 'C:\\secret\\path'),
+                     self.LINE.format('host_ready') + ' message=secret title',
+                     '2026-01-01T00:00:00.000Z ERROR native_positive_failed stage=host_ready with a free text message'):
+            with self.subTest(line=line), tempfile.TemporaryDirectory() as directory:
+                private = Path(directory)
+                self.log(private, line)
+                self.assertEqual('unknown', native.failure_stage(private))
+                self.assertNotIn('secret', repr(native.failure_report('restore', private)))
+
+    def test_missing_log_or_no_failure_line_is_reported_with_fixed_words(self):
+        with tempfile.TemporaryDirectory() as directory:
+            private = Path(directory)
+            self.assertEqual('unavailable', native.failure_stage(private))
+            self.log(private, '2026-01-01T00:00:00.000Z INFO candidate_started')
+            self.assertEqual('none', native.failure_stage(private))
+
+
+
+
 if __name__ == '__main__':
     unittest.main()

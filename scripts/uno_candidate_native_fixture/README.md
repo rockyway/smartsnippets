@@ -254,5 +254,6 @@ and calls use STDMETHODCALLTYPE/Stdcall. Tests exercise those actual bridge slot
 with unmanaged fake vtables, never COM activation. Policy tests use fake OS/clock/COM;
 they do not prove real provider behavior, desktop activation or live HWND identities.
 `owned_initial_focus phase=waiting|ready|refused` and fixed preparation reason codes
-are content-free. `native_positive_failed` records only exception type/HResult, not
+are content-free. `native_positive_failed stage=<token>` records only an allowlisted
+last-entered stage (`NativeStage.cs`), the exception type and HResult, not
 messages/titles/paths. A generic prior failure does not identify its failed predicate.
