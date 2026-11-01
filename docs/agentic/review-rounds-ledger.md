@@ -5,3 +5,4 @@
 | 2026-11-01 | feature/uno019-diag-fixes | 1 | 0 | 3 | 0 | 2 | open-time recheck + helper-file validation ordering; weak oracles |
 | 2026-11-01 | feature/uno019-diag-fixes | 2 | 0 | 2 | 0 | 2 | round-1 fix reordered helper-exit/diagnostics error path; leader folded in directly |
 | 2026-11-01 | feature/uno019-diag-fixes | 3 | 1 | 1 | 1 | 0 | rv-05 GO; A (unguarded save_foreground_failure) + C folded by leader; B behavioural worker() test deferred |
+| 2026-11-01 | feature/uno019-picker-thread | 1 | 1 | 1 | 1 | 1 | rv-06 GO; visibility-gate oracles + 3rd replacement site + wording folded (pt-01b) |
