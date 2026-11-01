@@ -59,6 +59,14 @@ class UiManagementTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
                     s.owned_picker(desktop, 10, 30, 20)
 
+    def test_picker_observer_authenticates_before_foreground_sample(self):
+        source = (s.REPO / 'scripts/run_uno_candidate_ui.py').read_text()
+        loop = source.split('            while helper.poll() is None:', 1)[1].split('            out, err = helper.communicate', 1)[0]
+        self.assertLess(loop.index('popup = owned_picker('), loop.index('fg, clip = observe_desktop('))
+        self.assertLess(loop.index('picker_handles.setdefault('), loop.index('fg, clip = observe_desktop('))
+        self.assertTrue(s.picker_foreground(Mock(), 20, 20, 20))
+        self.assertFalse(s.picker_foreground(Mock(), 21, 20, 20))
+
     def test_picker_foreground_close_transition(self):
         desktop = Mock()
         desktop.user.IsWindow.return_value = False
@@ -108,7 +116,8 @@ class UiManagementTests(unittest.TestCase):
     def test_picker_helper_latches_and_publishes_before_info(self):
         helper = s.HELPER.read_text()
         guard = helper.split('    function Guard', 1)[1].split('    function SelectOwnedLeave', 1)[0]
-        self.assertLess(guard.index('$script:pickerHwnd = $dialog'), guard.index('$pickerForeground ='))
+        self.assertLess(guard.index('$script:pickerHwnd = $dialog'), guard.index('[Owned019]::GetForegroundWindow()'))
+        self.assertLess(guard.index('[Owned019]::GetForegroundWindow()'), guard.index('$pickerForeground ='))
         self.assertIn("throw 'picker_replaced'", guard)
         self.assertIn('if ($pickerForeground -or $fg -eq $OwnedHwnd) { $script:focused = $true }', guard)
         self.assertLess(guard.index("throw 'foreground'"), guard.index('$script:focused = $true'))

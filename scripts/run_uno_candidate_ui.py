@@ -352,13 +352,14 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                     raise ValueError('early_exit')
                 quiet_input(desktop, epoch)
                 phase = picker_phase(private) if scene == 'file-picker' else None
-                fg, clip = observe_desktop(desktop)
-                if clip != initial[1]:
-                    raise ValueError('clipboard_changed')
                 popup = owned_picker(desktop, hwnd, process.pid, picker_handles.get(phase)) if phase else None
                 if popup is not None:
                     if picker_handles.setdefault(phase, popup) != popup:
                         raise ValueError('ui_picker_replaced')
+                # Authenticate the enabled popup before observing the foreground.
+                fg, clip = observe_desktop(desktop)
+                if clip != initial[1]:
+                    raise ValueError('clipboard_changed')
                 picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase) if phase else None)
                 allowed = (initial[0], hwnd) if not owned_foreground_seen else (hwnd,)
                 if fg not in allowed and not picker_fg:

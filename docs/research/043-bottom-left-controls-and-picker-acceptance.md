@@ -5,6 +5,17 @@ production authorization, insertion acceptance, picker parity or Plan 018/019
 completion. No registered-* scene, keyboard/mouse synthesis, downloads, clock
 changes or real-profile access was performed.
 
+## Diagnosis and fixes
+
+The picker scout found that an open-time sampling race is possible, but the
+recorded `owned_other` foreground does not establish whether that race or a
+separate same-process window caused the refusal. Both observers now authenticate
+the enabled popup before sampling foreground, without changing the ownership
+boundary. The row scout found that the recorded startup exception preceded
+`guardian_ready`, so the later row callback cannot explain that event; the throw
+site remains unknown. Fixed-schema foreground diagnostics and pre-ready stage
+tokens remain outstanding. No native or UI rerun is implied by this source fix.
+
 ## Scope, geometry and source
 
 Trial worktree: `.claude/worktrees/uno019-native-trial2`, branch
