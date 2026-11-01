@@ -16,6 +16,7 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
     private bool closed, disposed;
     internal Guid SessionId { get; } = Guid.NewGuid();
     internal InsertionTarget Target => target;
+    internal uint DiagnosticGuardianPid => guardian is GuardianClient client ? client.DiagnosticProcessId : 0;
     internal bool RecoveryPending => dispatcher.RecoveryPending;
     internal string RecoveryControl => guardian.RecoveryControl;
     internal nint DuplicateGuardianHandle(SafeProcessHandle recipient) => guardian.DuplicateGuardianHandle(recipient);

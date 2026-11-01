@@ -14,14 +14,20 @@ internal static class ClipboardControlReadiness
 {
     internal static async Task<ClipboardControlAdmission> WaitAsync(
         Func<ClipboardControlAdmission> classify, Func<bool> foregroundUnchanged,
-        CancellationToken ct, TimeProvider? timeProvider = null)
+        CancellationToken ct, TimeProvider? timeProvider = null, Action<string, int>? refused = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var start = clock.GetTimestamp();
+        var sampleOrder = 0;
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            if (!foregroundUnchanged()) return ClipboardControlAdmission.ForegroundChanged;
+            sampleOrder++;
+            if (!foregroundUnchanged())
+            {
+                refused?.Invoke(sampleOrder == 1 ? "initial" : "changed", sampleOrder);
+                return ClipboardControlAdmission.ForegroundChanged;
+            }
             var admission = classify();
             if (admission != ClipboardControlAdmission.Unquiet) return admission;
             var remaining = TimeSpan.FromSeconds(4) - clock.GetElapsedTime(start);

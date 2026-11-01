@@ -238,7 +238,7 @@ class UiManagementTests(unittest.TestCase):
         self.assertLess(ownership.index('IsWindowVisible($dialog)'), ownership.index('IsWindow($dialog)'))
         self.assertIn("PickerElement $dialog '1148' $r", picker)
         self.assertIn("PickerElement $dialog '1001' $e", picker)
-        self.assertIn("$items.Count -ne 1", helper.split('    function PickerElement', 1)[1])
+        self.assertIn("$items.Count -eq 1", helper.split('    function PickerElement', 1)[1])
         for fragment in ('ComboBox', 'Edit', 'Button', 'picker_existing_export', 'picker_alias'):
             self.assertIn(fragment, picker)
         self.assertEqual(1, picker.count('$value.SetValue($path)'))

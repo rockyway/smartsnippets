@@ -197,7 +197,9 @@ internal static partial class NativeFixtureOs
 {
     [LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")] internal static partial nint Foreground();
     internal static bool WindowOwnedBy(nint window, uint expectedPid) => expectedPid != 0 && GetWindowThreadProcessId(window, out var pid) != 0 && pid == expectedPid;
-    [LibraryImport("user32.dll")] private static partial uint GetWindowThreadProcessId(nint window, out uint pid);
+    [LibraryImport("user32.dll")] internal static partial uint GetWindowThreadProcessId(nint window, out uint pid);
+    [LibraryImport("user32.dll")] internal static partial int IsWindowVisible(nint window);
+    [LibraryImport("user32.dll")] internal static partial int IsWindowEnabled(nint window);
     internal static SafeProcessHandle InheritableSelf(SafeProcessHandle self)
     {
         if (DuplicateHandle(GetCurrentProcess(), self, GetCurrentProcess(), out var duplicate, 0x101040, 1, 0) == 0) throw new InvalidOperationException("native_parent_handle");

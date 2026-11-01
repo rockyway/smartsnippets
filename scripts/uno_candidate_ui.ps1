@@ -354,12 +354,27 @@ public static class Owned019 {
         try { $bytes=[Text.Encoding]::ASCII.GetBytes("owned_picker_019`n"); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
         [IO.File]::Move($tmp, $final)
     }
-    function PickerElement($dialog, [string]$id, $scope) {
+    function PickerElement($dialog, [string]$id, $scope, [bool]$button = $false) {
         Guard
         if ((OwnedPicker) -ne $dialog) { throw 'picker_changed' }
         $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$id)
-        $items = $scope.FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
-        if ($items.Count -ne 1) { throw 'picker_schema' }
+        do {
+            Guard
+            if ((OwnedPicker) -ne $dialog) { throw 'picker_changed' }
+            $items = $scope.FindAll([Windows.Automation.TreeScope]::Descendants,$condition)
+            $type = 0
+            if ($items.Count -eq 1) { $type = $items[0].Current.ControlType.Id }
+            if ($items.Count -eq 1 -and (-not $button -or $type -eq 50000)) { break }
+            if (-not $button) { throw 'picker_schema' }
+            if ([DateTime]::UtcNow -ge $script:pickerStepUntil) {
+                $reason = if ($items.Count -eq 0) { 'picker_schema_missing' } elseif ($items.Count -gt 1) { 'picker_schema_multiple' } else { 'picker_schema_type' }
+                $record = [ordered]@{ reason=$reason; matchCount=[int]$items.Count; controlTypeId=[int]$type }
+                $file = [IO.File]::Open((Join-Path $root 'ui-helper-picker-schema.json'), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+                try { $bytes = [Text.Encoding]::ASCII.GetBytes(($record | ConvertTo-Json -Compress)); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
+                throw $reason
+            }
+            Start-Sleep -Milliseconds 50
+        } while ($true)
         $e = $items[0]; $native = [IntPtr]$e.Current.NativeWindowHandle
         [uint32]$elementPid = 0
         $thread = [Owned019]::GetWindowThreadProcessId($native, [ref]$elementPid)
@@ -380,6 +395,7 @@ public static class Owned019 {
         $button = if ($phase.StartsWith('import')) { 'picker-import' } else { 'picker-export' }
         Invoke $button
         $until = [DateTime]::UtcNow.AddSeconds(6)
+        $script:pickerStepUntil = $until
         do {
             Guard; $dialog = OwnedPicker
             if ($dialog -ne [IntPtr]::Zero -and [Owned019]::IsWindowVisible($dialog)) { break }
@@ -431,7 +447,7 @@ public static class Owned019 {
             if ($value.Current.Value -cne $path) { throw 'picker_value' }
         }
         $id = if ($cancel) { '2' } else { '1' }
-        $commit = PickerElement $dialog $id $r
+        $commit = PickerElement $dialog $id $r $true
         if ($commit.Current.ControlType -ne [Windows.Automation.ControlType]::Button) { throw 'picker_schema' }
         RequirePickerControlClass $commit 'Button'
         $invoke = [Windows.Automation.InvokePattern]$commit.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
@@ -545,7 +561,7 @@ public static class Owned019 {
 } catch {
     $reason = 'operation'
     $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions','clipboard','selection',
-        'picker_identity','picker_replaced','picker_changed','picker_schema','picker_control_owner','picker_control_class','picker_phase','picker_timeout','picker_uia_owner','picker_alias','picker_existing_export','picker_input','picker_combo_chain','picker_value','picker_close_timeout','picker_actions')
+        'picker_schema_missing','picker_schema_multiple','picker_schema_type','picker_identity','picker_replaced','picker_changed','picker_schema','picker_control_owner','picker_control_class','picker_phase','picker_timeout','picker_uia_owner','picker_alias','picker_existing_export','picker_input','picker_combo_chain','picker_value','picker_close_timeout','picker_actions')
     if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
     [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason")
     exit 1

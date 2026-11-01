@@ -39,6 +39,20 @@ public sealed class ClipboardControlReadinessTests
             () => throw new InvalidOperationException(), () => false, default));
     }
 
+    [Theory]
+    [InlineData(1, "initial")]
+    [InlineData(2, "changed")]
+    public async Task RefusalReportsOrderedCheckWithoutClassifyingRefusedSample(int failAt, string expected)
+    {
+        var samples = 0; var classifications = 0; var reports = 0;
+        Assert.Equal(ClipboardControlAdmission.ForegroundChanged, await ClipboardControlReadiness.WaitAsync(
+            () => { classifications++; return ClipboardControlAdmission.Unquiet; },
+            () => ++samples < failAt, default, refused: (check, order) =>
+            { reports++; Assert.Equal(expected, check); Assert.Equal(failAt, order); }));
+        Assert.Equal(1, reports);
+        Assert.Equal(failAt - 1, classifications);
+    }
+
     private sealed class Clock : TimeProvider
     {
         internal long Ticks;

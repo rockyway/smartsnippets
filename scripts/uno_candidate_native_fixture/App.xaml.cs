@@ -85,13 +85,32 @@ public partial class App : Application
             }
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "lease_clipboard_control") throw new InvalidOperationException("native_lease");
             lease = true; // Only the distinct clipboard-control operation is admitted; broker stays denied.
+            var ready = fixture.Lease.Readiness;
+            nint admissionForeground = 0;
+            void ForegroundRefused(string check, int order)
+            {
+                var fg = admissionForeground;
+                var thread = NativeFixtureOs.GetWindowThreadProcessId(fg, out var pid);
+                var ownedThread = NativeFixtureOs.GetWindowThreadProcessId(ready.WindowA, out var ownedPid);
+                var relation = fg == 0 ? "none" : fg == ready.WindowA ? "owned_target_a" :
+                    fg == ready.WindowB ? "owned_target_b" : pid == session.DiagnosticGuardianPid ? "guardian" :
+                    pid == (uint)Environment.ProcessId ? "candidate" : pid == ownedPid ? "same_pid_other" : "foreign";
+                AppLog.Info("native_control_foreground", $"relation={relation} fgVisible={NativeFixtureOs.IsWindowVisible(fg) != 0} fgEnabled={NativeFixtureOs.IsWindowEnabled(fg) != 0} fgSameThreadAsOwned={thread != 0 && thread == ownedThread} check={check} sampleOrder={order}");
+            }
+            var admissionSamples = 0;
             var admission = await ClipboardControlReadiness.WaitAsync(session.ClassifyClipboardControl,
-                () => NativeFixtureOs.Foreground() == foreground, ct);
+                () => { admissionSamples++; admissionForeground = NativeFixtureOs.Foreground(); return admissionForeground == foreground; }, ct, refused: ForegroundRefused);
             // Enum values are fixed, content-free diagnostic tokens; no native identity is logged.
             AppLog.Info("native_control_admission", $"reason={admission}");
             var publishStatus = SwapStatus.NotPreserved;
-            if (admission == ClipboardControlAdmission.Ready && NativeFixtureOs.Foreground() == foreground)
-                publishStatus = session.PublishClipboardControl(); // Rechecks every guard before atomic guardian publication.
+            if (admission == ClipboardControlAdmission.Ready)
+            {
+                admissionSamples++;
+                admissionForeground = NativeFixtureOs.Foreground();
+                if (admissionForeground == foreground)
+                    publishStatus = session.PublishClipboardControl(); // Rechecks every guard before atomic guardian publication.
+                else ForegroundRefused("idle", admissionSamples);
+            }
             AppLog.Info("native_control_publish", publishStatus == SwapStatus.Swapped ? "status=swapped" : "status=refused");
             if (publishStatus != SwapStatus.Swapped || !session.RecoveryPending)
                 throw new InvalidOperationException("native_publication_refused");

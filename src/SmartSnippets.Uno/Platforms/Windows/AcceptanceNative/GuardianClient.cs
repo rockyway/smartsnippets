@@ -23,6 +23,7 @@ internal sealed class GuardianClient : IGuardianChannel, IDisposable
     private readonly bool allowInsert, allowCopy, allowClipboardControl;
     private readonly object sync = new();
     private bool closed, broken, pending, disposed, spent;
+    internal uint DiagnosticProcessId => (uint)process.Id;
     public string RecoveryControl { get; }
     private GuardianClient(Process process, PinnedNativeImage image, AnonymousPipeServerStream commands,
         AnonymousPipeServerStream responses, Guid run, bool allowInsert, bool allowCopy, bool allowClipboardControl)

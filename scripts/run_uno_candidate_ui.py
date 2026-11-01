@@ -319,7 +319,28 @@ def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid, po
         json.dump(record, report)
 
 
+def validate_helper_picker_schema(private):
+    path = private / 'ui-helper-picker-schema.json'
+    if not os.path.lexists(path):
+        return False
+    try:
+        record = json.loads(base.owned_bytes(path, private, 4096).decode('ascii'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError('ui_picker_schema_record') from None
+    if (type(record) is not dict or set(record) != {'reason', 'matchCount', 'controlTypeId'}
+            or type(record['matchCount']) is not int or type(record['controlTypeId']) is not int):
+        raise ValueError('ui_picker_schema_record')
+    count, kind = record['matchCount'], record['controlTypeId']
+    expected = ('picker_schema_missing' if count == 0 and kind == 0 else
+                'picker_schema_multiple' if count > 1 and kind == 0 else
+                'picker_schema_type' if count == 1 and 50000 <= kind <= 50040 and kind != 50000 else None)
+    if expected is None or record['reason'] != expected:
+        raise ValueError('ui_picker_schema_record')
+    return True
+
+
 def validate_helper_foreground_failure(private):
+    validate_helper_picker_schema(private)
     # The PowerShell observer writes the same fixed schema; refuse any other shape.
     path = private / 'ui-helper-foreground-failure.json'
     if not os.path.lexists(path):
