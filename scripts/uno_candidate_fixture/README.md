@@ -259,10 +259,15 @@ provenance, JobZero and graceful-exit protections remain in force.
 
 ### Conservative provider boundary / unresolved runtime compatibility
 
-Python and PowerShell independently authenticate only the dialog returned by
-`GetWindow(retainedMain, GW_ENABLEDPOPUP)`: distinct visible HWND, direct
-`GW_OWNER == retainedMain`, **same candidate PID and main thread**, exact `#32770`.
-The first observed dialog is retained per phase; replacement refuses. Foreground
+Python and PowerShell independently authenticate the foreground HWND itself or
+`GetWindow(retainedMain, GW_ENABLEDPOPUP)`: distinct HWND, direct
+`GW_OWNER == retainedMain`, **same candidate PID, any nonzero thread**, exact `#32770`.
+The first observed dialog is retained per phase, even before visibility; replacement
+refuses. Each phase must observe that exact dialog visible at least once before
+completion. Python refuses leaving an observed active phase without a visible
+observation and checks all four phases again before accepting run completion.
+PowerShell waits for visibility before accessing picker controls.
+`fgThreadIsMainThread` remains informational in the unchanged 13-field record. Foreground
 allowance applies only during that exact fixed active phase and to that authenticated
 dialog. No title/global desktop discovery, broker PID adoption, unowned focus or
 provider fallback is permitted. Geometry still must fit the authorized work area.
@@ -275,7 +280,7 @@ missing, offscreen, disabled, readonly, foreign or differently shaped controls r
 An additional/foreign overwrite or error dialog is never dismissed.
 
 **Unknown until separately authorized runtime observation:** modern Windows App SDK
-pickers may be brokered, use another class/thread, expose different UIA/native HWND
+pickers may be brokered, use another class, expose different UIA/native HWND
 shapes, lack Invoke/ValuePattern, or open outside the allowed rectangle. These are
 BLOCKED outcomes, not reasons to relax guards. Missing UIA callbacks/async readiness,
 provider localization/schema differences and cleanup/clipboard/foreground changes

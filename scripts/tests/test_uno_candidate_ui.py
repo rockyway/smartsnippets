@@ -45,7 +45,7 @@ class UiManagementTests(unittest.TestCase):
             return 1
         user.GetClassNameW.side_effect = valid_class
         self.assertEqual(20, s.owned_picker(desktop, 10, 30, 20))
-        for defect in ('owner', 'pid', 'thread', 'class'):
+        for defect in ('owner', 'pid', 'class'):
             with self.subTest(defect=defect):
                 user.GetWindow.side_effect = lambda h, command: 20 if command == 6 else (11 if defect == 'owner' else 10)
                 def altered_thread(h, pid):
@@ -170,10 +170,10 @@ class UiManagementTests(unittest.TestCase):
         self.assertIn("base.owned_bytes(files / 'export.json', private, 16384)", source)
 
     def test_picker_identity_refuses_foreign_owner_pid_thread_class_and_main(self):
-        args = [10, 20, 10, 30, 30, 40, 40, '#32770', True]
+        args = [10, 20, 10, 30, 30, 40, 40, '#32770']
         self.assertEqual(20, s.validate_picker_identity(*args))
-        for index, value in ((1, 0), (1, 10), (2, 11), (3, 31), (5, 0), (5, 41),
-                             (7, 'other'), (8, False)):
+        for index, value in ((1, 0), (1, 10), (2, 11), (3, 31), (5, 0),
+                             (7, 'other')):
             altered = args.copy()
             altered[index] = value
             with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
@@ -232,7 +232,7 @@ class UiManagementTests(unittest.TestCase):
         picker = helper.split('    function RunPicker', 1)[1].split("    $stage = 'ready'", 1)[0]
         ownership = helper.split('    function OwnedPicker', 1)[1].split('    function Guard', 1)[0]
         for fragment in ('GetWindow($h, 6)', 'GetWindow($dialog, 4)', '$dialogOwner -ne $h',
-                         '$dialogPid -ne $OwnedPid', "$cls.ToString() -cne '#32770'", '$thread -ne $mainThread'):
+                         '$dialogPid -ne $OwnedPid', "$cls.ToString() -cne '#32770'", '$thread -eq 0'):
             self.assertIn(fragment, ownership)
         self.assertLess(ownership.index('GetWindow($dialog, 4)'), ownership.index('IsWindowVisible($dialog)'))
         self.assertLess(ownership.index('IsWindowVisible($dialog)'), ownership.index('IsWindow($dialog)'))
@@ -640,6 +640,7 @@ class PickerObserverLoopTests(unittest.TestCase):
     def test_foreign_same_pid_foreground_is_refused_with_populated_diagnostics(self):
         import json
         world = FakeWindows(enabled_popup=0, foreground=FakeWindows.FOREIGN)
+        world.table[world.FOREIGN]['owner'] = 11
         with self.assertRaises(s.ForegroundChanged) as caught:
             self.frame(world, order=7)
         error = caught.exception
@@ -651,7 +652,7 @@ class PickerObserverLoopTests(unittest.TestCase):
         record = json.loads(text)
         self.assertEqual({'foregroundRelation': 'owned_other', 'fgIsMain': False, 'fgIsPopup': False,
                           'popupPresent': False, 'fgSamePid': True, 'fgThreadIsMainThread': False,
-                          'fgOwnerIsMain': True, 'fgRootOwnerIsMain': True, 'fgClassIs32770': True,
+                          'fgOwnerIsMain': False, 'fgRootOwnerIsMain': True, 'fgClassIs32770': True,
                           'fgVisible': True, 'fgEnabled': True, 'phaseIndex': 0, 'sampleOrder': 7}, record)
         # No title, class string or raw HWND value reaches the evidence.
         for leaked in ('#32770', 'WinUIDesktop', str(FakeWindows.FOREIGN)):
