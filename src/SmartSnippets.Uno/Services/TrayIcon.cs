@@ -20,7 +20,6 @@ internal sealed unsafe class TrayIcon : IDisposable
     private const nuint CommandExit = 5;
     private const nuint CommandShowPopup = 6;
 
-
     private readonly MessageWindow _window;
     private readonly Action _onOpen;
     private readonly Action _onShowPopup;
