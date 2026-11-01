@@ -58,5 +58,6 @@ After integration and separate native-mutation permit hardening (research 041):
 Python tests pass. The file-picker worker also passed PowerShell parsing and a
 strict BuildOnly publish. Native acceptance is **NOT RUN / review BLOCKED**.
 No source gate was enabled for this new picker scene and no failure is hidden as
-PASS. Fixes are intentionally deferred to the next context at the operator's
-requested clean handoff boundary; no half-applied implementation remains.
+PASS. The subsequent fixes batch implements the requested hardening and tests;
+independent confirming review remains outstanding, so this review stays BLOCKED.
+Build-only and headless checks do not establish native picker behavior.

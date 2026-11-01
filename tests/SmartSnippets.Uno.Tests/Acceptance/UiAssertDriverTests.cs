@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Uno.Tests.Composition;
@@ -5,8 +6,51 @@ using SmartSnippets.Uno.Tests.Composition;
 namespace SmartSnippets.Uno.Tests.Acceptance;
 
 /// <summary>Headless assertion-driver tests only; these do not claim rendered event delivery.</summary>
-public sealed class UiAssertDriverTests
+public sealed partial class UiAssertDriverTests
 {
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CreateHardLink(string name, string existing, nint security);
+
+    [Fact]
+    public void PickerOwnedReadRejectsHardlinksAndOversize()
+    {
+        using var fixture = new HostFixture();
+        Directory.CreateDirectory(fixture.Root);
+        var original = Path.Combine(fixture.Root, "synthetic.json");
+        var alias = Path.Combine(fixture.Root, "alias.json");
+        File.WriteAllBytes(original, new byte[4097]);
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.ReadPickerFile(original, 4096));
+        File.WriteAllBytes(original, new byte[] { 1 });
+        Assert.Equal(new byte[] { 1 }, FilePickerAssertDriver.ReadPickerFile(original, 4096));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(CreateHardLink(alias, original, 0));
+            Assert.Throws<IOException>(() => FilePickerAssertDriver.ReadPickerFile(original, 4096));
+            Assert.Throws<IOException>(() => FilePickerAssertDriver.ReadPickerFile(alias, 16384));
+        }
+    }
+
+    [Fact]
+    public void PickerPermitRequiresExactBytesLengthAndSingleLink()
+    {
+        using var fixture = new HostFixture();
+        Directory.CreateDirectory(fixture.Root);
+        var path = Path.Combine(fixture.Root, "permit");
+        File.WriteAllText(path, "owned_file_picker_ui_019\n");
+        FilePickerAssertDriver.RequirePickerPermit(path);
+        File.WriteAllText(path, "owned_file_picker_ui_019\nextra");
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerPermit(path));
+        File.WriteAllText(path, "owned_file_picker_ui_018\n");
+        Assert.Throws<InvalidOperationException>(() => FilePickerAssertDriver.RequirePickerPermit(path));
+        File.WriteAllText(path, "owned_file_picker_ui_019\n");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(CreateHardLink(Path.Combine(fixture.Root, "alias"), path, 0));
+            Assert.Throws<IOException>(() => FilePickerAssertDriver.RequirePickerPermit(path));
+        }
+    }
+
     [Fact]
     public async Task FilePickerAssertionsRequireCallbacksPersistedContentAndAtomicExport()
     {

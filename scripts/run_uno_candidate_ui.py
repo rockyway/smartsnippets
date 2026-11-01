@@ -6,6 +6,7 @@ No native launch before independent review and an exclusive authorized screen sl
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -98,28 +99,32 @@ def picker_phase(private):
     for phase in PICKER_PHASES:
         opened = private / ('picker-' + phase + '.active')
         closed = private / ('picker-' + phase + '.closed')
-        if opened.exists():
+        if os.path.lexists(opened):
             if pending or base.owned_bytes(opened, private) != b'owned_picker_019\n':
                 raise ValueError('ui_picker_phase')
-            if closed.exists():
+            if os.path.lexists(closed):
                 if base.owned_bytes(closed, private) != b'owned_picker_019\n':
                     raise ValueError('ui_picker_phase')
             else:
                 active = phase
                 pending = True
         else:
-            if closed.exists():
+            if os.path.lexists(closed):
                 raise ValueError('ui_picker_phase')
             pending = True
     return active
 
 
-def owned_picker(desktop, hwnd, pid):
+def owned_picker(desktop, hwnd, pid, authenticated=None):
     user = desktop.user
     user.GetWindow.argtypes = [startup.W.HWND, startup.W.UINT]
     user.GetWindow.restype = startup.W.HWND
     user.GetClassNameW.argtypes = [startup.W.HWND, startup.W.LPWSTR, startup.C.c_int]
     user.GetClassNameW.restype = startup.C.c_int
+    user.IsWindow.argtypes = [startup.W.HWND]
+    user.IsWindow.restype = startup.W.BOOL
+    user.IsWindowVisible.argtypes = [startup.W.HWND]
+    user.IsWindowVisible.restype = startup.W.BOOL
     popup = user.GetWindow(hwnd, 6)  # GW_ENABLEDPOPUP, never desktop enumeration.
     if not popup or popup == hwnd:
         return None
@@ -133,10 +138,17 @@ def owned_picker(desktop, hwnd, pid):
             or main_class.value != 'WinUIDesktopWin32WindowClass' or not user.IsWindowVisible(hwnd)):
         raise ValueError('ui_picker_main_identity')
     cls = startup.C.create_unicode_buffer(256)
-    if not user.GetClassNameW(popup, cls, len(cls)) or main_pid.value != pid:
+    class_ok = user.GetClassNameW(popup, cls, len(cls))
+    visible = bool(user.IsWindowVisible(popup))
+    if main_pid.value != pid:
+        raise ValueError('ui_picker_identity')
+    # Only a previously authenticated exact HWND may disappear during close.
+    if popup == authenticated and (not user.IsWindow(popup) or not visible):
+        return None
+    if not class_ok:
         raise ValueError('ui_picker_identity')
     return validate_picker_identity(hwnd, popup, owner, actual.value, pid, thread, main_thread,
-                                    cls.value, bool(user.IsWindowVisible(popup)))
+                                    cls.value, visible)
 
 
 def system_powershell():
@@ -335,7 +347,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if clip != initial[1]:
                     raise ValueError('clipboard_changed')
                 phase = picker_phase(private) if scene == 'file-picker' else None
-                popup = owned_picker(desktop, hwnd, process.pid) if phase else None
+                popup = owned_picker(desktop, hwnd, process.pid, picker_handles.get(phase)) if phase else None
                 if popup is not None:
                     if picker_handles.setdefault(phase, popup) != popup:
                         raise ValueError('ui_picker_replaced')
@@ -369,9 +381,12 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if picker_phase(private) is not None:
                     raise ValueError('ui_picker_phase')
                 for phase in PICKER_PHASES:
-                    if not (private / ('picker-' + phase + '.closed')).exists():
+                    if not os.path.lexists(private / ('picker-' + phase + '.closed')):
                         raise ValueError('ui_picker_phase')
                     validate_picker_phase_actions(phase, base.owned_bytes(private / ('picker-' + phase + '.actions'), private))
+                files = private / 'fixture-profile' / 'picker-files'
+                base.owned_bytes(files / 'import.json', private, 4096)
+                base.owned_bytes(files / 'export.json', private, 16384)
             # Release shutdown only after helper exit and every actual callback postcondition.
             quiet_input(desktop, epoch)
             fg, clip = observe_desktop(desktop)
@@ -404,7 +419,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             privacy = startup.repo_module('ui_privacy', 'scripts/uno_candidate_privacy.py')
             canaries = ('ui019 synthetic saved', 'ui019 synthetic dirty', 'ui019 synthetic folder',
                         'ui019 synthetic renamed', 'ui019 synthetic attached', 'ui019 synthetic discarded',
-                        'ui019 synthetic picker', 'ui019 picker label', 'ui019 picker folder', str(private))
+                        'ui019 synthetic picker', 'ui019 picker label', 'ui019 picker folder',
+                        'picker-tag', 'picker-files', 'import.json', 'export.json', str(private))
             privacy.verify_negative_controls(canaries)
             records = [base.owned_bytes(p, private) for p in
                        (private / 'stdout.log', private / 'stderr.log', private / 'fixture-profile/logs/app.log',

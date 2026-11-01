@@ -63,8 +63,9 @@ public static class Program
         {
             var info = new FileInfo(pickerPermit);
             if (!RenderedUiMode || FolderScene || SettingsScene || (info.Attributes & FileAttributes.ReparsePoint) != 0
-                || File.ReadAllText(pickerPermit) != "owned_file_picker_ui_019\n")
+                || info.Length != 25)
                 throw new InvalidOperationException("fixture_picker_permit");
+            FilePickerAssertDriver.RequirePickerPermit(pickerPermit);
             FilePickerScene = true;
         }
         WinRT.ComWrappersSupport.InitializeComWrappers();
@@ -81,7 +82,7 @@ public static class Program
         $"{Environment.ProcessId}\n{Path.GetFileName(PrivateRoot)}\n{phase}\n");
     internal static async Task WaitAsync(string phase)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(12);
+        var deadline = DateTime.UtcNow.AddSeconds(FilePickerScene ? 25 : 12);
         while (!File.Exists(Path.Combine(PrivateRoot, phase + ".continue")))
         {
             if (DateTime.UtcNow >= deadline) throw new TimeoutException("fixture_observer");

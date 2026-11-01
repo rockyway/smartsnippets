@@ -17,6 +17,11 @@ using System;
 using System.Text;
 using System.Runtime.InteropServices;
 public static class Owned019 {
+ [StructLayout(LayoutKind.Sequential)] public struct FileInfo {
+  public uint Attributes, CreationLow, CreationHigh, AccessLow, AccessHigh, WriteLow, WriteHigh;
+  public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+ }
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle h, out FileInfo info);
  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint command);
  [DllImport("user32.dll")] public static extern bool IsChild(IntPtr parent, IntPtr child);
@@ -57,8 +62,12 @@ public static class Owned019 {
         $mainThread = [Owned019]::GetWindowThreadProcessId($h, [ref]$mainPid)
         $cls = New-Object Text.StringBuilder 256
         [void][Owned019]::GetClassName($dialog, $cls, 256)
-        if (-not [Owned019]::IsWindowVisible($dialog) -or [Owned019]::GetWindow($dialog, 4) -ne $h -or
-            $dialogPid -ne $OwnedPid -or $mainPid -ne $OwnedPid -or $thread -eq 0 -or $thread -ne $mainThread -or
+        $visible = [Owned019]::IsWindowVisible($dialog)
+        if ($mainPid -ne $OwnedPid -or $mainThread -eq 0) { throw 'picker_identity' }
+        if ($dialog -eq $script:pickerHwnd -and $script:pickerHwnd -ne [IntPtr]::Zero -and
+            (-not [Owned019]::IsWindow($dialog) -or -not $visible)) { return [IntPtr]::Zero }
+        if (-not $visible -or [Owned019]::GetWindow($dialog, 4) -ne $h -or
+            $dialogPid -ne $OwnedPid -or $thread -eq 0 -or $thread -ne $mainThread -or
             $cls.ToString() -cne '#32770') { throw 'picker_identity' }
         return $dialog
     }
@@ -87,11 +96,15 @@ public static class Owned019 {
         $dialog = [IntPtr]::Zero
         if ($Scene -ceq 'file-picker' -and $null -ne $script:pickerPhase) {
             $dialog = OwnedPicker
-            if ($dialog -ne [IntPtr]::Zero -and $script:pickerHwnd -ne [IntPtr]::Zero -and $dialog -ne $script:pickerHwnd) { throw 'picker_replaced' }
+            if ($dialog -ne [IntPtr]::Zero) {
+                if ($script:pickerHwnd -eq [IntPtr]::Zero) { $script:pickerHwnd = $dialog }
+                elseif ($dialog -ne $script:pickerHwnd) { throw 'picker_replaced' }
+            }
         }
         $pickerForeground = $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64()
         if (-not $pickerForeground -and (($script:focused -and $fg -ne $OwnedHwnd) -or
             (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd))) { throw 'foreground' }
+        if ($pickerForeground -or $fg -eq $OwnedHwnd) { $script:focused = $true }
     }
     function SelectOwnedLeave($items) {
         $seen = @{}
@@ -118,8 +131,8 @@ public static class Owned019 {
             'folder-save' { $name='Save folder name'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             'folder-delete' { $name='Delete folder'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             'folder-confirm' { $name='Delete folder'; $id='PrimaryButton'; $type=[Windows.Automation.ControlType]::Button }
-            'picker-import' { $name='Import snippets'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
-            'picker-export' { $name='Export snippets'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
+            'picker-import' { $name='Import snippets'; $id='ImportSnippetsButton'; $type=[Windows.Automation.ControlType]::Button }
+            'picker-export' { $name='Export snippets'; $id='ExportSnippetsButton'; $type=[Windows.Automation.ControlType]::Button }
             'picker-info' { $name='OK'; $id='CloseButton'; $type=[Windows.Automation.ControlType]::Button }
             'new' { $name='New snippet'; $id=$null; $type=[Windows.Automation.ControlType]::Button }
             'text' { $name='Snippet text'; $id='SnippetTextBox'; $type=[Windows.Automation.ControlType]::Edit }
@@ -265,8 +278,11 @@ public static class Owned019 {
     }
     function PickerMarker([string]$suffix) {
         Guard
-        $file = [IO.File]::Open((Join-Path $root ('picker-'+$script:pickerPhase+'.'+$suffix)), [IO.FileMode]::CreateNew)
+        $final = Join-Path $root ('picker-'+$script:pickerPhase+'.'+$suffix)
+        $tmp = $final + '.tmp'
+        $file = [IO.File]::Open($tmp, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
         try { $bytes=[Text.Encoding]::ASCII.GetBytes("owned_picker_019`n"); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
+        [IO.File]::Move($tmp, $final)
     }
     function PickerElement($dialog, [string]$id, $scope) {
         Guard
@@ -300,8 +316,8 @@ public static class Owned019 {
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_timeout' }
             Start-Sleep -Milliseconds 50
         } while ($true)
-        $script:pickerHwnd = $dialog
         Guard
+        if ($script:pickerHwnd -ne $dialog) { throw 'picker_replaced' }
         $r = [Windows.Automation.AutomationElement]::FromHandle($dialog)
         if ($r.Current.ProcessId -ne $OwnedPid -or $r.Current.NativeWindowHandle -ne $dialog.ToInt64()) { throw 'picker_uia_owner' }
         if (-not $cancel) {
@@ -311,10 +327,16 @@ public static class Owned019 {
                 if (($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'picker_alias' }
             }
             $path = Join-Path $files $fileName
-            if ($phase -ceq 'export' -and ([IO.File]::Exists($path) -or [IO.Directory]::Exists($path))) { throw 'picker_existing_export' }
+            if ($phase -ceq 'export' -and @([IO.Directory]::EnumerateFileSystemEntries($files) | Where-Object { [IO.Path]::GetFileName($_) -ieq $fileName }).Count -ne 0) { throw 'picker_existing_export' }
             if ($phase -ceq 'import') {
-                $inputFile = Get-Item -LiteralPath $path
+                $inputFile = Get-Item -LiteralPath $path -Force
                 if (($inputFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $inputFile.Length -gt 4096) { throw 'picker_input' }
+                $inputStream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+                try {
+                    $fileInfo = New-Object Owned019+FileInfo
+                    if (-not [Owned019]::GetFileInformationByHandle($inputStream.SafeFileHandle, [ref]$fileInfo) -or
+                        $fileInfo.Links -ne 1 -or ($fileInfo.Attributes -band 0x400) -ne 0 -or $inputStream.Length -gt 4096) { throw 'picker_input' }
+                } finally { $inputStream.Dispose() }
             }
             $e = PickerElement $dialog '1148' $r
             if ($e.Current.ControlType -eq [Windows.Automation.ControlType]::ComboBox) {
@@ -353,7 +375,7 @@ public static class Owned019 {
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_close_timeout' }
             Start-Sleep -Milliseconds 50
         }
-        Guard
+        Guard; PickerMarker 'closed'; $script:pickerPhase = $null; $script:pickerHwnd = [IntPtr]::Zero
         if (-not $cancel) { Invoke 'picker-info' }
         Guard
         $mainDelta = $script:invokes - $beforeInvokes
@@ -367,7 +389,7 @@ public static class Owned019 {
             $bytes=[Text.Encoding]::ASCII.GetBytes("invoke=$mainDelta`npicker=$pickerDelta`nvalue=$valueDelta`n")
             $file.Write($bytes,0,$bytes.Length)
         } finally { $file.Dispose() }
-        Guard; PickerMarker 'closed'; $script:pickerPhase = $null; $script:pickerHwnd = [IntPtr]::Zero
+        Guard
     }
     $stage = 'ready'; WaitPhase 'ui-ready'
     if ($Scene -ceq 'file-picker') {
@@ -452,7 +474,8 @@ public static class Owned019 {
     [Console]::Out.WriteLine('ui_callbacks_observed')
 } catch {
     $reason = 'operation'
-    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions','clipboard','selection')
+    $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions','clipboard','selection',
+        'picker_identity','picker_replaced','picker_changed','picker_schema','picker_control_owner','picker_control_class','picker_phase','picker_timeout','picker_uia_owner','picker_alias','picker_existing_export','picker_input','picker_combo_chain','picker_value','picker_close_timeout','picker_actions')
     if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
     [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason")
     exit 1

@@ -204,6 +204,24 @@ internal static class FilePickerAssertDriver
         Directory.CreateDirectory(directory);
         using var file = new FileStream(Path.Combine(directory, "import.json"), FileMode.CreateNew);
         file.Write(Encoding.UTF8.GetBytes(Input));
+        CandidateFileIdentity.RejectHardLink(file.SafeFileHandle);
+    }
+    internal static byte[] ReadPickerFile(string path, int maximum, int? exactLength = null)
+    {
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("ui_picker_alias");
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        CandidateFileIdentity.RejectHardLink(file.SafeFileHandle);
+        if (file.Length > maximum || (exactLength is not null && file.Length != exactLength.Value))
+            throw new InvalidOperationException("ui_picker_file_size");
+        var bytes = new byte[checked((int)file.Length)];
+        file.ReadExactly(bytes);
+        if (file.ReadByte() != -1) throw new InvalidOperationException("ui_picker_file_size");
+        return bytes;
+    }
+    internal static void RequirePickerPermit(string path)
+    {
+        if (!ReadPickerFile(path, 25, 25).SequenceEqual(Encoding.ASCII.GetBytes("owned_file_picker_ui_019\n")))
+            throw new InvalidOperationException("fixture_picker_permit");
     }
     private static void RequireFiles(string root, bool exported)
     {
@@ -213,9 +231,7 @@ internal static class FilePickerAssertDriver
         var names = Directory.GetFileSystemEntries(directory).Select(Path.GetFileName).Order().ToArray();
         var expected = exported ? new[] { "export.json", "import.json" } : new[] { "import.json" };
         if (!names.SequenceEqual(expected)) throw new InvalidOperationException("ui_picker_files");
-        foreach (var path in Directory.GetFiles(directory))
-            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("ui_picker_alias");
-        if (File.ReadAllText(Path.Combine(directory, "import.json")) != Input)
+        if (!ReadPickerFile(Path.Combine(directory, "import.json"), 4096).SequenceEqual(Encoding.UTF8.GetBytes(Input)))
             throw new InvalidOperationException("ui_picker_input_changed");
     }
     private static void RequireEvents(UnoAppHost host, string root, int imports, int exportCancels, int exports)
@@ -261,7 +277,7 @@ internal static class FilePickerAssertDriver
     internal static void RequirePickerExported(UnoAppHost host, string root, (long SnippetId, long FolderId) ids)
     {
         RequireEvents(host, root, 1, 1, 1); RequireContent(host); RequireFiles(root, true); RequireIds(host, ids);
-        var bytes = File.ReadAllBytes(Path.Combine(Files(root), "export.json"));
+        var bytes = ReadPickerFile(Path.Combine(Files(root), "export.json"), 16384);
         var parsed = ImportParser.Parse(bytes, DateTimeOffset.UtcNow).Parsed;
         if (parsed is null || parsed.Format != ImportFormat.Native || parsed.EntryCount != 1
             || parsed.Rejected.Count != 0 || parsed.Skipped.Count != 0 || parsed.Batch.Candidates.Count != 1

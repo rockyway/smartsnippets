@@ -12,6 +12,97 @@ SPEC.loader.exec_module(s)
 
 
 class UiManagementTests(unittest.TestCase):
+    def test_picker_close_race_only_accepts_authenticated_exact_handle(self):
+        desktop = Mock()
+        user = desktop.user
+        user.GetWindow.side_effect = lambda h, command: 20 if command == 6 else 10
+        def thread(h, pid):
+            pid._obj.value = 30
+            return 40
+        user.GetWindowThreadProcessId.side_effect = thread
+        def cls(h, buffer, length):
+            if h == 10:
+                buffer.value = 'WinUIDesktopWin32WindowClass'
+                return 1
+            return 0  # dialog disappeared between the GetWindow and class queries
+        user.GetClassNameW.side_effect = cls
+        user.IsWindowVisible.side_effect = lambda h: h == 10
+        user.IsWindow.return_value = False
+        self.assertIsNone(s.owned_picker(desktop, 10, 30, 20))
+        for authenticated in (None, 21):
+            with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
+                s.owned_picker(desktop, 10, 30, authenticated)
+        # A distinct live-looking replacement cannot be treated as a vanished handle.
+        user.IsWindow.return_value = True
+        with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
+            s.owned_picker(desktop, 10, 30, 21)
+
+    def test_dangling_marker_is_never_treated_as_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dangling = root / 'picker-import-cancel.active'
+            real = s.os.path.lexists
+            with patch.object(s.os.path, 'lexists', side_effect=lambda p: True if p == dangling else real(p)):
+                with self.assertRaises((FileNotFoundError, ValueError)):
+                    s.picker_phase(root)
+            (root / 'picker-import-cancel.active').write_bytes(b'owned_picker_019\n')
+            dangling = root / 'picker-import-cancel.closed'
+            with patch.object(s.os.path, 'lexists', side_effect=lambda p: True if p == dangling else real(p)):
+                with self.assertRaises((FileNotFoundError, ValueError)):
+                    s.picker_phase(root)
+
+    def test_picker_helper_latches_and_publishes_before_info(self):
+        helper = s.HELPER.read_text()
+        guard = helper.split('    function Guard', 1)[1].split('    function SelectOwnedLeave', 1)[0]
+        self.assertLess(guard.index('$script:pickerHwnd = $dialog'), guard.index('$pickerForeground ='))
+        self.assertIn("throw 'picker_replaced'", guard)
+        self.assertIn('if ($pickerForeground -or $fg -eq $OwnedHwnd) { $script:focused = $true }', guard)
+        self.assertLess(guard.index("throw 'foreground'"), guard.index('$script:focused = $true'))
+        marker = helper.split('    function PickerMarker', 1)[1].split('    function PickerElement', 1)[0]
+        self.assertIn('[IO.FileMode]::CreateNew', marker)
+        self.assertLess(marker.index('$file.Dispose()'), marker.index('[IO.File]::Move($tmp, $final)'))
+        picker = helper.split('    function RunPicker', 1)[1].split("    $stage = 'ready'", 1)[0]
+        self.assertLess(picker.index("PickerMarker 'closed'"), picker.index("Invoke 'picker-info'"))
+        self.assertIn('[IO.Directory]::EnumerateFileSystemEntries($files)', picker)
+        self.assertIn('$fileInfo.Links -ne 1', picker)
+        self.assertIn("$id='ImportSnippetsButton'", helper)
+        self.assertIn("$id='ExportSnippetsButton'", helper)
+        import re
+        tokens = set(re.findall(r"throw '(picker_[a-z_]+)'", helper))
+        allow = helper.split('    $allowed = @(', 1)[1].split(')', 1)[0]
+        for token in tokens:
+            self.assertIn("'" + token + "'", allow)
+
+    def test_picker_owned_bytes_refuse_aliases_and_both_size_caps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for filename, maximum in (('import.json', 4096), ('export.json', 16384)):
+                path = root / filename
+                path.write_bytes(b'x' * (maximum + 1))
+                with self.assertRaisesRegex(ValueError, 'evidence_file'):
+                    s.base.owned_bytes(path, root, maximum)
+                path.write_bytes(b'x')
+                alias = root / (filename + '.alias')
+                alias.hardlink_to(path)
+                with self.assertRaisesRegex(ValueError, 'evidence_file'):
+                    s.base.owned_bytes(path, root, maximum)
+                alias.unlink()
+                self.assertEqual(b'x', s.base.owned_bytes(path, root, maximum))
+
+    def test_picker_fixture_budget_permit_and_privacy_canaries(self):
+        program = (s.REPO / 'scripts/uno_candidate_fixture/Program.cs').read_text()
+        picker_permit = program.split('var pickerPermit', 1)[1].split('FilePickerScene = true', 1)[0]
+        self.assertIn('info.Length != 25', picker_permit)
+        self.assertIn('FilePickerAssertDriver.RequirePickerPermit(pickerPermit)', picker_permit)
+        driver = (s.REPO / 'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs').read_text()
+        self.assertIn('ReadPickerFile(path, 25, 25)', driver)
+        self.assertIn('AddSeconds(FilePickerScene ? 25 : 12)', program)
+        source = (s.REPO / 'scripts/run_uno_candidate_ui.py').read_text()
+        for token in ('picker-tag', 'picker-files', 'import.json', 'export.json'):
+            self.assertIn("'" + token + "'", source.split('canaries =', 1)[1].split('privacy.verify_negative_controls', 1)[0])
+        self.assertIn("base.owned_bytes(files / 'import.json', private, 4096)", source)
+        self.assertIn("base.owned_bytes(files / 'export.json', private, 16384)", source)
+
     def test_picker_identity_refuses_foreign_owner_pid_thread_class_and_main(self):
         args = [10, 20, 10, 30, 30, 40, 40, '#32770', True]
         self.assertEqual(20, s.validate_picker_identity(*args))
