@@ -7,6 +7,43 @@ namespace SmartSnippets.Uno;
 public sealed class PositiveProtocolTests
 {
     [Theory]
+    [InlineData("registered-enter", 0, 1, 25)]
+    [InlineData("posted-enter", 1, 0, 5)]
+    [InlineData("posted-row", 1, 0, 5)]
+    [InlineData("posted-main", 1, 0, 5)]
+    public async Task PositiveShortcutRoute_OperatorSceneNeverPostsAndHasBoundedWait(string scene, int posts, int readies, int seconds)
+    {
+        var posted = 0; var ready = 0;
+        var timeout = await PositiveShortcutRoute.BeginAsync(scene, () => posted++, () => { ready++; return Task.CompletedTask; });
+        Assert.Equal(posts, posted); Assert.Equal(readies, ready);
+        Assert.Equal(TimeSpan.FromSeconds(seconds), timeout);
+        Assert.Equal(scene is "registered-enter" or "posted-enter", PositiveShortcutRoute.NativeEnter(scene));
+    }
+    [Fact]
+    public void PositiveShortcutRoute_OnlyFirstCallbackCanReachAdmission()
+    {
+        var route = new PositiveShortcutRoute();
+        Assert.True(route.AcceptCallback());
+        Assert.False(route.AcceptCallback()); Assert.False(route.AcceptCallback());
+        Assert.Equal(3, route.Callbacks);
+    }
+    [Fact]
+    public void PositiveProtocol_RegisteredEnterUsesExactInsertionPermissionsAndInputGate()
+    {
+        Assert.True(PositiveProtocol.Inserts("registered-enter"));
+        Assert.True(PositiveProtocol.RequiresInputReview("registered-enter"));
+        Assert.Equal(PositiveProtocol.Permissions("posted-enter"), PositiveProtocol.Permissions("registered-enter"));
+        Assert.Throws<InvalidOperationException>(() => PositiveProtocol.RequireReviewed("registered-enter"));
+    }
+    [Fact]
+    public async Task PositiveShortcutRoute_ReadinessFailureNeverFallsBackToPosting()
+    {
+        Assert.Equal("registered-shortcut-ready", PositiveShortcutRoute.ReadyFile);
+        Assert.Equal("registered_os_shortcut_operator_ready\n", PositiveShortcutRoute.ReadyReceipt);
+        await Assert.ThrowsAsync<IOException>(() => PositiveShortcutRoute.BeginAsync("registered-enter",
+            () => throw new Exception("must never post"), () => throw new IOException("publication refused")));
+    }
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void PositiveProtocol_PriorPermitIsVersionedExactAndUsesDotNetGuidBytes(bool positive)
@@ -24,7 +61,7 @@ public sealed class PositiveProtocolTests
     }
 
     [Theory]
-    [InlineData("posted-enter")] [InlineData("posted-row")] [InlineData("posted-main")]
+    [InlineData("registered-enter")] [InlineData("posted-enter")] [InlineData("posted-row")] [InlineData("posted-main")]
     [InlineData("copy")] [InlineData("preview")] [InlineData("expired")]
     public void PositiveProtocol_ReviewGatesStayClosedEvenForKnownScenes(string scene)
     {

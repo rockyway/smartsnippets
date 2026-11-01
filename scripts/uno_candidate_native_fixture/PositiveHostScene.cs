@@ -15,7 +15,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
     private readonly PositiveEnterGuard enter = new();
     private readonly HotkeyGesture gesture = new(HotkeyGesture.ModControl | HotkeyGesture.ModAlt | HotkeyGesture.ModShift, 0x78); // F9, never production.
     private AcceptanceHotkey? hotkey;
-    private int callbacks;
+    private readonly PositiveShortcutRoute shortcut = new();
     private readonly TaskCompletionSource captured = new();
     internal async Task RunAsync(string scene, CancellationToken ct)
     {
@@ -155,8 +155,10 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             hotkey.Dispose(); // Prove release/reacquire on our exact host message window, never steal a conflicting registration.
             hotkey = session.CreateHotkey(gesture, boundary.MessageHandle, () => _ = ShortcutAsync(ct));
             if (!hotkey.TryChange(gesture).Success) throw new InvalidOperationException("native_shortcut_reacquire");
-            PositiveNativeInput.PostShortcut(boundary.MessageHandle, gesture.Modifiers, gesture.Key);
-            await captured.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            var callbackTimeout = await PositiveShortcutRoute.BeginAsync(scene,
+                () => PositiveNativeInput.PostShortcut(boundary.MessageHandle, gesture.Modifiers, gesture.Key),
+                () => PositiveShortcutRoute.WriteReadyAsync(ct));
+            await captured.Task.WaitAsync(callbackTimeout, ct);
             try
             {
                 await WaitAsync(() => boundary.PopupShown && host.Popup.Target == session.Target &&
@@ -173,7 +175,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             await BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_begin", ct);
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "keyboard_permit") throw new InvalidOperationException("native_keyboard_permit");
             Keyboard.Arm();
-            if (scene == "posted-enter")
+            if (PositiveShortcutRoute.NativeEnter(scene))
             {
                 using var popup = new NativeOwnedPopup(boundary.Popup!.NativeHandle);
                 var state = enter.Send(() => host.Gate.CanInsert && capability.Allows(CandidateNativeOperation.Focus),
@@ -198,7 +200,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                 await first.WaitAsync(TimeSpan.FromSeconds(8), ct);
             }
             await fixture.Lease.VerifyMultilineAAsync(ct); // Exact fixed Unicode/CRLF including final CRLF, utf16_count=22.
-            if (callbacks != 1 || broker.PasteCalls != 1 || session.RecoveryPending) throw new InvalidOperationException("native_insertion_receipt");
+            if (shortcut.Callbacks != 1 || broker.PasteCalls != 1 || session.RecoveryPending) throw new InvalidOperationException("native_insertion_receipt");
         }
         finally
         {
@@ -219,7 +221,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
     {
         try
         {
-            if (++callbacks != 1 || !await session.ReadyForAdmissionAsync(ct) || !host.ShowCapturedPopup())
+            if (!shortcut.AcceptCallback() || !await session.ReadyForAdmissionAsync(ct) || !host.ShowCapturedPopup())
                 throw new InvalidOperationException("native_shortcut_admission");
             captured.TrySetResult();
         }

@@ -22,8 +22,8 @@ internal static class PositiveProtocol
         if (token == Guid.Empty) throw new InvalidOperationException("native_baseline_token");
         return token;
     }
-    internal static bool IsPositive(string scene) => scene is "posted-enter" or "posted-row" or "posted-main" or "copy" or "preview" or "expired";
-    internal static bool Inserts(string scene) => scene is "posted-enter" or "posted-row" or "posted-main";
+    internal static bool IsPositive(string scene) => scene is "registered-enter" or "posted-enter" or "posted-row" or "posted-main" or "copy" or "preview" or "expired";
+    internal static bool Inserts(string scene) => scene is "registered-enter" or "posted-enter" or "posted-row" or "posted-main";
     internal static bool RequiresInputReview(string scene) => Inserts(scene) || scene == "expired";
     internal static CandidateNativeOperation Permissions(string scene) => scene == "expired"
         ? Permissions("posted-enter") | CandidateNativeOperation.Copy
@@ -94,5 +94,37 @@ internal sealed class PositiveKeyboardLifetime
     {
         pending();
         while (Armed) await wait(); // No generic key-up, unsafe abort or timeout-based inferred settlement.
+    }
+}
+
+/// <summary>Routes shortcut delivery only; operator keys never acquire an agent keyboard lifetime.</summary>
+internal sealed class PositiveShortcutRoute
+{
+    internal const string ReadyFile = "registered-shortcut-ready";
+    internal const string ReadyReceipt = "registered_os_shortcut_operator_ready\n";
+    internal int Callbacks { get; private set; }
+    internal bool AcceptCallback() => ++Callbacks == 1;
+    internal static bool NativeEnter(string scene) => scene is "registered-enter" or "posted-enter";
+    internal static async Task<TimeSpan> BeginAsync(string scene, Action post, Func<Task> ready)
+    {
+        if (!PositiveProtocol.Inserts(scene)) throw new InvalidOperationException("native_scene");
+        if (scene == "registered-enter")
+        {
+            await ready();
+            return TimeSpan.FromSeconds(25);
+        }
+        post();
+        return TimeSpan.FromSeconds(5);
+    }
+    internal static async Task WriteReadyAsync(CancellationToken ct)
+    {
+        // Fixed names in the owner-private fixture cwd; exclusive publication, never an external path.
+        var temporary = ReadyFile + ".tmp";
+        await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(ReadyReceipt), ct);
+            await stream.FlushAsync(ct);
+        }
+        File.Move(temporary, ReadyFile); // Atomic visibility, no overwrite of an existing readiness receipt.
     }
 }

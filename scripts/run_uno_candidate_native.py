@@ -16,12 +16,14 @@ REPO = Path(__file__).resolve().parents[1]
 NATIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_INPUT_SOURCE_REVIEWED = False
-POSITIVE_SCENES = ('posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
-INSERT_SCENES = ('posted-enter', 'posted-row', 'posted-main')
+POSITIVE_SCENES = ('registered-enter', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
+INSERT_SCENES = ('registered-enter', 'posted-enter', 'posted-row', 'posted-main')
 INPUT_CAPABILITY_SCENES = (*INSERT_SCENES, 'expired')
 POSITIVE_PERMIT = b'owned_positive_row6_verified_operator_recopied_baseline\n'
 PRIOR_POSITIVE_PERMIT = b'owned_positive_row6_verified_settled_baseline_v2\n'
 PRIOR_CONTROL_PERMIT = b'owned_clipboard_controls_settled_baseline_v2\n'
+REGISTERED_READY_FILE = 'registered-shortcut-ready'
+REGISTERED_READY_RECEIPT = b'registered_os_shortcut_operator_ready\n'
 ENTRY = 'SmartSnippets.UnoCandidate.exe'
 ROOT = REPO / 'scripts/uno_candidate_native_fixture'
 spec = importlib.util.spec_from_file_location('native_nonmutating_helpers', REPO / 'scripts/run_uno_candidate_acceptance.py')
@@ -111,10 +113,36 @@ def positive_foregrounds(private, foreground):
     return {foreground, 0, *windows}  # Includes owned B for observation only, never admission/input.
 
 
-def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None):
+def announce_registered_session(scene, private):
+    if scene != 'registered-enter':
+        return
+    token = f'{private.parent.name}/{private.name}'
+    if not re.fullmatch(r'ss-uno018-ui-[a-zA-Z0-9_-]+/ss-uno019-native-[0-9a-f]{32}', token):
+        raise ValueError('native_session_token')
+    # Metadata only: no success, readiness, input authorization or filesystem authority.
+    print(json.dumps({'phase': 'registered_session_prelaunch', 'scene': scene,
+                      'privateEvidenceToken': token}), flush=True)
+
+
+def registered_operator_ready(private):
+    path = private / REGISTERED_READY_FILE
+    if not path.exists():
+        return False
+    if helpers.owned_bytes(path, private, 128) != REGISTERED_READY_RECEIPT:
+        raise ValueError('native_registered_readiness')
+    return True
+
+
+def shortcut_proof(scene):
+    return ('registered_os_shortcut_operator_delivered' if scene == 'registered-enter' else
+            'registered_posted_callback_not_physical' if scene in INSERT_SCENES else 'none')
+
+
+def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None, registered=False):
     """No timeout kill: coordinator retains independent RAM recovery on a pending scene."""
     failed = False
     announced = False
+    operator_announced = False
     while process.poll() is None:
         try:
             desktop.validate_input_desktop()
@@ -122,6 +150,9 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             if positive_private is not None and len(allowed) > 1 and not announced:
                 print('native_phase=awaiting_owned_a operator_select_A_then_release_all_input', flush=True)
                 announced = True
+            if registered and positive_private is not None and not operator_announced and registered_operator_ready(positive_private):
+                print('native_phase=operator_ready press_Ctrl_Alt_Shift_F9_then_release_all_input', flush=True)
+                operator_announced = True
             failed |= desktop.user.GetForegroundWindow() not in allowed
             failed |= any(p.stat().st_size > 65536 for p in output)
         except Exception:
@@ -138,6 +169,8 @@ def verify_result(private, data, expected, positive=False):
         phases.append(b'native_phase=owner_refused')
     if data[0].splitlines() != [*phases, expected] or data[1]:
         raise ValueError('native_result_receipt')
+    if expected == b'native_result=registered-enter_settled' and not registered_operator_ready(private):
+        raise ValueError('native_registered_readiness')
     log = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private)
     text = log.decode('utf-8-sig')
     if (sum(line.endswith(' INFO candidate_started') for line in text.splitlines()) != 1 or ' ERROR ' in text
@@ -285,6 +318,7 @@ def main(argv=None, *, prior_restorative_session=None):
     ui = helpers.startup.repo_module('native_private_directory', 'prototypes/uno-desktop/run_ui_smoke.py')
     private = ui.private_directory() / ('ss-uno019-native-' + uuid.uuid4().hex)
     private.mkdir()  # Inherits current-user-only ACL from existing reviewed owner-private helper.
+    announce_registered_session(args.scene, private)
     desktop = helpers.startup.Desktop(ui.visible_windows)
     try:
         desktop.enable_dpi()
@@ -302,7 +336,7 @@ def main(argv=None, *, prior_restorative_session=None):
             process = subprocess.Popen([str(entry), '--coordinate', args.scene, str(target), args.target_sha256,
                                         str(guardian), args.guardian_sha256], cwd=private, stdin=subprocess.DEVNULL,
                                        stdout=out, stderr=err)
-            monitor(process, desktop, foreground, paths, positive_private=private if positive else None)
+            monitor(process, desktop, foreground, paths, positive_private=private if positive else None, registered=args.scene == 'registered-enter')
         data = [helpers.owned_bytes(p, private, 65536) for p in paths]
         expected = (f'native_result={args.scene}_settled' if positive else
                     'native_result=owner_refusal_restored' if args.scene == 'owner-refusal' else
@@ -311,8 +345,8 @@ def main(argv=None, *, prior_restorative_session=None):
         print(json.dumps({'result': 'positive_scene_settled' if positive else 'clipboard_control_settled', 'scene': args.scene,
                           'privateEvidenceToken': f'{private.parent.name}/{private.name}', 'sourceSha256': source_fingerprint(),
                           'positiveInputImplemented': positive and args.scene in INSERT_SCENES,
-                          'shortcutProof': 'registered_posted_callback_not_physical' if args.scene in INSERT_SCENES else 'none',
-                          'actionProof': 'native_enter' if args.scene == 'posted-enter' else 'vm_callback' if positive else
+                          'shortcutProof': shortcut_proof(args.scene),
+                          'actionProof': 'native_enter' if args.scene in ('registered-enter', 'posted-enter') else 'vm_callback' if positive else
                                          'owned_hwnd_change_refusal' if args.scene == 'owner-refusal' else 'clipboard_control',
                           'operatorReCopyRequiredBeforeNextSession': True}))
         if args.scene in ('restore', 'abort', 'owner-refusal', *INSERT_SCENES):

@@ -18,6 +18,72 @@ spec.loader.exec_module(native)
 
 
 class NativeBootstrapTests(unittest.TestCase):
+    def test_prelaunch_session_metadata_is_registered_only_and_not_readiness(self):
+        private = Path('ss-uno018-ui-owned') / ('ss-uno019-native-' + 'a' * 32)
+        with patch('builtins.print') as output:
+            for scene in ('restore', 'abort', 'owner-refusal', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired'):
+                native.announce_registered_session(scene, private)
+            output.assert_not_called()
+            native.announce_registered_session('registered-enter', private)
+            output.assert_called_once()
+            self.assertEqual({'phase': 'registered_session_prelaunch', 'scene': 'registered-enter',
+                              'privateEvidenceToken': private.as_posix()}, native.json.loads(output.call_args.args[0]))
+        with self.assertRaisesRegex(ValueError, 'session_token'):
+            native.announce_registered_session('registered-enter', Path('arbitrary/session'))
+
+    def test_registered_readiness_requires_owned_exact_literal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            private = Path(directory)
+            self.assertFalse(native.registered_operator_ready(private))
+            path = private / native.REGISTERED_READY_FILE
+            path.write_bytes(native.REGISTERED_READY_RECEIPT)
+            self.assertTrue(native.registered_operator_ready(private))
+            with patch.object(native.helpers, 'owned_bytes', side_effect=ValueError('alias')):
+                with self.assertRaises(ValueError): native.registered_operator_ready(private)
+            for data in (b'', native.REGISTERED_READY_RECEIPT + b'extra', b'operator ready'):
+                path.write_bytes(data)
+                with self.assertRaisesRegex(ValueError, 'readiness'): native.registered_operator_ready(private)
+
+    def test_registered_exact_result_also_requires_readiness_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            private = Path(directory)
+            logs = private / 'native-fixture-profile/logs'
+            logs.mkdir(parents=True)
+            (logs / 'app.log').write_bytes(b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n')
+            expected = b'native_result=registered-enter_settled'
+            good = b'native_phase=guardian_ready\nnative_phase=awaiting_owned_a\n' + expected + b'\n'
+            with self.assertRaisesRegex(ValueError, 'readiness'):
+                native.verify_result(private, [good, b''], expected, True)
+            (private / native.REGISTERED_READY_FILE).write_bytes(native.REGISTERED_READY_RECEIPT)
+            native.verify_result(private, [good, b''], expected, True)
+            for data in (good + b'extra\n', good.replace(b'registered-enter', b'posted-enter')):
+                with self.assertRaisesRegex(ValueError, 'receipt'):
+                    native.verify_result(private, [data, b''], expected, True)
+
+    def test_registered_proof_does_not_change_posted_labels(self):
+        self.assertEqual('registered_os_shortcut_operator_delivered', native.shortcut_proof('registered-enter'))
+        for scene in ('posted-enter', 'posted-row', 'posted-main'):
+            self.assertEqual('registered_posted_callback_not_physical', native.shortcut_proof(scene))
+        self.assertIn('registered-enter', native.INSERT_SCENES)
+        self.assertIn('registered-enter', native.INPUT_CAPABILITY_SCENES)
+
+    def test_registered_monitor_announces_once_after_exact_owned_readiness(self):
+        class Process:
+            returncode = 0
+            polls = 0
+            def poll(self):
+                self.polls += 1
+                return None if self.polls < 4 else 0
+        class User:
+            def GetForegroundWindow(self): return 1
+        class Desktop:
+            user = User()
+            def validate_input_desktop(self): pass
+        with patch.object(native, 'positive_foregrounds', return_value={1}), patch.object(native, 'registered_operator_ready', side_effect=[False, True]) as ready, patch('builtins.print') as output:
+            native.monitor(Process(), Desktop(), 1, [], sleep=lambda _: None, positive_private=Path('private'), registered=True)
+            self.assertEqual(2, ready.call_count)
+            output.assert_called_once_with('native_phase=operator_ready press_Ctrl_Alt_Shift_F9_then_release_all_input', flush=True)
+
     def test_source_gate_precedes_any_launch_or_profile_access(self):
         with patch.object(native.subprocess, 'Popen') as start, patch.object(native, 'validate_build') as validate:
             with self.assertRaisesRegex(ValueError, 'review'):
