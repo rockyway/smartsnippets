@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -70,6 +71,28 @@ def validate_settings_actions(value):
 
 
 PICKER_PHASES = ('import-cancel', 'import', 'export-cancel', 'export')
+HELPER_STAGES = frozenset((
+    'bootstrap', 'ready', 'picker_import_cancel', 'picker_import', 'picker_export_cancel', 'picker_export',
+    'settings_theme', 'settings_size', 'folder_create', 'folder_rename', 'folder_delete', 'new', 'edit_saved',
+    'save', 'edit_dirty', 'dirty_leave', 'cancel', 'dirty_save_leave', 'dirty_save', 'discard_edit',
+    'dirty_discard_leave', 'dirty_discard', 'finish'))
+HELPER_REASONS = frozenset((
+    'sta', 'root', 'input', 'window', 'identity', 'artifact', 'desktop', 'desktop_close', 'foreground',
+    'uia_owner', 'schema', 'focus', 'value', 'timeout', 'receipt', 'control_timeout', 'actions', 'clipboard',
+    'selection', 'picker_schema_missing', 'picker_schema_multiple', 'picker_schema_type', 'picker_identity',
+    'picker_replaced', 'picker_changed', 'picker_schema', 'picker_control_owner', 'picker_control_class',
+    'picker_phase', 'picker_timeout', 'picker_uia_owner', 'picker_alias', 'picker_existing_export',
+    'picker_input', 'picker_combo_chain', 'picker_value', 'picker_close_timeout', 'picker_actions', 'operation'))
+OPERATION_CLASSES = frozenset((
+    'element_not_available', 'element_not_enabled', 'invalid_operation', 'com', 'win32', 'timeout',
+    'argument', 'null_reference', 'unauthorized', 'io', 'other'))
+PICKER_STEPS = frozenset((
+    'not_applicable', 'start', 'invoke', 'wait_dialog', 'guard', 'uia_owner', 'path_ready', 'control_ready', 'value_set',
+    'cancel_invoke', 'picker_invoke', 'close_wait', 'actions_validated', 'other'))
+HELPER_FAILURE_PATTERN = re.compile(
+    rb'ui_helper_failed stage=([a-z][a-z0-9_]*) reason=([a-z][a-z0-9_]*) '
+    rb'operationClass=([a-z][a-z0-9_]{0,63}) pickerStep=([a-z][a-z0-9_]{0,63})'
+    rb'(?: hresult=0x([0-9A-F]{8}))?\r?\n\Z')
 
 
 def validate_picker_actions(value):
@@ -329,6 +352,32 @@ def save_foreground_failure(private, desktop, foreground, initial, hwnd, pid, po
         json.dump(record, report)
 
 
+def parse_helper_failure(stderr):
+    """Parse one content-free PowerShell failure line; unknown classification tokens collapse safely."""
+    if stderr in (None, b''):
+        return None
+    if not isinstance(stderr, bytes):
+        raise ValueError('ui_helper_protocol')
+    match = HELPER_FAILURE_PATTERN.fullmatch(stderr)
+    if match is None:
+        raise ValueError('ui_helper_protocol')
+    stage, reason, raw_class, raw_step, raw_hresult = (part.decode('ascii') if part is not None else None
+                                                        for part in match.groups())
+    if stage not in HELPER_STAGES or reason not in HELPER_REASONS:
+        raise ValueError('ui_helper_protocol')
+    operation_class = raw_class if raw_class in OPERATION_CLASSES else 'other'
+    picker_step = raw_step if raw_step in PICKER_STEPS else 'other'
+    if operation_class == 'com':
+        if raw_hresult is None:
+            raise ValueError('ui_helper_protocol')
+    elif raw_hresult is not None:
+        raise ValueError('ui_helper_protocol')
+    result = {'stage': stage, 'reason': reason, 'operationClass': operation_class, 'pickerStep': picker_step}
+    if raw_hresult is not None:
+        result['operationHresult'] = int(raw_hresult, 16)
+    return result
+
+
 def validate_helper_picker_schema(private, helper_code=None, helper_stderr=None):
     path = private / 'ui-helper-picker-schema.json'
     if not os.path.lexists(path):
@@ -367,10 +416,12 @@ def validate_helper_picker_schema(private, helper_code=None, helper_stderr=None)
     if helper_code is not None:
         if helper_code == 0:
             raise ValueError('ui_picker_schema_record')  # A refusal record after success is unexpected.
+        try:
+            failure = parse_helper_failure(helper_stderr)
+        except ValueError:
+            raise ValueError('ui_picker_schema_record') from None
         stages = ('picker_import_cancel', 'picker_import', 'picker_export_cancel', 'picker_export')
-        lines = tuple(f'ui_helper_failed stage={stage} reason={expected}{ending}'.encode('ascii')
-                      for stage in stages for ending in ('\n', '\r\n'))
-        if helper_stderr not in lines:
+        if failure is None or failure['stage'] not in stages or failure['reason'] != expected:
             raise ValueError('ui_picker_schema_record')
     return True
 
@@ -616,11 +667,13 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                     save_helper_diagnostics(private, out, err)
             except (OSError, ValueError, subprocess.TimeoutExpired) as caught:
                 diagnostics_error = caught
+        helper_failure = None
         try:
+            helper_failure = parse_helper_failure(helper_stderr)
             validate_helper_foreground_failure(private, helper.returncode if helper is not None else None, helper_stderr)
         except ValueError as schema_error:
             error = schema_error
-        base.record_failure(private, error)
+        base.record_failure(private, error, helper_failure=helper_failure)
         if diagnostics_error is not None:
             raise error from diagnostics_error
         raise error

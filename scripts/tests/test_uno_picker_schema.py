@@ -9,6 +9,28 @@ from test_uno_candidate_ui import s
 
 
 class PickerSchemaTests(unittest.TestCase):
+    def test_helper_failure_tokens_are_strict_and_unknown_classes_collapse(self):
+        line = (b'ui_helper_failed stage=picker_import_cancel reason=operation '
+                b'operationClass=com pickerStep=cancel_invoke hresult=0x80004005\r\n')
+        self.assertEqual({'stage': 'picker_import_cancel', 'reason': 'operation',
+                          'operationClass': 'com', 'pickerStep': 'cancel_invoke',
+                          'operationHresult': 0x80004005}, s.parse_helper_failure(line))
+        unknown = (b'ui_helper_failed stage=picker_import_cancel reason=operation '
+                   b'operationClass=future_exception pickerStep=future_step\n')
+        self.assertEqual({'stage': 'picker_import_cancel', 'reason': 'operation',
+                          'operationClass': 'other', 'pickerStep': 'other'},
+                         s.parse_helper_failure(unknown))
+        for malformed in (
+                line[:-2] + b'\nextra',
+                b'ui_helper_failed stage=unknown reason=operation operationClass=other pickerStep=start\n',
+                b'ui_helper_failed stage=picker_import_cancel reason=unknown operationClass=other pickerStep=start\n',
+                b'ui_helper_failed stage=picker_import_cancel reason=operation operationClass=com pickerStep=start\n',
+                b'ui_helper_failed stage=picker_import_cancel reason=operation operationClass=other pickerStep=start hresult=0x80004005\n',
+                b'ui_helper_failed stage=picker_import_cancel reason=operation operationClass=com pickerStep=start hresult=0xZZZZZZZZ\n',
+                b'ui_helper_failed stage=picker_import_cancel reason=operation operationClass=other pickerStep=start payload\n'):
+            with self.subTest(malformed=malformed), self.assertRaisesRegex(ValueError, '^ui_helper_protocol$'):
+                s.parse_helper_failure(malformed)
+
     def test_fixed_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -121,13 +143,13 @@ class PickerSchemaTests(unittest.TestCase):
             (root / 'ui-helper-picker-schema.json').write_text(json.dumps(
                 dict(reason='picker_schema_missing', matchCount=0, controlTypeId=0)), encoding='ascii')
             for code, err in [(0, b''), (1, b''),
-                              (1, b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_type\n'),
-                              (1, b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing\nextra')]:
+                              (1, b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_type operationClass=other pickerStep=wait_dialog\n'),
+                              (1, b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing operationClass=other pickerStep=wait_dialog\nextra')]:
                 with self.subTest(code=code, err=err):
                     with self.assertRaisesRegex(ValueError, '^ui_picker_schema_record$'):
                         s.validate_helper_foreground_failure(root, code, err)
             self.assertFalse(s.validate_helper_foreground_failure(root, 1,
-                b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing\r\n'))
+                b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing operationClass=other pickerStep=wait_dialog\r\n'))
 
     @unittest.skipUnless(s.sys.platform == 'win32', 'PowerShell stub execution')
     def test_actual_poll_waits_and_classifies(self):

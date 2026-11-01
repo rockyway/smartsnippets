@@ -8,6 +8,7 @@ param([ValidateSet('snippets','folders','settings','file-picker')][string]$Scene
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $stage = 'bootstrap'
+$script:pickerStep = 'not_applicable'
 try {
     if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'sta' }
     [void][Reflection.Assembly]::Load('UIAutomationClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35')
@@ -403,12 +404,14 @@ public static class Owned019 {
         if ($cls.ToString() -cne $expected) { throw 'picker_control_class' }
     }
     function RunPicker([string]$phase, [bool]$cancel) {
+        $script:pickerStep = 'start'
         if ($phase -cnotin @('import-cancel','import','export-cancel','export') -or $null -ne $script:pickerPhase) { throw 'picker_phase' }
         $beforeInvokes = $script:invokes; $beforePicker = $script:pickerActions; $beforeValues = $script:pickerValues
         $script:pickerPhase = $phase
         PickerMarker 'active'
         $button = if ($phase.StartsWith('import')) { 'picker-import' } else { 'picker-export' }
         Invoke $button
+        $script:pickerStep = 'invoke'
         $until = [DateTime]::UtcNow.AddSeconds(6)
         $script:pickerStepUntil = $until
         do {
@@ -417,10 +420,13 @@ public static class Owned019 {
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_timeout' }
             Start-Sleep -Milliseconds 50
         } while ($true)
+        $script:pickerStep = 'wait_dialog'
         Guard
         if ($script:pickerHwnd -ne $dialog) { ForegroundFailure ([Owned019]::GetForegroundWindow().ToInt64()) $dialog; throw 'picker_replaced' }
+        $script:pickerStep = 'guard'
         $r = [Windows.Automation.AutomationElement]::FromHandle($dialog)
         if ($r.Current.ProcessId -ne $OwnedPid -or $r.Current.NativeWindowHandle -ne $dialog.ToInt64()) { throw 'picker_uia_owner' }
+        $script:pickerStep = 'uia_owner'
         if (-not $cancel) {
             $fileName = if ($phase -ceq 'import') { 'import.json' } else { 'export.json' }
             $files = Join-Path (Join-Path $root 'fixture-profile') 'picker-files'
@@ -429,6 +435,7 @@ public static class Owned019 {
             }
             $path = Join-Path $files $fileName
             if ($phase -ceq 'export' -and @([IO.Directory]::EnumerateFileSystemEntries($files) | Where-Object { [IO.Path]::GetFileName($_) -ieq $fileName }).Count -ne 0) { throw 'picker_existing_export' }
+            $script:pickerStep = 'path_ready'
             if ($phase -ceq 'import') {
                 $inputFile = Get-Item -LiteralPath $path -Force
                 if (($inputFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $inputFile.Length -gt 4096) { throw 'picker_input' }
@@ -453,6 +460,7 @@ public static class Owned019 {
             } elseif ($e.Current.ControlType -eq [Windows.Automation.ControlType]::Edit) {
                 RequirePickerControlClass $e 'Edit'
             } else { throw 'picker_schema' }
+            $script:pickerStep = 'control_ready'
             $value = [Windows.Automation.ValuePattern]$e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
             Guard
             if ((OwnedPicker) -ne $dialog -or $value.Current.IsReadOnly) { throw 'picker_changed' }
@@ -460,22 +468,26 @@ public static class Owned019 {
             $script:pickerValues++
             Guard
             if ($value.Current.Value -cne $path) { throw 'picker_value' }
+            $script:pickerStep = 'value_set'
         }
         $id = if ($cancel) { '2' } else { '1' }
         $commit = PickerElement $dialog $id $r $true
         if ($commit.Current.ControlType -ne [Windows.Automation.ControlType]::Button) { throw 'picker_schema' }
         RequirePickerControlClass $commit 'Button'
+        $script:pickerStep = 'control_ready'
         $invoke = [Windows.Automation.InvokePattern]$commit.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
         Guard
         if ((OwnedPicker) -ne $dialog) { throw 'picker_changed' }
         $invoke.Invoke() # One mutation only, never retry.
         $script:pickerActions++
+        $script:pickerStep = if ($cancel) { 'cancel_invoke' } else { 'picker_invoke' }
         $until = [DateTime]::UtcNow.AddSeconds(6)
         while ([Owned019]::IsWindow($dialog)) {
             Guard
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_close_timeout' }
             Start-Sleep -Milliseconds 50
         }
+        $script:pickerStep = 'close_wait'
         Guard; PickerMarker 'closed'; $script:pickerPhase = $null; $script:pickerHwnd = [IntPtr]::Zero
         if (-not $cancel) { Invoke 'picker-info' }
         Guard
@@ -485,6 +497,7 @@ public static class Owned019 {
         $expectedInvokes = if ($cancel) { 1 } else { 2 }
         $expectedValues = if ($cancel) { 0 } else { 1 }
         if ($mainDelta -ne $expectedInvokes -or $pickerDelta -ne 1 -or $valueDelta -ne $expectedValues) { throw 'picker_actions' }
+        $script:pickerStep = 'actions_validated'
         $file = [IO.File]::Open((Join-Path $root ('picker-'+$phase+'.actions')), [IO.FileMode]::CreateNew)
         try {
             $bytes=[Text.Encoding]::ASCII.GetBytes("invoke=$mainDelta`npicker=$pickerDelta`nvalue=$valueDelta`n")
@@ -578,6 +591,24 @@ public static class Owned019 {
     $allowed = @('sta','root','input','window','identity','artifact','desktop','desktop_close','foreground','uia_owner','schema','focus','value','timeout','receipt','control_timeout','actions','clipboard','selection',
         'picker_schema_missing','picker_schema_multiple','picker_schema_type','picker_identity','picker_replaced','picker_changed','picker_schema','picker_control_owner','picker_control_class','picker_phase','picker_timeout','picker_uia_owner','picker_alias','picker_existing_export','picker_input','picker_combo_chain','picker_value','picker_close_timeout','picker_actions')
     if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
-    [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason")
+    $exception = $_.Exception
+    $operationClass = 'other'
+    $hresultText = ''
+    if ($exception -is [System.Windows.Automation.ElementNotAvailableException]) { $operationClass = 'element_not_available' }
+    elseif ($exception -is [System.Windows.Automation.ElementNotEnabledException]) { $operationClass = 'element_not_enabled' }
+    elseif ($exception -is [System.Runtime.InteropServices.COMException]) {
+        $operationClass = 'com'
+        $hresult = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$exception.HResult), 0)
+        $hresultText = ' hresult=0x{0:X8}' -f $hresult
+    }
+    elseif ($exception -is [System.ComponentModel.Win32Exception]) { $operationClass = 'win32' }
+    elseif ($exception -is [System.TimeoutException]) { $operationClass = 'timeout' }
+    elseif ($exception -is [System.ArgumentException]) { $operationClass = 'argument' }
+    elseif ($exception -is [System.NullReferenceException]) { $operationClass = 'null_reference' }
+    elseif ($exception -is [System.UnauthorizedAccessException]) { $operationClass = 'unauthorized' }
+    elseif ($exception -is [System.IO.IOException]) { $operationClass = 'io' }
+    elseif ($exception -is [System.InvalidOperationException]) { $operationClass = 'invalid_operation' }
+    $pickerStep = if ($script:pickerStep -cin @('start','invoke','wait_dialog','guard','uia_owner','path_ready','control_ready','value_set','cancel_invoke','picker_invoke','close_wait','actions_validated')) { $script:pickerStep } else { 'not_applicable' }
+    [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason operationClass=$operationClass pickerStep=$pickerStep$hresultText")
     exit 1
 }

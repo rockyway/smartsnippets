@@ -761,7 +761,7 @@ class PickerObserverLoopTests(unittest.TestCase):
 
     def run_worker_error_path(self, *, helper_code=None, helper_output=b'', failure_file=None,
                               observer_error=None, diagnostic_error=None, foreground_save_error=None,
-                              picker_record=None, helper_stderr=b''):
+                              picker_record=None, helper_stderr=b'', include_record=False):
         import json
         with tempfile.TemporaryDirectory() as tmp:
             private = Path(tmp)
@@ -817,7 +817,17 @@ class PickerObserverLoopTests(unittest.TestCase):
                                      stream=io.BytesIO(s.startup.PERMIT))
             validate_failure.assert_called()
             failure_record = json.loads((private / 'observer-worker-failure.json').read_text(encoding='ascii'))
-            return caught.exception, failure_record['reason'], validate_failure.call_count
+            return caught.exception, failure_record if include_record else failure_record['reason'], validate_failure.call_count
+
+    def test_worker_helper_operation_failure_is_recorded_with_fixed_tokens(self):
+        failure = (b'ui_helper_failed stage=picker_import_cancel reason=operation '
+                   b'operationClass=com pickerStep=cancel_invoke hresult=0x80004005\n')
+        error, record, validations = self.run_worker_error_path(
+            helper_code=1, helper_stderr=failure, include_record=True)
+        self.assertEqual('ui_helper_protocol', str(error))
+        self.assertEqual({'reason': 'operation', 'operationClass': 'com',
+                          'pickerStep': 'cancel_invoke', 'operationHresult': 0x80004005}, record)
+        self.assertEqual(1, validations)
 
     def test_worker_diagnostics_errors_preserve_original_reason_and_chain(self):
         for diagnostics_error in (ValueError('ui_helper_output_limit'), OSError('private diagnostics')):
@@ -855,8 +865,8 @@ class PickerObserverLoopTests(unittest.TestCase):
         record = dict(reason='picker_schema_missing', matchCount=0, controlTypeId=0)
         for code, out, err, expected in (
                 (0, b'ui_callbacks_observed\n', b'', 'ui_picker_schema_record'),
-                (1, b'', b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_type\n', 'ui_picker_schema_record'),
-                (1, b'', b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing\n', 'ui_helper_protocol')):
+                (1, b'', b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_type operationClass=other pickerStep=wait_dialog\n', 'ui_picker_schema_record'),
+                (1, b'', b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing operationClass=other pickerStep=wait_dialog\n', 'ui_helper_protocol')):
             with self.subTest(code=code, err=err):
                 _, reason, _ = self.run_worker_error_path(helper_code=code, helper_output=out,
                     picker_record=record, helper_stderr=err)

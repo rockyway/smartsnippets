@@ -299,7 +299,7 @@ def supervise(command, job_factory, popen=subprocess.Popen):
             startup.stop_app(process)
 
 
-def record_failure(private, error):
+def record_failure(private, error, *, helper_failure=None):
     # Fixed tokens only. Never echo an exception message, path, title or payload.
     allowed = {'desktop_changed', 'early_exit', 'geometry', 'missing_ready', 'missing_management',
                'missing_preview', 'missing_recreated', 'missing_graceful_cleanup', 'graceful_timeout',
@@ -318,12 +318,49 @@ def record_failure(private, error):
                'missing_shell-tray-open', 'missing_shell-tray-settings', 'missing_shell-background',
                'missing_shell-reopened', 'missing_shell-message-cycles', 'missing_shell-dpi', 'missing_shell-verified'}
     reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
+    safe_helper_failure = None
+    if type(helper_failure) is dict:
+        expected = {'stage', 'reason', 'operationClass', 'pickerStep'}
+        if 'operationHresult' in helper_failure:
+            expected.add('operationHresult')
+        if (set(helper_failure) == expected
+                and helper_failure.get('stage') in {'bootstrap', 'ready', 'picker_import_cancel', 'picker_import',
+                    'picker_export_cancel', 'picker_export', 'settings_theme', 'settings_size', 'folder_create',
+                    'folder_rename', 'folder_delete', 'new', 'edit_saved', 'save', 'edit_dirty', 'dirty_leave',
+                    'cancel', 'dirty_save_leave', 'dirty_save', 'discard_edit', 'dirty_discard_leave',
+                    'dirty_discard', 'finish'}
+                and helper_failure.get('reason') in {'sta', 'root', 'input', 'window', 'identity', 'artifact',
+                    'desktop', 'desktop_close', 'foreground', 'uia_owner', 'schema', 'focus', 'value', 'timeout',
+                    'receipt', 'control_timeout', 'actions', 'clipboard', 'selection', 'picker_schema_missing',
+                    'picker_schema_multiple', 'picker_schema_type', 'picker_identity', 'picker_replaced',
+                    'picker_changed', 'picker_schema', 'picker_control_owner', 'picker_control_class', 'picker_phase',
+                    'picker_timeout', 'picker_uia_owner', 'picker_alias', 'picker_existing_export', 'picker_input',
+                    'picker_combo_chain', 'picker_value', 'picker_close_timeout', 'picker_actions', 'operation'}
+                and helper_failure.get('operationClass') in {'element_not_available', 'element_not_enabled',
+                    'invalid_operation', 'com', 'win32', 'timeout', 'argument', 'null_reference', 'unauthorized',
+                    'io', 'other'}
+                and helper_failure.get('pickerStep') in {'not_applicable', 'start', 'invoke', 'wait_dialog', 'guard',
+                    'uia_owner', 'path_ready', 'control_ready', 'value_set', 'cancel_invoke', 'picker_invoke', 'close_wait',
+                    'actions_validated', 'other'}
+                and ((helper_failure.get('operationClass') == 'com'
+                      and type(helper_failure.get('operationHresult')) is int
+                      and 0 <= helper_failure['operationHresult'] <= 0xFFFFFFFF)
+                     or (helper_failure.get('operationClass') != 'com'
+                         and 'operationHresult' not in helper_failure))):
+            safe_helper_failure = helper_failure
+            if helper_failure['reason'] == 'operation':
+                reason = 'operation'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:
             record = {'reason': reason}
             subreason = getattr(error, 'input_subreason', None)
             if reason == 'input' and subreason in ('held', 'epoch_changed', 'idle'):
                 record['inputSubreason'] = subreason
+            if safe_helper_failure is not None:
+                record['operationClass'] = safe_helper_failure['operationClass']
+                record['pickerStep'] = safe_helper_failure['pickerStep']
+                if 'operationHresult' in safe_helper_failure:
+                    record['operationHresult'] = safe_helper_failure['operationHresult']
             json.dump(record, file)
     except OSError:
         pass
