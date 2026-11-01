@@ -98,7 +98,7 @@ has been executed for this batch.
 
 After independent source review, parent acceptance of **both ordinary restore and
 worker-abort controls for the exact source/artifacts**, and a new exclusive operator
-slot, positive runner modes are `registered-enter`, `posted-enter`, `posted-row`, `posted-main`, `copy`,
+slot, positive runner modes are `registered-enter`, `registered-row`, `registered-main`, `posted-enter`, `posted-row`, `posted-main`, `copy`,
 `preview`, `expired`. They additionally require `--row6-controls-verified` and
 `--operator-recopied-baseline`. These are explicit operator attestations, not proof
 of the controls or baseline contents. The private launch permit has a distinct exact
@@ -131,7 +131,7 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   `session.TryFocusOwnedPopup`. Wait for presentation, exact popup foreground and
   quiet/all-up before continuing. This proves native registration and posted callback
   delivery, **not physical shortcut delivery**.
-- `registered-enter`: same owned-A preparation, real host/session and exact temporary
+- `registered-enter/row/main`: same owned-A preparation, real host/session and exact temporary
   Ctrl+Alt+Shift+F11 release/reacquire, but **never posts WM_HOTKEY or synthesizes the
   shortcut**. After preparation and registration, exclusively/atomically publishes
   `registered-shortcut-ready` in the owner-private fixture cwd, containing exactly
@@ -144,13 +144,15 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   is admitted; duplicates fail the scene. Operator keys never acquire agent-owned
   recovery and are never synthetically released. Later guarded native Enter uses
   the same insertion/usage/duplicate checks as `posted-enter`, with
-  `keyboard_begin`/`keyboard_permit` before agent synthesis only. Success labels
+  `keyboard_begin`/`keyboard_permit` before agent synthesis only. Registered row/main
+  use the actual existing popup/main VM callbacks, not native Enter; their action
+  proof is `vm_callback`, never physical click, UIA or native pointer proof. Success labels
   shortcut proof `registered_os_shortcut_operator_delivered`; posted scenes retain
   `registered_posted_callback_not_physical`. Neither input filtering nor these labels
   prove physical HID authenticity. No foreground permission relaxation or fallback.
   The 55-second capability/session and 65-second worker bounds remain unchanged.
   Before launch the Python parent emits JSON phase `registered_session_prelaunch`
-  with the exact constrained `privateEvidenceToken`, only for this scene. This is
+  with the exact constrained `privateEvidenceToken`, for this registered family. This is
   metadata, not readiness/success/authorization. A trusted asynchronous outer parent
   can retain that exact session identity and observe its fixed readiness artifact
   read-only before prompting the operator; never discover a latest directory as
@@ -161,9 +163,9 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   dispatch cover visible/current desktop, 1500ms idle, all VKs up, bounded live lease,
   exact popup HWND/PID, retained image and unguessable pin. Zero accepted events is a
   refusal; partial/throwing calls remain `KEYBOARD_RECOVERY_PENDING`, never key-up repair.
-- `posted-row/main`: invoke the actual popup-row or main-row VM callback composed by
+- `registered-row/main` and `posted-row/main`: invoke the actual popup-row or main-row VM callback composed by
   the actual host; these modes prove callback wiring, **not native pointer/menu event
-  delivery or a visible main-window click**. All four insert modes assert concurrent
+  delivery or a visible main-window click**. All six insert modes assert concurrent
   gate Busy, duplicate VM no-op, single capture/paste, exact A readback and empty B,
   and reload the real SQLite store to require usage exactly once.
 - `copy`: Copy-only session, real host-tracked bounded Copy wait and main-row VM Copy;

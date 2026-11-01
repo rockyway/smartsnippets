@@ -16,8 +16,9 @@ REPO = Path(__file__).resolve().parents[1]
 NATIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_INPUT_SOURCE_REVIEWED = False
-POSITIVE_SCENES = ('registered-enter', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
-INSERT_SCENES = ('registered-enter', 'posted-enter', 'posted-row', 'posted-main')
+REGISTERED_SCENES = ('registered-enter', 'registered-row', 'registered-main')
+POSITIVE_SCENES = ('registered-enter', 'registered-row', 'registered-main', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
+INSERT_SCENES = ('registered-enter', 'registered-row', 'registered-main', 'posted-enter', 'posted-row', 'posted-main')
 INPUT_CAPABILITY_SCENES = (*INSERT_SCENES, 'expired')
 POSITIVE_PERMIT = b'owned_positive_row6_verified_operator_recopied_baseline\n'
 PRIOR_POSITIVE_PERMIT = b'owned_positive_row6_verified_settled_baseline_v2\n'
@@ -114,7 +115,7 @@ def positive_foregrounds(private, foreground):
 
 
 def announce_registered_session(scene, private):
-    if scene != 'registered-enter':
+    if scene not in REGISTERED_SCENES:
         return
     token = f'{private.parent.name}/{private.name}'
     if not re.fullmatch(r'ss-uno018-ui-[a-zA-Z0-9_-]+/ss-uno019-native-[0-9a-f]{32}', token):
@@ -134,8 +135,25 @@ def registered_operator_ready(private):
 
 
 def shortcut_proof(scene):
-    return ('registered_os_shortcut_operator_delivered' if scene == 'registered-enter' else
-            'registered_posted_callback_not_physical' if scene in INSERT_SCENES else 'none')
+    if scene in REGISTERED_SCENES:
+        return 'registered_os_shortcut_operator_delivered'
+    if scene in ('posted-enter', 'posted-row', 'posted-main'):
+        return 'registered_posted_callback_not_physical'
+    if scene in ('restore', 'abort', 'owner-refusal', 'copy', 'preview', 'expired'):
+        return 'none'
+    raise ValueError('native_scene')
+
+
+def action_proof(scene):
+    if scene in ('registered-enter', 'posted-enter'):
+        return 'native_enter'
+    if scene in ('registered-row', 'registered-main', 'posted-row', 'posted-main', 'copy', 'preview', 'expired'):
+        return 'vm_callback'
+    if scene == 'owner-refusal':
+        return 'owned_hwnd_change_refusal'
+    if scene in ('restore', 'abort'):
+        return 'clipboard_control'
+    raise ValueError('native_scene')
 
 
 def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None, registered=False):
@@ -170,7 +188,7 @@ def verify_result(private, data, expected, positive=False):
         phases.append(b'native_phase=owner_refused')
     if data[0].splitlines() != [*phases, expected] or data[1]:
         raise ValueError('native_result_receipt')
-    if expected == b'native_result=registered-enter_settled' and not registered_operator_ready(private):
+    if expected in {('native_result=' + scene + '_settled').encode() for scene in REGISTERED_SCENES} and not registered_operator_ready(private):
         raise ValueError('native_registered_readiness')
     log = helpers.owned_bytes(private / 'native-fixture-profile/logs/app.log', private)
     text = log.decode('utf-8-sig')
@@ -260,7 +278,7 @@ def verified_prior_token(observation):
     paths = [private.parent, private, private / 'stdout.log', private / 'stderr.log',
              private / 'recovery-control.txt', private / 'native-fixture-profile',
              private / 'native-fixture-profile/logs', private / 'native-fixture-profile/logs/app.log']
-    if observation.scene == 'registered-enter':
+    if observation.scene in REGISTERED_SCENES:
         paths.append(private / REGISTERED_READY_FILE)
     for path in paths:
         for item in (path, *path.parents):
@@ -331,7 +349,7 @@ def main(argv=None, *, prior_restorative_session=None):
             raise ValueError('native_foreground_unavailable')
         positive = args.scene in POSITIVE_SCENES
         (private / 'native-launch-permit').write_bytes(launch_permit(positive, prior_token))
-        if args.scene == 'registered-enter':
+        if args.scene in REGISTERED_SCENES:
             print('Operator: wait for operator_ready, then press Ctrl+Alt+Shift+F11 once and release all input. Do not click or type before that receipt.', flush=True)
         elif positive:
             print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
@@ -341,7 +359,7 @@ def main(argv=None, *, prior_restorative_session=None):
             process = subprocess.Popen([str(entry), '--coordinate', args.scene, str(target), args.target_sha256,
                                         str(guardian), args.guardian_sha256], cwd=private, stdin=subprocess.DEVNULL,
                                        stdout=out, stderr=err)
-            monitor(process, desktop, foreground, paths, positive_private=private if positive else None, registered=args.scene == 'registered-enter')
+            monitor(process, desktop, foreground, paths, positive_private=private if positive else None, registered=args.scene in REGISTERED_SCENES)
         data = [helpers.owned_bytes(p, private, 65536) for p in paths]
         expected = (f'native_result={args.scene}_settled' if positive else
                     'native_result=owner_refusal_restored' if args.scene == 'owner-refusal' else
@@ -351,8 +369,7 @@ def main(argv=None, *, prior_restorative_session=None):
                           'privateEvidenceToken': f'{private.parent.name}/{private.name}', 'sourceSha256': source_fingerprint(),
                           'positiveInputImplemented': positive and args.scene in INSERT_SCENES,
                           'shortcutProof': shortcut_proof(args.scene),
-                          'actionProof': 'native_enter' if args.scene in ('registered-enter', 'posted-enter') else 'vm_callback' if positive else
-                                         'owned_hwnd_change_refusal' if args.scene == 'owner-refusal' else 'clipboard_control',
+                          'actionProof': action_proof(args.scene),
                           'operatorReCopyRequiredBeforeNextSession': True}))
         if args.scene in ('restore', 'abort', 'owner-refusal', *INSERT_SCENES):
             return RestorativeSessionObservation(private, args.scene, source_fingerprint(), args.sha256.lower(),

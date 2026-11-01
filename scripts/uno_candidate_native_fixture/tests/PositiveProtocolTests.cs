@@ -8,6 +8,8 @@ public sealed class PositiveProtocolTests
 {
     [Theory]
     [InlineData("registered-enter", 0, 1, 25)]
+    [InlineData("registered-row", 0, 1, 25)]
+    [InlineData("registered-main", 0, 1, 25)]
     [InlineData("posted-enter", 1, 0, 5)]
     [InlineData("posted-row", 1, 0, 5)]
     [InlineData("posted-main", 1, 0, 5)]
@@ -18,6 +20,8 @@ public sealed class PositiveProtocolTests
         Assert.Equal(posts, posted); Assert.Equal(readies, ready);
         Assert.Equal(TimeSpan.FromSeconds(seconds), timeout);
         Assert.Equal(scene is "registered-enter" or "posted-enter", PositiveShortcutRoute.NativeEnter(scene));
+        Assert.Equal(scene is "registered-enter" or "registered-row" or "registered-main", PositiveShortcutRoute.IsRegistered(scene));
+        Assert.Equal(scene is "registered-main" or "posted-main", PositiveShortcutRoute.MainRow(scene));
     }
     [Fact]
     public void PositiveShortcutRoute_OnlyFirstCallbackCanReachAdmission()
@@ -27,20 +31,22 @@ public sealed class PositiveProtocolTests
         Assert.False(route.AcceptCallback()); Assert.False(route.AcceptCallback());
         Assert.Equal(3, route.Callbacks);
     }
-    [Fact]
-    public void PositiveProtocol_RegisteredEnterUsesExactInsertionPermissionsAndInputGate()
+    [Theory]
+    [InlineData("registered-enter")] [InlineData("registered-row")] [InlineData("registered-main")]
+    public void PositiveProtocol_RegisteredFamilyUsesExactInsertionPermissionsAndInputGate(string scene)
     {
-        Assert.True(PositiveProtocol.Inserts("registered-enter"));
-        Assert.True(PositiveProtocol.RequiresInputReview("registered-enter"));
-        Assert.Equal(PositiveProtocol.Permissions("posted-enter"), PositiveProtocol.Permissions("registered-enter"));
-        Assert.Throws<InvalidOperationException>(() => PositiveProtocol.RequireReviewed("registered-enter"));
+        Assert.True(PositiveProtocol.Inserts(scene));
+        Assert.True(PositiveProtocol.RequiresInputReview(scene));
+        Assert.Equal(PositiveProtocol.Permissions("posted-enter"), PositiveProtocol.Permissions(scene));
+        Assert.Throws<InvalidOperationException>(() => PositiveProtocol.RequireReviewed(scene));
     }
-    [Fact]
-    public async Task PositiveShortcutRoute_ReadinessFailureNeverFallsBackToPosting()
+    [Theory]
+    [InlineData("registered-enter")] [InlineData("registered-row")] [InlineData("registered-main")]
+    public async Task PositiveShortcutRoute_ReadinessFailureNeverFallsBackToPosting(string scene)
     {
         Assert.Equal("registered-shortcut-ready", PositiveShortcutRoute.ReadyFile);
         Assert.Equal("registered_os_shortcut_operator_ready\n", PositiveShortcutRoute.ReadyReceipt);
-        await Assert.ThrowsAsync<IOException>(() => PositiveShortcutRoute.BeginAsync("registered-enter",
+        await Assert.ThrowsAsync<IOException>(() => PositiveShortcutRoute.BeginAsync(scene,
             () => throw new Exception("must never post"), () => throw new IOException("publication refused")));
     }
     [Theory]
@@ -61,7 +67,7 @@ public sealed class PositiveProtocolTests
     }
 
     [Theory]
-    [InlineData("registered-enter")] [InlineData("posted-enter")] [InlineData("posted-row")] [InlineData("posted-main")]
+    [InlineData("registered-enter")] [InlineData("registered-row")] [InlineData("registered-main")] [InlineData("posted-enter")] [InlineData("posted-row")] [InlineData("posted-main")]
     [InlineData("copy")] [InlineData("preview")] [InlineData("expired")]
     public void PositiveProtocol_ReviewGatesStayClosedEvenForKnownScenes(string scene)
     {

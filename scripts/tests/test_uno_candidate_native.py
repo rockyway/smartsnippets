@@ -19,17 +19,18 @@ spec.loader.exec_module(native)
 
 class NativeBootstrapTests(unittest.TestCase):
     def test_prelaunch_session_metadata_is_registered_only_and_not_readiness(self):
-        private = Path('ss-uno018-ui-owned') / ('ss-uno019-native-' + 'a' * 32)
-        with patch('builtins.print') as output:
-            for scene in ('restore', 'abort', 'owner-refusal', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired'):
+        for scene in native.REGISTERED_SCENES:
+            private = Path('ss-uno018-ui-owned') / ('ss-uno019-native-' + 'a' * 32)
+            with patch('builtins.print') as output:
+                for other in ('restore', 'abort', 'owner-refusal', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired'):
+                    native.announce_registered_session(other, private)
+                output.assert_not_called()
                 native.announce_registered_session(scene, private)
-            output.assert_not_called()
-            native.announce_registered_session('registered-enter', private)
-            output.assert_called_once()
-            self.assertEqual({'phase': 'registered_session_prelaunch', 'scene': 'registered-enter',
-                              'privateEvidenceToken': private.as_posix()}, native.json.loads(output.call_args.args[0]))
-        with self.assertRaisesRegex(ValueError, 'session_token'):
-            native.announce_registered_session('registered-enter', Path('arbitrary/session'))
+                output.assert_called_once()
+                self.assertEqual({'phase': 'registered_session_prelaunch', 'scene': scene,
+                                  'privateEvidenceToken': private.as_posix()}, native.json.loads(output.call_args.args[0]))
+            with self.assertRaisesRegex(ValueError, 'session_token'):
+                native.announce_registered_session(scene, Path('arbitrary/session'))
 
     def test_registered_readiness_requires_owned_exact_literal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -45,23 +46,31 @@ class NativeBootstrapTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'readiness'): native.registered_operator_ready(private)
 
     def test_registered_exact_result_also_requires_readiness_artifact(self):
-        with tempfile.TemporaryDirectory() as directory:
-            private = Path(directory)
-            logs = private / 'native-fixture-profile/logs'
-            logs.mkdir(parents=True)
-            (logs / 'app.log').write_bytes(b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n')
-            expected = b'native_result=registered-enter_settled'
-            good = b'native_phase=guardian_ready\nnative_phase=awaiting_owned_a\n' + expected + b'\n'
-            with self.assertRaisesRegex(ValueError, 'readiness'):
+        for scene in native.REGISTERED_SCENES:
+            with tempfile.TemporaryDirectory() as directory:
+                private = Path(directory)
+                logs = private / 'native-fixture-profile/logs'
+                logs.mkdir(parents=True)
+                (logs / 'app.log').write_bytes(b'fixed INFO candidate_started\nfixed INFO candidate_shutdown_complete\n')
+                expected = ('native_result=' + scene + '_settled').encode()
+                good = b'native_phase=guardian_ready\nnative_phase=awaiting_owned_a\n' + expected + b'\n'
+                with self.assertRaisesRegex(ValueError, 'readiness'):
+                    native.verify_result(private, [good, b''], expected, True)
+                (private / native.REGISTERED_READY_FILE).write_bytes(native.REGISTERED_READY_RECEIPT)
                 native.verify_result(private, [good, b''], expected, True)
-            (private / native.REGISTERED_READY_FILE).write_bytes(native.REGISTERED_READY_RECEIPT)
-            native.verify_result(private, [good, b''], expected, True)
-            for data in (good + b'extra\n', good.replace(b'registered-enter', b'posted-enter')):
-                with self.assertRaisesRegex(ValueError, 'receipt'):
-                    native.verify_result(private, [data, b''], expected, True)
+                for data in (good + b'extra\n', good.replace(scene.encode(), b'posted-enter')):
+                    with self.assertRaisesRegex(ValueError, 'receipt'):
+                        native.verify_result(private, [data, b''], expected, True)
 
     def test_registered_proof_does_not_change_posted_labels(self):
-        self.assertEqual('registered_os_shortcut_operator_delivered', native.shortcut_proof('registered-enter'))
+        for scene in native.REGISTERED_SCENES:
+            self.assertEqual('registered_os_shortcut_operator_delivered', native.shortcut_proof(scene))
+            self.assertIn(scene, native.INSERT_SCENES)
+            self.assertIn(scene, native.INPUT_CAPABILITY_SCENES)
+            self.assertEqual('native_enter' if scene == 'registered-enter' else 'vm_callback', native.action_proof(scene))
+        for invalid in ('registered', 'registered-pointer', 'registered-row-extra', ''):
+            with self.assertRaises(ValueError): native.shortcut_proof(invalid)
+            with self.assertRaises(ValueError): native.action_proof(invalid)
         for scene in ('posted-enter', 'posted-row', 'posted-main'):
             self.assertEqual('registered_posted_callback_not_physical', native.shortcut_proof(scene))
         self.assertIn('registered-enter', native.INSERT_SCENES)
@@ -261,19 +270,20 @@ class PriorRestorativeLedgerTests(unittest.TestCase):
                 setattr(self.witness, field.name, None)
 
     def test_registered_handoff_checks_readiness_file_acl_before_trusting_receipt(self):
-        self.stdout.write_bytes(b'native_phase=guardian_ready\nnative_phase=awaiting_owned_a\nnative_result=registered-enter_settled\n')
-        ready = self.private / native.REGISTERED_READY_FILE
-        ready.write_bytes(native.REGISTERED_READY_RECEIPT)
-        witness = replace(self.witness, scene='registered-enter', result='positive_scene_settled')
-        with patch.object(native, 'require_owner_private') as checked:
-            native.verified_prior_token(witness)
-            checked.assert_any_call(ready, protected=False)
-        def deny_ready(path, **kwargs):
-            if path == ready:
-                raise ValueError('native_ledger_owner_acl')
-        with patch.object(native, 'require_owner_private', side_effect=deny_ready):
-            with self.assertRaisesRegex(ValueError, 'owner_acl'):
+        for scene in native.REGISTERED_SCENES:
+            self.stdout.write_bytes(('native_phase=guardian_ready\nnative_phase=awaiting_owned_a\nnative_result=' + scene + '_settled\n').encode())
+            ready = self.private / native.REGISTERED_READY_FILE
+            ready.write_bytes(native.REGISTERED_READY_RECEIPT)
+            witness = replace(self.witness, scene=scene, result='positive_scene_settled')
+            with patch.object(native, 'require_owner_private') as checked:
                 native.verified_prior_token(witness)
+                checked.assert_any_call(ready, protected=False)
+            def deny_ready(path, **kwargs):
+                if path == ready:
+                    raise ValueError('native_ledger_owner_acl')
+            with patch.object(native, 'require_owner_private', side_effect=deny_ready):
+                with self.assertRaisesRegex(ValueError, 'owner_acl'):
+                    native.verified_prior_token(witness)
 
     def test_handoff_is_keyword_only_and_cannot_be_supplied_by_cli(self):
         with self.assertRaises(TypeError):

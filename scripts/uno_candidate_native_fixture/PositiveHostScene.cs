@@ -195,7 +195,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             else
             {
                 // Actual shared row/main callback wiring; intentionally NOT represented as native pointer/UI event proof.
-                var first = scene == "posted-main" ? host.Snippets.InsertRowAsync(id) : host.Popup.InsertRowAsync(host.Popup.Items.Single(item => item.SnippetId == id));
+                var first = PositiveShortcutRoute.MainRow(scene) ? host.Snippets.InsertRowAsync(id) : host.Popup.InsertRowAsync(host.Popup.Items.Single(item => item.SnippetId == id));
                 await DuplicateBusyAsync(id);
                 await first.WaitAsync(TimeSpan.FromSeconds(8), ct);
             }
