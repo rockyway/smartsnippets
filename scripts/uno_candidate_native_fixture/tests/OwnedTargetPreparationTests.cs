@@ -34,6 +34,12 @@ public sealed class OwnedTargetPreparationTests
         Assert.Equal(0, calls);
     }
 
+    [Theory]
+    [InlineData("Edit", true)] [InlineData("EDIT", false)] [InlineData("edit", false)]
+    [InlineData("RichEdit", false)] [InlineData("", false)]
+    public void StandardEditorClassUsesExactObservedNativeCasing(string value, bool expected) =>
+        Assert.Equal(expected, OwnedTargetPreparation.IsExpectedEditorClass(value));
+
     [Fact]
     public async Task AlreadyAStillChecksGuardsButNeverCreatesCom()
     {

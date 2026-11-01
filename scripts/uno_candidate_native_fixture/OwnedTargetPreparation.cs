@@ -25,6 +25,7 @@ internal static class OwnedTargetPreparation
 {
     internal static readonly bool SourceReviewed = false;
     internal static bool ShouldPrepare(string scene) => SourceReviewed && PositiveProtocol.IsPositive(scene);
+    internal static bool IsExpectedEditorClass(ReadOnlySpan<char> value) => value.SequenceEqual("Edit");
 
     internal static async Task<OwnedPreparationResult> PrepareAsync(IOwnedPreparationOs os,
         Func<IOwnedPreparationAutomation> automation, nint originalForeground, nint windowA, nint editorA, CancellationToken ct,

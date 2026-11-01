@@ -26,7 +26,7 @@ internal sealed partial class OwnedPreparationWindows(AcceptanceFixture fixture,
         var count = GetClassNameW(a, text, 128);
         if (!new ReadOnlySpan<char>(text, count).SequenceEqual("SS_Target018_" + lease.Run.ToString("N"))) return false;
         count = GetClassNameW(editor, text, 128);
-        if (!new ReadOnlySpan<char>(text, count).SequenceEqual("EDIT")) return false;
+        if (!OwnedTargetPreparation.IsExpectedEditorClass(new ReadOnlySpan<char>(text, count))) return false;
         windowThread = wt; editorThread = et;
         return lease.IsAliveAndPinned();
     }

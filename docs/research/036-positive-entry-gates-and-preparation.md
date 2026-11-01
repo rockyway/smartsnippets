@@ -162,3 +162,32 @@ The operator additionally authorized agent preparation of the fixed harmless QA
 clipboard baseline for future tests. This does not waive format preservation,
 independent recovery, input/ownership guards or the distinction between clipboard
 history and verified restoration.
+
+## Exact native editor-class mismatch diagnosed
+
+After review `d22d9b78`, enabled build `d226a4c4665b4f03a30b27e982c861f4`
+(SHA256 `5e0072d77fd96a3be112e9827c562f7f37745b4ffe755afe86ef1206be92c01a`,
+source `852368f484fe73c2d0adf1ae2b650f9f5373bd0982de5472e7c3e27e613c9cf9`)
+again passed all three controls via trusted wrapper
+`ss-uno018-ui-75264d758a9361d07636350c36b93ad9`:
+
+- restore: `ss-uno018-ui-7cb341b863ba6c77617a83adfc03d385/ss-uno019-native-64031a4b39534c2a8742df0464b622de`;
+- abort: `ss-uno018-ui-aaa55b6cfa48ab41bb36117c37072ea8/ss-uno019-native-c70ae959240448d19ec551cc4d95868f`;
+- owner-refusal: `ss-uno018-ui-f99dad56eb5138758826b037e76aac3f/ss-uno019-native-52ca91b62bc54ff29eda77d4493df451`.
+
+The single subsequent positive attempt
+`ss-uno018-ui-273e28f778cda226b9233446b8b9302a/ss-uno019-native-746891062002490f86c4a326771770a1`
+reported fixed diagnostic `owned_preparation_admission reason=identity`, before
+automation or keyboard arm. Gates were restored false. Two earlier wrapper
+attempts refused before launch on unsettled input/desktop preflight; those were
+not control executions.
+
+The identity code incorrectly expected standard editor class `EDIT`. A separate
+owned hidden standard editor window was created, queried with typed
+`GetClassNameW`, and destroyed without showing/activating it or using clipboard
+or input; Windows returned exact class `Edit`. The fix accepts only exact `Edit`
+(no case-insensitive or generic-control fallback), preserving all other retained
+image/run/PID/thread/window/editor101/IsChild checks. Review `7e058313` found no
+issues. Validation: 106 fixture tests and strict false-gate AOT build
+`08210fd25a7244e1b90086eab6fed1d0`, SHA256
+`354dce3723e12c1bcbd5fd4a8c81ceae98ffdd390af53dd4ddfca909cd02fc08`.
