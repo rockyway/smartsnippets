@@ -54,7 +54,7 @@ public partial class App : Application
             if (NativeFixtureOs.Foreground() != foreground) throw new InvalidOperationException("native_host_activation");
             NativeStage.Reach("session_create");
             session = NativeAcceptanceFactory.Create(fixture, "a", boundary.Popup.NativeHandle, config[3], config[4],
-                DateTimeOffset.UtcNow.AddSeconds(55), isPositive && PositiveProtocol.RequiresInputReview(config[0]), isPositive && !PositiveProtocol.Inserts(config[0]),
+                DateTimeOffset.UtcNow.AddSeconds(55), isPositive && (PositiveProtocol.NeedsCapturedPopup(config[0]) || config[0] == "expired"), isPositive && !PositiveProtocol.Inserts(config[0]),
                 operation => PositiveNativeMutation.Permits(operation == AcceptanceOperation.Capture, lease, isPositive,
                     operation == AcceptanceOperation.ClipboardControl,
                     operation is AcceptanceOperation.Input or AcceptanceOperation.Clipboard, positive?.NativeMutationArmed == true),

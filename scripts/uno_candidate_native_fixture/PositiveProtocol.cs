@@ -22,13 +22,17 @@ internal static class PositiveProtocol
         if (token == Guid.Empty) throw new InvalidOperationException("native_baseline_token");
         return token;
     }
-    internal static bool IsPositive(string scene) => scene is "registered-enter" or "registered-row" or "registered-main" or "posted-enter" or "posted-row" or "posted-main" or "copy" or "preview" or "expired";
-    internal static bool Inserts(string scene) => scene is "registered-enter" or "registered-row" or "registered-main" or "posted-enter" or "posted-row" or "posted-main";
+    internal static bool IsCopy(string scene) => scene is "copy" or "popup-copy" or "editor-copy" or "footer-copy";
+    internal static bool CapturedCopy(string scene) => scene is "popup-copy" or "editor-copy" or "footer-copy";
+    internal static bool NeedsCapturedPopup(string scene) => Inserts(scene) || CapturedCopy(scene);
+    internal static bool IsPositive(string scene) => IsCopy(scene) || scene is "context-insert" or "registered-enter" or "registered-row" or "registered-main" or "posted-enter" or "posted-row" or "posted-main" or "copy" or "preview" or "expired";
+    internal static bool Inserts(string scene) => scene is "context-insert" or "registered-enter" or "registered-row" or "registered-main" or "posted-enter" or "posted-row" or "posted-main";
     internal static bool RequiresInputReview(string scene) => Inserts(scene) || scene == "expired";
     internal static CandidateNativeOperation Permissions(string scene) => scene == "expired"
         ? Permissions("posted-enter") | CandidateNativeOperation.Copy
         : Inserts(scene)
         ? CandidateNativeOperation.Capture | CandidateNativeOperation.Insert | CandidateNativeOperation.Focus | CandidateNativeOperation.Input | CandidateNativeOperation.Clipboard
+        : CapturedCopy(scene) ? CandidateNativeOperation.Capture | CandidateNativeOperation.Insert | CandidateNativeOperation.Copy | CandidateNativeOperation.Focus
         : scene is "copy" or "preview" or "expired" ? CandidateNativeOperation.Copy | CandidateNativeOperation.Focus : throw new InvalidOperationException("native_scene");
     internal static void RequireReviewed(string scene)
     {
@@ -137,7 +141,7 @@ internal sealed class PositiveShortcutRoute
     internal static bool NativeEnter(string scene) => scene is "registered-enter" or "posted-enter";
     internal static async Task<TimeSpan> BeginAsync(string scene, Action post, Func<Task> ready, Func<Task> grant)
     {
-        if (!PositiveProtocol.Inserts(scene)) throw new InvalidOperationException("native_scene");
+        if (!PositiveProtocol.NeedsCapturedPopup(scene)) throw new InvalidOperationException("native_scene");
         if (IsRegistered(scene))
         {
             await ready();

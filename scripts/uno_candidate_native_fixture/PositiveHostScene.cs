@@ -65,7 +65,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         }
         await fixture.Lease.CommandAsync("empty_a", ct);
         await fixture.Lease.CommandAsync("empty_b", ct);
-        if (PositiveProtocol.Inserts(scene)) await InsertAsync(scene, id, ct);
+        if (PositiveProtocol.NeedsCapturedPopup(scene)) await InsertAsync(scene, id, ct);
         else if (scene == "copy")
         {
             // This is the actual host-tracked bounded Copy admission and main-row VM callback, not UI click evidence.
@@ -117,7 +117,7 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         host.Store.Load(); // Persisted usage, not merely a view-model counter.
         var expectedUsage = PositiveProtocol.Inserts(scene) ? 1 : 0;
         if (host.Store.Snippets.Single().Snippet.UsageCount != expectedUsage || broker.PasteCalls != expectedUsage ||
-            broker.CaptureCalls != expectedUsage || broker.CopyCommits != (scene == "copy" ? 1 : 0))
+            broker.CaptureCalls != (PositiveProtocol.NeedsCapturedPopup(scene) ? 1 : 0) || broker.CopyCommits != (PositiveProtocol.IsCopy(scene) ? 1 : 0))
             throw new InvalidOperationException("native_exact_once");
         await fixture.Lease.RequireQuietProtocolAsync(ct);
         broker.Close();
@@ -192,6 +192,14 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                     $"shown={boundary.PopupShown} target={host.Popup.Target == session.Target} popup_foreground={NativeFixtureOs.Foreground() == boundary.Popup!.NativeHandle} target_foreground={session.IsTargetForeground(session.Target)} quiet={NativeOwnedPopup.QuietAllInput()}");
                 throw;
             }
+            if (PositiveProtocol.CapturedCopy(scene))
+            {
+                await PopupCopyConsumer.RunAsync(scene, host, id, Program.ProfileRoot);
+                if (broker.CopyCommits != 1 || broker.PasteCalls != 0 || !PositiveNativeInput.VerifyCopiedSyntheticText())
+                    throw new InvalidOperationException("native_copy_readback");
+                await fixture.Lease.CommandAsync("empty_a", ct);
+                return;
+            }
             // Coordinator must arm BEFORE Enter or the insertion callback can possibly dispatch native keys.
             await BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_begin", ct);
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "keyboard_permit") throw new InvalidOperationException("native_keyboard_permit");
@@ -215,7 +223,10 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             else
             {
                 // Actual shared row/main callback wiring; intentionally NOT represented as native pointer/UI event proof.
-                var first = PositiveShortcutRoute.MainRow(scene) ? host.Snippets.InsertRowAsync(id) : host.Popup.InsertRowAsync(host.Popup.Items.Single(item => item.SnippetId == id));
+                var row = host.Popup.Items.Single(item => item.SnippetId == id);
+                var first = scene == "context-insert"
+                    ? PopupContextInsert.InvokeAsync(host.Popup, row, () => host.Gate.CanInsert, host.RunOperationAsync)
+                    : PositiveShortcutRoute.MainRow(scene) ? host.Snippets.InsertRowAsync(id) : host.Popup.InsertRowAsync(row);
                 await DuplicateBusyAsync(id);
                 await first.WaitAsync(TimeSpan.FromSeconds(8), ct);
             }

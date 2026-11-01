@@ -22,8 +22,7 @@ public sealed class CandidateUiBindingAuditTests
     public void FooterMenusDialogsAndPlacement_ConsumeLivePolicies()
     {
         Assert.Contains("HintLine(ViewModel.HintText, ViewModel.StatusText, ViewModel.IsPreview)", Read("Popup/PopupWindow.xaml"));
-        // Popup row Copy/Insert availability and live revocation are executed by
-        // EveryCandidateAction_ReachesRegisteredConsumerOrTruthfulRefusal.
+        Assert.Contains("IsEnabled = ViewModel.CanCopyRow(item)", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("IsEnabled = vm.CanCopyRow", Read("Pages/SnippetsPage.xaml.cs"));
         Assert.Contains("_lifecycle.Preview(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("_lifecycle.Reopen(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
@@ -45,6 +44,8 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("active hint", "", true));
         Assert.Equal("active hint", CandidateUiPolicy.HintLine("active hint", "", false));
         Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved", true));
-        Assert.Contains("if (CanInsert()) await RunOperation", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("IsEnabled = CanInsert()", Read("Popup/PopupWindow.xaml.cs"));
+        // Source supplement only; PositiveCopySceneTests drives this shared callback behaviorally.
+        Assert.Contains("await Platforms.Windows.AcceptanceNative.PopupContextInsert.InvokeAsync", Read("Popup/PopupWindow.xaml.cs"));
     }
 }

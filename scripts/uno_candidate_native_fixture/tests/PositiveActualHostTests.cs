@@ -11,7 +11,7 @@ namespace SmartSnippets.Uno;
 public sealed class FixtureHostCollection { }
 
 [Collection("Fixture host")]
-public sealed class PositiveActualHostTests
+public sealed partial class PositiveActualHostTests
 {
     [Theory]
     [InlineData("enter-callback")] [InlineData("popup-row")] [InlineData("main-row")]
@@ -186,15 +186,16 @@ public sealed class PositiveActualHostTests
 
     private sealed class Fixture : IDisposable
     {
-        private readonly string root = Path.Combine(Path.GetTempPath(), "ss019-positive-tests-" + Guid.NewGuid().ToString("N"));
+        internal readonly string root = Path.Combine(Path.GetTempPath(), "ss019-positive-tests-" + Guid.NewGuid().ToString("N"));
         internal readonly LateNativeOperations Broker = new();
         internal readonly Operations Operations = new();
         internal readonly Boundary Boundary;
         internal readonly CandidateNativeCapability Capability;
         internal readonly UnoAppHost Host;
-        internal Fixture(TimeProvider? clock = null)
+        internal Fixture(TimeProvider? clock = null, string? scene = null)
         {
-            Capability = new(Guid.NewGuid(), 123, 456, PositiveProtocol.Permissions("posted-enter") | CandidateNativeOperation.Copy,
+            Capability = new(Guid.NewGuid(), 123, 456, scene is null
+                    ? PositiveProtocol.Permissions("posted-enter") | CandidateNativeOperation.Copy : PositiveProtocol.Permissions(scene),
                 TimeSpan.FromSeconds(30), clock ?? TimeProvider.System, Broker);
             Boundary = new(Capability);
             Host = new(Boundary, () => CandidateProfile.OpenOwnedRoot(root));
@@ -229,7 +230,7 @@ public sealed class PositiveActualHostTests
         public RestoreStatus TryRestoreClipboard(IClipboardSnapshot snapshot) { Restores++; return RestoreStatus.Restored; }
         public void DiscardClipboardSnapshot(IClipboardSnapshot snapshot) => throw new InvalidOperationException();
         public bool IsAvailable => true;
-        public bool TrySetText(string text) => true;
+        public bool TrySetText(string text) { Text = text; return true; }
         public void SetText(string text) => _ = TrySetText(text);
         public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) { CopyWaits++; return Task.FromResult(true); }
         public bool TryFocusOwnedPopup() { PopupFocus++; return true; }

@@ -99,7 +99,7 @@ has been executed for this batch.
 After independent source review, parent acceptance of **both ordinary restore and
 worker-abort controls for the exact source/artifacts**, and a new exclusive operator
 slot, positive runner modes are `registered-enter`, `registered-row`, `registered-main`, `posted-enter`, `posted-row`, `posted-main`, `copy`,
-`preview`, `expired`. They additionally require `--row6-controls-verified` and
+`popup-copy`, `editor-copy`, `footer-copy`, `context-insert`, `preview`, `expired`. They additionally require `--row6-controls-verified` and
 `--operator-recopied-baseline`. These are explicit operator attestations, not proof
 of the controls or baseline contents. The private launch permit has a distinct exact
 positive token; ordinary controls keep their original pipe/permit/receipt protocol.
@@ -191,6 +191,25 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   exact synthetic CF_UNICODETEXT comparison only after successful commit; empty A/B,
   zero paste/capture/usage. Explicit Copy commits the synthetic clipboard content,
   not restoration of the baseline. Fresh operator recopy is mandatory afterward.
+- `popup-copy`, `editor-copy`, `footer-copy`: use the same reviewed Target018 foreground
+  grant, posted shortcut, exact captured A and ready-popup foreground checks as `posted-row`.
+  These are VM callback scenes, **not rendered control/menu or physical pointer proof**.
+  Popup Copy invokes `Popup.CopyRow`; editor Copy opens the real popup editor, injects
+  an owned SQLite UPDATE-abort trigger, attempts Save and requires a dirty, editable
+  recovery draft, then invokes its Copy command. The trigger is removed in `finally`;
+  the draft remains editable after Copy and is discarded without a successful save.
+  Footer Copy deliberately suspends gate admission for one insertion callback, requires
+  the truthful pre-dispatch error footer, resumes admission and invokes the footer Copy
+  command. No Copy scene arms keyboard mutation, swaps insertion clipboard or pastes.
+  Each requires exactly one capture and Copy commit, empty A/B and zero usage/paste.
+  Capture/Insert/Focus are scoped solely to showing the captured popup; these scenes
+  have no Input/Clipboard capability. The session's insertion wiring is present for
+  capture/shortcut admission, but mutation remains unarmed throughout.
+- `context-insert`: same posted preparation and keyboard permit as `posted-row`, but
+  invokes the menu's shared invocation-time eligibility/host-operation callback seam.
+  The rendered context menu and native pointer delivery are **NOT** exercised. Preview,
+  stale row, busy state and revoked native permission refuse before host operation;
+  successful insertion requires exact A, empty B, one paste/usage and no Copy.
 - `preview/expired`: active preview refuses main/popup Copy and Insert callbacks;
   selection closes without insertion. `expired` waits for the real monotonic capability
   deadline first, independently measuring beyond its entire lifetime, not artificial revocation.
@@ -217,6 +236,15 @@ This is not a keyboard recovery implementation.
 Do not wrap either lifetime in an outer timeout/kill, or terminate retained processes
 as a substitute for reviewed operator recovery. Ordinary restore/abort controls still
 use their original exact protocol and do not arm input.
+
+For every positive scene the independent Python parent snapshots the clipboard sequence
+before launch and after actual exit and opens the owned SQLite database with `mode=ro`
+and `query_only=ON`. It reads only usage counts: exactly one row with usage 1 for Insert,
+0 for Copy/preview/expiry. Epoch must change for Copy/Insert and remain identical for
+preview/expiry. Missing/extra rows, wrong usage, unavailable epoch or wrong mutation
+boundary fail. Fixed JSON fields `usageVerified` and `clipboardEpochChanged` report
+these checks without persisting text or queries. Copy never supplies a restorative
+baseline witness; a fresh operator recopy remains required.
 
 Success requires ordered guardian-ready/awaiting-A/result receipts, zero worker/
 fixture/guardian exit codes, actual host shutdown-complete log and privacy scan.

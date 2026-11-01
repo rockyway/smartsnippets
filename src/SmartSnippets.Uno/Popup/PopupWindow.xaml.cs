@@ -553,14 +553,15 @@ public sealed partial class PopupWindow : Window, IPopupHost
         var menu = new MenuFlyout { MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["SolidMenuFlyoutPresenterStyle"] };
         FlyoutSurface.KeepSolid(menu);
         var copy = new MenuFlyoutItem { Text = UiText.RowActionCopy, IsEnabled = ViewModel.CanCopyRow(item) };
-        bool CanInsert() => ViewModel.CanInsertFromMain && ViewModel.CanUseRowActions(item) && CanInsertNative?.Invoke() == true;
+        bool CanInsert() => Platforms.Windows.AcceptanceNative.PopupContextInsert.CanInvoke(ViewModel, item, () => CanInsertNative?.Invoke() == true);
         var insert = new MenuFlyoutItem { Text = UiText.RowActionInsert, IsEnabled = CanInsert() };
         var edit = new MenuFlyoutItem { Text = UiText.RowActionEdit };
         var delete = new MenuFlyoutItem { Text = UiText.RowActionDelete };
         copy.Click += async (_, _) => await RunCopy(() => ViewModel.CopyRow(item));
         insert.Click += async (_, _) =>
         {
-            if (CanInsert()) await RunOperation(() => ViewModel.InsertRowAsync(item));
+            await Platforms.Windows.AcceptanceNative.PopupContextInsert.InvokeAsync(ViewModel, item,
+                () => CanInsertNative?.Invoke() == true, RunOperation);
         };
         void RefreshActions(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
         {

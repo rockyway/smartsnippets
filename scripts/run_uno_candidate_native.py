@@ -1,5 +1,6 @@
 """Review-closed native fixture. NEVER wrap coordinator/guardian in a kill Job or timeout-kill."""
 import argparse
+from contextlib import closing
 from dataclasses import dataclass
 import hashlib
 import importlib.util
@@ -7,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -17,8 +19,11 @@ NATIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_SCENES_SOURCE_REVIEWED = False
 POSITIVE_INPUT_SOURCE_REVIEWED = False
 REGISTERED_SCENES = ('registered-enter', 'registered-row', 'registered-main')
-POSITIVE_SCENES = ('registered-enter', 'registered-row', 'registered-main', 'posted-enter', 'posted-row', 'posted-main', 'copy', 'preview', 'expired')
-INSERT_SCENES = ('registered-enter', 'registered-row', 'registered-main', 'posted-enter', 'posted-row', 'posted-main')
+COPY_SCENES = ('copy', 'popup-copy', 'editor-copy', 'footer-copy')
+CAPTURED_COPY_SCENES = COPY_SCENES[1:]
+INSERT_SCENES = ('registered-enter', 'registered-row', 'registered-main', 'posted-enter', 'posted-row', 'posted-main', 'context-insert')
+POSTED_SCENES = ('posted-enter', 'posted-row', 'posted-main', *CAPTURED_COPY_SCENES, 'context-insert')
+POSITIVE_SCENES = (*INSERT_SCENES, *COPY_SCENES, 'preview', 'expired')
 INPUT_CAPABILITY_SCENES = (*INSERT_SCENES, 'expired')
 POSITIVE_PERMIT = b'owned_positive_row6_verified_operator_recopied_baseline\n'
 PRIOR_POSITIVE_PERMIT = b'owned_positive_row6_verified_settled_baseline_v2\n'
@@ -162,7 +167,7 @@ def registered_operator_ready(private):
 def shortcut_proof(scene):
     if scene in REGISTERED_SCENES:
         return 'registered_os_shortcut_operator_delivered'
-    if scene in ('posted-enter', 'posted-row', 'posted-main'):
+    if scene in POSTED_SCENES:
         return 'registered_posted_callback_not_physical'
     if scene in ('restore', 'abort', 'owner-refusal', 'copy', 'preview', 'expired'):
         return 'none'
@@ -172,13 +177,29 @@ def shortcut_proof(scene):
 def action_proof(scene):
     if scene in ('registered-enter', 'posted-enter'):
         return 'native_enter'
-    if scene in ('registered-row', 'registered-main', 'posted-row', 'posted-main', 'copy', 'preview', 'expired'):
+    if scene in (*INSERT_SCENES, *COPY_SCENES, 'preview', 'expired'):
         return 'vm_callback'
     if scene == 'owner-refusal':
         return 'owned_hwnd_change_refusal'
     if scene in ('restore', 'abort'):
         return 'clipboard_control'
     raise ValueError('native_scene')
+
+
+def verify_positive_boundary(private, scene, before_epoch, after_epoch):
+    """Independent parent read-only persisted-usage query; no VM counters or content reads."""
+    if scene not in POSITIVE_SCENES:
+        raise ValueError('native_scene')
+    database = private / 'native-fixture-profile/smartsnippets.db'
+    helpers.owned_bytes(database, private, 134217728)  # Reject aliases/hardlinks before SQLite opens it.
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
+        connection.execute('PRAGMA query_only=ON')
+        rows = connection.execute('SELECT usage_count FROM snippets').fetchall()
+    usage = 1 if scene in INSERT_SCENES else 0
+    changed = scene in (*INSERT_SCENES, *COPY_SCENES)
+    if rows != [(usage,)] or not before_epoch or not after_epoch or (before_epoch != after_epoch) != changed:
+        raise ValueError('native_usage_or_epoch')
+    return {'usageVerified': True, 'clipboardEpochChanged': changed}
 
 
 def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None, registered=False):
@@ -378,6 +399,9 @@ def main(argv=None, *, prior_restorative_session=None):
             print('Operator: wait for operator_ready, then press Ctrl+Alt+Shift+F11 once and release all input. Do not click or type before that receipt.', flush=True)
         elif positive:
             print('Operator: select owned Target A after guardian-ready, then release all input. One transaction only; freshly recopy baseline before another session.', flush=True)
+        before_epoch = desktop.user.GetClipboardSequenceNumber()
+        if not before_epoch:
+            raise ValueError('native_clipboard_epoch')
         paths = [private / 'stdout.log', private / 'stderr.log']
         with paths[0].open('xb') as out, paths[1].open('xb') as err:
             # Deliberately no WindowsJob, communicate(timeout), process-tree termination or outer watchdog.
@@ -390,12 +414,14 @@ def main(argv=None, *, prior_restorative_session=None):
                     'native_result=owner_refusal_restored' if args.scene == 'owner-refusal' else
                     'native_result=regular_restored' if args.scene == 'restore' else 'native_result=abort_restored').encode()
         verify_result(private, data, expected, positive)
+        boundary = verify_positive_boundary(private, args.scene, before_epoch,
+            desktop.user.GetClipboardSequenceNumber()) if positive else {}
         print(json.dumps({'result': 'positive_scene_settled' if positive else 'clipboard_control_settled', 'scene': args.scene,
                           'privateEvidenceToken': f'{private.parent.name}/{private.name}', 'sourceSha256': source_fingerprint(),
                           'positiveInputImplemented': positive and args.scene in INSERT_SCENES,
                           'shortcutProof': shortcut_proof(args.scene),
                           'actionProof': action_proof(args.scene),
-                          'operatorReCopyRequiredBeforeNextSession': True}))
+                          'operatorReCopyRequiredBeforeNextSession': True, **boundary}))
         if args.scene in ('restore', 'abort', 'owner-refusal', *INSERT_SCENES):
             return RestorativeSessionObservation(private, args.scene, source_fingerprint(), args.sha256.lower(),
                 args.target_sha256.lower(), args.guardian_sha256.lower(), process.returncode, data[1],
