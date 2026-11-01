@@ -22,6 +22,15 @@ public partial class App : Application
         // Bootstrap must cancel and clean its target before the coordinator's 35s deadline.
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(PositiveProtocol.IsPositive(Program.Configuration[0]) ? 65 : 25));
         var ct = deadline.Token;
+        var startupSamples = new List<string>();
+        var diagnostics = new NativeStartupDiagnostics(NativeFixtureOs.Foreground,
+            window => { NativeFixtureOs.GetWindowThreadProcessId(window, out var pid); return pid; },
+            (uint)Environment.ProcessId, () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0);
+        void FlushSamples()
+        {
+            foreach (var sample in startupSamples) AppLog.Info("native_startup_foreground", sample);
+            startupSamples.Clear();
+        }
         try
         {
             NativeStage.Reset();
@@ -34,6 +43,7 @@ public partial class App : Application
             // Target creates its A/B windows with SW_SHOWNOACTIVATE. Independently observe foreground across launch.
             var foreground = NativeFixtureOs.Foreground();
             NativeStage.Reach("fixture_start");
+            startupSamples.Add(diagnostics.Sample("target_launch"));
             fixture = await AcceptanceFixture.StartAsync(TargetNativeRoot(config[1]), config[1], config[2], ct);
             var targetHandle = NativeFixtureOs.DuplicateForJob(fixture.Child.SafeHandle, Program.CoordinatorHandle);
             await BootstrapProtocol.WriteAsync(Program.Responses, $"fixture_owned {targetHandle}", ct);
@@ -49,16 +59,21 @@ public partial class App : Application
             NativeStage.Reach("host_start");
             await host.StartAsync(true, Program.InitialOptions);
             NativeStage.Reach("host_ready");
-            if (boundary.Popup is null || boundary.Popup.NativeHandle == 0 || boundary.Main is null || boundary.Main.NativeHandle == 0 || host.Store is null || host.Popup is null || host.Gate.CanInsert)
+            startupSamples.Add(diagnostics.Sample("host_ready"));
+            FlushSamples();
+            if (!NativeHostReadiness.Check(() => boundary.Popup is not null, () => boundary.Popup!.NativeHandle != 0,
+                () => boundary.Main is not null, () => boundary.Main!.NativeHandle != 0,
+                () => host.Store is not null, () => host.Popup is not null, () => !host.Gate.CanInsert,
+                () => NativeFixtureOs.Foreground() == foreground,
+                reason => AppLog.Info("native_host_readiness", $"reason={reason}")))
                 throw new InvalidOperationException("native_host_ready");
-            if (NativeFixtureOs.Foreground() != foreground) throw new InvalidOperationException("native_host_activation");
             NativeStage.Reach("session_create");
-            session = NativeAcceptanceFactory.Create(fixture, "a", boundary.Popup.NativeHandle, config[3], config[4],
+            session = NativeAcceptanceFactory.Create(fixture, "a", boundary.Popup!.NativeHandle, config[3], config[4],
                 DateTimeOffset.UtcNow.AddSeconds(55), isPositive && (PositiveProtocol.NeedsCapturedPopup(config[0]) || config[0] == "expired"), isPositive && !PositiveProtocol.Inserts(config[0]),
                 operation => PositiveNativeMutation.Permits(operation == AcceptanceOperation.Capture, lease, isPositive,
                     operation == AcceptanceOperation.ClipboardControl,
                     operation is AcceptanceOperation.Input or AcceptanceOperation.Clipboard, positive?.NativeMutationArmed == true),
-                allowClipboardControl: !isPositive, ownedMainWindow: isPositive ? boundary.Main.NativeHandle : 0, knownPriorToken: Program.KnownPriorToken,
+                allowClipboardControl: !isPositive, ownedMainWindow: isPositive ? boundary.Main!.NativeHandle : 0, knownPriorToken: Program.KnownPriorToken,
                 stage: NativeStage.Reach);
             NativeStage.Reach("broker_bind");
             broker.Bind(session, session.SessionId);
@@ -72,7 +87,7 @@ public partial class App : Application
             if (isPositive)
             {
                 // RunAsync reads the distinct post-guardian/post-Job lease; binding never admits.
-                positive = new(host, boundary, fixture, session, broker, capability, () => lease = true, foreground);
+                positive = new(host, boundary, fixture, session, broker, capability, () => lease = true, foreground, diagnostics);
                 await positive.RunAsync(config[0], ct);
                 lease = false;
                 await host.ExitAsync();
@@ -145,6 +160,7 @@ public partial class App : Application
             positive?.CloseNativeMutationAdmission();
             // Pre-host stages fail before the host opens app.log; open only the owned profile's log directory.
             if (NativeStage.BeforeHostLog) AppLog.Initialize(Path.Combine(Program.ProfileRoot, "logs"));
+            FlushSamples();
             AppLog.Error(NativeStage.FailureEvent, ex); // Fixed stage token + exception type/HResult only.
             lease = false; broker.Close();
             if (positive?.Keyboard.Armed == true)

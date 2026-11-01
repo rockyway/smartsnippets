@@ -180,12 +180,20 @@ def system_powershell():
     return Path(value.value) / 'WindowsPowerShell/v1.0/powershell.exe'
 
 
+class InputRefused(ValueError):
+    def __init__(self, subreason):
+        if subreason not in ('held', 'epoch_changed', 'idle'):
+            raise ValueError('input_query_failed')
+        super().__init__('input')
+        self.input_subreason = subreason
+
+
 def require_all_input_up(desktop):
     user = desktop.user
     user.GetAsyncKeyState.argtypes = [startup.C.c_int]
     user.GetAsyncKeyState.restype = startup.C.c_short
     if any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 256)):
-        raise ValueError('input')
+        raise InputRefused('held')
 
 
 def quiet_input(desktop, expected=None):
@@ -200,8 +208,10 @@ def quiet_input(desktop, expected=None):
     kernel = startup.C.WinDLL('kernel32')
     kernel.GetTickCount.restype = startup.W.DWORD
     idle = (kernel.GetTickCount() - state.time) & 0xffffffff
-    if (expected is not None and state.time != expected) or idle < 1500:
-        raise ValueError('input')
+    if expected is not None and state.time != expected:
+        raise InputRefused('epoch_changed')
+    if idle < 1500:
+        raise InputRefused('idle')
     require_all_input_up(desktop)
     return state.time
 

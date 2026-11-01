@@ -299,6 +299,23 @@ boundary fail. Fixed JSON fields `usageVerified` and `clipboardEpochChanged` rep
 these checks without persisting text or queries. Copy never supplies a restorative
 baseline witness; a fresh operator recopy remains required.
 
+nd-04 adds read-only `native_startup_foreground` records (see research 048).
+Fixed phases are `target_launch` (before fixture bootstrap, not an atomic process-create
+observation), `host_ready`, `preparation_start`, `before_focus`, `after_focus`.
+Each records only `relation=none|owned_a|owned_b|launcher|foreign`,
+`launcher_foreground=True|False` and a worker-local increasing `sample_order`.
+The launcher is the candidate worker which starts Target018, not the Python parent
+or coordinator. A foreground sample is not proof of Windows foreground eligibility.
+The launch record is buffered until the host log opens; samples are not atomic with
+subsequent OS calls and do not identify a foreign process or explain Windows denial.
+`native_host_readiness reason=` records the first failing existing predicate (or
+`ready`), separating missing host resources, premature insertion admission and
+`foreground_changed`. No stage or protocol receipt changes and no focus retry.
+The UI runner retains `reason=input` and adds allowlisted
+`inputSubreason=held|epoch_changed|idle` in its failure JSON. All guards stay intact.
+These diagnostics do not fix or accept repeated-scene activation. All source review
+gates remain false; a new reviewed screen slot is required for runtime evidence.
+
 The global ERROR-log gate remains closed: only `editor-copy` requires and permits
 exactly one timestamped fixed line, `ERROR store_write_failed op=update_snippet
 error=SqliteException sqlite=19 hresult=0x80004005`. Any added field, content, raw

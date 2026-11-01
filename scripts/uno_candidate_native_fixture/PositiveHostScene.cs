@@ -11,7 +11,7 @@ namespace SmartSnippets.Uno;
 
 /// <summary>Actual host/store/VMs and native surfaces. Posted WM_HOTKEY is callback proof, NOT physical shortcut proof.</summary>
 internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary boundary, AcceptanceFixture fixture,
-    NativeAcceptanceSession session, LateNativeOperations broker, CandidateNativeCapability capability, Action admitSession, nint originalForeground)
+    NativeAcceptanceSession session, LateNativeOperations broker, CandidateNativeCapability capability, Action admitSession, nint originalForeground, NativeStartupDiagnostics diagnostics)
 {
     internal readonly PositiveKeyboardLifetime Keyboard = new();
     private readonly PositiveNativeMutation mutation = new();
@@ -48,7 +48,8 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                 {
                     var result = await OwnedTargetPreparation.PrepareAsync(new OwnedPreparationWindows(fixture, session, capability),
                         () => new OwnedPreparationAutomation(), originalForeground, ready.WindowA, ready.EditorA, ct,
-                        reason => SmartSnippets.Core.Logging.AppLog.Info("owned_preparation_admission", $"reason={reason}"));
+                        reason => SmartSnippets.Core.Logging.AppLog.Info("owned_preparation_admission", $"reason={reason}"),
+                        phase => SmartSnippets.Core.Logging.AppLog.Info("native_startup_foreground", diagnostics.Sample(phase)));
                     SmartSnippets.Core.Logging.AppLog.Info("owned_target_preparation", $"reason={result}");
                     if (result is not (OwnedPreparationResult.Prepared or OwnedPreparationResult.AlreadyA))
                         throw new InvalidOperationException("native_owned_preparation_refused");

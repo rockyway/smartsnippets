@@ -211,6 +211,28 @@ public sealed class OwnedTargetPreparationTests
         Assert.Equal(4000, os.Milliseconds); Assert.Equal(0, os.EditorCommands);
     }
 
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task PreparationSamplesSurroundExactlyOneFocusEvenWhenForegroundIsRefused(bool refuse)
+    {
+        var os = new Os();
+        var samples = new List<string>();
+        var diagnostics = new NativeStartupDiagnostics(() => os.Foreground, _ => 20, 10, () => 2, () => 4);
+        var com = new Com(os);
+        com.FocusAction = () => { samples.Add("focus"); if (refuse) os.Foreground = 1; };
+        Assert.Equal(refuse ? OwnedPreparationResult.ForegroundRefused : OwnedPreparationResult.Prepared,
+            await OwnedTargetPreparation.PrepareAsync(os, () => com, 1, 2, 3, CancellationToken.None,
+                sample: phase => samples.Add(diagnostics.Sample(phase))));
+        Assert.Equal(new[] {
+            "phase=preparation_start relation=foreign launcher_foreground=False sample_order=1",
+            "phase=before_focus relation=foreign launcher_foreground=False sample_order=2",
+            "focus",
+            $"phase=after_focus relation={(refuse ? "foreign" : "owned_a")} launcher_foreground=False sample_order=3"
+        }, samples);
+        Assert.Equal(1, com.Focuses);
+        Assert.Equal(refuse ? 0 : 1, os.EditorCommands);
+    }
+
     private static Task<OwnedPreparationResult> Prepare(Os os, Func<IOwnedPreparationAutomation> com) =>
         OwnedTargetPreparation.PrepareAsync(os, com, 1, 2, 3, CancellationToken.None);
     private sealed class Os : IOwnedPreparationOs

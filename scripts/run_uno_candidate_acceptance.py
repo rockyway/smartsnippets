@@ -245,7 +245,11 @@ def record_failure(private, error):
     reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:
-            json.dump({'reason': reason}, file)
+            record = {'reason': reason}
+            subreason = getattr(error, 'input_subreason', None)
+            if reason == 'input' and subreason in ('held', 'epoch_changed', 'idle'):
+                record['inputSubreason'] = subreason
+            json.dump(record, file)
     except OSError:
         pass
 

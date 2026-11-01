@@ -12,6 +12,51 @@ SPEC.loader.exec_module(s)
 
 
 class UiManagementTests(unittest.TestCase):
+    def test_input_subreasons_from_real_guards_and_persisted_allowlist(self):
+        import json
+        desktop = Mock()
+        desktop.user.GetAsyncKeyState.return_value = 0
+        def epoch(pointer):
+            pointer._obj.time = 100
+            return True
+        desktop.user.GetLastInputInfo.side_effect = epoch
+        kernel = Mock()
+        kernel.GetTickCount.return_value = 2000
+        cases = [('held', None, 2000, True), ('epoch_changed', 99, 2000, False),
+                 ('idle', 100, 1599, False)]
+        for expected, initial, now, held in cases:
+            with self.subTest(expected=expected), patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
+                kernel.GetTickCount.return_value = now
+                desktop.user.GetAsyncKeyState.return_value = 0x8000 if held else 0
+                with self.assertRaises(s.InputRefused) as caught:
+                    s.quiet_input(desktop, initial)
+                self.assertEqual('input', str(caught.exception))
+                self.assertEqual(expected, caught.exception.input_subreason)
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    s.base.record_failure(root, caught.exception)
+                    self.assertEqual({'reason': 'input', 'inputSubreason': expected},
+                                     json.loads(next(root.glob('observer-*-failure.json')).read_text()))
+        desktop.user.GetAsyncKeyState.return_value = 0
+        kernel.GetTickCount.return_value = 1600  # original inclusive 1500ms boundary
+        with patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
+            self.assertEqual(100, s.quiet_input(desktop, 100))
+            desktop.user.GetLastInputInfo.return_value = False
+            desktop.user.GetLastInputInfo.side_effect = None
+            with self.assertRaisesRegex(ValueError, '^input_query_failed$'):
+                s.quiet_input(desktop, 100)
+
+    def test_input_subreason_never_persists_arbitrary_text(self):
+        import json
+        for reason, subreason in [('input', 'private content'), ('geometry', 'held')]:
+            error = ValueError(reason)
+            error.input_subreason = subreason
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                s.base.record_failure(root, error)
+                self.assertEqual({'reason': reason},
+                                 json.loads(next(root.glob('observer-*-failure.json')).read_text()))
+
     def test_picker_close_race_only_accepts_authenticated_exact_handle(self):
         desktop = Mock()
         user = desktop.user

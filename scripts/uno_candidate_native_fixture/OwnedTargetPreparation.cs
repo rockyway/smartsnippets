@@ -29,8 +29,9 @@ internal static class OwnedTargetPreparation
 
     internal static async Task<OwnedPreparationResult> PrepareAsync(IOwnedPreparationOs os,
         Func<IOwnedPreparationAutomation> automation, nint originalForeground, nint windowA, nint editorA, CancellationToken ct,
-        Action<string>? initialReceipt = null)
+        Action<string>? initialReceipt = null, Action<string>? sample = null)
     {
+        sample?.Invoke("preparation_start");
         bool Guard() => !ct.IsCancellationRequested && os.Permitted() && os.PinnedIdentity() && os.VisibleDesktop();
         bool Initial() => Guard() && originalForeground != 0 &&
             (os.Foreground == originalForeground || os.Foreground == windowA) && os.QuietAllInput();
@@ -74,7 +75,9 @@ internal static class OwnedTargetPreparation
                 // Element resolution may run provider code: repeat every guard and capture epoch right at SetFocus.
                 if (!Initial() || os.Foreground != originalForeground || !os.TryInputEpoch(out epoch))
                     return OwnedPreparationResult.Refused;
+                sample?.Invoke("before_focus");
                 var focused = client.SetFocus(); // Exactly once; a failure never falls back to manual activation.
+                sample?.Invoke("after_focus");
                 if (!Guard()) return OwnedPreparationResult.Refused;
                 if (!focused) return OwnedPreparationResult.AutomationFailed;
                 if (os.Foreground != windowA) return OwnedPreparationResult.ForegroundRefused;
