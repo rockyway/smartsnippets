@@ -62,12 +62,12 @@ internal sealed partial class NativeShellScene(UnoAppHost host, FixtureBoundary 
             if (dpi == 0) throw new InvalidOperationException("shell_dpi");
             var x = (int)Math.Round(point.X * dpi / 96); var y = (int)Math.Round(point.Y * dpi / 96);
             if (x is < 0 or > 32767 || y is < 0 or > 32767) throw new InvalidOperationException("shell_pointer_bounds");
-            PostOwned(hwnd, 0x0200, 0, (y << 16) | x);
+            PostOwned(hwnd, () => WinRT.Interop.WindowNative.GetWindowHandle(popup), 0x0200, 0, (y << 16) | x);
         }
         else
         {
-            PostOwned(hwnd, 0x0200, 0, (1 << 16) | 1); // Leave the label, then leave the window.
-            PostOwned(hwnd, 0x02A3, 0, 0); // WM_MOUSELEAVE, not input synthesis.
+            PostOwned(hwnd, () => WinRT.Interop.WindowNative.GetWindowHandle(popup), 0x0200, 0, (1 << 16) | 1); // Leave the label, then leave the window.
+            PostOwned(hwnd, () => WinRT.Interop.WindowNative.GetWindowHandle(popup), 0x02A3, 0, 0); // WM_MOUSELEAVE, not input synthesis.
         }
         await Wait(() => HoverDetailsSurface.HasVisibleContent(root) == open);
         RequireUnchanged();
@@ -95,7 +95,7 @@ internal sealed partial class NativeShellScene(UnoAppHost host, FixtureBoundary 
         window.MessageReceived += Callback;
         try
         {
-            PostOwned(WindowHandle(window), Seam, (nuint)code, 0);
+            PostOwned(WindowHandle(window), () => WindowHandle(window), Seam, (nuint)code, 0);
             await Wait(() => delivered);
             // Host callbacks enqueue navigation/exit on the actual dispatcher.
             if (command != "exit") await Wait(() => boundary.Native.MainWindow?.CurrentPage == (command == "settings" ? PageKind.Settings : PageKind.Snippets)
@@ -106,13 +106,14 @@ internal sealed partial class NativeShellScene(UnoAppHost host, FixtureBoundary 
     public async Task CloseMain()
     {
         var main = boundary.Native.MainWindow ?? throw new InvalidOperationException("shell_main");
-        PostOwned(WinRT.Interop.WindowNative.GetWindowHandle(main), 0x0010, 0, 0);
+        PostOwned(WinRT.Interop.WindowNative.GetWindowHandle(main), () => WinRT.Interop.WindowNative.GetWindowHandle(main), 0x0010, 0, 0);
         await Wait(() => main.IsHidden);
     }
     public void RequireHidden()
     {
         if (boundary.Native.MainWindow is not { IsHidden: true } || boundary.Message is null || boundary.TrayDisposed)
             throw new InvalidOperationException("shell_background");
+        ShellMessageState.RequireLive(WindowHandle(boundary.Message), handle => IsWindow(handle) != 0);
     }
     public void RequirePage(PageKind page)
     {
@@ -133,13 +134,16 @@ internal sealed partial class NativeShellScene(UnoAppHost host, FixtureBoundary 
         if (host.Gate.IsAvailable || host.Store.Snippets.Any(row => row.Snippet.UsageCount != 0))
             throw new InvalidOperationException("shell_mutation");
     }
-    private static unsafe nint WindowHandle(MessageWindow window) => (nint)window.Handle.Value;
-    private static void PostOwned(nint hwnd, uint message, nuint w, nint l)
+    internal static unsafe nint WindowHandle(MessageWindow window) => (nint)window.Handle.Value;
+    internal static void RequireMessageDisposed(MessageWindow? window, nint retired)
     {
-        GetWindowThreadProcessId(hwnd, out var pid);
-        if (pid != Environment.ProcessId || IsWindow(hwnd) == 0 || PostMessage(hwnd, message, w, l) == 0)
-            throw new InvalidOperationException("shell_post");
+        if (window is null) throw new InvalidOperationException("fixture_cleanup_failed");
+        ShellMessageState.RequireDisposed(WindowHandle(window), retired, handle => IsWindow(handle) != 0);
     }
+    private static void PostOwned(nint hwnd, Func<nint> expected, uint message, nuint w, nint l) =>
+        ShellOwnedPost.Run(hwnd, expected, (uint)Environment.ProcessId,
+            handle => { var thread = GetWindowThreadProcessId(handle, out var pid); return (thread, pid); },
+            handle => IsWindow(handle) != 0, () => PostMessage(hwnd, message, w, l) != 0);
     private static async Task Wait(Func<bool> ready)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);

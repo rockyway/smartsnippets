@@ -8,7 +8,7 @@ public sealed class ShellSceneTests
     [Theory]
     [InlineData("preview-options", "shell-ready,preview,shell-preview,unchanged,shell-verified,exit")]
     [InlineData("hover", "shell-ready,preview,hover-open,shell-hover-open,hover-closed,shell-hover-closed,unchanged,shell-verified,exit")]
-    [InlineData("tray", "shell-ready,open,page-Snippets,shell-tray-open,settings,page-Settings,shell-tray-settings,unchanged,shell-verified,exit")]
+    [InlineData("tray", "shell-ready,close,hidden,open,page-Snippets,shell-tray-open,settings,page-Settings,shell-tray-settings,unchanged,shell-verified,exit")]
     [InlineData("close-background", "shell-ready,close,hidden,shell-background,open,page-Snippets,shell-reopened,unchanged,shell-verified,exit")]
     [InlineData("message-window", "shell-ready,cycles-20,shell-message-cycles,unchanged,shell-verified,exit")]
     [InlineData("dpi", "shell-ready,dpi,shell-dpi,unchanged,shell-verified,exit")]
@@ -72,10 +72,23 @@ public sealed class ShellSceneTests
         Assert.Equal(0, fixture.Boundary.Exits);
     }
 
+    [Fact]
+    public async Task DisconnectedTrayOpenCannotPassInitialVisibleSnippetsState()
+    {
+        using var fixture = new HostFixture(); await fixture.Start();
+        Assert.True(fixture.Boundary.Main.Visible);
+        var surface = new Surface(fixture) { SkipOpen = true };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ShellScene.Run("tray", surface));
+        Assert.Contains("hidden", surface.Events);
+        Assert.DoesNotContain("shell-tray-open", surface.Events);
+        Assert.Equal(0, fixture.Boundary.Exits);
+    }
+
     private sealed class Surface(HostFixture fixture) : IShellScene
     {
         internal readonly List<string> Events = [];
         internal string? Fail;
+        internal bool SkipOpen;
         private void Record(string value)
         {
             Events.Add(value);
@@ -98,7 +111,7 @@ public sealed class ShellSceneTests
             Record(command);
             switch (command)
             {
-                case "open": fixture.Boundary.TrayOpen!(); break;
+                case "open": if (!SkipOpen) fixture.Boundary.TrayOpen!(); break;
                 case "settings": fixture.Boundary.TraySettings!(); break;
                 case "exit": fixture.Boundary.TrayExit!(); break;
                 default: throw new InvalidOperationException();
@@ -111,8 +124,8 @@ public sealed class ShellSceneTests
         public void RequirePage(PageKind page)
         {
             Record("page-" + page);
-            Assert.Equal(page, fixture.Boundary.Main.Current);
-            Assert.True(fixture.Boundary.Main.Visible);
+            if (fixture.Boundary.Main.Current != page || !fixture.Boundary.Main.Visible)
+                throw new InvalidOperationException("shell_navigation");
         }
         public void RequireHidden()
         {

@@ -31,9 +31,37 @@ internal static class ShellMessageCycles
         {
             nint retired;
             using (var window = create()) retired = window.Handle;
-            if (alive(retired) || resources() != before)
+            if (retired == 0 || alive(retired) || resources() != before)
                 throw new InvalidOperationException("shell_message_leak");
         }
+    }
+}
+
+internal static class ShellOwnedPost
+{
+    internal static void Run(nint hwnd, Func<nint> expected, uint ownedPid,
+        Func<nint, (uint Thread, uint Pid)> pidOf, Func<nint, bool> alive, Func<bool> post)
+    {
+        if (hwnd == 0 || hwnd != expected() || ownedPid == 0)
+            throw new InvalidOperationException("shell_post");
+        var identity = pidOf(hwnd);
+        if (identity.Thread == 0 || identity.Pid == 0 || identity.Pid != ownedPid || !alive(hwnd))
+            throw new InvalidOperationException("shell_post");
+        // Small check-to-post TOCTOU remains: Win32 cannot atomically authenticate and post.
+        // Re-read the retained object's handle; never adopt another same-PID HWND.
+        if (hwnd != expected() || !post()) throw new InvalidOperationException("shell_post");
+    }
+}
+
+internal static class ShellMessageState
+{
+    internal static void RequireLive(nint handle, Func<nint, bool> alive)
+    {
+        if (handle == 0 || !alive(handle)) throw new InvalidOperationException("shell_background");
+    }
+    internal static void RequireDisposed(nint current, nint retired, Func<nint, bool> alive)
+    {
+        if (current != 0 || retired == 0 || alive(retired)) throw new InvalidOperationException("fixture_cleanup_failed");
     }
 }
 
@@ -61,6 +89,8 @@ internal static class ShellScene
                 await surface.Checkpoint("shell-hover-closed");
                 break;
             case "tray":
+                // Open must change visibility, not pass on the initial visible Snippets page.
+                await surface.CloseMain(); surface.RequireHidden();
                 await surface.Tray("open"); surface.RequirePage(PageKind.Snippets);
                 await surface.Checkpoint("shell-tray-open");
                 await surface.Tray("settings"); surface.RequirePage(PageKind.Settings);

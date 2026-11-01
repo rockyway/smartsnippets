@@ -23,6 +23,15 @@ class ShellTests(unittest.TestCase):
                     s.main()
                 validate.assert_not_called()
 
+    def test_review_open_coexistence_refuses_before_artifact_validation(self):
+        with patch.object(s, 'FULL_HOST_OBSERVER_REVIEWED', True), patch.object(s.sys, 'platform', 'win32'), \
+                patch.object(s.sys, 'argv', ['observer', '--scene', 'coexistence', '--executable', 'PRIVATE.exe',
+                    '--sha256', 'a' * 64, '--authorized-screen-slot', '--work-area', '-1920', '1506', '0', '2586']), \
+                patch.object(s, 'validate_fixture') as validate, patch.object(s.startup, 'repo_module') as modules:
+            with self.assertRaisesRegex(ValueError, '^shell_legacy_isolation_unavailable$'):
+                s.main()
+            validate.assert_not_called(); modules.assert_not_called()
+
     def test_coexistence_and_unknown_never_launch_or_open_profiles(self):
         for scene in ('coexistence', 'PRIVATE payload'):
             with patch.object(s.subprocess, 'Popen') as launch, patch.object(s.startup, 'validate_private') as validate:
@@ -51,13 +60,16 @@ class ShellTests(unittest.TestCase):
                 with self.subTest(scene=scene, fail=fail), tempfile.TemporaryDirectory() as tmp:
                     root = Path(tmp); events = []
                     desktop = Mock(); desktop.snapshot.return_value = (11, 22)
+                    desktop.visible_windows.return_value = [201]
+                    desktop.user.IsWindowVisible.return_value = True
+                    desktop.user.GetDpiForWindow.return_value = 144
                     process = Mock(pid=123); process.poll.return_value = None if fail else 0
                     def launch(*args, **kwargs):
                         self.assertEqual((scene + '\n').encode(), (root / 'fixture-shell-scene-permit').read_bytes())
                         events.append('launch'); return process
                     def observe(*args, **kwargs):
                         events.append(args[2])
-                        self.assertIsNotNone(kwargs['frame_check'])
+                        kwargs['frame_check'](args[0].pid)
                         if args[2] == 'shell-background': self.assertEqual(0, kwargs['maximum_windows'])
                         if fail: raise ValueError('geometry')
                     with patch.object(s.startup, 'require_job_membership', side_effect=lambda: events.append('job')), \
@@ -149,6 +161,100 @@ class ShellTests(unittest.TestCase):
                 process = Mock(pid=123); process.wait.return_value = 0
                 with self.assertRaisesRegex(ValueError, '^privacy$'):
                     s.require_graceful(process, root)
+
+
+class ShellFrameTests(unittest.TestCase):
+    def run_frame_case(self, failure=None, exit_loop=False):
+        # Load the actual quiet_input implementation; all Win32 entrypoints below are stubs.
+        guard = s.startup.repo_module('shell_frame_input_tests', 'scripts/run_uno_candidate_ui.py')
+        guard.quiet_input = Mock(wraps=guard.quiet_input)
+        armed = False
+        polls = 0
+        desktop = Mock(); desktop.snapshot.return_value = (11, 22)
+        desktop.visible_windows.return_value = [201, 202]
+        desktop.user.IsWindowVisible.side_effect = lambda hwnd: hwnd == 201
+        desktop.user.GetDpiForWindow.side_effect = lambda hwnd: 192 if hwnd == 202 or (armed and failure == 'window_dpi') else 144
+        desktop.user.MonitorFromRect.return_value = 9
+        def monitor_info(handle, target):
+            info = target._obj
+            info.flags = 1 if armed and failure == 'primary' else 0
+            info.work.left, info.work.top, info.work.right, info.work.bottom = -1920, 1506, 0, 2586
+            return True
+        desktop.user.GetMonitorInfoW.side_effect = monitor_info
+        def last_input(target):
+            target._obj.time = 200 if armed and failure == 'epoch' else 100
+            return True
+        desktop.user.GetLastInputInfo.side_effect = last_input
+        desktop.user.GetAsyncKeyState.side_effect = lambda key: 0x8000 if armed and failure == 'held' and key == 17 else 0
+        shcore, kernel = Mock(), Mock()
+        kernel.GetTickCount.return_value = 10000
+        def monitor_dpi(handle, kind, x, y):
+            x._obj.value = y._obj.value = 192 if armed and failure == 'monitor_dpi' else 144
+            return 0
+        shcore.GetDpiForMonitor.side_effect = monitor_dpi
+        def win_dll(name):
+            return {'shcore': shcore, 'kernel32': kernel}[name]
+        process = Mock(pid=123)
+        def poll():
+            nonlocal polls, armed
+            polls += 1
+            if exit_loop:
+                armed = True
+            return None if failure or polls == 1 else 0
+        process.poll.side_effect = poll
+        phases = []
+        def observe(*args, **kwargs):
+            nonlocal armed
+            phases.append(args[2])
+            if not exit_loop:
+                armed = True
+            kwargs['frame_check'](process.pid)  # Execute the real worker closure, never a substitute.
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(s.startup, 'require_job_membership'), patch.object(s.startup, 'validate_private'), \
+                patch.object(s, 'validate_fixture', return_value=Path('fixed.exe')), \
+                patch.object(s.startup, 'repo_module', side_effect=[Mock(), guard]), \
+                patch.object(s.startup, 'Desktop', return_value=desktop), \
+                patch.object(s.startup.C, 'WinDLL', side_effect=win_dll, create=True), \
+                patch.object(s.subprocess, 'Popen', return_value=process), \
+                patch.object(s, 'observe_phase', side_effect=observe), \
+                patch.object(s, 'require_graceful') as graceful, patch.object(s.startup, 'stop_app') as stop, \
+                patch.object(s.time, 'sleep'), patch('builtins.print'):
+            reasons = {'epoch': 'input', 'held': 'input', 'window_dpi': 'shell_window_dpi',
+                       'monitor_dpi': 'shell_monitor_dpi', 'primary': 'shell_primary_monitor'}
+            if failure:
+                with self.assertRaisesRegex(ValueError, '^' + reasons[failure] + '$') as error:
+                    s.worker(None, None, Path(tmp), (-1920, 1506, 0, 2586), io.BytesIO(s.startup.PERMIT), 'dpi')
+                if failure in ('epoch', 'held'):
+                    self.assertEqual('epoch_changed' if failure == 'epoch' else 'held', error.exception.input_subreason)
+                graceful.assert_not_called(); stop.assert_called_once_with(process)
+            else:
+                s.worker(None, None, Path(tmp), (-1920, 1506, 0, 2586), io.BytesIO(s.startup.PERMIT), 'dpi')
+                graceful.assert_called_once(); stop.assert_not_called()
+                # Three phase frames PLUS a frame while the process is still exiting.
+                self.assertEqual(len(s.scene_phases('dpi')) + 1, desktop.visible_windows.call_count)
+                desktop.user.GetDpiForWindow.assert_any_call(201)
+                self.assertNotIn(unittest.mock.call(202), desktop.user.GetDpiForWindow.call_args_list)
+            self.assertEqual(unittest.mock.call(desktop), guard.quiet_input.call_args_list[0])
+            self.assertTrue(all(call == unittest.mock.call(desktop, 100) for call in guard.quiet_input.call_args_list[1:]))
+            desktop.close.assert_called_once()
+            if exit_loop:
+                self.assertEqual([phase for phase, _ in s.scene_phases('dpi')], phases)
+                self.assertEqual(len(phases) + 3, guard.quiet_input.call_count)
+            elif failure:
+                self.assertEqual(['shell-ready'], phases)
+
+    def test_real_phase_frame_refuses_epoch_held_window_monitor_dpi_and_primary_changes(self):
+        for failure in ('epoch', 'held', 'window_dpi', 'monitor_dpi', 'primary'):
+            with self.subTest(failure=failure):
+                self.run_frame_case(failure)
+
+    def test_real_exit_loop_frame_refuses_changes_after_all_phase_frames(self):
+        for failure in ('epoch', 'held', 'window_dpi', 'monitor_dpi', 'primary'):
+            with self.subTest(failure=failure):
+                self.run_frame_case(failure, exit_loop=True)
+
+    def test_success_checks_visible_window_and_preserves_epoch_during_exit_loop(self):
+        self.run_frame_case(exit_loop=True)
 
 
 if __name__ == '__main__':

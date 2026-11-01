@@ -33,9 +33,19 @@ public sealed class ShellMessageCycleTests
             () => new Window(() => disposed = true, true), () => (10u, 2u), _ => false));
         Assert.True(disposed);
     }
-    private sealed class Window(Action dispose, bool fail = false) : IShellMessageWindow
+    [Fact]
+    public void ZeroRetiredHandleCannotPassEvenWithStableResources()
     {
-        public nint Handle => fail ? throw new InvalidOperationException("fixed") : 123;
-        public void Dispose() => dispose();
+        var disposed = false;
+        Assert.Throws<InvalidOperationException>(() => ShellMessageCycles.Run(
+            () => new Window(() => disposed = true, zero: true), () => (10u, 2u), _ => false));
+        Assert.True(disposed);
+    }
+
+    private sealed class Window(Action dispose, bool fail = false, bool zero = false) : IShellMessageWindow
+    {
+        private bool _disposed;
+        public nint Handle => fail ? throw new InvalidOperationException("fixed") : _disposed || zero ? 0 : 123;
+        public void Dispose() { _disposed = true; dispose(); }
     }
 }

@@ -133,6 +133,7 @@ internal sealed class FixtureBoundary : CandidateHostBoundary
     private readonly WindowsCandidateBoundary _native = new();
     internal WindowsCandidateBoundary Native => _native;
     internal Services.MessageWindow? Message;
+    private nint _messageHandle;
     internal Action? Open, Settings, ExitCallback;
     internal bool MessageCyclesVerified, TrayDisposed;
     internal ICandidatePopupWindow? Popup;
@@ -144,6 +145,7 @@ internal sealed class FixtureBoundary : CandidateHostBoundary
     {
         var window = _native.CreateMessageWindow();
         Message = (Services.MessageWindow)window;
+        _messageHandle = NativeShellScene.WindowHandle(Message);
         return window;
     }
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => _native.CreateDialogs(popup, textSize);
@@ -167,6 +169,7 @@ internal sealed class FixtureBoundary : CandidateHostBoundary
         var log = File.ReadAllText(Path.Combine(Program.ProfileRoot, "logs", "app.log"));
         if (log.Contains(" ERROR ", StringComparison.Ordinal) || log.Contains("candidate_tray_cleanup_failed", StringComparison.Ordinal)
             || (Program.ShellMode is not null && !TrayDisposed)) throw new InvalidOperationException("fixture_cleanup_failed");
+        if (Program.ShellMode is not null) NativeShellScene.RequireMessageDisposed(Message, _messageHandle);
         // Host must release its profile lease before native Application.Exit.
         using (File.Open(Path.Combine(Program.ProfileRoot, ".candidate-owner"), FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
         Program.Receipt("graceful");
