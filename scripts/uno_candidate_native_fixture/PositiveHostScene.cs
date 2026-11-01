@@ -157,8 +157,18 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             if (!hotkey.TryChange(gesture).Success) throw new InvalidOperationException("native_shortcut_reacquire");
             PositiveNativeInput.PostShortcut(boundary.MessageHandle, gesture.Modifiers, gesture.Key);
             await captured.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            await WaitAsync(() => boundary.PopupShown && host.Popup.Target == session.Target &&
-                NativeFixtureOs.Foreground() == boundary.Popup!.NativeHandle && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(5), ct);
+            try
+            {
+                await WaitAsync(() => boundary.PopupShown && host.Popup.Target == session.Target &&
+                    NativeFixtureOs.Foreground() == boundary.Popup!.NativeHandle && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(5), ct);
+            }
+            catch
+            {
+                // Read-only fixed-schema diagnostics before keyboard arm; no focus retry or guard waiver.
+                SmartSnippets.Core.Logging.AppLog.Info("native_popup_readiness",
+                    $"shown={boundary.PopupShown} target={host.Popup.Target == session.Target} popup_foreground={NativeFixtureOs.Foreground() == boundary.Popup!.NativeHandle} target_foreground={session.IsTargetForeground(session.Target)} quiet={NativeOwnedPopup.QuietAllInput()}");
+                throw;
+            }
             // Coordinator must arm BEFORE Enter or the insertion callback can possibly dispatch native keys.
             await BootstrapProtocol.WriteAsync(Program.Responses, "keyboard_begin", ct);
             if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "keyboard_permit") throw new InvalidOperationException("native_keyboard_permit");
