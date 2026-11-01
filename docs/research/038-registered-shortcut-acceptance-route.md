@@ -46,3 +46,45 @@ including reviewed Busy-only retry (`919eb48`, research 037), then exact
 same-artifact restore → abort → owner-refusal controls, followed by one registered
 shortcut attempt on the explicitly authorized primary landscape. Restore all
 eight flags false afterward. Never terminate pending keyboard/clipboard recovery.
+
+## Actual first operator-delivered attempt
+
+Reviewed private build (all eight test flags enabled only for the trial):
+
+- fixture token `1ab8755f46814e2093c57f86b4d816d6`;
+- executable SHA256 `ccb2632b2dcc3915091cb6695f25f8b1f1c5963e6b32fd76d055c5a2f88015fa`;
+- fresh strict guardian SHA256 `d5e58f5c866bd8fa40651c4899d911ca4111ea5230e88149cfa92482ac6662f9`;
+- unchanged primary Target018 SHA256 `6362333761b44c9cd6b18e9e127333bc04193c7f10165e2012c8b4129924476c`;
+- enabled source fingerprint `b813a3059ce32fcf29d86acd26f711ca7eca437f4a5030fe184e86cae4278758`.
+
+Parent verified no fixture processes remained, then prepared the fixed synthetic
+baseline using the operator-authorized system `clip.exe` command. Trusted wrapper
+`ss-uno018-ui-0a49d005192bbe893839d97ae7a47d64` ran all three same-artifact controls
+successfully, chaining exact returned observations in memory:
+
+| Scene | Private session |
+|---|---|
+| restore | `ss-uno018-ui-3a1503a979ca380430bb5f714f0ba683/ss-uno019-native-eb2619f2a4d14fca8ab2bbb937df3023` |
+| abort | `ss-uno018-ui-bf9c41369c9f0c3448d0777413004086/ss-uno019-native-6f4a825ca41b403caf3b4ca432277e35` |
+| owner-refusal | `ss-uno018-ui-09744e40e38b15f470e0d263820e6031/ss-uno019-native-843e334fa705432ba15d72f21a12f451` |
+
+Each returned `clipboard_control_settled` with the updated guardian; no pending
+recovery or manual retry occurred in this sequence. This does not establish that
+a Busy condition actually occurred and exercised the new retry at runtime.
+
+Registered session
+`ss-uno018-ui-6a35cd80a784e993b6be58d5bee52516/ss-uno019-native-97fc2ac87fa445078438798669fc52a5`
+passed exact Target A preparation and published the reviewed readiness literal.
+The parent observed that exact session metadata/readiness and prompted the
+operator to press the chord. No registered callback was observed before the
+25-second bound: the log ends with a sanitized `TimeoutException` at that bound,
+without popup opening, Enter/keyboard arm, clipboard publication or insertion
+in this positive scene. This does not establish whether the operator pressed a
+key, why no callback arrived, or a global-shortcut PASS. The parent explicitly
+withdrew the expired keypress instruction.
+
+All eight flags were restored false. Read-only process enumeration confirmed
+zero candidate, guardian and Target018 fixture processes. No recovery was killed.
+The native registered-shortcut/Enter/usage acceptance remains unproven; a future
+operator-ready slot must not reuse the expired prompt. The ACL follow-up adds
+one Python test, bringing the current candidate script suite to 125 passing tests.
