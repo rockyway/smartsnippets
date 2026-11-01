@@ -86,6 +86,25 @@ public sealed class NativeStageTests
         Assert.All(order, token => Assert.Contains(token, NativeStage.Tokens));
     }
 
+    [Fact]
+    public void PostedRoute_WiresRealOwnedGrantAndSeparatesFailureFromRefusal()
+    {
+        var scene = File.ReadAllText(Path.Combine(SourceRoot(), "PositiveHostScene.cs"));
+        var start = scene.IndexOf("PositiveShortcutRoute.BeginAsync(scene,", StringComparison.Ordinal);
+        var end = scene.IndexOf("await captured.Task", start, StringComparison.Ordinal);
+        var route = scene[start..end];
+        Assert.Contains("() => PositiveNativeInput.PostShortcut(boundary.MessageHandle, gesture.Modifiers, gesture.Key)", route);
+        Assert.Contains("() => PositiveShortcutRoute.WriteReadyAsync(ct)", route);
+        Assert.Contains("granted = await fixture.Lease.GrantForegroundAsync(ct);", route);
+        Assert.Single(Regex.Matches(route, @"fixture\.Lease\.GrantForegroundAsync\("));
+        Assert.Contains("if (!granted) throw new InvalidOperationException(\"native_foreground_grant_refused\");", route);
+        var failure = route[route.IndexOf("catch", StringComparison.Ordinal)..route.IndexOf("if (!granted)", StringComparison.Ordinal)];
+        Assert.Contains("AppLog.Info(\"target_foreground_grant\", \"result=failed\");", failure);
+        Assert.Contains("throw;", failure);
+        Assert.Contains("granted ? \"result=granted\" : \"result=refused\"", failure);
+        Assert.DoesNotContain("AppLog.Info(\"target_foreground_grant\", \"result=refused\");", route);
+    }
+
     private static string SourceRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

@@ -13,6 +13,32 @@ public sealed class WindowsTargetProtocolTests
     public void GrantPinRejectsWrongOrStaleProcess(uint pid, long started, uint actualPid, long actualStarted, bool alive, bool expected) =>
         Assert.Equal(expected, Program.MatchesGrantee(pid, started, actualPid, actualStarted, alive));
 
+    [Fact]
+    public void NativeGrant_SourcePinsSingleCallToRetainedCandidatePid()
+    {
+        var directory = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
+        string? path = null;
+        while (directory is not null)
+        {
+            var candidate = System.IO.Path.Combine(directory.FullName, "prototypes", "uno-native-target", "windows", "Program.cs");
+            if (System.IO.File.Exists(candidate)) { path = candidate; break; }
+            directory = directory.Parent;
+        }
+        Assert.NotNull(path);
+        var source = System.IO.File.ReadAllText(path);
+        var start = source.IndexOf("private static string GrantForeground(nint a)", System.StringComparison.Ordinal);
+        var end = source.IndexOf("private static int _closed", start, System.StringComparison.Ordinal);
+        var grant = source[start..end];
+        Assert.Contains("grantee.HasExited", grant);
+        Assert.Contains("VerifyOwner(a);", grant);
+        Assert.Contains("AllowSetForegroundWindow((uint)grantee.Id)", grant);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(grant, @"AllowSetForegroundWindow\s*\("));
+        Assert.Contains("? \"granted\" : \"refused\"", grant);
+        Assert.Contains("catch (Exception) { return \"failed\"; }", grant);
+        Assert.DoesNotContain("uint.MaxValue", grant);
+        Assert.DoesNotContain("ASFW_ANY", grant);
+    }
+
     private const string Unicode = "AΩ中🙂e\u0301";
 
     [Theory]

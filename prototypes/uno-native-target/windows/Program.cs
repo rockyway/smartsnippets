@@ -44,20 +44,20 @@ internal static unsafe partial class Program
             if (MatchesGrantee(pid, started, (uint)process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc(), !process.HasExited))
                 return process;
         }
-        catch (Exception) { /* Fixed refused receipt only; no process details. */ }
+        catch (Exception) { /* Fixed failed receipt only; no process details. */ }
         process?.Dispose();
         return null;
     }
 
-    private static bool GrantForeground(nint a)
+    private static string GrantForeground(nint a)
     {
         try
         {
-            if (grantee is null || grantee.HasExited || IsWindow(a) == 0 || GetForegroundWindow() != a) return false;
+            if (grantee is null || grantee.HasExited || IsWindow(a) == 0 || GetForegroundWindow() != a) return "failed";
             VerifyOwner(a);
-            return AllowSetForegroundWindow((uint)grantee.Id) != 0;
+            return AllowSetForegroundWindow((uint)grantee.Id) != 0 ? "granted" : "refused";
         }
-        catch (Exception) { return false; }
+        catch (Exception) { return "failed"; }
     }
 
     private static int _closed;
@@ -188,8 +188,8 @@ internal static unsafe partial class Program
     {
         if (command == "foreground_grant")
         {
-            var granted = GrantForeground(a);
-            Console.WriteLine("target_foreground_grant result=" + (granted ? "granted" : "refused"));
+            var result = GrantForeground(a);
+            Console.WriteLine("target_foreground_grant result=" + result);
             Console.Out.Flush();
             return;
         }

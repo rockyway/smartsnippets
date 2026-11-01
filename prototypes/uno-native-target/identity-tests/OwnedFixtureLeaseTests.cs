@@ -60,6 +60,7 @@ public sealed class OwnedFixtureLeaseTests
     [Theory]
     [InlineData("target_foreground_grant result=granted", true)]
     [InlineData("target_foreground_grant result=refused", false)]
+    [InlineData("target_foreground_grant result=failed", false)]
     [InlineData("target_foreground_grant result=granted extra", false)]
     [InlineData("target_command name=foreground_grant ok=1", false)]
     public async Task ForegroundGrantRequiresExactReceipt(string receipt, bool accepted)
@@ -67,12 +68,17 @@ public sealed class OwnedFixtureLeaseTests
         using var fixture = new ArtifactFixture();
         var child = new FakeChild { GrantReceipt = receipt };
         await using var lease = await OwnedFixtureLease.StartAsync(await fixture.OpenAsync(), (_, _) => child, CancellationToken.None);
-        if (accepted) await lease.GrantForegroundAsync(CancellationToken.None);
-        else Assert.Equal("foreground_grant_refused", (await Assert.ThrowsAsync<ProbeFailure>(() => lease.GrantForegroundAsync(CancellationToken.None))).Token);
+        if (receipt == "target_foreground_grant result=refused") Assert.False(await lease.GrantForegroundAsync(CancellationToken.None));
+        else if (accepted) Assert.True(await lease.GrantForegroundAsync(CancellationToken.None));
+        else Assert.Equal("foreground_grant_failed", (await Assert.ThrowsAsync<ProbeFailure>(() => lease.GrantForegroundAsync(CancellationToken.None))).Token);
         Assert.Equal(new[] { "foreground_grant" }, child.Commands);
         child.Alive = false;
         await Assert.ThrowsAsync<ProbeFailure>(() => lease.GrantForegroundAsync(CancellationToken.None));
         Assert.Single(child.Commands); // Stale target identity cannot receive another request.
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => lease.GrantForegroundAsync(cancelled.Token));
+        Assert.Single(child.Commands);
     }
 
     [Fact]

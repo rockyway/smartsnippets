@@ -1,7 +1,9 @@
 namespace SmartSnippets.Uno;
 
 /// <summary>
-/// Last fixed orchestration stage reached by the native fixture worker. Only the allowlisted
+/// Last fixed orchestration stage reached by the native fixture worker, not a precise failure location.
+/// target_foreground_grant is the last pre-trigger stage; it remains set for later posted-scene
+/// readiness, keyboard-permit and insertion failures too. Only the allowlisted
 /// tokens below are ever recorded or logged; exception messages, stacks and identities never are.
 /// scripts/run_uno_candidate_native.py mirrors this list (NATIVE_STAGES) and a test keeps them equal.
 /// </summary>

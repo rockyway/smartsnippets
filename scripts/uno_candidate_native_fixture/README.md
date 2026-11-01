@@ -131,12 +131,20 @@ and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing co
   child environment and retains its process handle (missing/mismatched/dead pins
   refuse). No PID is accepted in the command. While exact owned A is foreground,
   Target018 makes one `AllowSetForegroundWindow(exactCandidatePid)` call and replies
-  exactly `target_foreground_grant result=granted` or `target_foreground_grant result=refused`.
+  exactly `target_foreground_grant result=granted`, `target_foreground_grant result=refused`
+  (only a false native grant), or `target_foreground_grant result=failed` (pre-check
+  failure or exception). The scene also logs `result=failed` for cancellation,
+  protocol errors or pre-check failure, never mislabelling these as a refused grant.
   Only a granted receipt plus a still-pinned target permits the immediately following
   **posted WM_HOTKEY**. Refusal fails closed (`foreground_grant_refused`); diagnostics
-  use the fixed `target_foreground_grant` stage. Registered scenes never request
+  use the fixed `target_foreground_grant` last pre-trigger stage, which remains set
+  for later failures and is not a precise failure locator. Registered scenes never request
   this grant. No ASFW_ANY, self-grant, input queue attachment or focus retry exists.
-  This models foreground authority, not a physical shortcut. Its actual native callback awaits
+  This models foreground authority, not a physical shortcut.
+  Cheap source-pin tests check the real scene-to-lease wiring and the target's
+  single native grant argument (`grantee.Id`); these are text assertions, not
+  runtime proof of process identity, foreground authority or native call delivery.
+  Human source review and an authorized native trial remain the real gates. Its actual native callback awaits
   bounded session admission and calls actual `host.ShowCapturedPopup`. The unchanged
   popup coordinator alone requests ready-surface focus through the late broker to
   `session.TryFocusOwnedPopup`. Wait for presentation, exact popup foreground and

@@ -325,15 +325,18 @@ process handle before readiness. One fixed `foreground_grant` control-channel
 message carries no caller-selected PID. Only while owned A remains foreground
 and the retained candidate is live does Target018 call
 `AllowSetForegroundWindow(exactCandidatePid)` once. The fixed receipt is
-`target_foreground_grant result=granted` or `target_foreground_grant result=refused`.
-A refused/malformed receipt or changed target identity fails closed before posting.
+`target_foreground_grant result=granted`, `target_foreground_grant result=refused`
+(only a false native grant), or `target_foreground_grant result=failed`
+(pre-check/exception failure). A refused/malformed receipt or changed target identity fails closed before posting.
 
 Only posted-enter/row/main await this receipt immediately before posting the
 existing callback. Registered scenes request no grant. The candidate's single
 ready-coordinator foreground request, exact popup foreground/quiet readiness and
 keyboard-permit-before-mutation gates are unchanged. No ASFW_ANY, candidate
 self-grant, AttachThreadInput, retry or weakened foreground check is introduced.
-The fixed `target_foreground_grant` stage locates grant/posted readiness failures.
+The fixed `target_foreground_grant` stage is the last pre-trigger stage, not a
+precise failure locator: it remains set for later posted-scene readiness,
+keyboard-permit and insertion failures.
 Windows can still revoke or refuse foreground rights; such failures remain FAIL.
 Unit tests and builds are not native acceptance: no UI/native scene is run for
 pg-01, all source-review gates remain false, and 018/019 closure stays open.

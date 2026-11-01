@@ -164,18 +164,20 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                 async () =>
                 {
                     NativeStage.Reach("target_foreground_grant");
+                    bool granted;
                     try
                     {
                         if (!session.IsTargetForeground(session.Target) || !NativeOwnedPopup.QuietAllInput())
-                            throw new InvalidOperationException("native_foreground_grant_refused");
-                        await fixture.Lease.GrantForegroundAsync(ct);
-                        SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", "result=granted");
+                            throw new InvalidOperationException("native_foreground_grant_failed");
+                        granted = await fixture.Lease.GrantForegroundAsync(ct);
                     }
                     catch
                     {
-                        SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", "result=refused");
+                        SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", "result=failed");
                         throw;
                     }
+                    SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", granted ? "result=granted" : "result=refused");
+                    if (!granted) throw new InvalidOperationException("native_foreground_grant_refused");
                 });
             await captured.Task.WaitAsync(callbackTimeout, ct);
             try

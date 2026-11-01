@@ -108,15 +108,17 @@ internal sealed class OwnedFixtureLease : IOwnedFixtureLease, IAsyncDisposable
         if (line != "target_command name=" + command + " ok=1" || !IsAliveAndPinned()) throw new ProbeFailure("command_failed");
     }
 
-    internal async Task GrantForegroundAsync(CancellationToken ct)
+    internal async Task<bool> GrantForegroundAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (Platform != TargetPlatform.Windows || !IsAliveAndPinned() || child.Protocol.HasUnexpectedOutput)
-            throw new ProbeFailure("foreground_grant_refused");
+            throw new ProbeFailure("foreground_grant_failed");
         await child.Protocol.SendAsync("foreground_grant", TimeSpan.FromSeconds(2), ct);
         var line = await child.Protocol.ReadAsync(TimeSpan.FromSeconds(4), ct);
-        if (line != "target_foreground_grant result=granted" || !IsAliveAndPinned())
-            throw new ProbeFailure("foreground_grant_refused");
+        if (!IsAliveAndPinned()) throw new ProbeFailure("foreground_grant_failed");
+        if (line == "target_foreground_grant result=refused") return false;
+        if (line != "target_foreground_grant result=granted") throw new ProbeFailure("foreground_grant_failed");
+        return true;
     }
 
     internal async Task VerifyMultilineAAsync(CancellationToken ct)
