@@ -10,3 +10,4 @@
 | 2026-11-01 | uno019-native-diag2 (nd-02) | 1 | 1 | 2 | 0 | 3 | rv-08 BLOCK: PS poll test never read the record; validator rejections untested; refusal callback unguarded; all folded (nd-02b), leader verified |
 | 2026-11-01 | uno019-copy-scenes (cs-01) | 1 | 0 | 3 | 3 | 1 | rv-09 BLOCK: editor-copy deliberate store_write_failed ERROR fails parent log gate; Copy-scene/context-insert oracles too weak; all folded (cs-01b), leader verified |
 | 2026-11-01 | uno019-native-diag3 (nd-03) | 1 | 1 | 2 | 1 | 2 | rv-10 BLOCK: new monitor rejects teardown foreground (A destroyed) after settle; transient zero; thin PID/record oracles; all folded (nd-03b), leader verified |
+| 2026-11-01 | uno019-n3-shell (n3-01) | 1 | 0 | 5 | 1 | 0 | rv-11 BLOCK: real shell_frame guard and PostOwned HWND guard never executed by tests; vacuous tray-open and message-cycle stub; liveness claim unsupported; all folded (n3-01b), leader verified |
