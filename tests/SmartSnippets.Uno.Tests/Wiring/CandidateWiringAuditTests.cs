@@ -46,6 +46,17 @@ public sealed class CandidateWiringAuditTests
     }
 
     [Fact]
+    public void MainWindow_TeardownDoesNotReadClosedNativeContentOrRunQueuedDpiWork()
+    {
+        var source = File.ReadAllText(Path.Combine(Candidate, "MainWindow.xaml.cs"));
+        Assert.Contains("Closed += (_, _) => _closed = true;", source);
+        Assert.DoesNotContain("Closed += (_, _) => Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot)", source);
+        Assert.Contains("ContentXamlRoot => _closingForExit || _closed ? null : Content?.XamlRoot;", source);
+        Assert.Contains("if (_closingForExit || _closed) return;\n                var currentDpi", source.Replace("\r\n", "\n"));
+        Assert.Contains("if (!_closingForExit && !_closed && args.WindowActivationState", source);
+    }
+
+    [Fact]
     public void CandidateTray_BothStatesBrandedAndDistinctOwnedIcon()
     {
         var tray = File.ReadAllText(Path.Combine(Candidate, "Services", "TrayIcon.cs"));

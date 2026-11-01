@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private PageKind? _current;
     private bool _suppressSelection;
     private bool _closingForExit;
+    private bool _closed;
     private bool _guardInProgress;
 
     public MainWindow(Func<PageKind, UIElement> pageFactory)
@@ -49,11 +50,12 @@ public sealed partial class MainWindow : Window
         presenter.PreferredMinimumHeight = Math.Min(AppWindow.Size.Height, (int)(MinimumLogicalHeight * scale));
         AppWindow.Changed += (_, args) =>
         {
-            if (!args.DidPositionChange && !args.DidSizeChange) return;
+            if (_closingForExit || _closed || (!args.DidPositionChange && !args.DidSizeChange)) return;
             // Re-read after move or size/DPI processing, rather than using the
             // monitor on which the hidden window was originally constructed.
             DispatcherQueue.TryEnqueue(() =>
             {
+                if (_closingForExit || _closed) return;
                 var currentDpi = PInvoke.GetDpiForWindow(hwnd);
                 if (currentDpi == 0) return;
                 var currentScale = currentDpi / 96.0;
@@ -66,14 +68,19 @@ public sealed partial class MainWindow : Window
         if (!Services.WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
             throw new InvalidOperationException("Candidate bottom-left placement could not be verified.");
         AppWindow.Closing += OnClosing;
-        Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated) Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot); };
-        Closed += (_, _) => Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
+        Activated += (_, args) =>
+        {
+            if (!_closingForExit && !_closed && args.WindowActivationState == WindowActivationState.Deactivated)
+                Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
+        };
+        // Content is no longer readable during Closed. Hover cancellation happens before Close/hide.
+        Closed += (_, _) => _closed = true;
 
         Show(PageKind.Snippets, activate: false);
     }
 
     /// <summary>The XamlRoot for ContentDialogs; null until the window content has been created.</summary>
-    public XamlRoot? ContentXamlRoot => Content?.XamlRoot;
+    public XamlRoot? ContentXamlRoot => _closingForExit || _closed ? null : Content?.XamlRoot;
 
     /// <summary>Raised after the user's close button hid the window (not for exit and not when the page's guard refused).</summary>
     public event EventHandler? HiddenByClose;
@@ -126,6 +133,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Really closes the window (the normal X button only hides it).</summary>
     public void CloseForExit()
     {
+        if (_closingForExit || _closed) return;
         Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
         _closingForExit = true;
         Close();
