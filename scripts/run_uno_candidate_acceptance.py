@@ -238,7 +238,9 @@ def record_failure(private, error):
                'receipt_alias', 'evidence_alias', 'evidence_file', 'input', 'input_query_failed',
                'ui_ready', 'ui_timeout', 'ui_quiet_timeout', 'ui_helper_protocol', 'ui_receipt',
                'ui_helper_output_limit', 'clipboard_changed', 'foreground_changed',
-               'desktop_unavailable', 'window_recreated', 'ui_exit_code'}
+               'desktop_unavailable', 'window_recreated', 'ui_exit_code',
+               'ui_picker_identity', 'ui_picker_main_identity', 'ui_picker_replaced',
+               'ui_picker_phase', 'ui_picker_actions', 'ui_picker_phase_actions'}
     reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:

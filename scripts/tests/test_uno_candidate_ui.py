@@ -37,6 +37,58 @@ class UiManagementTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
             s.owned_picker(desktop, 10, 30, 21)
 
+        # The authenticated live dialog must still pass every identity check.
+        user.IsWindowVisible.return_value = True
+        user.IsWindowVisible.side_effect = None
+        def valid_class(h, buffer, length):
+            buffer.value = 'WinUIDesktopWin32WindowClass' if h == 10 else '#32770'
+            return 1
+        user.GetClassNameW.side_effect = valid_class
+        self.assertEqual(20, s.owned_picker(desktop, 10, 30, 20))
+        for defect in ('owner', 'pid', 'thread', 'class'):
+            with self.subTest(defect=defect):
+                user.GetWindow.side_effect = lambda h, command: 20 if command == 6 else (11 if defect == 'owner' else 10)
+                def altered_thread(h, pid):
+                    pid._obj.value = 31 if defect == 'pid' and h == 20 else 30
+                    return 41 if defect == 'thread' and h == 20 else 40
+                user.GetWindowThreadProcessId.side_effect = altered_thread
+                def altered_class(h, buffer, length):
+                    buffer.value = 'other' if defect == 'class' and h == 20 else ('WinUIDesktopWin32WindowClass' if h == 10 else '#32770')
+                    return 1
+                user.GetClassNameW.side_effect = altered_class
+                with self.assertRaisesRegex(ValueError, 'ui_picker_identity'):
+                    s.owned_picker(desktop, 10, 30, 20)
+
+    def test_picker_foreground_close_transition(self):
+        desktop = Mock()
+        desktop.user.IsWindow.return_value = False
+        self.assertTrue(s.picker_foreground(desktop, 20, None, 20))
+        self.assertFalse(s.picker_foreground(desktop, 21, None, 20))
+        self.assertFalse(s.picker_foreground(desktop, 20, None, None))
+        desktop.user.IsWindow.return_value = True
+        desktop.user.IsWindowVisible.return_value = True
+        self.assertFalse(s.picker_foreground(desktop, 20, None, 20))
+        desktop.user.IsWindowVisible.return_value = False
+        self.assertTrue(s.picker_foreground(desktop, 20, None, 20))
+        self.assertFalse(s.picker_foreground(desktop, 20, 21, 20))
+
+    def test_picker_refusals_are_recorded_without_collapse(self):
+        import ast
+        source = (s.REPO / 'scripts/run_uno_candidate_ui.py').read_text()
+        tree = ast.parse(source)
+        tokens = {node.exc.args[0].value for node in ast.walk(tree)
+                  if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)
+                  and node.exc.args and isinstance(node.exc.args[0], ast.Constant)
+                  and isinstance(node.exc.args[0].value, str)
+                  and node.exc.args[0].value.startswith('ui_picker_')}
+        self.assertTrue(tokens)
+        import json
+        for token in tokens:
+            with self.subTest(token=token), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                s.base.record_failure(root, ValueError(token))
+                self.assertEqual(token, json.loads(next(root.glob('observer-*-failure.json')).read_text())['reason'])
+
     def test_dangling_marker_is_never_treated_as_absent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -165,7 +217,7 @@ class UiManagementTests(unittest.TestCase):
         helper = s.HELPER.read_text()
         picker = helper.split('    function RunPicker', 1)[1].split("    $stage = 'ready'", 1)[0]
         ownership = helper.split('    function OwnedPicker', 1)[1].split('    function Guard', 1)[0]
-        for fragment in ('GetWindow($h, 6)', 'GetWindow($dialog, 4) -ne $h',
+        for fragment in ('GetWindow($h, 6)', 'GetWindow($dialog, 4)', '$dialogOwner -ne $h',
                          '$dialogPid -ne $OwnedPid', "$cls.ToString() -cne '#32770'", '$thread -ne $mainThread'):
             self.assertIn(fragment, ownership)
         self.assertIn("PickerElement $dialog '1148' $r", picker)

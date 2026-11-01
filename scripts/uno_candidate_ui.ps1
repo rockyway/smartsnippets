@@ -62,11 +62,12 @@ public static class Owned019 {
         $mainThread = [Owned019]::GetWindowThreadProcessId($h, [ref]$mainPid)
         $cls = New-Object Text.StringBuilder 256
         [void][Owned019]::GetClassName($dialog, $cls, 256)
+        $dialogOwner = [Owned019]::GetWindow($dialog, 4)
         $visible = [Owned019]::IsWindowVisible($dialog)
         if ($mainPid -ne $OwnedPid -or $mainThread -eq 0) { throw 'picker_identity' }
         if ($dialog -eq $script:pickerHwnd -and $script:pickerHwnd -ne [IntPtr]::Zero -and
             (-not [Owned019]::IsWindow($dialog) -or -not $visible)) { return [IntPtr]::Zero }
-        if (-not $visible -or [Owned019]::GetWindow($dialog, 4) -ne $h -or
+        if (-not $visible -or $dialogOwner -ne $h -or
             $dialogPid -ne $OwnedPid -or $thread -eq 0 -or $thread -ne $mainThread -or
             $cls.ToString() -cne '#32770') { throw 'picker_identity' }
         return $dialog
@@ -102,6 +103,12 @@ public static class Owned019 {
             }
         }
         $pickerForeground = $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64()
+        if (-not $pickerForeground -and $Scene -ceq 'file-picker' -and $null -ne $script:pickerPhase -and
+            $dialog -eq [IntPtr]::Zero -and $script:pickerHwnd -ne [IntPtr]::Zero -and
+            $fg -eq $script:pickerHwnd.ToInt64() -and
+            (-not [Owned019]::IsWindow($script:pickerHwnd) -or -not [Owned019]::IsWindowVisible($script:pickerHwnd))) {
+            $pickerForeground = $true
+        }
         if (-not $pickerForeground -and (($script:focused -and $fg -ne $OwnedHwnd) -or
             (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd))) { throw 'foreground' }
         if ($pickerForeground -or $fg -eq $OwnedHwnd) { $script:focused = $true }

@@ -151,6 +151,14 @@ def owned_picker(desktop, hwnd, pid, authenticated=None):
                                     cls.value, visible)
 
 
+def picker_foreground(desktop, fg, popup, authenticated):
+    if popup is not None:
+        return fg == popup
+    return bool(authenticated and fg == authenticated and
+                (not desktop.user.IsWindow(authenticated) or
+                 not desktop.user.IsWindowVisible(authenticated)))
+
+
 def system_powershell():
     kernel = startup.C.WinDLL('kernel32', use_last_error=True)
     kernel.GetSystemDirectoryW.argtypes = [startup.W.LPWSTR, startup.W.UINT]
@@ -343,18 +351,19 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if process.poll() is not None:
                     raise ValueError('early_exit')
                 quiet_input(desktop, epoch)
+                phase = picker_phase(private) if scene == 'file-picker' else None
                 fg, clip = observe_desktop(desktop)
                 if clip != initial[1]:
                     raise ValueError('clipboard_changed')
-                phase = picker_phase(private) if scene == 'file-picker' else None
                 popup = owned_picker(desktop, hwnd, process.pid, picker_handles.get(phase)) if phase else None
                 if popup is not None:
                     if picker_handles.setdefault(phase, popup) != popup:
                         raise ValueError('ui_picker_replaced')
-                allowed = (initial[0], hwnd, popup) if not owned_foreground_seen else (hwnd, popup)
-                if fg not in allowed:
+                picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase) if phase else None)
+                allowed = (initial[0], hwnd) if not owned_foreground_seen else (hwnd,)
+                if fg not in allowed and not picker_fg:
                     raise ForegroundChanged(fg)
-                owned_foreground_seen |= fg == hwnd or (popup is not None and fg == popup)
+                owned_foreground_seen |= fg == hwnd or picker_fg
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
                     raise ValueError('geometry')
                 if time.monotonic() > deadline:
