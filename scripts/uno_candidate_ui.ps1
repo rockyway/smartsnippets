@@ -369,6 +369,21 @@ public static class Owned019 {
             if ([DateTime]::UtcNow -ge $script:pickerStepUntil) {
                 $reason = if ($items.Count -eq 0) { 'picker_schema_missing' } elseif ($items.Count -gt 1) { 'picker_schema_multiple' } else { 'picker_schema_type' }
                 $record = [ordered]@{ reason=$reason; matchCount=[int]$items.Count; controlTypeId=[int]$type }
+                if ($items.Count -gt 1) {
+                    # Observe only this already authenticated subtree. Never choose among duplicate IDs.
+                    $record.matches = @(
+                        foreach ($match in $items) {
+                            $parent = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($match)
+                            [ordered]@{
+                                isDirectChild=[bool]($null -ne $parent -and [Windows.Automation.AutomationElement]::Compare($parent,$scope))
+                                classToken=$(if ($match.Current.ClassName -ceq 'Button') { 'button' } else { 'other' })
+                                enabled=[bool]$match.Current.IsEnabled
+                                offscreen=[bool]$match.Current.IsOffscreen
+                                controlTypeId=[int]$match.Current.ControlType.Id
+                            }
+                        }
+                    )
+                }
                 $file = [IO.File]::Open((Join-Path $root 'ui-helper-picker-schema.json'), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
                 try { $bytes = [Text.Encoding]::ASCII.GetBytes(($record | ConvertTo-Json -Compress)); $file.Write($bytes,0,$bytes.Length) } finally { $file.Dispose() }
                 throw $reason

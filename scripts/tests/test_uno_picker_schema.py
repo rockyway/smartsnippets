@@ -19,6 +19,9 @@ class PickerSchemaTests(unittest.TestCase):
                                         ('picker_schema_type', 1, 50001),
                                         ('picker_schema_type', 1, 50040)]:
                 record = dict(reason=reason, matchCount=count, controlTypeId=kind)
+                if count > 1:
+                    record['matches'] = [dict(isDirectChild=True, classToken='button', enabled=True,
+                                              offscreen=False, controlTypeId=50000)] * count
                 path.write_text(json.dumps(record), encoding='ascii')
                 self.assertTrue(s.validate_helper_picker_schema(root))
 
@@ -60,6 +63,24 @@ class PickerSchemaTests(unittest.TestCase):
                     path.write_bytes(raw)
                     with self.assertRaisesRegex(ValueError, '^ui_picker_schema_record$'):
                         s.validate_helper_picker_schema(root)
+
+    def test_multiple_match_fields_are_mandatory_exact_and_content_free(self):
+        match = dict(isDirectChild=True, classToken='button', enabled=True, offscreen=False, controlTypeId=50000)
+        good = dict(reason='picker_schema_multiple', matchCount=2, controlTypeId=0, matches=[match, match])
+        invalid = [{key: value for key, value in good.items() if key != 'matches'},
+                   {**good, 'matches': []}, {**good, 'matches': [match]}, {**good, 'matches': {}}]
+        for key, value in [('isDirectChild', 1), ('classToken', 'localized label'), ('enabled', 'true'),
+                           ('offscreen', 0), ('controlTypeId', True), ('controlTypeId', 0), ('name', 'private')]:
+            invalid.append({**good, 'matches': [match, {**match, key: value}]})
+        for key in match:
+            invalid.append({**good, 'matches': [match, {k: v for k, v in match.items() if k != key}]})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'ui-helper-picker-schema.json'
+            for record in invalid:
+                path.write_text(json.dumps(record), encoding='ascii')
+                with self.subTest(record=record), self.assertRaisesRegex(ValueError, '^ui_picker_schema_record$'):
+                    s.validate_helper_picker_schema(root)
 
     def test_owned_file_guards(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -115,7 +136,17 @@ class PickerSchemaTests(unittest.TestCase):
         setup = r'''
 $ErrorActionPreference='Stop'
 Add-Type @'
-namespace Windows.Automation { public enum TreeScope { Descendants } }
+public class StubType { public int Id; }
+public class StubCurrent { public StubType ControlType = new StubType(); public string ClassName = "Button"; public bool IsEnabled = true; public bool IsOffscreen; }
+public class StubElement { public StubCurrent Current = new StubCurrent(); public object Parent; }
+namespace Windows.Automation {
+ public enum TreeScope { Descendants }
+ public class TreeWalker {
+  public static TreeWalker RawViewWalker = new TreeWalker();
+  public object GetParent(StubElement e) { return e.Parent; }
+ }
+ public class AutomationElement { public static bool Compare(object a, object b) { return object.ReferenceEquals(a,b); } }
+}
 '@
 function Guard {}
 function OwnedPicker { return 20 }
@@ -125,14 +156,18 @@ $scope | Add-Member ScriptMethod FindAll { param($a,$b) return ,$script:matches 
 $dialog=20; $button=$true; $condition=$null
 '''
         # A separate owned directory per execution retains every real emitted record for Python.
-        for count, kind, reason in [(0, 0, 'picker_schema_missing'),
-                                   (2, 50000, 'picker_schema_multiple'),
-                                   (2, 0, 'picker_schema_multiple'),
-                                   (1, 50004, 'picker_schema_type'), (1, 50000, '')]:
-            with self.subTest(count=count, kind=kind), tempfile.TemporaryDirectory() as tmp:
+        for count, kind, reason, variant in [(0, 0, 'picker_schema_missing', ''),
+                                            (2, 50000, 'picker_schema_multiple', 'nested'),
+                                            (2, 50000, 'picker_schema_multiple', 'hidden'),
+                                            (1, 50004, 'picker_schema_type', ''), (1, 50000, '', '')]:
+            with self.subTest(count=count, kind=kind, variant=variant), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 script = setup + "\n$root='" + tmp.replace("'", "''") + "'\n"
-                script += f"$script:matches=@(); 1..{max(1,count)} | ForEach-Object {{ if({count} -gt 0){{$script:matches+= [pscustomobject]@{{Current=[pscustomobject]@{{ControlType=[pscustomobject]@{{Id={kind}}}}}}}}} }}\n"
+                script += f"$script:matches=@(); 1..{max(1,count)} | ForEach-Object {{ if({count} -gt 0){{$e=[StubElement]::new(); $e.Current.ControlType.Id={kind}; $e.Parent=$scope; $script:matches+=$e}} }}\n"
+                if variant == 'nested':
+                    script += "$script:matches[1].Parent=$null; $script:matches[1].Current.ClassName='DUIButton'\n"
+                elif variant == 'hidden':
+                    script += "$script:matches[1].Current.IsOffscreen=$true\n"
                 script += "$script:delayed=$false\n"
                 if not reason:
                     script += "$script:delayed=$true; $script:readyMatches=$script:matches; $script:matches=@()\n"
@@ -143,9 +178,12 @@ $dialog=20; $button=$true; $condition=$null
                 self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
                 path = root / 'ui-helper-picker-schema.json'
                 if reason:
-                    self.assertEqual(dict(reason=reason, matchCount=count,
-                                          controlTypeId=kind if count == 1 else 0),
-                                     json.loads(path.read_bytes().decode('ascii')))
+                    expected = dict(reason=reason, matchCount=count, controlTypeId=kind if count == 1 else 0)
+                    if count > 1:
+                        expected['matches'] = [dict(isDirectChild=True, classToken='button', enabled=True, offscreen=False, controlTypeId=kind),
+                                               dict(isDirectChild=variant == 'hidden', classToken='other' if variant == 'nested' else 'button',
+                                                    enabled=True, offscreen=variant == 'hidden', controlTypeId=kind)]
+                    self.assertEqual(expected, json.loads(path.read_bytes().decode('ascii')))
                     self.assertTrue(s.validate_helper_picker_schema(root))
                 else:
                     self.assertFalse(path.exists())

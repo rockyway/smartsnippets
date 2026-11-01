@@ -71,7 +71,11 @@ internal static class Coordinator
                     !NativeFixtureOs.WindowOwnedBy(fields[1], (uint)RetainedIdentity.Id(fixture)) ||
                     !NativeFixtureOs.WindowOwnedBy(fields[2], (uint)worker.Id) || !NativeFixtureOs.WindowOwnedBy(fields[3], (uint)worker.Id))
                     throw new InvalidOperationException("native_surfaces_identity");
-                // External observer accepts only these exact owned surfaces plus the unchanged initial foreground.
+                // Publish authenticated process identities before surfaces; retained handles prevent PID reuse.
+                var identitiesPath = Path.Combine(Program.PrivateRoot, "positive-identities.txt");
+                await File.WriteAllTextAsync(identitiesPath + ".tmp", $"{RetainedIdentity.Id(fixture)} {worker.Id} {RetainedIdentity.Id(guardian)}", ct.Token);
+                File.Move(identitiesPath + ".tmp", identitiesPath);
+                // The observer independently checks scene-specific foreground transitions.
                 var surfacesPath = Path.Combine(Program.PrivateRoot, "positive-surfaces.txt");
                 await File.WriteAllTextAsync(surfacesPath + ".tmp", string.Join(" ", fields), ct.Token);
                 File.Move(surfacesPath + ".tmp", surfacesPath);

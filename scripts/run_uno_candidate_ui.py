@@ -332,7 +332,8 @@ def validate_helper_picker_schema(private, helper_code=None, helper_stderr=None)
         record = json.loads(base.owned_bytes(path, private, 4096).decode('ascii'), object_pairs_hook=unique_fields)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise ValueError('ui_picker_schema_record') from None
-    if (type(record) is not dict or set(record) != {'reason', 'matchCount', 'controlTypeId'}
+    if (type(record) is not dict or set(record) not in ({'reason', 'matchCount', 'controlTypeId'},
+                                                       {'reason', 'matchCount', 'controlTypeId', 'matches'})
             or type(record['matchCount']) is not int or type(record['controlTypeId']) is not int):
         raise ValueError('ui_picker_schema_record')
     count, kind = record['matchCount'], record['controlTypeId']
@@ -340,6 +341,18 @@ def validate_helper_picker_schema(private, helper_code=None, helper_stderr=None)
                 'picker_schema_multiple' if count > 1 and kind == 0 else
                 'picker_schema_type' if count == 1 and 50000 <= kind <= 50040 and kind != 50000 else None)
     if expected is None or record['reason'] != expected:
+        raise ValueError('ui_picker_schema_record')
+    matches = record.get('matches')
+    if count > 1:
+        if type(matches) is not list or len(matches) != count:
+            raise ValueError('ui_picker_schema_record')
+        for match in matches:
+            if (type(match) is not dict or set(match) != {'isDirectChild', 'classToken', 'enabled', 'offscreen', 'controlTypeId'}
+                    or any(type(match[key]) is not bool for key in ('isDirectChild', 'enabled', 'offscreen'))
+                    or type(match['classToken']) is not str or match['classToken'] not in ('button', 'other')
+                    or type(match['controlTypeId']) is not int or not 50000 <= match['controlTypeId'] <= 50040):
+                raise ValueError('ui_picker_schema_record')
+    elif 'matches' in record:
         raise ValueError('ui_picker_schema_record')
     if helper_code is not None:
         if helper_code == 0:

@@ -181,6 +181,10 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
                     }
                     SmartSnippets.Core.Logging.AppLog.Info("target_foreground_grant", granted ? "result=granted" : "result=refused");
                     if (!granted) throw new InvalidOperationException("native_foreground_grant_refused");
+                    // Publish before callback delivery can activate the exact popup. Metadata, not an input permit.
+                    var grantPath = Path.Combine(Program.PrivateRoot, "positive-foreground-granted");
+                    await File.WriteAllTextAsync(grantPath + ".tmp", "granted\n", ct);
+                    File.Move(grantPath + ".tmp", grantPath);
                 });
             await captured.Task.WaitAsync(callbackTimeout, ct);
             try

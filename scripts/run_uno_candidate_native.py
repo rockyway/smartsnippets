@@ -218,12 +218,105 @@ def verify_positive_boundary(private, scene, before_epoch, after_epoch):
     return {'usageVerified': True, 'clipboardEpochChanged': changed}
 
 
-def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None, registered=False):
+MONITOR_PREDICATES = {'foreground_foreign', 'foreground_unexpected_candidate', 'output_oversized',
+                      'observation_exception', 'process_exit'}
+MONITOR_RELATIONS = {'none', 'owned_target_a', 'owned_target_b', 'guardian', 'candidate', 'same_pid_other', 'foreign'}
+
+
+def validate_monitor_failure(private):
+    def unique(pairs):
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError('native_monitor_record')
+        return result
+    record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 4096).decode('ascii'),
+                        object_pairs_hook=unique)
+    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation'}
+            or type(record['predicate']) is not str or record['predicate'] not in MONITOR_PREDICATES
+            or type(record['relation']) is not str or record['relation'] not in MONITOR_RELATIONS
+            or type(record['exitCode']) is not int or not -2**31 <= record['exitCode'] <= 2**32-1
+            or type(record['sampleOrder']) is not int or record['sampleOrder'] < 1
+            or (record['predicate'] == 'process_exit' and record['exitCode'] == 0)):
+        raise ValueError('native_monitor_record')
+    return record
+
+
+def foreground_pid(desktop, window):
+    import ctypes
+    from ctypes import wintypes
+    pid = wintypes.DWORD()
+    if window:
+        desktop.user.GetWindowThreadProcessId(window, ctypes.byref(pid))
+    return pid.value
+
+
+class PostedForegroundMonitor:
+    """Only the pinned popup, after the Target018 grant, may interrupt owned A.
+
+    Coordinator retains worker/target/guardian handles until settlement (no PID reuse).
+    First observed return to A ends the popup window; file closure/deadline also end it.
+    """
+    def __init__(self, private, initial, clock, popup_allowed=True):
+        self.private, self.initial, self.clock = private, initial, clock
+        self.popup_allowed = popup_allowed
+        self.surfaces = self.identities = None
+        self.seen_a = self.seen_popup = self.returned = False
+        self.granted_at = None
+
+    def sample(self, desktop, window):
+        path = self.private / 'positive-surfaces.txt'
+        if self.surfaces is None and path.exists():
+            positive_foregrounds(self.private, self.initial)  # strict existing shape validation
+            self.surfaces = tuple(map(int, helpers.owned_bytes(path, self.private, 256).split()))
+            raw = helpers.owned_bytes(self.private / 'positive-identities.txt', self.private, 128).decode('ascii')
+            if not re.fullmatch(r'[1-9][0-9]*( [1-9][0-9]*){2}', raw):
+                raise ValueError('native_monitor_identity')
+            self.identities = tuple(map(int, raw.split()))
+            if len(set(self.identities)) != 3 or max(self.identities) > 2**32-1:
+                raise ValueError('native_monitor_identity')
+        if self.surfaces is None:
+            return (None if window == self.initial else 'foreground_foreign', 'none' if not window else 'foreign')
+        a, b, popup, main = self.surfaces
+        target, candidate, guardian = self.identities
+        pid = foreground_pid(desktop, window)
+        relation = ('none' if not window else 'foreign' if not pid else
+                    'owned_target_a' if window == a and pid == target else
+                    'owned_target_b' if window == b and pid == target else
+                    'candidate' if pid == candidate else 'guardian' if pid == guardian else
+                    'same_pid_other' if pid == target else 'foreign')
+        grant = self.private / 'positive-foreground-granted'
+        if grant.exists() and self.granted_at is None:
+            if helpers.owned_bytes(grant, self.private, 32) != b'granted\n':
+                raise ValueError('native_monitor_grant')
+            self.granted_at = self.clock()
+        closed = self.private / 'positive-foreground-closed'
+        is_closed = closed.exists()
+        if is_closed and helpers.owned_bytes(closed, self.private, 32) != b'closed\n':
+            raise ValueError('native_monitor_grant')
+        if relation == 'owned_target_a':
+            self.seen_a = True
+            self.returned |= self.seen_popup
+            return None, relation
+        if window == self.initial and not self.seen_a:
+            return None, relation
+        if (self.popup_allowed and window == popup and relation == 'candidate' and self.seen_a and not self.returned
+                and self.granted_at is not None and self.clock() - self.granted_at <= 20 and not is_closed):
+            self.seen_popup = True
+            return None, relation
+        return ('foreground_unexpected_candidate' if relation == 'candidate' else 'foreground_foreign'), relation
+
+
+def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=time.sleep, positive_private=None, registered=False,
+            scene=None, evidence_private=None):
     """No timeout kill: coordinator retains independent RAM recovery on a pending scene."""
-    failed = False
+    failure = None
+    order = 0
+    relation = 'none'
+    policy = PostedForegroundMonitor(positive_private, foreground, clock, scene != 'copy') if scene in (*POSTED_SCENES, 'copy') else None
     announced = False
     operator_announced = False
     while process.poll() is None:
+        order += 1
         try:
             desktop.validate_input_desktop()
             allowed = {foreground} if positive_private is None else positive_foregrounds(positive_private, foreground)
@@ -234,12 +327,37 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             if registered and positive_private is not None and not operator_announced and registered_operator_ready(positive_private):
                 print('native_phase=operator_ready press_Ctrl_Alt_Shift_F11_then_release_all_input', flush=True)
                 operator_announced = True
-            failed |= desktop.user.GetForegroundWindow() not in allowed
-            failed |= any(p.stat().st_size > 65536 for p in output)
+            window = desktop.user.GetForegroundWindow()
+            predicate, relation = (policy.sample(desktop, window) if policy is not None else
+                                   (None if window in allowed else 'foreground_foreign', 'none' if not window else 'foreign'))
+            if predicate and failure is None:
+                failure = (predicate, order, relation)
+            if any(p.stat().st_size > 65536 for p in output) and failure is None:
+                failure = ('output_oversized', order, relation)
         except Exception:
-            failed = True
+            if failure is None:
+                failure = ('observation_exception', order, relation)
         sleep(.05)
-    if failed or process.returncode:
+    # Check final output too: a process can write oversized output immediately before exit.
+    order += 1
+    try:
+        if any(p.stat().st_size > 65536 for p in output) and failure is None:
+            failure = ('output_oversized', order, relation)
+    except Exception:
+        if failure is None:
+            failure = ('observation_exception', order, relation)
+    if process.returncode and failure is None:
+        failure = ('process_exit', order, relation)
+    if policy is not None and policy.seen_popup and not policy.returned and failure is None:
+        failure = ('foreground_unexpected_candidate', order, relation)
+    if failure:
+        predicate, sample, relation = failure
+        private = evidence_private or positive_private
+        if private is not None:
+            record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation)
+            with (private / 'native-monitor-failure.json').open('x', encoding='ascii') as stream:
+                json.dump(record, stream)
+            validate_monitor_failure(private)
         raise ValueError('native_scene_failed')
 
 
@@ -433,7 +551,8 @@ def main(argv=None, *, prior_restorative_session=None):
             process = subprocess.Popen([str(entry), '--coordinate', args.scene, str(target), args.target_sha256,
                                         str(guardian), args.guardian_sha256], cwd=private, stdin=subprocess.DEVNULL,
                                        stdout=out, stderr=err)
-            monitor(process, desktop, foreground, paths, positive_private=private if positive else None, registered=args.scene in REGISTERED_SCENES)
+            monitor(process, desktop, foreground, paths, positive_private=private if positive else None, registered=args.scene in REGISTERED_SCENES,
+                    scene=args.scene, evidence_private=private)
         data = [helpers.owned_bytes(p, private, 65536) for p in paths]
         expected = (f'native_result={args.scene}_settled' if positive else
                     'native_result=owner_refusal_restored' if args.scene == 'owner-refusal' else

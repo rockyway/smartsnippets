@@ -77,6 +77,9 @@ public partial class App : Application
                 lease = false;
                 await host.ExitAsync();
                 if (!boundary.Exited) throw new InvalidOperationException("native_host_exit");
+                var closedPath = Path.Combine(Program.PrivateRoot, "positive-foreground-closed");
+                File.WriteAllText(closedPath + ".tmp", "closed\n");
+                File.Move(closedPath + ".tmp", closedPath);
                 session.Dispose(); session = null;
                 await fixture.DisposeAsync(); fixture = null;
                 await BootstrapProtocol.WriteAsync(Program.Responses, "positive_restored", ct);

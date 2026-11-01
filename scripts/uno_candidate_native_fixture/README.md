@@ -124,6 +124,23 @@ Target A editor and releases all input within 15 seconds. No initial synthetic f
 is used; the fixed `focus_a` command is allowed only after A is already foreground
 and the all-VK-up/quiet gate passes. `empty_a/b` are assertions, not clearing commands.
 
+The independent monitor's posted/captured-Copy/context policy accepts initial
+foreground only before observed A, then the pinned A; only the exact popup HWND
+of the coordinator-authenticated live worker PID can interrupt A after an atomic
+successful Target018 grant marker. Main, B, zero, other candidate windows and
+wrong-PID/reused HWNDs are not exceptions. The popup window ends on first observed
+return to A, host-exit closure, or 20 seconds after observing the grant. Main-row
+`copy` uses the same monitor but never permits popup foreground. Other scenes'
+foreground policies are unchanged. Sampling is not continuous native-focus proof;
+a missed A/return sample fails closed, not success. Monitoring never kills recovery.
+A latched failure is retained after process exit in `native-monitor-failure.json`:
+`predicate` (`foreground_foreign`, `foreground_unexpected_candidate`,
+`output_oversized`, `observation_exception`, `process_exit`), integer `exitCode`,
+positive integer `sampleOrder`, and `relation` using the control diagnostic tokens.
+The first predicate wins; final output size is checked even on immediate exit.
+Python validates the exact schema before reporting failure. This is diagnostics,
+not review approval or permission to rerun.
+
 - `posted-enter/row/main`: register Ctrl+Alt+Shift+F11 on the real host message HWND,
   unregister/reacquire, then request `foreground_grant` over the retained owned
   Target018 stdin/stdout control channel. Before readiness, Target018 pins the
