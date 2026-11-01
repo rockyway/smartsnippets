@@ -241,7 +241,7 @@ def record_failure(private, error):
                'desktop_unavailable', 'window_recreated', 'ui_exit_code',
                'ui_picker_identity', 'ui_picker_main_identity', 'ui_picker_replaced',
                'ui_picker_phase', 'ui_picker_actions', 'ui_picker_phase_actions',
-               'ui_foreground_schema'}
+               'ui_foreground_schema', 'ui_foreground_file', 'ui_foreground_unexpected'}
     reason = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'observer_failure'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:

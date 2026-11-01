@@ -362,9 +362,15 @@ class NativeStageDiagnosticsTests(unittest.TestCase):
         for token in re.findall(r'NativeStage\.Reach\("([a-z_]+)"\)', app):
             self.assertIn(token, native.NATIVE_STAGES)
         factory = (native.REPO / 'src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative')
-        for name in ('NativeAcceptanceFactory.cs', 'GuardianClient.cs'):
-            for token in re.findall(r'stage\?\.Invoke\("([a-z_]+)"\)', (factory / name).read_text()):
-                self.assertIn(token, native.NATIVE_STAGES)
+        self.assertIn('stage: NativeStage.Reach', app)
+        factory_source = (factory / 'NativeAcceptanceFactory.cs').read_text()
+        self.assertRegex(factory_source, r'GuardianClient\.Start\([^;]*,\s*stage\)')
+        sources = [factory_source, (factory / 'GuardianClient.cs').read_text()]
+        tokens = [re.findall(r'stage\?\.Invoke\("([^"]*)"\)', source) for source in sources]
+        self.assertTrue(all(tokens))
+        # Source order, with the guardian call expanded at its call site.
+        ordered = tokens[0][:2] + tokens[1] + tokens[0][2:]
+        self.assertEqual([t for t in native.NATIVE_STAGES if t in ('session_probe', 'session_capture', 'guardian_image', 'guardian_spawn', 'guardian_bootstrap', 'guardian_wait', 'session_focus')], ordered)
 
     def test_failure_stage_reads_only_the_last_allowlisted_token(self):
         for stage in native.NATIVE_STAGES:

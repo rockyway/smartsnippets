@@ -316,6 +316,8 @@ def validate_helper_foreground_failure(private):
         return False
     try:
         record = json.loads(base.owned_bytes(path, private, 4096).decode('ascii'))
+    except OSError:
+        raise ValueError('ui_foreground_file') from None
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise ValueError('ui_foreground_schema') from None
     privacy_schema().validate_foreground_failure(record)
@@ -332,9 +334,8 @@ def observe_desktop(desktop, allow_zero_fg=False):
 
 
 def observe_foreground_frame(desktop, hwnd, pid, initial, phase, picker_handles, owned_foreground_seen, sample_order):
-    # One observer-loop frame. Authenticate the owned enabled popup (and latch it) in this
-    # same frame BEFORE sampling the foreground, so a picker that activates between the two
-    # is judged against the popup that was authenticated here, never against a stale one.
+    # Authenticate before sampling; if activation raced that query, authenticate once more
+    # before judging the sampled HWND. Both queries preserve the same ownership/latch checks.
     popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase)) if phase else None
     if popup is not None:
         if picker_handles.setdefault(phase, popup) != popup:
@@ -344,6 +345,11 @@ def observe_foreground_frame(desktop, hwnd, pid, initial, phase, picker_handles,
         raise ValueError('clipboard_changed')
     picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase) if phase else None)
     allowed = (initial[0], hwnd) if not owned_foreground_seen else (hwnd,)
+    if phase and popup is None and fg not in allowed and not picker_fg:
+        popup = owned_picker(desktop, hwnd, pid, picker_handles.get(phase))
+        if popup is not None and picker_handles.setdefault(phase, popup) != popup:
+            raise ValueError('ui_picker_replaced')
+        picker_fg = picker_foreground(desktop, fg, popup, picker_handles.get(phase))
     if fg not in allowed and not picker_fg:
         raise ForegroundChanged(fg, popup, PICKER_PHASES.index(phase) if phase else -1, sample_order)
     return owned_foreground_seen or fg == hwnd or picker_fg
@@ -441,6 +447,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             out, err = helper.communicate(timeout=2)
             helper_diagnostics_saved = True
             save_helper_diagnostics(private, out, err)
+            if validate_helper_foreground_failure(private):
+                raise ValueError('ui_foreground_unexpected')
             validate_helper_output(helper.returncode, out, err)
             for phase in phases:
                 if not base.receipt(private, phase, process.pid):
@@ -509,13 +517,20 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
         if isinstance(error, ForegroundChanged) and process is not None:
             save_foreground_failure(private, desktop, error.foreground, initial, hwnd, process.pid,
                                     error.popup, error.phase_index, error.sample_order)
+        # Reap the writer before inspecting its evidence, including failures mid-frame.
+        if helper is not None:
+            if helper.poll() is None:
+                startup.stop_app(helper)
+            out, err = helper.communicate(timeout=2)
+            if not helper_diagnostics_saved:
+                helper_diagnostics_saved = True
+                save_helper_diagnostics(private, out, err)
         try:
             validate_helper_foreground_failure(private)
-        except (OSError, ValueError) as schema_error:
-            if str(schema_error) == 'ui_foreground_schema':
-                error = schema_error
+        except ValueError as schema_error:
+            error = schema_error
         base.record_failure(private, error)
-        raise
+        raise error
     finally:
         try:
             if helper is not None and helper.poll() is None:

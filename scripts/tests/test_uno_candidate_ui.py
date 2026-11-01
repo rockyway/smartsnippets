@@ -583,6 +583,7 @@ class FakeWindows:
         self.enabled_popup = enabled_popup
         self.foreground = foreground
         self.calls = []
+        self.transition = None
         self.table = {
             self.MAIN: dict(pid=pid, thread=40, cls='WinUIDesktopWin32WindowClass', owner=0, root=self.MAIN),
             self.PICKER: dict(pid=pid, thread=40, cls='#32770', owner=self.MAIN, root=self.MAIN),
@@ -606,6 +607,8 @@ class FakeWindows:
             return 1 if entry else 0
         def foreground():
             self.calls.append('foreground')
+            if self.transition:
+                self.enabled_popup, self.foreground = self.transition
             return self.foreground
         user.GetWindow.side_effect = get_window
         user.GetAncestor.side_effect = lambda h, flags: self.table.get(h, {}).get('root', 0)
@@ -626,12 +629,13 @@ class PickerObserverLoopTests(unittest.TestCase):
                                           {} if handles is None else handles, seen, order)
 
     def test_open_time_race_accepts_picker_authenticated_in_the_same_frame(self):
-        world = FakeWindows(enabled_popup=FakeWindows.PICKER, foreground=FakeWindows.PICKER)
+        world = FakeWindows(enabled_popup=0, foreground=FakeWindows.MAIN)
+        world.transition = (FakeWindows.PICKER, FakeWindows.PICKER)
         handles = {}
         self.assertTrue(self.frame(world, handles))
         self.assertEqual({'import-cancel': FakeWindows.PICKER}, handles)
         # Authentication precedes the foreground sample inside the frame.
-        self.assertEqual(['popup', 'foreground'], world.calls)
+        self.assertEqual(['popup', 'foreground', 'popup'], world.calls)
 
     def test_foreign_same_pid_foreground_is_refused_with_populated_diagnostics(self):
         import json
@@ -652,6 +656,19 @@ class PickerObserverLoopTests(unittest.TestCase):
         # No title, class string or raw HWND value reaches the evidence.
         for leaked in ('#32770', 'WinUIDesktop', str(FakeWindows.FOREIGN)):
             self.assertNotIn(leaked, text)
+
+    def test_mid_frame_foreign_transition_uses_rechecked_popup_in_diagnostics(self):
+        world = FakeWindows(enabled_popup=0, foreground=FakeWindows.MAIN)
+        world.transition = (FakeWindows.PICKER, FakeWindows.FOREIGN)
+        with self.assertRaises(s.ForegroundChanged) as caught:
+            self.frame(world)
+        error = caught.exception
+        record = s.foreground_failure_record(world.desktop, error.foreground, self.INITIAL,
+                                              world.MAIN, 30, error.popup)
+        self.assertEqual(['popup', 'foreground', 'popup'], world.calls)
+        self.assertTrue(record['popupPresent'])
+        self.assertFalse(record['fgIsPopup'])
+        self.assertFalse(record['fgThreadIsMainThread'])
 
     def test_other_pid_and_vanished_foregrounds_report_without_claiming_ownership(self):
         world = FakeWindows(enabled_popup=0, foreground=FakeWindows.FOREIGN)
@@ -695,6 +712,64 @@ class PickerObserverLoopTests(unittest.TestCase):
             path.write_text('not json', encoding='ascii')
             with self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
                 s.validate_helper_foreground_failure(root)
+
+    def test_helper_file_read_failures_are_fixed_and_not_swallowed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'ui-helper-foreground-failure.json').write_bytes(b'{}')
+            for error, token in ((ValueError('evidence_file'), 'evidence_file'),
+                                 (ValueError('evidence_alias'), 'evidence_alias'),
+                                 (PermissionError('private path'), 'ui_foreground_file')):
+                with self.subTest(token=token), patch.object(s.base, 'owned_bytes', side_effect=error):
+                    with self.assertRaisesRegex(ValueError, '^' + token + '$'):
+                        s.validate_helper_foreground_failure(root)
+        source = (s.REPO / 'scripts/run_uno_candidate_ui.py').read_text()
+        failure = source.split('    except BaseException as error:', 1)[1].split('    finally:', 1)[0]
+        self.assertLess(failure.index('startup.stop_app(helper)'), failure.index('helper.communicate'))
+        self.assertLess(failure.index('helper.communicate'), failure.index('validate_helper_foreground_failure'))
+        normal = source.split('            out, err = helper.communicate(timeout=2)', 1)[1].split('    except BaseException', 1)[0]
+        self.assertIn("if validate_helper_foreground_failure(private):\n                raise ValueError('ui_foreground_unexpected')", normal)
+
+    @unittest.skipUnless(s.sys.platform == 'win32', 'system PowerShell schema execution')
+    def test_powershell_foreground_failure_executes_real_function(self):
+        import json
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            script = r'''
+$ErrorActionPreference='Stop'
+Add-Type @'
+using System;
+using System.Text;
+public static class Owned019 {
+ public static uint GetWindowThreadProcessId(IntPtr h, out uint pid) { pid=30; return 40; }
+ public static int GetClassName(IntPtr h, StringBuilder b, int n) { b.Append("#32770"); return 6; }
+ public static IntPtr GetWindow(IntPtr h, int n) { return new IntPtr(10); }
+ public static IntPtr GetAncestor(IntPtr h, int n) { return new IntPtr(10); }
+ public static bool IsWindowVisible(IntPtr h) { return true; }
+ public static bool IsWindowEnabled(IntPtr h) { return true; }
+}
+'@
+$tokens=$null; $errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile('HELPER',[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'parse'}
+$f=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'ForegroundFailure'},$true)
+if($f.Count -ne 1){throw 'function'}
+Invoke-Expression $f[0].Extent.Text
+$root='ROOT'; $h=[IntPtr]10; $OwnedHwnd=10; $OwnedPid=30; $InitialForeground=1
+$script:pickerPhase='import-cancel'; $script:guardSamples=7
+ForegroundFailure 20 ([IntPtr]20)
+'''.replace('HELPER', str(s.HELPER).replace("'", "''")).replace('ROOT', tmp.replace("'", "''"))
+            result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
+                                    capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+            data = (Path(tmp) / 'ui-helper-foreground-failure.json').read_bytes()
+            record = s.privacy_schema().validate_foreground_failure(json.loads(data))
+            self.assertTrue(record['popupPresent'] and record['fgIsPopup'])
+            self.assertEqual((0, 7), (record['phaseIndex'], record['sampleOrder']))
+            mutated = json.loads(data)
+            mutated['hwnd'] = 20
+            with self.assertRaisesRegex(ValueError, 'ui_foreground_schema'):
+                s.privacy_schema().validate_foreground_failure(json.loads(json.dumps(mutated).encode('ascii')))
 
     def test_powershell_helper_emits_the_same_schema_in_the_same_order(self):
         import re

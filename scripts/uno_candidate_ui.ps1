@@ -146,7 +146,7 @@ public static class Owned019 {
                 elseif ($dialog -ne $script:pickerHwnd) { throw 'picker_replaced' }
             }
         }
-        # Sample only after authenticating the exact enabled popup.
+        # Sample after authentication, then recheck once if picker activation raced it.
         $fg = [Owned019]::GetForegroundWindow().ToInt64()
         $pickerForeground = $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64()
         if (-not $pickerForeground -and $Scene -ceq 'file-picker' -and $null -ne $script:pickerPhase -and
@@ -154,6 +154,17 @@ public static class Owned019 {
             $fg -eq $script:pickerHwnd.ToInt64() -and
             (-not [Owned019]::IsWindow($script:pickerHwnd) -or -not [Owned019]::IsWindowVisible($script:pickerHwnd))) {
             $pickerForeground = $true
+        }
+        $unexpected = ($script:focused -and $fg -ne $OwnedHwnd) -or
+            (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd)
+        if (-not $pickerForeground -and $unexpected -and $dialog -eq [IntPtr]::Zero -and
+            $Scene -ceq 'file-picker' -and $null -ne $script:pickerPhase) {
+            $dialog = OwnedPicker
+            if ($dialog -ne [IntPtr]::Zero) {
+                if ($script:pickerHwnd -eq [IntPtr]::Zero) { $script:pickerHwnd = $dialog }
+                elseif ($dialog -ne $script:pickerHwnd) { throw 'picker_replaced' }
+            }
+            $pickerForeground = $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64()
         }
         if (-not $pickerForeground -and (($script:focused -and $fg -ne $OwnedHwnd) -or
             (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd))) { ForegroundFailure $fg $dialog; throw 'foreground' }

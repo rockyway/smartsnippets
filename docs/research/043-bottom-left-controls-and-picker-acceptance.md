@@ -10,8 +10,9 @@ changes or real-profile access was performed.
 The picker scout found that an open-time sampling race is possible, but the
 recorded `owned_other` foreground does not establish whether that race or a
 separate same-process window caused the refusal. Both observers now authenticate
-the enabled popup before sampling foreground, without changing the ownership
-boundary. The row scout found that the recorded startup exception preceded
+the enabled popup before sampling foreground and re-authenticate once when an
+unexpected foreground races an initially absent popup, without changing the ownership
+boundary or replacement latch. Diagnostics use the post-recheck popup. The row scout found that the recorded startup exception preceded
 `guardian_ready`, so the later row callback cannot explain that event; the throw
 site remains unknown. No native or UI rerun is implied by these source changes.
 
@@ -24,7 +25,10 @@ counters: the existing relation enum, `fgIsMain`, `fgIsPopup`, `popupPresent`,
 `fgRootOwnerIsMain` (`GA_ROOTOWNER`), `fgClassIs32770`, `fgVisible`, `fgEnabled`,
 `phaseIndex` and `sampleOrder`. No title, class string, path, raw HWND value or
 desktop enumeration is recorded; the Python observer rejects a helper file or its
-own record with any other key or value type (`ui_foreground_schema`).
+own record with any other key or value type (`ui_foreground_schema`). The helper
+is stopped/reaped before failure-file validation; size/alias errors propagate and
+OS read errors become `ui_foreground_file`. Any helper failure file on the normal
+success path is refused (`ui_foreground_unexpected`).
 (B) The native fixture worker tracks the last fixed stage it entered before
 `guardian_ready` (`NativeStage.cs`; allowlist mirrored in
 `scripts/run_uno_candidate_native.py`). The sanitized failure line becomes
