@@ -118,3 +118,47 @@ clipboard; it does not establish why it changed or attribute the change to the
 operator. The conservative guardian refused rather than discarding unsupported
 representations. A fresh operator-prepared supported baseline is required before
 another trial. All eight source flags were restored false.
+
+## Same-artifact controls accepted; positive preparation refused
+
+After the operator prepared a fresh baseline, trusted wrapper
+`ss-uno018-ui-5bfa937fbeba651ce6f403752e430802` passed primary landscape and quiet
+input checks. The existing eight-gate build `e65583852aee4492882567ee2b7e7773`
+passed all three recovery controls with source fingerprint
+`896ad0d1aa79fa27d34f968d4512c35b6b4fdfb36c40f090e7f35bc4447479b6`:
+
+| Scene | Session token | Verified final receipt |
+|---|---|---|
+| restore | `ss-uno018-ui-dbaa02c4e176f8cc2b1a4ab21625970c/ss-uno019-native-c90fb9cdb1d94fa98d2bf3dce1147f2f` | `regular_restored` |
+| abort | `ss-uno018-ui-2fa4e5f2a24e6638c6722c12b6002b84/ss-uno019-native-a3a662839bf043c890fd4c9ade3dbcdd` | `abort_restored` |
+| owner-refusal | `ss-uno018-ui-a4cb02629133ea89930c9e815d4fd4e7/ss-uno019-native-07a8ee1ca3f74d1cb14d264762aa423e` | `owner_refusal_restored` |
+
+Each returned trusted in-memory observation was chained into the next call.
+The runner verified exact ordered receipts, empty native stderr, owned-profile
+host startup, error absence and privacy negative controls. Abort intentionally
+terminates its worker/target Job; graceful shutdown is not claimed for that scene.
+
+The following single `posted-enter` attempt was session
+`ss-uno018-ui-91e7803bf3c2077860ab0e56cdd6f3bc/ss-uno019-native-17de5361cb74491d91636bfeaf9a635d`.
+It reached guardian readiness, seeded the owned synthetic row and logged
+`owned_initial_focus phase=waiting`, then
+`owned_target_preparation reason=Refused` about 33ms later. It never reached the
+helper's accepted preparation result or the later keyboard-arm/insertion path.
+No positive PASS is claimed. The result alone does not distinguish permission,
+identity, desktop, foreground or initial quiet refusal. Native stderr was empty,
+parent returned failure and all eight source flags were restored false.
+
+A small follow-up adds fixed-token initial classification and a four-second
+read-only wait exclusively for unquiet startup admission, continuously rejecting
+any foreground change or other lost guard. It does not retry automation or relax
+final focus/input gates. Validation: 101 fixture tests and strict false-gate AOT
+build `302282de02824d56bee3b9ad37895c14`, SHA256
+`d068fc3f0016a61940ac9a3b99eacf4a52b2ad401ff20b5626adce127d3086c9`.
+Review `d22d9b78-7400-41e3-8699-06c9862120b1` found no issues and cleared a new
+same-artifact control sequence followed by one positive attempt. The 119 Python
+and 264 candidate tests also pass.
+
+The operator additionally authorized agent preparation of the fixed harmless QA
+clipboard baseline for future tests. This does not waive format preservation,
+independent recovery, input/ownership guards or the distinction between clipboard
+history and verified restoration.

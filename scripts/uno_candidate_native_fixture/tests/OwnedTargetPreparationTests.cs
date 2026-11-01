@@ -161,6 +161,50 @@ public sealed class OwnedTargetPreparationTests
         Assert.Equal(1, os.EditorCommands); Assert.Equal(0, os.Milliseconds);
     }
 
+    [Fact]
+    public async Task InitialStartupQuietCanSettleBeforeExactlyOneAutomationAttempt()
+    {
+        var os = new Os { Quiet = false };
+        os.OnDelay = () => { if (os.Milliseconds >= 1500) os.Quiet = true; };
+        var com = new Com(os);
+        var receipts = new List<string>();
+        Assert.Equal(OwnedPreparationResult.Prepared, await OwnedTargetPreparation.PrepareAsync(os, () => com,
+            1, 2, 3, CancellationToken.None, receipts.Add));
+        Assert.Equal(new[] { "ready" }, receipts);
+        Assert.Equal(1500, os.Milliseconds);
+        Assert.Equal(1, com.Elements); Assert.Equal(1, com.Focuses);
+    }
+
+    [Theory]
+    [InlineData("permission")] [InlineData("identity")] [InlineData("desktop")] [InlineData("foreground")]
+    public async Task InitialQuietWaitNeverRetriesAnyOtherRefusal(string reason)
+    {
+        var os = new Os { Quiet = false };
+        os.OnDelay = () =>
+        {
+            if (reason == "permission") os.Permission = false;
+            if (reason == "identity") os.Identity = false;
+            if (reason == "desktop") os.Desktop = false;
+            if (reason == "foreground") os.Foreground = 2;
+        };
+        var receipts = new List<string>();
+        Assert.Equal(OwnedPreparationResult.Refused, await OwnedTargetPreparation.PrepareAsync(os,
+            () => throw new Exception("must not create automation"), 1, 2, 3, CancellationToken.None, receipts.Add));
+        Assert.Equal(new[] { reason }, receipts);
+        Assert.Equal(25, os.Milliseconds); Assert.Equal(0, os.EditorCommands);
+    }
+
+    [Fact]
+    public async Task InitialQuietTimeoutIsBoundedAndDoesNotCreateAutomation()
+    {
+        var os = new Os { Quiet = false };
+        var receipts = new List<string>();
+        Assert.Equal(OwnedPreparationResult.Refused, await OwnedTargetPreparation.PrepareAsync(os,
+            () => throw new Exception("must not create automation"), 1, 2, 3, CancellationToken.None, receipts.Add));
+        Assert.Equal(new[] { "quiet_timeout" }, receipts);
+        Assert.Equal(4000, os.Milliseconds); Assert.Equal(0, os.EditorCommands);
+    }
+
     private static Task<OwnedPreparationResult> Prepare(Os os, Func<IOwnedPreparationAutomation> com) =>
         OwnedTargetPreparation.PrepareAsync(os, com, 1, 2, 3, CancellationToken.None);
     private sealed class Os : IOwnedPreparationOs

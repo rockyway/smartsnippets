@@ -27,12 +27,39 @@ internal static class OwnedTargetPreparation
     internal static bool ShouldPrepare(string scene) => SourceReviewed && PositiveProtocol.IsPositive(scene);
 
     internal static async Task<OwnedPreparationResult> PrepareAsync(IOwnedPreparationOs os,
-        Func<IOwnedPreparationAutomation> automation, nint originalForeground, nint windowA, nint editorA, CancellationToken ct)
+        Func<IOwnedPreparationAutomation> automation, nint originalForeground, nint windowA, nint editorA, CancellationToken ct,
+        Action<string>? initialReceipt = null)
     {
         bool Guard() => !ct.IsCancellationRequested && os.Permitted() && os.PinnedIdentity() && os.VisibleDesktop();
         bool Initial() => Guard() && originalForeground != 0 &&
             (os.Foreground == originalForeground || os.Foreground == windowA) && os.QuietAllInput();
-        if (!Initial()) return OwnedPreparationResult.Refused;
+        string InitialReason()
+        {
+            if (ct.IsCancellationRequested) return "cancelled";
+            if (!os.Permitted()) return "permission";
+            if (!os.PinnedIdentity()) return "identity";
+            if (!os.VisibleDesktop()) return "desktop";
+            if (originalForeground == 0 || (os.Foreground != originalForeground && os.Foreground != windowA)) return "foreground";
+            return os.QuietAllInput() ? "ready" : "unquiet";
+        }
+        // Startup can refresh the input timestamp. Wait read-only for quiet; never retry
+        // automation or accept a foreground transfer while waiting for admission.
+        var initialForeground = os.Foreground;
+        var initialStart = os.Milliseconds;
+        while (true)
+        {
+            var reason = InitialReason();
+            if (os.Foreground != initialForeground) reason = "foreground";
+            if (reason == "ready") break;
+            if (reason != "unquiet" || os.Milliseconds - initialStart >= 4000)
+            {
+                initialReceipt?.Invoke(reason == "unquiet" ? "quiet_timeout" : reason);
+                return OwnedPreparationResult.Refused;
+            }
+            await os.DelayAsync(ct);
+        }
+        initialReceipt?.Invoke("ready");
+        if (!Initial() || os.Foreground != initialForeground) return OwnedPreparationResult.Refused;
         var alreadyA = os.Foreground == windowA;
         uint epoch;
         if (!os.TryInputEpoch(out epoch)) return OwnedPreparationResult.Refused;
