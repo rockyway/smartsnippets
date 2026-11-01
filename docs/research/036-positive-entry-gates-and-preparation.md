@@ -97,4 +97,24 @@ creating any native coordinator/guardian, launching the candidate, or changing
 the clipboard. This is a preflight refusal, not a failed insertion or control
 PASS. Windows' reported state does not establish who or what caused it.
 All eight flags were restored false immediately. The reviewed same-artifact
-control/positive sequence remains unexecuted for this artifact.
+control/positive sequence remained unexecuted at that checkpoint.
+
+After the operator replied ready, a read-only check reported no held keys.
+A bounded four-second idle-settling preflight retained unchanged desktop,
+foreground and clipboard-sequence invariants. Trusted wrapper
+`ss-uno018-ui-2defaeed3f3722734dc29f7fb6c134d9` then attempted the first `restore`
+control using the reviewed prior-session witness. Native session
+`ss-uno018-ui-d5f18e29f1e111485b847572e5001637/ss-uno019-native-beaac050f0494889a60bfb2fc63fc300`
+reached `guardian_ready` and `native_control_admission reason=Ready`, but
+`native_control_publish status=refused`; no `published` receipt occurred. Parent
+returned failure, empty native stderr, with no pending-retention report. The
+remaining controls and positive scene did not execute.
+
+A subsequent read-only format enumeration (no `GetClipboardData`, payload
+inspection or persistence) found four builtin text representations, no ownership
+marker or protective metadata, and three unsupported formats. Owner was NULL.
+This establishes that the current baseline is not the earlier settled marked
+clipboard; it does not establish why it changed or attribute the change to the
+operator. The conservative guardian refused rather than discarding unsupported
+representations. A fresh operator-prepared supported baseline is required before
+another trial. All eight source flags were restored false.
