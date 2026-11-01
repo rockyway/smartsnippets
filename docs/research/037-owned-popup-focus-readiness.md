@@ -117,3 +117,23 @@ Next bounded implementation: a separately reviewed test-only registered OS
 shortcut scene, driven by the operator rather than posting WM_HOTKEY. It must
 retain all existing guards and must not manufacture a physical HID proof claim.
 The ordinary candidate remains native-default-denied.
+
+## Bounded transient-busy recovery fix
+
+The observed Busy retention motivated a narrow fix in `GuardianRecovery`: only
+after retained worker death is confirmed, retry the same ownership/token-guarded
+restore at most 30 times using the existing native 100ms wait, and only while the
+result is `Busy` and RAM backup remains. `ClipboardChanged`, `Partial`, `Failed`
+or a thrown restore immediately stop automatic retries and retain manual
+recovery. No original bytes are discarded or persisted, no foreign ownership is
+overwritten, and no timeout kills the guardian.
+
+Review `3db2cbba-2636-48b3-96c3-de177c3a6062` found no issues. The 274 candidate
+tests pass, including transient contention, persistent 30-wait contention,
+non-Busy refusal and exception transitions. Strict helper Native AOT publish
+passed with `-p:NoWarn=`; closed-gate source-check binary SHA256
+`54a41fface517caa5f59d4db384a7091c9375b737c26d3b481f26b9f52c3c59d`.
+No native execution of this updated recovery binary has occurred. A fresh
+review-enabled guardian and same-artifact controls are required before any
+registered-shortcut acceptance attempt; old guardian hashes are not silently
+reused as evidence for the changed recovery implementation.

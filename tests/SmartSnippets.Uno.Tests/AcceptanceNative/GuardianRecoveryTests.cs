@@ -49,6 +49,61 @@ public sealed class GuardianRecoveryTests
     }
 
     [Fact]
+    public async Task TransientBusy_RetriesSameGuardedRestoreBeforeExposingManualPipe()
+    {
+        var backup = true; var attempts = 0; var waits = 0;
+        await GuardianRecovery.RetainUntilSettledAsync(() => true, () => backup,
+            () => { if (++attempts < 3) return RestoreStatus.Busy; backup = false; return RestoreStatus.Restored; },
+            () => { waits++; return Task.CompletedTask; },
+            _ => throw new InvalidOperationException("No manual recovery after settlement"));
+        Assert.Equal(3, attempts); Assert.Equal(2, waits); Assert.False(backup);
+    }
+
+    [Theory]
+    [InlineData(RestoreStatus.ClipboardChanged)] [InlineData(RestoreStatus.Partial)] [InlineData(RestoreStatus.Failed)]
+    public async Task BusyThenNonBusyRefusal_ImmediatelyRetainsManualRecovery(RestoreStatus refusal)
+    {
+        var backup = true; var attempts = 0; var waits = 0; var clients = 0;
+        await GuardianRecovery.RetainUntilSettledAsync(() => true, () => backup,
+            () => ++attempts == 1 ? RestoreStatus.Busy : refusal,
+            () => { waits++; return Task.CompletedTask; }, status =>
+            {
+                Assert.Equal(refusal, status); Assert.True(backup); clients++;
+                backup = false; return Task.FromResult(RestoreStatus.Restored);
+            });
+        Assert.Equal(2, attempts); Assert.Equal(1, waits); Assert.Equal(1, clients);
+    }
+
+    [Fact]
+    public async Task PersistentBusy_BoundedRetriesRetainBackupForExplicitRecovery()
+    {
+        var backup = true; var attempts = 0; var waits = 0;
+        await GuardianRecovery.RetainUntilSettledAsync(() => true, () => backup,
+            () => { attempts++; return RestoreStatus.Busy; },
+            () => { waits++; return Task.CompletedTask; }, status =>
+            {
+                Assert.Equal(RestoreStatus.Busy, status); Assert.True(backup);
+                Assert.Equal(31, attempts); Assert.Equal(30, waits);
+                backup = false; return Task.FromResult(RestoreStatus.Restored);
+            });
+        Assert.False(backup);
+    }
+
+    [Fact]
+    public async Task BusyRetryException_RetainsFailedRecoveryWithoutFurtherAutomaticAttempts()
+    {
+        var backup = true; var attempts = 0; var waits = 0;
+        await GuardianRecovery.RetainUntilSettledAsync(() => true, () => backup,
+            () => ++attempts == 1 ? RestoreStatus.Busy : throw new InvalidOperationException(),
+            () => { waits++; return Task.CompletedTask; }, status =>
+            {
+                Assert.Equal(RestoreStatus.Failed, status); Assert.True(backup);
+                backup = false; return Task.FromResult(RestoreStatus.Restored);
+            });
+        Assert.Equal(2, attempts); Assert.Equal(1, waits);
+    }
+
+    [Fact]
     public async Task NoBackup_NeverTouchesWorkerOrClipboardDuringDeniedCleanup()
     {
         await GuardianRecovery.RetainUntilSettledAsync(

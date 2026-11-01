@@ -22,6 +22,15 @@ internal static class GuardianRecovery
         var status = RestoreStatus.Failed;
         try { status = restore(); }
         catch (Exception) { } // Still retain backup and expose retry control.
+        // Clipboard contention is transient and has not authorized any ownership change.
+        // Retry only Busy after verified worker death, with the same guarded restore.
+        // The native wait is 100ms: at most 30 waits before retaining manual recovery.
+        for (var retry = 0; retry < 30 && hasBackup() && status == RestoreStatus.Busy; retry++)
+        {
+            await wait();
+            try { status = restore(); }
+            catch (Exception) { status = RestoreStatus.Failed; }
+        }
         while (hasBackup())
         {
             try { status = await serveRecovery(status); }
