@@ -199,3 +199,179 @@ source/observation decision; this refusal must not be converted to PASS or worke
 around. Phase 3 remains entirely with the leader. No new test-suite, production
 cutover, arbitrary-target/native-input, release-readiness or plan-completion claim
 is made.
+
+## nr-02 — initial authorization pause (subsequently clarified)
+
+The follow-up brief requested `registered-row` then `registered-main`, operator
+shortcut delivery, and no agent-synthesized input. Source inspection found an
+unresolved conflict before opening any gate or changing the clipboard:
+
+- `PositiveHostScene.InsertAsync` routes these scenes through the actual row/main
+  VM insertion callbacks after the keyboard permit. They do not synthesize Enter
+  or post the shortcut, but they still dispatch native paste.
+- `NativeAcceptanceSession.SendPaste` reaches `GuardedPasteDispatcher` and
+  `NativeAcceptanceInput.SendPaste` in
+  `src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative/NativeAcceptanceFactory.cs`.
+  That implementation calls `SendInput(4, ...)` for Ctrl-down, V-down, V-up,
+  Ctrl-up. Thus these scenes cannot complete under a literal ban on synthesized
+  input. Enabling input review flags does not resolve conflicting operator scope.
+- `PositiveShortcutRoute.BeginAsync` has a reviewed 25-second callback timeout;
+  the brief anticipates approximately 40-second relay latency. No timeout was
+  extended, lease changed or repeated scene scheduled to compensate.
+
+**Initial question, resolved by the leader below:** Does the no-synthesis rule permit only the already reviewed,
+exact-owned-target, permit-guarded four-event Ctrl+V paste inside these application
+insertion scenes, while continuing to forbid synthesized shortcuts, Enter, mouse
+and generic key releases? If authorized, relay must still respect the existing
+25-second readiness/callback window unless a separate reviewed change is approved.
+
+Initial results: registered-row **BLOCKED / NOT RUN** at authorization preflight;
+registered-main **NOT RUN** after that stop. No native session/readiness artifact,
+fresh artifact/hash, baseline seed, witness handoff or control rerun was created.
+No success or runtime-failure claim is made. The signal file received exactly:
+
+```text
+RESULT registered-row FAIL preflight_input_scope_conflict
+```
+
+Here FAIL labels the requested scene's failed preflight, not a dispatched input
+trial. No `OPERATOR-READY` line was written because no authenticated readiness
+receipt existed; the operator should not press a shortcut for this stopped run.
+
+Live read-only enumeration again confirmed the same nonprimary bottom-left
+bounds/work rectangle, with no held keys. Release checks found native candidate,
+management fixture, guardian and Target018 counts all zero; no recovery or
+uncertain keyboard lifetime pending. All native/UI/startup/full-host/prototype
+flags remained false through this initial checkpoint and their tracked source
+files had no diff. At this initial checkpoint no nr-02 clipboard write had occurred. Locked read-only comparison
+still matched the authorized fixed synthetic baseline with stable sequence:
+4 builtin text formats, 0 ownership markers, 0 protective formats, 3 unsupported
+formats, no owner. No unknown payload/name was logged; the unsupported baseline
+was not promoted to a supported-capture attestation. The screen slot is safely
+released pending clarification at that checkpoint. Existing operator instruction
+edits/caches remain untouched; only this research document is committed for nr-02.
+
+### Clarification, fresh build and bounded preflight retry
+
+The leader explicitly clarified that the application's own reviewed,
+exact-Target018, PositiveNativeMutation-permit-guarded Ctrl+V is within the screen
+grant. Agent/harness shortcut/click/typing/UI driving remains forbidden. The
+25-second callback wait is unchanged; the leader would relay readiness promptly.
+The required reset line was appended before proceeding:
+
+```text
+RESET registered-row preflight_clarified
+```
+
+All eight reviewed native flags were enabled only in the trial tree; exact diff
+is retained as scratchpad `nr02-enabled-flags.diff`. UI/startup/full-host/prototype
+and ordinary production capability remained closed. A new strict build ran:
+
+```text
+pwsh -NoProfile -File scripts/uno_candidate_native_fixture/build.ps1 -BuildOnly
+```
+
+- Fixture token `b239977cc0b2401d994fab7eb4ed24f5`;
+  SHA256 `3be29b283e68be27da440424eb35164d6fb1b6998644ba391fc7684c84be1454`.
+- Enabled-source fingerprint:
+  `c2be40458bfa1a40362983fd14ff36d3ed345a939467d147ed9993aec8680198`.
+- Target018 reused unchanged from nr-01, token `f3bf97c97d0e4cabb4cde59641bec547`,
+  SHA256 `494eee33335f2c2d82536dca8ae15fbef3bbe03d6a63356272498058487247e6`.
+- Guardian reused unchanged from nr-01, token `6d857fad930a46c4a7d6bc9a9784524a`,
+  SHA256 `613b45256087b5d226f5f93958bc28e78e5776876f7e61703e9a8d68f3665911`.
+
+Build gates/zero-warning scan passed; all three hashes were recomputed afterward.
+Rather than reconstructing nr-01 memory witnesses or assuming scope equivalence,
+the wrapper scheduled fresh same-artifact controls before either registered scene.
+It retains returned witnesses in one trusted process, never deserializes them.
+The scratchpad helper `nr02-native.py` only orchestrates reviewed fixture runs,
+observes exact readiness and appends signals; it never sends shortcut/Enter,
+clicks, types, posts callbacks, manipulates OS focus or invokes external UIA.
+The fixture's existing reviewed preparation/application behavior is unchanged.
+
+After zero-process/no-recovery checks, the fixed authorized synthetic baseline
+was reseeded **once** with system clip.exe. Locked metadata verification found
+4 builtin text formats, no marker/protective/unsupported formats, no owner,
+exact fixed-baseline match and stable sequence. Live bottom-left geometry matched.
+
+First prepared wrapper `ss-uno018-ui-6b26c462d766e11584a3b12b373fa45f` refused
+`held_input` in its read-only preflight, before any native session/process or
+clipboard-control mutation. Empty stderr; signal appended
+`RESULT registered-row FAIL held_input`. This does not identify who/what caused
+the reported state and is not an insertion failure or accepted control.
+
+The leader then explicitly authorized up to two more preflight attempts, with
+zero-process/no-recovery checks and no reseed unless clipboard changed. Only the
+**first** additional attempt was used. The clipboard still matched the freshly
+seeded supported state, so there was no reseed. After exact same flags/fingerprint
+were reopened (no rebuild/source delta), command:
+
+```text
+python -I -B <scratchpad>/nr02-native.py
+```
+
+Trusted parent `ss-uno018-ui-443d3f1069ada113966413a9cdf4288e` passed bottom-left,
+unchanged-desktop, all-input-up and quiet preflight, and reached the following
+fresh same-artifact results with direct in-memory witness handoff:
+
+| Scene | Exact private session | Result |
+|---|---|---|
+| restore | `ss-uno018-ui-7b2c628b9ba841c680df4241e681ca55/ss-uno019-native-279a5db9981a4d3893cd5136a74801c3` | PASS: `clipboard_control_settled`, `regular_restored` |
+| abort | `ss-uno018-ui-3b529fa47ae7c422b2d3e3f0bdad0dce/ss-uno019-native-d3bf8209a4c045d69cc65cdf6a941de0` | PASS: `clipboard_control_settled`, `abort_restored` |
+| owner-refusal | `ss-uno018-ui-f5fdfacdbb808a74d05ff68419137fc9/ss-uno019-native-a7cfb134a49b4dceb6a8a44861033cd3` | PASS: `clipboard_control_settled`, `owner_refusal_restored` |
+
+All three returned the enabled-source fingerprint above and exact ordered
+receipts; empty stderr, host/readiness/error checks and privacy negative controls
+passed. Separate read-only receipt/privacy revalidation passed. No recovery retry
+or additional baseline write occurred.
+
+### registered-row FAIL before readiness; registered-main NOT RUN
+
+Exact registered-row session:
+`ss-uno018-ui-0e3ff31c2d5a4cb952c19be50ce693a0/ss-uno019-native-386df13b28524a10b3d100e5ec365a17`.
+Runner result: `native_scene_failed`; native stdout is only `native_result=failed`,
+stderr empty. The host logged one `candidate_started`, immediately followed by
+sanitized `native_positive_failed InvalidOperationException (HResult=0x80131509)`,
+then admission closure, full cleanup stages and `candidate_shutdown_complete`.
+No guardian-ready, awaiting-A, owned-initial-focus, shortcut-readiness or insertion
+receipt occurred. The generic exception does not establish its precise predicate;
+no foreground, identity, provider or clipboard cause is inferred.
+
+The exact readiness file is absent. The helper correctly emitted **no**
+`OPERATOR-READY` line and appended only
+`RESULT registered-row FAIL native_scene_failed`. No current operator shortcut
+prompt exists; do not press for this stopped run. `registered-main` was not
+started. The remaining preflight retry authorization was not used to retry a
+launched failed scene. Read-only owned SQLite aggregate is 0 rows / 0 usage.
+Post-failure diagnostic privacy scan and planted negative controls passed CLEAN;
+this does not convert the explicit native failure into PASS.
+
+Final signal-file lines for nr-02, in order:
+
+```text
+RESULT registered-row FAIL preflight_input_scope_conflict
+RESET registered-row preflight_clarified
+RESULT registered-row FAIL held_input
+RESULT registered-row FAIL native_scene_failed
+```
+
+### nr-02 final release
+
+All eight native flags were restored false. `rg` also verified UI/startup/
+full-host/prototype gates false; `git diff --exit-code` passed for all temporarily
+edited source files. No source fix, enabled flag or helper is committed.
+
+Final counts: native candidate 0, management fixture 0, guardian 0, Target018 0,
+`nr02-native.py` helpers 0. No pending recovery/uncertain keyboard lifetime,
+forced pending termination, synthetic key release, guard relaxation or further
+native trial. The requested row/main acceptance is **not passed**.
+
+Final locked RAM-only comparison still verified the fixed synthetic baseline
+and stable sequence inside the check, but found 4 builtin text formats,
+0 marker/protective formats, 3 unsupported formats and no owner. This differs
+from the supported prelaunch baseline; cause/timing relative to the generic
+failure is unknown. No unsupported format was discarded, no unknown payload/name
+logged and no additional reseed performed. Accepted control receipts prove
+settlement at their own boundaries, not immunity to later clipboard changes.
+No claim is made to restore pre-seed user clipboard data. Screen slot released
+safely; further native runtime attempts need a new explicit disposition.
