@@ -64,3 +64,56 @@ Strict false-gate fixture build `b81fb712970842a48041242ff399cf1b`, SHA256
 `3982f9b00b976b4bbfa6d421106f58766a4149347dfd4d01f3895490f59c22ed`.
 Review `bbebc1ce-4031-4d12-885a-6b8cf6fbbba7` found no issues and cleared a
 fresh same-artifact control sequence followed by one positive attempt.
+
+## Native diagnostics: Windows refused the foreground request
+
+Enabled build `fe767cd3d03c4a0da3c1deb41a02bddc`, executable SHA256
+`2babf575695ef72bddd9babd978f589cc8f1ee1aa48c9b33eecf3790c5598838`, source
+`a75a2c859b265b2e1db1a3bab8813b7c4e12040fa9c23c8e56130ecd3ff0f096`.
+
+An initial restore attempt refused unquiet startup admission. Another preflight
+refused a mouse/foreground change before launch. Neither was counted as PASS.
+Wrapper `ss-uno018-ui-12ace468d4b7576172cfb3422236a8fa` subsequently passed ordinary
+restore, then abort session
+`ss-uno018-ui-45d81070a6aee5a77f1ed11e5dbdc29a/ss-uno019-native-9478d3b460bb46979cc45d25dbcd5c48`
+reached publication and retained its guardian/coordinator rather than claiming
+recovery. The outer wrapper's bounded observation expired without killing them.
+
+The exact recorded recovery pipe was queried using its bounded `status` →
+response → `ack` protocol. It reported `RECOVERY_PENDING Busy`. An explicit
+guarded `retry` → response → `ack` returned `settled`. The coordinator then
+emitted `abort_restored`, and read-only process enumeration found zero candidate,
+guardian or Target018 fixture processes. No forced termination or clipboard
+replacement occurred while backup was pending. The extra pending receipt caused
+the strict runner's normal-success receipt validator to refuse this interrupted
+run; it is not counted as a clean acceptance PASS or trusted returned ledger
+observation. Original bytes remained in guardian RAM until verified settlement.
+
+After verified settlement, the parent used the operator's explicit authorization
+to prepare the fixed harmless baseline with system `clip.exe`. No clipboard
+history backup guarantee was assumed.
+
+Fresh wrapper `ss-uno018-ui-06b8dd080bf396a2b2b613541c267ba9` passed all three
+controls on the same unchanged artifact:
+
+| Scene | Private session |
+|---|---|
+| restore | `ss-uno018-ui-e1f5709aa0982b88ae0779282b0027d3/ss-uno019-native-d61f3e54114640688c90eae61b2efbd0` |
+| abort | `ss-uno018-ui-382400fded161bef43b9b4b35060e6da/ss-uno019-native-7e404f2fae9c415dbf5b87458fabcfc9` |
+| owner-refusal | `ss-uno018-ui-f34d6eadf2d904e7e37ec7921d4e8d11/ss-uno019-native-fdc7c5de36e84bea80269896a5a17fb4` |
+
+The subsequent single positive session
+`ss-uno018-ui-f5621acca40291c3591128e5ffae07a0/ss-uno019-native-8d58bf0a935f4b619f28a47180518761`
+logged `owned_target_preparation reason=Prepared`, followed by
+`native_popup_focus reason=foreground_refused` and
+`candidate_popup_focus reason=refused`. At failure the popup remained shown,
+target matched, foreground was exact Target A, and input was quiet. This proves
+the existing single guarded `SetForegroundWindow` attempt was invoked and
+returned false. It does not establish the internal Windows reason for refusal.
+The test stopped before keyboard arm or paste. All eight flags were restored
+false. No focus workaround or OS permission relaxation was applied.
+
+Next bounded implementation: a separately reviewed test-only registered OS
+shortcut scene, driven by the operator rather than posting WM_HOTKEY. It must
+retain all existing guards and must not manufacture a physical HID proof claim.
+The ordinary candidate remains native-default-denied.
