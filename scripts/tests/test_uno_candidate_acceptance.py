@@ -207,7 +207,8 @@ class AcceptanceTests(unittest.TestCase):
             driver = root / 'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs'
             driver.parent.mkdir(parents=True); driver.write_text('first')
             ui_driver = driver.parent / 'UiAssertDriver.cs'; ui_driver.write_text('ui first')
-            for relative in ('scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1'):
+            for relative in ('scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1',
+                             'scripts/uno_candidate_helper_schema.py'):
                 helper = root / relative; helper.parent.mkdir(parents=True, exist_ok=True); helper.write_text('fixed helper')
             for name in ('Directory.Build.props', 'Directory.Packages.props'):
                 (root / name).write_text('fixed')

@@ -15,6 +15,14 @@ class PickerSchemaTests(unittest.TestCase):
         self.assertEqual({'stage': 'picker_import_cancel', 'reason': 'operation',
                           'operationClass': 'com', 'pickerStep': 'cancel_invoke',
                           'operationHresult': 0x80004005}, s.parse_helper_failure(line))
+        bootstrap = (b'ui_helper_failed stage=bootstrap reason=sta '
+                     b'operationClass=other pickerStep=not_applicable\n')
+        self.assertEqual({'stage': 'bootstrap', 'reason': 'sta', 'operationClass': 'other',
+                          'pickerStep': 'not_applicable'}, s.parse_helper_failure(bootstrap))
+        commit = (b'ui_helper_failed stage=picker_import reason=operation '
+                  b'operationClass=other pickerStep=commit_ready\n')
+        self.assertEqual('commit_ready', s.parse_helper_failure(commit)['pickerStep'])
+        self.assertEqual(s.HELPER_FAILURE_ALLOWLISTS, s.base.HELPER_FAILURE_ALLOWLISTS)
         unknown = (b'ui_helper_failed stage=picker_import_cancel reason=operation '
                    b'operationClass=future_exception pickerStep=future_step\n')
         self.assertEqual({'stage': 'picker_import_cancel', 'reason': 'operation',
@@ -29,6 +37,10 @@ class PickerSchemaTests(unittest.TestCase):
                 b'ui_helper_failed stage=picker_import_cancel reason=operation operationClass=com pickerStep=start hresult=0xZZZZZZZZ\n',
                 b'ui_helper_failed stage=picker_import_cancel reason=operation operationClass=other pickerStep=start payload\n'):
             with self.subTest(malformed=malformed), self.assertRaisesRegex(ValueError, '^ui_helper_protocol$'):
+                s.parse_helper_failure(malformed)
+        for bad_hresult in (b'0x8000400', b'0x80004005F', b'0x8000400a'):
+            malformed = line.replace(b'0x80004005', bad_hresult)
+            with self.subTest(hresult=bad_hresult), self.assertRaisesRegex(ValueError, '^ui_helper_protocol$'):
                 s.parse_helper_failure(malformed)
 
     def test_fixed_schema(self):
@@ -137,6 +149,31 @@ class PickerSchemaTests(unittest.TestCase):
             self.assertEqual({'reason': 'ui_picker_schema_record'},
                              json.loads((root / 'observer-worker-failure.json').read_text()))
 
+    def test_record_failure_revalidates_helper_metadata_and_emits_it_only_for_operation(self):
+        operation = dict(stage='bootstrap', reason='operation', operationClass='com',
+                         pickerStep='not_applicable')
+        invalid = [operation,
+                   {**operation, 'operationHresult': 0x100000000},
+                   {**operation, 'operationHresult': -1},
+                   {**operation, 'operationHresult': True},
+                   {**operation, 'operationClass': 'other', 'operationHresult': 5}]
+        with patch.object(s.base.sys, 'argv', ['worker', '--worker-private']):
+            for helper_failure in invalid:
+                with self.subTest(helper_failure=helper_failure), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    s.base.record_failure(root, ValueError('ui_helper_protocol'),
+                                          helper_failure=helper_failure)
+                    record = json.loads((root / 'observer-worker-failure.json').read_text())
+                    self.assertEqual({'reason': 'ui_helper_protocol'}, record)
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                specific_helper = dict(stage='bootstrap', reason='sta', operationClass='other',
+                                       pickerStep='not_applicable')
+                s.base.record_failure(root, ValueError('ui_helper_protocol'),
+                                      helper_failure=specific_helper)
+                self.assertEqual({'reason': 'ui_helper_protocol'},
+                                 json.loads((root / 'observer-worker-failure.json').read_text()))
+
     def test_record_must_agree_with_helper_outcome_and_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -150,6 +187,64 @@ class PickerSchemaTests(unittest.TestCase):
                         s.validate_helper_foreground_failure(root, code, err)
             self.assertFalse(s.validate_helper_foreground_failure(root, 1,
                 b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing operationClass=other pickerStep=wait_dialog\r\n'))
+
+    @unittest.skipUnless(s.sys.platform == 'win32', 'PowerShell stub execution')
+    def test_actual_operation_classifier_unwraps_wrappers_and_bounds_depth(self):
+        helper = str(s.HELPER).replace("'", "''")
+        script = r'''$ErrorActionPreference='Stop'
+$tokens=$null; $errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile('HELPER',[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'parse'}
+$f=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Get-OperationClassification'},$true)
+if($f.Count -ne 1){throw 'function'}
+Invoke-Expression $f[0].Extent.Text
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+namespace System.Windows.Automation {
+ public class ElementNotAvailableException : Exception { public ElementNotAvailableException():base("private canary") {} }
+}
+public class StubOperation {
+ public void ThrowElement() { throw new System.Windows.Automation.ElementNotAvailableException(); }
+ public object Broken { get { throw new System.Windows.Automation.ElementNotAvailableException(); } }
+ public void ThrowCom() { throw new COMException("private canary", unchecked((int)0x80004005)); }
+}
+'@
+$stub=[StubOperation]::new()
+try { $stub.ThrowElement() } catch { $elementWrapper=$_.Exception }
+if($elementWrapper.GetType().FullName -cne 'System.Management.Automation.MethodInvocationException' -or $null -eq $elementWrapper.InnerException){throw 'method_not_wrapped'}
+$element=Get-OperationClassification $elementWrapper
+if($element.OperationClass -cne 'element_not_available' -or $element.HResultText -cne ''){throw 'element_class'}
+$propertyWrapper=[System.Management.Automation.GetValueInvocationException]::new('property canary', [System.Windows.Automation.ElementNotAvailableException]::new())
+if($propertyWrapper.GetType().FullName -cne 'System.Management.Automation.GetValueInvocationException' -or $null -eq $propertyWrapper.InnerException){throw 'property_not_wrapped'}
+$property=Get-OperationClassification $propertyWrapper
+if($property.OperationClass -cne 'element_not_available' -or $property.HResultText -cne ''){throw 'property_class'}
+try { $stub.ThrowCom() } catch { $comWrapper=$_.Exception }
+if($null -eq $comWrapper.InnerException){throw 'com_not_wrapped'}
+$com=Get-OperationClassification $comWrapper
+if($com.OperationClass -cne 'com' -or $com.HResultText -cne ' hresult=0x80004005'){throw 'com_hresult'}
+$bounded=[System.Runtime.InteropServices.COMException]::new('private canary', [int]0x80004005)
+for($i=0; $i -lt 4; $i++){$bounded=[System.Reflection.TargetInvocationException]::new($bounded)}
+if((Get-OperationClassification $bounded).OperationClass -cne 'com'){throw 'four_links'}
+$tooDeep=[System.Runtime.InteropServices.COMException]::new('private canary', [int]0x80004005)
+for($i=0; $i -lt 5; $i++){$tooDeep=[System.Reflection.TargetInvocationException]::new($tooDeep)}
+if((Get-OperationClassification $tooDeep).OperationClass -cne 'other'){throw 'depth_not_bounded'}
+'''.replace('HELPER', helper)
+        result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
+                                capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+
+    @unittest.skipUnless(s.sys.platform == 'win32', 'Windows PowerShell bootstrap schema execution')
+    def test_actual_sta_bootstrap_failure_keeps_fixed_stderr_line(self):
+        result = subprocess.run(
+            [str(s.system_powershell()), '-NoLogo', '-NoProfile', '-NonInteractive', '-MTA',
+             '-File', str(s.HELPER), '-Scene', 'snippets', '-OwnedPid', '1', '-OwnedHwnd', '1',
+             '-InitialForeground', '1', '-InputEpoch', '1', '-PrivateRoot', '.', '-Artifact', '.'],
+            capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(b'', result.stdout)
+        self.assertEqual([b'ui_helper_failed stage=bootstrap reason=sta operationClass=other '
+                          b'pickerStep=not_applicable'], result.stderr.splitlines())
 
     @unittest.skipUnless(s.sys.platform == 'win32', 'PowerShell stub execution')
     def test_actual_poll_waits_and_classifies(self):

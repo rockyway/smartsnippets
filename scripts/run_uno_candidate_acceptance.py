@@ -15,6 +15,11 @@ import sys
 import time
 
 REPO = Path(__file__).resolve().parents[1]
+helper_schema_spec = importlib.util.spec_from_file_location(
+    'uno_candidate_helper_schema', REPO / 'scripts/uno_candidate_helper_schema.py')
+helper_schema = importlib.util.module_from_spec(helper_schema_spec)
+helper_schema_spec.loader.exec_module(helper_schema)
+HELPER_FAILURE_ALLOWLISTS = helper_schema.HELPER_FAILURE_ALLOWLISTS
 FULL_HOST_OBSERVER_REVIEWED = False
 spec = importlib.util.spec_from_file_location('startup_observer', REPO / 'scripts/run_uno_candidate_startup.py')
 startup = importlib.util.module_from_spec(spec)
@@ -78,7 +83,8 @@ def source_fingerprint():
     paths.extend(REPO / relative for relative in (
         'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs',
         'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs',
-        'scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1'))
+        'scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1',
+        'scripts/uno_candidate_helper_schema.py'))
     paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props'))
     result = hashlib.sha256()
     for path in sorted(paths):
@@ -323,32 +329,20 @@ def record_failure(private, error, *, helper_failure=None):
         expected = {'stage', 'reason', 'operationClass', 'pickerStep'}
         if 'operationHresult' in helper_failure:
             expected.add('operationHresult')
+        allowlists = HELPER_FAILURE_ALLOWLISTS
         if (set(helper_failure) == expected
-                and helper_failure.get('stage') in {'bootstrap', 'ready', 'picker_import_cancel', 'picker_import',
-                    'picker_export_cancel', 'picker_export', 'settings_theme', 'settings_size', 'folder_create',
-                    'folder_rename', 'folder_delete', 'new', 'edit_saved', 'save', 'edit_dirty', 'dirty_leave',
-                    'cancel', 'dirty_save_leave', 'dirty_save', 'discard_edit', 'dirty_discard_leave',
-                    'dirty_discard', 'finish'}
-                and helper_failure.get('reason') in {'sta', 'root', 'input', 'window', 'identity', 'artifact',
-                    'desktop', 'desktop_close', 'foreground', 'uia_owner', 'schema', 'focus', 'value', 'timeout',
-                    'receipt', 'control_timeout', 'actions', 'clipboard', 'selection', 'picker_schema_missing',
-                    'picker_schema_multiple', 'picker_schema_type', 'picker_identity', 'picker_replaced',
-                    'picker_changed', 'picker_schema', 'picker_control_owner', 'picker_control_class', 'picker_phase',
-                    'picker_timeout', 'picker_uia_owner', 'picker_alias', 'picker_existing_export', 'picker_input',
-                    'picker_combo_chain', 'picker_value', 'picker_close_timeout', 'picker_actions', 'operation'}
-                and helper_failure.get('operationClass') in {'element_not_available', 'element_not_enabled',
-                    'invalid_operation', 'com', 'win32', 'timeout', 'argument', 'null_reference', 'unauthorized',
-                    'io', 'other'}
-                and helper_failure.get('pickerStep') in {'not_applicable', 'start', 'invoke', 'wait_dialog', 'guard',
-                    'uia_owner', 'path_ready', 'control_ready', 'value_set', 'cancel_invoke', 'picker_invoke', 'close_wait',
-                    'actions_validated', 'other'}
+                and helper_failure.get('stage') in allowlists['stages']
+                and helper_failure.get('reason') in allowlists['reasons']
+                and helper_failure.get('operationClass') in allowlists['operationClasses']
+                and helper_failure.get('pickerStep') in allowlists['pickerSteps']
                 and ((helper_failure.get('operationClass') == 'com'
                       and type(helper_failure.get('operationHresult')) is int
                       and 0 <= helper_failure['operationHresult'] <= 0xFFFFFFFF)
                      or (helper_failure.get('operationClass') != 'com'
                          and 'operationHresult' not in helper_failure))):
             safe_helper_failure = helper_failure
-            if helper_failure['reason'] == 'operation':
+            if (helper_failure['reason'] == 'operation'
+                    and reason in {'observer_failure', 'ui_helper_protocol'}):
                 reason = 'operation'
     try:
         with (private / ('observer-' + ('worker' if '--worker-private' in sys.argv else 'parent') + '-failure.json')).open('x') as file:
@@ -356,7 +350,8 @@ def record_failure(private, error, *, helper_failure=None):
             subreason = getattr(error, 'input_subreason', None)
             if reason == 'input' and subreason in ('held', 'epoch_changed', 'idle'):
                 record['inputSubreason'] = subreason
-            if safe_helper_failure is not None:
+            if (safe_helper_failure is not None and reason == 'operation'
+                    and safe_helper_failure['reason'] == 'operation'):
                 record['operationClass'] = safe_helper_failure['operationClass']
                 record['pickerStep'] = safe_helper_failure['pickerStep']
                 if 'operationHresult' in safe_helper_failure:

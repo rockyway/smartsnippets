@@ -9,6 +9,35 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $stage = 'bootstrap'
 $script:pickerStep = 'not_applicable'
+function Get-OperationClassification($exception) {
+    # PowerShell method/property invocation wrappers are common. Unwrap no more than four links.
+    $unwrapped = $exception
+    for ($depth = 0; $depth -lt 4; $depth++) {
+        $inner = $unwrapped.InnerException
+        if ($null -eq $inner) { break }
+        $unwrapped = $inner
+    }
+    $classes = @{
+        'System.Windows.Automation.ElementNotAvailableException' = 'element_not_available'
+        'System.Windows.Automation.ElementNotEnabledException' = 'element_not_enabled'
+        'System.InvalidOperationException' = 'invalid_operation'
+        'System.Runtime.InteropServices.COMException' = 'com'
+        'System.ComponentModel.Win32Exception' = 'win32'
+        'System.TimeoutException' = 'timeout'
+        'System.ArgumentException' = 'argument'
+        'System.NullReferenceException' = 'null_reference'
+        'System.UnauthorizedAccessException' = 'unauthorized'
+        'System.IO.IOException' = 'io'
+    }
+    $typeName = $unwrapped.GetType().FullName
+    $operationClass = if ($classes.ContainsKey($typeName)) { $classes[$typeName] } else { 'other' }
+    $hresultText = ''
+    if ($operationClass -ceq 'com') {
+        $hresult = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$unwrapped.HResult), 0)
+        $hresultText = ' hresult=0x{0:X8}' -f $hresult
+    }
+    return [pscustomobject]@{ OperationClass = $operationClass; HResultText = $hresultText }
+}
 try {
     if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'sta' }
     [void][Reflection.Assembly]::Load('UIAutomationClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35')
@@ -474,7 +503,7 @@ public static class Owned019 {
         $commit = PickerElement $dialog $id $r $true
         if ($commit.Current.ControlType -ne [Windows.Automation.ControlType]::Button) { throw 'picker_schema' }
         RequirePickerControlClass $commit 'Button'
-        $script:pickerStep = 'control_ready'
+        $script:pickerStep = 'commit_ready'
         $invoke = [Windows.Automation.InvokePattern]$commit.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
         Guard
         if ((OwnedPicker) -ne $dialog) { throw 'picker_changed' }
@@ -504,6 +533,7 @@ public static class Owned019 {
             $file.Write($bytes,0,$bytes.Length)
         } finally { $file.Dispose() }
         Guard
+        $script:pickerStep = 'not_applicable'
     }
     $stage = 'ready'; WaitPhase 'ui-ready'
     if ($Scene -ceq 'file-picker') {
@@ -592,23 +622,10 @@ public static class Owned019 {
         'picker_schema_missing','picker_schema_multiple','picker_schema_type','picker_identity','picker_replaced','picker_changed','picker_schema','picker_control_owner','picker_control_class','picker_phase','picker_timeout','picker_uia_owner','picker_alias','picker_existing_export','picker_input','picker_combo_chain','picker_value','picker_close_timeout','picker_actions')
     if ($_.Exception.Message -cin $allowed) { $reason = $_.Exception.Message }
     $exception = $_.Exception
-    $operationClass = 'other'
-    $hresultText = ''
-    if ($exception -is [System.Windows.Automation.ElementNotAvailableException]) { $operationClass = 'element_not_available' }
-    elseif ($exception -is [System.Windows.Automation.ElementNotEnabledException]) { $operationClass = 'element_not_enabled' }
-    elseif ($exception -is [System.Runtime.InteropServices.COMException]) {
-        $operationClass = 'com'
-        $hresult = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$exception.HResult), 0)
-        $hresultText = ' hresult=0x{0:X8}' -f $hresult
-    }
-    elseif ($exception -is [System.ComponentModel.Win32Exception]) { $operationClass = 'win32' }
-    elseif ($exception -is [System.TimeoutException]) { $operationClass = 'timeout' }
-    elseif ($exception -is [System.ArgumentException]) { $operationClass = 'argument' }
-    elseif ($exception -is [System.NullReferenceException]) { $operationClass = 'null_reference' }
-    elseif ($exception -is [System.UnauthorizedAccessException]) { $operationClass = 'unauthorized' }
-    elseif ($exception -is [System.IO.IOException]) { $operationClass = 'io' }
-    elseif ($exception -is [System.InvalidOperationException]) { $operationClass = 'invalid_operation' }
-    $pickerStep = if ($script:pickerStep -cin @('start','invoke','wait_dialog','guard','uia_owner','path_ready','control_ready','value_set','cancel_invoke','picker_invoke','close_wait','actions_validated')) { $script:pickerStep } else { 'not_applicable' }
+    $classification = Get-OperationClassification $exception
+    $operationClass = $classification.OperationClass
+    $hresultText = $classification.HResultText
+    $pickerStep = if ($script:pickerStep -cin @('start','invoke','wait_dialog','guard','uia_owner','path_ready','control_ready','commit_ready','value_set','cancel_invoke','picker_invoke','close_wait','actions_validated')) { $script:pickerStep } else { 'not_applicable' }
     [Console]::Error.WriteLine("ui_helper_failed stage=$stage reason=$reason operationClass=$operationClass pickerStep=$pickerStep$hresultText")
     exit 1
 }

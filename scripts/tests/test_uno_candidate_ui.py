@@ -161,6 +161,31 @@ class UiManagementTests(unittest.TestCase):
                 with self.assertRaises((FileNotFoundError, ValueError)):
                     s.picker_phase(root)
 
+    def test_picker_step_marks_pin_control_commit_and_completed_run(self):
+        import re
+        helper = s.HELPER.read_text()
+        picker = helper.split('    function RunPicker', 1)[1].split("    $stage = 'ready'", 1)[0]
+        steps = re.findall(r"\$script:pickerStep\s*=\s*'([^']+)'", picker)
+        self.assertEqual(['start', 'invoke', 'wait_dialog', 'guard', 'uia_owner', 'path_ready',
+                          'control_ready', 'value_set', 'commit_ready', 'close_wait',
+                          'actions_validated', 'not_applicable'], steps)
+        self.assertEqual(1, picker.count("$script:pickerStep = 'control_ready'"))
+        self.assertEqual(1, picker.count("$script:pickerStep = 'commit_ready'"))
+        self.assertLess(picker.index("PickerElement $dialog '1148' $r"),
+                        picker.index("$script:pickerStep = 'control_ready'"))
+        self.assertLess(picker.index("$script:pickerStep = 'control_ready'"),
+                        picker.index('$value = [Windows.Automation.ValuePattern]'))
+        self.assertLess(picker.index("RequirePickerControlClass $commit 'Button'"),
+                        picker.index("$script:pickerStep = 'commit_ready'"))
+        self.assertLess(picker.index("$script:pickerStep = 'commit_ready'"),
+                        picker.index('$invoke = [Windows.Automation.InvokePattern]'))
+        self.assertLess(picker.index('$invoke.Invoke()'),
+                        picker.index("$script:pickerStep = if ($cancel)"))
+        self.assertIn("$script:pickerStep = if ($cancel) { 'cancel_invoke' } else { 'picker_invoke' }", picker)
+        self.assertGreater(picker.rindex("$script:pickerStep = 'not_applicable'"), picker.rindex('Guard'))
+        self.assertIn('commit_ready', s.HELPER_FAILURE_ALLOWLISTS['pickerSteps'])
+        self.assertIn("'commit_ready'", helper.split('    $pickerStep = if', 1)[1].split(') {', 1)[0])
+
     def test_picker_helper_latches_and_publishes_before_info(self):
         helper = s.HELPER.read_text()
         guard = helper.split('    function Guard', 1)[1].split('    function SelectOwnedLeave', 1)[0]
@@ -827,6 +852,24 @@ class PickerObserverLoopTests(unittest.TestCase):
         self.assertEqual('ui_helper_protocol', str(error))
         self.assertEqual({'reason': 'operation', 'operationClass': 'com',
                           'pickerStep': 'cancel_invoke', 'operationHresult': 0x80004005}, record)
+        self.assertEqual(1, validations)
+
+    def test_worker_specific_observer_reason_wins_over_helper_operation(self):
+        failure = (b'ui_helper_failed stage=picker_import_cancel reason=operation '
+                   b'operationClass=com pickerStep=cancel_invoke hresult=0x80004005\n')
+        error, record, validations = self.run_worker_error_path(
+            observer_error=ValueError('ui_timeout'), helper_code=None, helper_stderr=failure,
+            include_record=True)
+        self.assertEqual('ui_timeout', str(error))
+        self.assertEqual({'reason': 'ui_timeout'}, record)
+        self.assertEqual(1, validations)
+
+    def test_worker_malformed_helper_stderr_preserves_original_and_still_validates(self):
+        error, record, validations = self.run_worker_error_path(
+            observer_error=ValueError('ui_timeout'), helper_code=None,
+            helper_stderr=b'not a helper failure\n', include_record=True)
+        self.assertEqual('ui_timeout', str(error))
+        self.assertEqual({'reason': 'ui_timeout'}, record)
         self.assertEqual(1, validations)
 
     def test_worker_diagnostics_errors_preserve_original_reason_and_chain(self):

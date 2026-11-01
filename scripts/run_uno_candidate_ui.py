@@ -7,13 +7,16 @@ import hashlib
 import importlib.util
 import json
 import os
-import re
 from pathlib import Path
 import subprocess
 import sys
 import time
 
 REPO = Path(__file__).resolve().parents[1]
+helper_schema_spec = importlib.util.spec_from_file_location(
+    'uno_candidate_helper_schema', REPO / 'scripts/uno_candidate_helper_schema.py')
+helper_schema = importlib.util.module_from_spec(helper_schema_spec)
+helper_schema_spec.loader.exec_module(helper_schema)
 UI_SOURCE_REVIEWED = False
 spec = importlib.util.spec_from_file_location('ui_full_host', REPO / 'scripts/run_uno_candidate_acceptance.py')
 base = importlib.util.module_from_spec(spec)
@@ -71,28 +74,8 @@ def validate_settings_actions(value):
 
 
 PICKER_PHASES = ('import-cancel', 'import', 'export-cancel', 'export')
-HELPER_STAGES = frozenset((
-    'bootstrap', 'ready', 'picker_import_cancel', 'picker_import', 'picker_export_cancel', 'picker_export',
-    'settings_theme', 'settings_size', 'folder_create', 'folder_rename', 'folder_delete', 'new', 'edit_saved',
-    'save', 'edit_dirty', 'dirty_leave', 'cancel', 'dirty_save_leave', 'dirty_save', 'discard_edit',
-    'dirty_discard_leave', 'dirty_discard', 'finish'))
-HELPER_REASONS = frozenset((
-    'sta', 'root', 'input', 'window', 'identity', 'artifact', 'desktop', 'desktop_close', 'foreground',
-    'uia_owner', 'schema', 'focus', 'value', 'timeout', 'receipt', 'control_timeout', 'actions', 'clipboard',
-    'selection', 'picker_schema_missing', 'picker_schema_multiple', 'picker_schema_type', 'picker_identity',
-    'picker_replaced', 'picker_changed', 'picker_schema', 'picker_control_owner', 'picker_control_class',
-    'picker_phase', 'picker_timeout', 'picker_uia_owner', 'picker_alias', 'picker_existing_export',
-    'picker_input', 'picker_combo_chain', 'picker_value', 'picker_close_timeout', 'picker_actions', 'operation'))
-OPERATION_CLASSES = frozenset((
-    'element_not_available', 'element_not_enabled', 'invalid_operation', 'com', 'win32', 'timeout',
-    'argument', 'null_reference', 'unauthorized', 'io', 'other'))
-PICKER_STEPS = frozenset((
-    'not_applicable', 'start', 'invoke', 'wait_dialog', 'guard', 'uia_owner', 'path_ready', 'control_ready', 'value_set',
-    'cancel_invoke', 'picker_invoke', 'close_wait', 'actions_validated', 'other'))
-HELPER_FAILURE_PATTERN = re.compile(
-    rb'ui_helper_failed stage=([a-z][a-z0-9_]*) reason=([a-z][a-z0-9_]*) '
-    rb'operationClass=([a-z][a-z0-9_]{0,63}) pickerStep=([a-z][a-z0-9_]{0,63})'
-    rb'(?: hresult=0x([0-9A-F]{8}))?\r?\n\Z')
+HELPER_FAILURE_ALLOWLISTS = helper_schema.HELPER_FAILURE_ALLOWLISTS
+HELPER_FAILURE_PATTERN = helper_schema.HELPER_FAILURE_PATTERN
 
 
 def validate_picker_actions(value):
@@ -363,10 +346,11 @@ def parse_helper_failure(stderr):
         raise ValueError('ui_helper_protocol')
     stage, reason, raw_class, raw_step, raw_hresult = (part.decode('ascii') if part is not None else None
                                                         for part in match.groups())
-    if stage not in HELPER_STAGES or reason not in HELPER_REASONS:
+    allowlists = HELPER_FAILURE_ALLOWLISTS
+    if stage not in allowlists['stages'] or reason not in allowlists['reasons']:
         raise ValueError('ui_helper_protocol')
-    operation_class = raw_class if raw_class in OPERATION_CLASSES else 'other'
-    picker_step = raw_step if raw_step in PICKER_STEPS else 'other'
+    operation_class = raw_class if raw_class in allowlists['operationClasses'] else 'other'
+    picker_step = raw_step if raw_step in allowlists['pickerSteps'] else 'other'
     if operation_class == 'com':
         if raw_hresult is None:
             raise ValueError('ui_helper_protocol')
@@ -670,6 +654,10 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
         helper_failure = None
         try:
             helper_failure = parse_helper_failure(helper_stderr)
+        except ValueError:
+            # Preserve the original observer/helper error if stderr is not our fixed schema.
+            helper_failure = None
+        try:
             validate_helper_foreground_failure(private, helper.returncode if helper is not None else None, helper_stderr)
         except ValueError as schema_error:
             error = schema_error
