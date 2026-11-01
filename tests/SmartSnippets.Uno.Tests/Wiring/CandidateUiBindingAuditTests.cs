@@ -22,7 +22,8 @@ public sealed class CandidateUiBindingAuditTests
     public void FooterMenusDialogsAndPlacement_ConsumeLivePolicies()
     {
         Assert.Contains("HintLine(ViewModel.HintText, ViewModel.StatusText, ViewModel.IsPreview)", Read("Popup/PopupWindow.xaml"));
-        Assert.Contains("IsEnabled = ViewModel.CanCopyRow(item)", Read("Popup/PopupWindow.xaml.cs"));
+        // Popup row Copy/Insert availability and live revocation are executed by
+        // EveryCandidateAction_ReachesRegisteredConsumerOrTruthfulRefusal.
         Assert.Contains("IsEnabled = vm.CanCopyRow", Read("Pages/SnippetsPage.xaml.cs"));
         Assert.Contains("_lifecycle.Preview(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("_lifecycle.Reopen(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
@@ -44,7 +45,6 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("active hint", "", true));
         Assert.Equal("active hint", CandidateUiPolicy.HintLine("active hint", "", false));
         Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved", true));
-        Assert.Contains("IsEnabled = CanInsert()", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("if (CanInsert()) await RunOperation", Read("Popup/PopupWindow.xaml.cs"));
     }
 }
