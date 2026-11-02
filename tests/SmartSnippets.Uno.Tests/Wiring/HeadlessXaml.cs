@@ -1,6 +1,23 @@
 // Headless rendering/OS boundary, not replacement action handlers or view-models.
 // No desktop is created. Timers are explicitly advanced by the action tests.
 using Windows.Foundation;
+namespace Windows.ApplicationModel.DataTransfer
+{
+    public static class StandardDataFormats { public static string Text => "Text"; }
+    public sealed class DataPackageView
+    {
+        private readonly string? _text;
+        public DataPackageView(string? text) => _text = text;
+        public bool Contains(string format) => _text is not null && format == StandardDataFormats.Text;
+        public Task<string> GetTextAsync() => Clipboard.PendingText ?? Task.FromResult(_text ?? "");
+    }
+    public static class Clipboard
+    {
+        public static string? Text { get; set; }
+        public static Task<string>? PendingText { get; set; }
+        public static DataPackageView GetContent() => new(Text);
+    }
+}
 namespace Microsoft.UI.Dispatching
 {
     public enum DispatcherQueuePriority { Low }
@@ -208,7 +225,13 @@ namespace Microsoft.UI.Xaml.Controls
     public sealed class SelectionChangedEventArgs : RoutedEventArgs { }
     public class TextBox : Control
     {
-        public string Text { get; set; } = "";
+        private string _text = "";
+        public event Action<object, TextChangedEventArgs>? TextChanged;
+        public string Text
+        {
+            get => _text;
+            set { if (_text == value) return; _text = value; TextChanged?.Invoke(this, new()); }
+        }
         public int SelectionStart { get; set; }
         public int SelectionLength { get; set; }
         public event EventHandler<object>? TextCompositionStarted;
@@ -216,6 +239,21 @@ namespace Microsoft.UI.Xaml.Controls
         public void SelectAll() { SelectionStart = 0; SelectionLength = Text.Length; }
         public void Select(int start, int length) { SelectionStart = start; SelectionLength = length; }
         public void ComposeBoundary() { TextCompositionStarted?.Invoke(this, new()); TextCompositionEnded?.Invoke(this, new()); }
+    }
+    public enum PasswordRevealMode { Peek, Hidden, Visible }
+    public sealed class TextControlPasteEventArgs : RoutedEventArgs { public bool Handled { get; set; } }
+    public class CheckBox : Control { public bool? IsChecked { get; set; } }
+    public class PasswordBox : Control
+    {
+        private string _password = "";
+        public event Action<object, RoutedEventArgs>? PasswordChanged;
+        public string Password
+        {
+            get => _password;
+            set { if (_password == value) return; _password = value; PasswordChanged?.Invoke(this, new()); }
+        }
+        public PasswordRevealMode PasswordRevealMode { get; set; }
+        public void SelectAll() { }
     }
     public class TextBlock : FrameworkElement { public string Text { get; set; } = ""; public double FontSize { get; set; } }
     public class ToggleSwitch : Control { public bool IsOn { get; set; } }

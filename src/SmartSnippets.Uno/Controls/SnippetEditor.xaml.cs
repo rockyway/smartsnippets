@@ -7,6 +7,7 @@ using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.Text;
 using SmartSnippets.Presentation.ViewModels;
 using Windows.System;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace SmartSnippets.Uno.Controls;
 
@@ -20,6 +21,9 @@ public sealed partial class SnippetEditor : UserControl
     private ITextSizeService? _textSize;
     private bool _isCompact;
     private bool _rebinding;
+    private bool _syncingInput;
+    private bool _inputUnloaded;
+    private int _inputGeneration;
 
     public event EventHandler? EscapePressed;
     internal Func<Action, Task> RunCopy { get; set; } = _ => Task.CompletedTask;
@@ -62,6 +66,7 @@ public sealed partial class SnippetEditor : UserControl
                     _viewModel.CopyTextCommand.CanExecuteChanged -= OnCopyAvailabilityChanged;
                 }
 
+                ClearInputs();
                 _viewModel = value;
                 if (_viewModel is not null)
                 {
@@ -70,13 +75,109 @@ public sealed partial class SnippetEditor : UserControl
                 }
                 CopyAfterAdmissionCommand.NotifyCanExecuteChanged();
                 Bindings.Update();
+                SyncInputs();
             }
             finally { _rebinding = false; }
         }
     }
 
     private bool IsUserInput(Control control) => !_rebinding && _viewModel is not null && control.FocusState != FocusState.Unfocused;
-    private void OnTextInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.Text = box.Text; }
+    private void OnTextInput(object sender, TextChangedEventArgs e)
+    {
+        if (!_syncingInput && !_inputUnloaded && _viewModel?.IsPassword == false && sender is TextBox box && IsUserInput(box))
+            _viewModel.Text = box.Text;
+    }
+    private void OnPasswordInput(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox box && IsUserInput(box)) _viewModel!.IsPassword = box.IsChecked == true;
+    }
+    private void OnPasswordTextInput(object sender, RoutedEventArgs e)
+    {
+        if (!_syncingInput && !_inputUnloaded && _viewModel?.CanEditPassword == true && sender is PasswordBox box && IsUserInput(box))
+        {
+            // Never accept a newline even if a runtime/input method bypasses Paste.
+            if (box.Password.IndexOfAny(['\r', '\n']) >= 0)
+            {
+                SyncInputs();
+                PasswordInputHint.Text = UiText.PasswordPasteHint;
+                return;
+            }
+            _viewModel.Text = box.Password;
+        }
+    }
+
+    private async void OnPasswordPaste(object sender, TextControlPasteEventArgs e)
+    {
+        // Cancel synchronously: an async clipboard read must never allow native single-line truncation.
+        e.Handled = true;
+        if (_inputUnloaded || _viewModel?.CanEditPassword != true) return;
+        var editor = _viewModel;
+        var generation = _inputGeneration;
+        var original = editor.Text;
+        try
+        {
+            var clipboard = Clipboard.GetContent();
+            if (!clipboard.Contains(StandardDataFormats.Text)) return;
+            var text = await clipboard.GetTextAsync();
+            if (generation != _inputGeneration || !ReferenceEquals(editor, _viewModel) || _inputUnloaded
+                || !editor.CanEditPassword || editor.Text != original) return;
+            if (text.IndexOfAny(['\r', '\n']) >= 0)
+            {
+                PasswordInputHint.Text = UiText.PasswordPasteHint;
+                return;
+            }
+            // PasswordBox exposes no selection range. Explicit whole-value replacement avoids a
+            // second native clipboard read (which could race and paste unchecked multiline data).
+            editor.Text = text;
+            SnippetPasswordBox.SelectAll();
+        }
+        catch (Exception)
+        {
+            if (generation == _inputGeneration && ReferenceEquals(editor, _viewModel) && !_inputUnloaded)
+                PasswordInputHint.Text = UiText.PasswordPasteFailed;
+        }
+    }
+
+    private void ClearInputs()
+    {
+        _inputGeneration++;
+        _syncingInput = true;
+        try
+        {
+            SnippetTextBox.Text = string.Empty;
+            SnippetPasswordBox.Password = string.Empty;
+            PasswordInputHint.Text = string.Empty;
+        }
+        finally { _syncingInput = false; }
+    }
+
+    private void SyncInputs()
+    {
+        _inputGeneration++;
+        _syncingInput = true;
+        try
+        {
+            var editor = _inputUnloaded ? null : _viewModel;
+            // Clear the inactive input before assigning the active one.
+            if (editor?.IsPassword == true)
+            {
+                SnippetTextBox.Text = string.Empty;
+                var password = editor.CanEditPassword ? editor.Text : string.Empty;
+                if (SnippetPasswordBox.Password != password) SnippetPasswordBox.Password = password;
+            }
+            else
+            {
+                SnippetPasswordBox.Password = string.Empty;
+                var text = editor?.Text ?? string.Empty;
+                if (SnippetTextBox.Text != text) SnippetTextBox.Text = text;
+            }
+            PasswordInputHint.Text = string.Empty;
+        }
+        finally { _syncingInput = false; }
+    }
+
+    private void OnEditorLoaded(object sender, RoutedEventArgs e) { _inputUnloaded = false; SyncInputs(); }
+    private void OnEditorUnloaded(object sender, RoutedEventArgs e) { _inputUnloaded = true; ClearInputs(); }
     private void OnLabelInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.Label = box.Text; }
     private void OnTagsInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.TagsInput = box.Text; }
     private void OnFolderNameInput(object sender, TextChangedEventArgs e) { if (sender is TextBox box && IsUserInput(box)) _viewModel!.NewFolderName = box.Text; }
@@ -100,7 +201,14 @@ public sealed partial class SnippetEditor : UserControl
     }
 
     /// <summary>Moves focus to the text box (hosts call this when a new editor opens).</summary>
-    public bool FocusText() => SnippetTextBox.Focus(FocusState.Programmatic);
+    public bool FocusText()
+    {
+        if (_inputUnloaded || _viewModel is null) return false;
+        Control input = !_viewModel.IsPassword ? SnippetTextBox
+            : _viewModel.CanEditPassword ? SnippetPasswordBox : MultilinePasswordMask;
+        return (input.Visibility == Visibility.Visible && input.Focus(FocusState.Programmatic))
+            || PasswordCheckBox.Focus(FocusState.Programmatic);
+    }
 
     // Instance (not static): x:Bind function bindings call these through the control instance.
     private Visibility Show(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
@@ -109,6 +217,10 @@ public sealed partial class SnippetEditor : UserControl
 
     // Wording comes from UiText (design reference); instance properties so x:Bind can reach them.
     private string CustomLabelText => UiText.CustomLabel;
+    private string PasswordText => UiText.Password;
+    private string PasswordAccountHint => UiText.PasswordAccountHint;
+    private string PasswordMultilineHint => UiText.PasswordMultilineHint;
+    private string PasswordPasteReplacesHint => UiText.PasswordPasteReplacesHint;
 
     private string UnsavedChangesText => UiText.UnsavedChanges;
 
@@ -159,6 +271,8 @@ public sealed partial class SnippetEditor : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(SnippetEditorViewModel.Text) or nameof(SnippetEditorViewModel.IsPassword))
+            SyncInputs();
         if (e.PropertyName == nameof(SnippetEditorViewModel.IsCreatingFolder) && _viewModel?.IsCreatingFolder == true)
         {
             // Defer until the row is visible; an invisible TextBox cannot take focus.

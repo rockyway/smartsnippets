@@ -38,7 +38,7 @@ public sealed class ActionConsumerTests
     private static readonly HashSet<string> EventAttributes = new(StringComparer.Ordinal)
     {
         "Click", "Command", "Invoked", "KeyDown", "KeyUp", "PreviewKeyDown", "PreviewKeyUp", "Loaded", "Unloaded",
-        "SelectionChanged", "TextChanged", "ValueChanged", "Toggled", "GotFocus", "LostFocus", "SizeChanged",
+        "SelectionChanged", "TextChanged", "PasswordChanged", "Paste", "Checked", "Unchecked", "ValueChanged", "Toggled", "GotFocus", "LostFocus", "SizeChanged",
         "ItemClick", "ContainerContentChanging", "PointerEntered", "PointerExited", "PointerMoved", "PointerPressed",
         "PointerReleased", "Tapped", "DoubleTapped", "RightTapped", "EscapePressed", "Canceled", "Cleared", "GestureCaptured"
     };

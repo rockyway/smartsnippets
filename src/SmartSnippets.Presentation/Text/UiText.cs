@@ -35,6 +35,12 @@ public static class UiText
 
     // Editor.
     public const string CustomLabel = "Custom label";
+    public const string Password = "Password";
+    public const string PasswordAccountHint = "Protected by your Windows account and omitted from exports. Unchecking reveals the draft; saving unchecked stores ordinary text.";
+    public const string PasswordMultilineHint = "Uncheck Password to edit multiline text.";
+    public const string PasswordPasteHint = "Multiline paste is not supported. Uncheck Password to edit multiline text.";
+    public const string PasswordPasteFailed = "Could not read clipboard text. Try again.";
+    public const string PasswordPasteReplacesHint = "Pasting replaces the whole password.";
     public const string AutoLabelHint = "Edit the label to stop it following your tags.";
     public const string UnsavedChanges = "Unsaved changes";
     public static string UsedTimes(int usageCount) => usageCount switch

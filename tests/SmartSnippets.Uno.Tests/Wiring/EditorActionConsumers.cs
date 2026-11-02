@@ -19,6 +19,91 @@ public sealed partial class SnippetEditor
         vm.Text = "original";
         switch (action)
         {
+            case "OnEditorLoaded":
+                OnEditorUnloaded(this, new());
+                Assert.Empty(SnippetTextBox.Text);
+                OnEditorLoaded(this, new());
+                Assert.Equal("original", SnippetTextBox.Text);
+                Assert.Equal("original", vm.Text); break;
+            case "OnEditorUnloaded":
+                OnEditorUnloaded(this, new());
+                Assert.Empty(SnippetTextBox.Text);
+                Assert.Empty(SnippetPasswordBox.Password);
+                vm.Text = "while detached";
+                Assert.Empty(SnippetTextBox.Text);
+                Assert.Empty(SnippetPasswordBox.Password);
+                OnEditorLoaded(this, new());
+                Assert.Equal("while detached", SnippetTextBox.Text); break;
+            case "OnPasswordInput":
+                SnippetTextBox.Focus(FocusState.Keyboard);
+                SnippetPasswordBox.Focus(FocusState.Keyboard);
+                OnPasswordInput(new CheckBox { IsChecked = true, FocusState = FocusState.Keyboard }, new());
+                Assert.True(vm.IsPassword);
+                Assert.Empty(SnippetTextBox.Text);
+                Assert.Equal(vm.Text, SnippetPasswordBox.Password);
+                Assert.True(FocusText()); Assert.Same(SnippetPasswordBox, FocusManager.Focused);
+                vm.Text = "first\r\nsecond";
+                Assert.Empty(SnippetPasswordBox.Password);
+                Assert.Empty(SnippetTextBox.Text);
+                Assert.True(FocusText()); Assert.Same(MultilinePasswordMask, FocusManager.Focused);
+                OnPasswordInput(new CheckBox { IsChecked = false, FocusState = FocusState.Keyboard }, new());
+                Assert.False(vm.IsPassword);
+                Assert.Equal("first\r\nsecond", SnippetTextBox.Text);
+                Assert.True(FocusText()); Assert.Same(SnippetTextBox, FocusManager.Focused);
+                ViewModel = null;
+                Assert.Empty(SnippetTextBox.Text); Assert.Empty(SnippetPasswordBox.Password);
+                ViewModel = vm; Assert.Equal(vm.Text, SnippetTextBox.Text);
+                Assert.Equal("first\r\nsecond", vm.Text);
+                vm.IsPassword = true;
+                var replacement = new SmartSnippets.Presentation.ViewModels.SnippetEditorViewModel(f.Host.Store, f.Host.Dialogs, null);
+                replacement.Text = "replacement";
+                ViewModel = replacement;
+                Assert.Equal("replacement", SnippetTextBox.Text);
+                Assert.Empty(SnippetPasswordBox.Password);
+                Assert.Equal("first\r\nsecond", vm.Text);
+                Assert.Equal("replacement", replacement.Text);
+                replacement.Dispose();
+                ViewModel = vm; break;
+            case "OnPasswordTextInput":
+                vm.IsPassword = true;
+                OnPasswordTextInput(new PasswordBox { Password = "changed", FocusState = FocusState.Keyboard }, new());
+                Assert.Equal("changed", vm.Text);
+                _syncingInput = true;
+                OnPasswordTextInput(new PasswordBox { Password = "feedback", FocusState = FocusState.Keyboard }, new());
+                _syncingInput = false;
+                Assert.Equal("changed", vm.Text);
+                OnTextInput(new TextBox { Text = "inactive", FocusState = FocusState.Keyboard }, new());
+                Assert.Equal("changed", vm.Text);
+                OnPasswordTextInput(new PasswordBox { Password = "bad\ninput", FocusState = FocusState.Keyboard }, new());
+                Assert.Equal("changed", vm.Text); Assert.NotEmpty(PasswordInputHint.Text); break;
+            case "OnPasswordPaste":
+                vm.IsPassword = true;
+                try
+                {
+                    Windows.ApplicationModel.DataTransfer.Clipboard.Text = "multi\nline";
+                    var paste = new TextControlPasteEventArgs(); OnPasswordPaste(SnippetPasswordBox, paste);
+                    Assert.True(paste.Handled); Assert.Equal("original", vm.Text);
+                    Assert.NotEmpty(PasswordInputHint.Text);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.Text = "pasted";
+                    OnPasswordPaste(SnippetPasswordBox, new());
+                    Assert.Equal("pasted", vm.Text);
+                    Assert.Empty(SnippetTextBox.Text);
+                    var pending = new TaskCompletionSource<string>();
+                    Windows.ApplicationModel.DataTransfer.Clipboard.PendingText = pending.Task;
+                    OnPasswordPaste(SnippetPasswordBox, new());
+                    ViewModel = null;
+                    pending.SetResult("stale");
+                    await Task.Yield();
+                    Assert.Equal("pasted", vm.Text);
+                    Assert.Empty(SnippetPasswordBox.Password);
+                    ViewModel = vm;
+                }
+                finally
+                {
+                    Windows.ApplicationModel.DataTransfer.Clipboard.Text = null;
+                    Windows.ApplicationModel.DataTransfer.Clipboard.PendingText = null;
+                }
+                break;
             case "OnTextInput":
                 OnTextInput(new TextBox { Text = "changed", FocusState = FocusState.Keyboard }, new()); Assert.Equal("changed", vm.Text); break;
             case "OnLabelInput":
