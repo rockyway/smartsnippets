@@ -75,8 +75,68 @@ def validate_settings_actions(value):
 
 PICKER_PHASES = helper_schema.PICKER_PHASES
 INPUT_PHASES = helper_schema.INPUT_PHASES
+PICKER_TIMELINE_STEPS = ('helper_entry', 'before_main_invoke', 'after_main_invoke', 'dialog_visible',
+                         'after_from_handle', 'before_cancel_invoke', 'after_cancel_invoke',
+                         'dialog_closed', 'guard_refused')
+PICKER_TIMELINE_FIELDS = frozenset(('step', 'epoch', 'elapsed_ms', 'changed_from_baseline'))
 HELPER_FAILURE_ALLOWLISTS = helper_schema.HELPER_FAILURE_ALLOWLISTS
 HELPER_FAILURE_PATTERN = helper_schema.HELPER_FAILURE_PATTERN
+
+
+def _unique_json_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError('ui_picker_epoch_timeline')
+        value[key] = item
+    return value
+
+
+def _parse_picker_timeline_file(phase, raw):
+    if phase not in PICKER_PHASES or not raw or not raw.endswith(b'\n') or len(raw) > 65536:
+        raise ValueError('ui_picker_epoch_timeline')
+    lines = raw.splitlines()
+    if not lines or len(lines) > len(PICKER_TIMELINE_STEPS):
+        raise ValueError('ui_picker_epoch_timeline')
+    rows = []
+    previous_elapsed = -1
+    for line in lines:
+        if not line or b'\r' in line:
+            raise ValueError('ui_picker_epoch_timeline')
+        row = json.loads(line.decode('ascii'), object_pairs_hook=_unique_json_object)
+        if (type(row) is not dict or set(row) != PICKER_TIMELINE_FIELDS
+                or row['step'] not in PICKER_TIMELINE_STEPS
+                or type(row['epoch']) is not int or not 0 <= row['epoch'] <= 0xffffffff
+                or type(row['elapsed_ms']) is not int or not previous_elapsed <= row['elapsed_ms'] <= 0x7fffffff
+                or type(row['changed_from_baseline']) is not bool):
+            raise ValueError('ui_picker_epoch_timeline')
+        previous_elapsed = row['elapsed_ms']
+        rows.append(row)
+    ordered = ['helper_entry', 'before_main_invoke', 'after_main_invoke', 'dialog_visible', 'after_from_handle']
+    if phase.endswith('-cancel'):
+        ordered.extend(('before_cancel_invoke', 'after_cancel_invoke'))
+    ordered.append('dialog_closed')
+    steps = [row['step'] for row in rows]
+    guard_refused = steps[-1:] == ['guard_refused']
+    ordinary_steps = steps[:-1] if guard_refused else steps
+    if ((guard_refused and not ordinary_steps)
+            or ordinary_steps != ordered[:len(ordinary_steps)]):
+        raise ValueError('ui_picker_epoch_timeline')
+    return rows
+
+
+def parse_picker_epoch_timeline(private):
+    """Parse only fixed, content-free picker timeline files; collapse any unknown schema."""
+    timelines = {}
+    try:
+        for phase in PICKER_PHASES:
+            path = private / ('picker-epoch-timeline-' + phase + '.jsonl')
+            if not os.path.lexists(path):
+                continue
+            timelines[phase] = _parse_picker_timeline_file(phase, base.owned_bytes(path, private, 65536))
+    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    return timelines or None
 
 
 def validate_picker_actions(value):
@@ -513,6 +573,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
     ui = startup.repo_module('rendered_ui_windows', 'prototypes/uno-desktop/run_ui_smoke.py')
     desktop = startup.Desktop(ui.visible_windows)
     process = helper = None
+    helper_started_at = None
+    samples = 0
     helper_diagnostics_saved = False
     helper_stderr = None
     try:
@@ -540,6 +602,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             command = [str(powershell), '-NoLogo', '-NoProfile', '-NonInteractive', '-STA',
                        '-File', str(HELPER), '-Scene', scene, '-OwnedPid', str(process.pid), '-OwnedHwnd', str(hwnd),
                        '-InitialForeground', str(initial[0]), '-InputEpoch', str(epoch), '-PrivateRoot', str(private), '-Artifact', str(entry)]
+            helper_started_at = time.monotonic()
             helper = subprocess.Popen(command, cwd=private, stdin=subprocess.DEVNULL,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
             deadline = time.monotonic() + (60 if scene == 'file-picker' else 35)
@@ -547,8 +610,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             picker_handles = {}
             visible_phases = set()
             previous_phase = None
-            samples = 0
             while helper.poll() is None:
+                samples += 1
                 if process.poll() is not None:
                     raise ValueError('early_exit')
                 if scene == 'file-picker':
@@ -561,7 +624,6 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if previous_phase is not None and phase != previous_phase and previous_phase not in visible_phases:
                     raise ValueError('ui_picker_phase')
                 previous_phase = phase
-                samples += 1
                 owned_foreground_seen = observe_foreground_frame(
                     desktop, hwnd, process.pid, initial, phase, picker_handles, owned_foreground_seen, samples, visible_phases)
                 if any(not startup.inside(rect, work) for rect in desktop.windows(process.pid)):
@@ -643,6 +705,13 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             if privacy.scan_evidence(records, canaries)['privacy'] != 'CLEAN':
                 raise ValueError('privacy')
     except BaseException as error:
+        # Preserve the observer's own monotonic timing and poll count, independent of helper records.
+        if isinstance(error, InputRefused) and helper_started_at is not None:
+            try:
+                error.input_refusal_elapsed_ms = max(0, int((time.monotonic() - helper_started_at) * 1000))
+                error.input_sample_count = samples
+            except Exception:
+                pass
         # Diagnostics errors (observer record or helper output) never skip failure-file
         # validation or failure recording.
         diagnostics_error = None
@@ -674,6 +743,9 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             validate_helper_foreground_failure(private, helper.returncode if helper is not None else None, helper_stderr)
         except ValueError as schema_error:
             error = schema_error
+        timeline = parse_picker_epoch_timeline(private)
+        if timeline is not None:
+            error.picker_epoch_timeline = timeline
         base.record_failure(private, error, helper_failure=helper_failure)
         if diagnostics_error is not None:
             raise error from diagnostics_error

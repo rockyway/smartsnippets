@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $stage = 'bootstrap'
 $script:pickerStep = 'not_applicable'
+$script:pickerTimelineClock = [Diagnostics.Stopwatch]::StartNew()
 function Get-OperationClassification($exception) {
     # PowerShell method/property invocation wrappers are common. Unwrap no more than four links.
     $unwrapped = $exception
@@ -75,9 +76,30 @@ public static class Owned019 {
     if ($root -cne [Environment]::CurrentDirectory -or [IO.Path]::GetFileName($root) -cnotmatch '^ss-uno018-ui-[a-zA-Z0-9_-]{8,80}$') { throw 'root' }
     $h = [IntPtr]$OwnedHwnd
     $epoch = $InputEpoch
+    $script:pickerTimelineBaseline = [uint32]$InputEpoch
+    function Write-PickerEpochTimeline([string]$phase, [string]$step) {
+        try {
+            if ($phase -cnotin @('import-cancel','import','export-cancel','export') -or
+                $step -cnotin @('helper_entry','before_main_invoke','after_main_invoke','dialog_visible',
+                                'after_from_handle','before_cancel_invoke','after_cancel_invoke','dialog_closed','guard_refused')) { return }
+            [uint32]$sample = [Owned019]::Epoch()
+            [long]$elapsed = $script:pickerTimelineClock.ElapsedMilliseconds
+            if ($elapsed -lt 0) { return }
+            $record = '{"step":"' + $step + '","epoch":' + $sample + ',"elapsed_ms":' + $elapsed +
+                ',"changed_from_baseline":' + $(if ($sample -ne $script:pickerTimelineBaseline) { 'true' } else { 'false' }) + '}'
+            [IO.File]::AppendAllText((Join-Path $root ('picker-epoch-timeline-' + $phase + '.jsonl')),
+                                     $record + "`n", [Text.Encoding]::ASCII)
+        } catch { }
+    }
+    if ($Scene -ceq 'file-picker') {
+        foreach ($timelinePhase in @('import-cancel','import','export-cancel','export')) {
+            Write-PickerEpochTimeline $timelinePhase 'helper_entry'
+        }
+    }
     if ([Owned019]::Epoch() -ne $epoch) { throw 'input' }
     $focused = $false
     $script:pickerPhase = $null
+    $script:pickerTimelinePhase = $null
     $script:guardSamples = 0
     $script:pickerHwnd = [IntPtr]::Zero
     $script:pickerActions = 0; $script:pickerValues = 0
@@ -152,7 +174,7 @@ public static class Owned019 {
             } finally { $file.Dispose() }
         } catch { }
     }
-    function Guard {
+    function GuardCore {
         if ([Owned019]::GetClipboardSequenceNumber() -ne $clipboardSequence) { throw 'clipboard' }
         if (-not [Owned019]::IsWindow($h) -or -not [Owned019]::IsWindowVisible($h)) { throw 'window' }
         [uint32]$owner = 0
@@ -205,6 +227,15 @@ public static class Owned019 {
         if (-not $pickerForeground -and (($script:focused -and $fg -ne $OwnedHwnd) -or
             (-not $script:focused -and $fg -ne $InitialForeground -and $fg -ne $OwnedHwnd))) { ForegroundFailure $fg $dialog; throw 'foreground' }
         if ($pickerForeground -or $fg -eq $OwnedHwnd) { $script:focused = $true }
+    }
+    function Guard {
+        try { GuardCore }
+        catch {
+            if ($Scene -ceq 'file-picker' -and $null -ne $script:pickerTimelinePhase) {
+                Write-PickerEpochTimeline $script:pickerTimelinePhase 'guard_refused'
+            }
+            throw
+        }
     }
     function SelectOwnedLeave($items) {
         $seen = @{}
@@ -458,9 +489,12 @@ public static class Owned019 {
         if ($phase -cnotin @('import-cancel','import','export-cancel','export') -or $null -ne $script:pickerPhase) { throw 'picker_phase' }
         $beforeInvokes = $script:invokes; $beforePicker = $script:pickerActions; $beforeValues = $script:pickerValues
         $script:pickerPhase = $phase
+        $script:pickerTimelinePhase = $phase
         PickerMarker 'active'
         $button = if ($phase.StartsWith('import')) { 'picker-import' } else { 'picker-export' }
+        Write-PickerEpochTimeline $phase 'before_main_invoke'
         Invoke $button
+        Write-PickerEpochTimeline $phase 'after_main_invoke'
         $script:pickerStep = 'invoke'
         $until = [DateTime]::UtcNow.AddSeconds(6)
         $script:pickerStepUntil = $until
@@ -470,11 +504,13 @@ public static class Owned019 {
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_timeout' }
             Start-Sleep -Milliseconds 50
         } while ($true)
+        Write-PickerEpochTimeline $phase 'dialog_visible'
         $script:pickerStep = 'wait_dialog'
         Guard
         if ($script:pickerHwnd -ne $dialog) { ForegroundFailure ([Owned019]::GetForegroundWindow().ToInt64()) $dialog; throw 'picker_replaced' }
         $script:pickerStep = 'guard'
         $r = [Windows.Automation.AutomationElement]::FromHandle($dialog)
+        Write-PickerEpochTimeline $phase 'after_from_handle'
         if ($r.Current.ProcessId -ne $OwnedPid -or $r.Current.NativeWindowHandle -ne $dialog.ToInt64()) { throw 'picker_uia_owner' }
         $script:pickerStep = 'uia_owner'
         if (-not $cancel) {
@@ -528,7 +564,9 @@ public static class Owned019 {
         $invoke = [Windows.Automation.InvokePattern]$commit.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
         Guard
         if ((OwnedPicker) -ne $dialog) { throw 'picker_changed' }
-        Invoke-PickerMeasured $invoke 'commit' # One mutation only, never retry.
+        if ($cancel) { Write-PickerEpochTimeline $phase 'before_cancel_invoke' }
+        try { Invoke-PickerMeasured $invoke 'commit' } # One mutation only, never retry.
+        finally { if ($cancel) { Write-PickerEpochTimeline $phase 'after_cancel_invoke' } }
         $script:pickerActions++
         $script:pickerStep = if ($cancel) { 'cancel_invoke' } else { 'picker_invoke' }
         $until = [DateTime]::UtcNow.AddSeconds(6)
@@ -537,6 +575,7 @@ public static class Owned019 {
             if ([DateTime]::UtcNow -gt $until) { throw 'picker_close_timeout' }
             Start-Sleep -Milliseconds 50
         }
+        Write-PickerEpochTimeline $phase 'dialog_closed'
         $script:pickerStep = 'close_wait'
         Guard; PickerMarker 'closed'; $script:pickerPhase = $null; $script:pickerHwnd = [IntPtr]::Zero
         if (-not $cancel) { Invoke 'picker-info' }
@@ -555,6 +594,7 @@ public static class Owned019 {
         } finally { $file.Dispose() }
         Guard
         $script:pickerStep = 'not_applicable'
+        $script:pickerTimelinePhase = $null
     }
     $stage = 'ready'; WaitPhase 'ui-ready'
     if ($Scene -ceq 'file-picker') {

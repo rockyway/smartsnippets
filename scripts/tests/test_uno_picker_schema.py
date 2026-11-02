@@ -188,6 +188,128 @@ class PickerSchemaTests(unittest.TestCase):
             self.assertFalse(s.validate_helper_foreground_failure(root, 1,
                 b'ui_helper_failed stage=picker_import_cancel reason=picker_schema_missing operationClass=other pickerStep=wait_dialog\r\n'))
 
+    def test_picker_epoch_timeline_parses_fixed_order_and_collapses_unknown_data(self):
+        steps = ('helper_entry', 'before_main_invoke', 'after_main_invoke', 'dialog_visible',
+                 'after_from_handle', 'before_cancel_invoke', 'after_cancel_invoke', 'dialog_closed')
+        rows = [dict(step=step, epoch=0xffffffff if index == 0 else index,
+                     elapsed_ms=index * 125, changed_from_baseline=index == 2)
+                for index, step in enumerate(steps)]
+        raw = b''.join((json.dumps(row, separators=(',', ':')) + '\n').encode('ascii') for row in rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / 'picker-epoch-timeline-import-cancel.jsonl'
+            path.write_bytes(raw)
+            self.assertEqual({'import-cancel': rows}, s.parse_picker_epoch_timeline(root))
+            invalid = [raw.replace(b'after_from_handle', b'future_step'),
+                       raw.replace(b'"epoch":1', b'"epoch":true'),
+                       raw.replace(b'"changed_from_baseline":false', b'"changed_from_baseline":0'),
+                       raw.replace(b'"step":"helper_entry"', b'"step":"helper_entry","private":"label"'),
+                       raw.replace(b'"step":"helper_entry"', b'"step":"helper_entry","step":"dialog_closed"'),
+                       raw.replace(b'"step":"after_main_invoke"', b'"step":"before_main_invoke"'),
+                       raw.replace(b'"elapsed_ms":125', b'"elapsed_ms":5000'),
+                       b'{\n']
+            for malformed in invalid:
+                with self.subTest(raw=malformed):
+                    path.write_bytes(malformed)
+                    self.assertIsNone(s.parse_picker_epoch_timeline(root))
+            path.unlink()
+            regular = [dict(step=step, epoch=1, elapsed_ms=index, changed_from_baseline=False)
+                       for index, step in enumerate(('helper_entry', 'before_main_invoke',
+                                                     'after_main_invoke', 'dialog_visible',
+                                                     'after_from_handle', 'dialog_closed'))]
+            (root / 'picker-epoch-timeline-import.jsonl').write_bytes(
+                b''.join((json.dumps(row, separators=(',', ':')) + '\n').encode('ascii') for row in regular))
+            self.assertEqual({'import': regular}, s.parse_picker_epoch_timeline(root))
+
+    def test_input_refusal_record_has_strict_observer_fields_and_timeline(self):
+        error = s.InputRefused('epoch_changed')
+        error.input_epoch_delta, error.input_idle_ms, error.input_phase = 7, 9, 'import-cancel'
+        error.input_refusal_elapsed_ms, error.input_sample_count = 2345, 6
+        row = dict(step='helper_entry', epoch=12, elapsed_ms=0, changed_from_baseline=False)
+        error.picker_epoch_timeline = {'import-cancel': [row]}
+        with patch.object(s.base.sys, 'argv', ['worker', '--worker-private']), tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            s.base.record_failure(root, error)
+            record = json.loads((root / 'observer-worker-failure.json').read_text())
+        self.assertEqual({'reason': 'input', 'inputSubreason': 'epoch_changed',
+                          'inputEpochDelta': 7, 'inputIdleMs': 9, 'inputPhase': 'import-cancel',
+                          'inputRefusalElapsedMs': 2345, 'inputSampleCount': 6,
+                          'pickerEpochTimeline': {'import-cancel': [row]}}, record)
+        invalid_values = [(True, 1), (1, False), (-1, 1), (1, -1), (0x100000000, 1), (1, 0x100000000)]
+        for elapsed, count in invalid_values:
+            with self.subTest(elapsed=elapsed, count=count), patch.object(s.base.sys, 'argv', ['worker', '--worker-private']), tempfile.TemporaryDirectory() as tmp:
+                bad = s.InputRefused('epoch_changed')
+                bad.input_refusal_elapsed_ms, bad.input_sample_count = elapsed, count
+                root = Path(tmp)
+                s.base.record_failure(root, bad)
+                saved = json.loads((root / 'observer-worker-failure.json').read_text())
+                self.assertNotIn('inputRefusalElapsedMs', saved)
+                self.assertNotIn('inputSampleCount', saved)
+
+    @unittest.skipUnless(s.sys.platform == 'win32', 'PowerShell stub execution')
+    def test_actual_picker_timeline_order_and_best_effort_write(self):
+        helper = str(s.HELPER).replace("'", "''")
+        script = r'''$ErrorActionPreference='Stop'
+Add-Type @'
+using System;
+public static class Owned019 {
+ public static uint Epoch() { return 100; }
+ public static bool IsWindow(IntPtr h) { return false; }
+ public static bool IsWindowVisible(IntPtr h) { return true; }
+}
+namespace Windows.Automation {
+ public class ControlType { public static ControlType Button = new ControlType(); }
+ public class InvokePattern { public static object Pattern = new object(); public void Invoke() {} }
+ public class StubCurrent { public int ProcessId = 30; public long NativeWindowHandle = 20; public ControlType ControlType = ControlType.Button; }
+ public class StubElement { public StubCurrent Current = new StubCurrent(); public object GetCurrentPattern(object p) { return new InvokePattern(); } }
+ public class AutomationElement { public static StubElement FromHandle(IntPtr h) { return new StubElement(); } }
+}
+'@
+$tokens=$null; $errors=$null; $ast=[Management.Automation.Language.Parser]::ParseFile('HELPER',[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'parse'}
+$writer=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Write-PickerEpochTimeline'},$true)
+$picker=$ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'RunPicker'},$true)
+if($writer.Count -ne 1 -or $picker.Count -ne 1){throw 'functions'}
+Invoke-Expression $writer[0].Extent.Text
+Invoke-Expression $picker[0].Extent.Text
+function Guard {}
+function PickerMarker {}
+function OwnedPicker { $script:pickerHwnd=[IntPtr]20; return [IntPtr]20 }
+function PickerElement { return [Windows.Automation.StubElement]::new() }
+function RequirePickerControlClass {}
+function Invoke-PickerMeasured { param($pattern,$action) $pattern.Invoke() }
+function Start-Sleep {}
+function Invoke { $script:invokes++ }
+$script:pickerTimelineClock=[Diagnostics.Stopwatch]::StartNew(); $script:pickerTimelineBaseline=[uint32]100
+$script:pickerPhase=$null; $script:pickerTimelinePhase=$null; $script:pickerHwnd=[IntPtr]::Zero
+$script:pickerActions=0; $script:pickerValues=0; $script:invokes=0; $script:pickerStepUntil=[DateTime]::UtcNow.AddSeconds(6)
+$OwnedPid=30; $Scene='file-picker'; $epoch=[uint32]100; $root='ROOT'
+$blocked=Join-Path $root 'picker-epoch-timeline-export-cancel.jsonl'; [IO.Directory]::CreateDirectory($blocked) | Out-Null
+foreach($phase in @('import-cancel','import','export-cancel','export')){ Write-PickerEpochTimeline $phase 'helper_entry' }
+RunPicker 'import-cancel' $true
+$script:pickerPhase=$null; $script:pickerTimelinePhase=$null; $script:pickerHwnd=[IntPtr]::Zero
+$script:pickerActions=0; $script:pickerValues=0; $script:invokes=0
+RunPicker 'export-cancel' $true
+'''.replace('HELPER', helper)
+        # Each execution uses a private disposable directory; one timeline destination is
+        # deliberately a directory so AppendAllText fails without affecting the picker.
+        with tempfile.TemporaryDirectory() as tmp:
+            script = script.replace("$root='ROOT'", "$root='" + tmp.replace("'", "''") + "'")
+            result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
+                                    capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+            timeline = Path(tmp) / 'picker-epoch-timeline-import-cancel.jsonl'
+            records = [json.loads(line) for line in timeline.read_text(encoding='ascii').splitlines()]
+            self.assertEqual(['helper_entry', 'before_main_invoke', 'after_main_invoke', 'dialog_visible',
+                              'after_from_handle', 'before_cancel_invoke', 'after_cancel_invoke', 'dialog_closed'],
+                             [record['step'] for record in records])
+            for record in records:
+                self.assertEqual({'step', 'epoch', 'elapsed_ms', 'changed_from_baseline'}, set(record))
+                self.assertIs(type(record['epoch']), int)
+                self.assertIs(type(record['elapsed_ms']), int)
+                self.assertIs(type(record['changed_from_baseline']), bool)
+                self.assertFalse(record['changed_from_baseline'])
+
     @unittest.skipUnless(s.sys.platform == 'win32', 'PowerShell stub execution')
     def test_actual_operation_classifier_unwraps_wrappers_and_bounds_depth(self):
         helper = str(s.HELPER).replace("'", "''")

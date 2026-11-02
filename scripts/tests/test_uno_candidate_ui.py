@@ -823,7 +823,7 @@ class PickerObserverLoopTests(unittest.TestCase):
     def run_worker_error_path(self, *, helper_code=None, helper_output=b'', failure_file=None,
                               observer_error=None, diagnostic_error=None, foreground_save_error=None,
                               picker_record=None, helper_stderr=b'', include_record=False,
-                              scene='snippets', quiet_errors=None):
+                              scene='snippets', quiet_errors=None, clock_values=None):
         import json
         with tempfile.TemporaryDirectory() as tmp:
             private = Path(tmp)
@@ -853,7 +853,10 @@ class PickerObserverLoopTests(unittest.TestCase):
             original_picker_phase = s.picker_phase
             quiet_probe = Mock(side_effect=observer_error if observer_error is not None else quiet_errors)
             marker_probe = Mock(wraps=original_picker_phase)
-            with (patch.object(s.startup, 'require_job_membership'),
+            clock_patch = (patch.object(s.time, 'monotonic', side_effect=clock_values)
+                           if clock_values is not None else patch.object(s.time, 'monotonic', wraps=s.time.monotonic))
+            with (clock_patch,
+                  patch.object(s.startup, 'require_job_membership'),
                   patch.object(s.startup, 'validate_private'),
                   patch.object(s.base, 'validate_fixture', return_value=Path('fixture.exe')),
                   patch.object(s.startup, 'repo_module', return_value=Mock(visible_windows=Mock())),
@@ -907,6 +910,13 @@ class PickerObserverLoopTests(unittest.TestCase):
         self.assertEqual('input', reason)
         self.assertEqual(1, len(self.last_quiet_calls))
         self.assertEqual([], self.last_picker_calls)
+
+    def test_worker_records_its_elapsed_refusal_and_attempted_sample_count(self):
+        _, record, _ = self.run_worker_error_path(
+            scene='file-picker', observer_error=s.InputRefused('epoch_changed'),
+            include_record=True, clock_values=(5.0, 5.05, 7.425))
+        self.assertEqual({'reason': 'input', 'inputSubreason': 'epoch_changed',
+                          'inputRefusalElapsedMs': 2425, 'inputSampleCount': 1}, record)
 
     def test_worker_helper_operation_failure_is_recorded_with_fixed_tokens(self):
         failure = (b'ui_helper_failed stage=picker_import_cancel reason=operation '

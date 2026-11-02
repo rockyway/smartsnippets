@@ -318,7 +318,7 @@ def record_failure(private, error, *, helper_failure=None):
                'desktop_unavailable', 'window_recreated', 'ui_exit_code',
                'ui_picker_identity', 'ui_picker_main_identity', 'ui_picker_replaced',
                'ui_picker_phase', 'ui_picker_actions', 'ui_picker_phase_actions',
-               'ui_picker_schema_record', 'ui_foreground_schema', 'ui_foreground_file', 'ui_foreground_unexpected',
+               'ui_picker_schema_record', 'ui_picker_epoch_timeline', 'ui_foreground_schema', 'ui_foreground_file', 'ui_foreground_unexpected',
                'shell_legacy_isolation_unavailable', 'shell_scene', 'shell_primary_monitor',
                'shell_monitor_geometry', 'shell_monitor_dpi', 'shell_window_dpi',
                'missing_shell-ready', 'missing_shell-preview', 'missing_shell-hover-open', 'missing_shell-hover-closed',
@@ -358,6 +358,14 @@ def record_failure(private, error, *, helper_failure=None):
                         and type(idle) is int and 0 <= idle <= 0xffffffff
                         and phase in INPUT_PHASES):
                     record.update(inputEpochDelta=delta, inputIdleMs=idle, inputPhase=phase)
+                elapsed = getattr(error, 'input_refusal_elapsed_ms', None)
+                sample_count = getattr(error, 'input_sample_count', None)
+                if (type(elapsed) is int and 0 <= elapsed <= 0xffffffff
+                        and type(sample_count) is int and 0 <= sample_count <= 0xffffffff):
+                    record.update(inputRefusalElapsedMs=elapsed, inputSampleCount=sample_count)
+            timeline = getattr(error, 'picker_epoch_timeline', None)
+            if type(timeline) is dict:
+                record['pickerEpochTimeline'] = timeline
             if (safe_helper_failure is not None and reason == 'operation'
                     and safe_helper_failure['reason'] == 'operation'):
                 record['operationClass'] = safe_helper_failure['operationClass']

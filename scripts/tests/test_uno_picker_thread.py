@@ -155,7 +155,7 @@ if((OwnedPicker) -ne [IntPtr]::Zero){throw 'pid'}
         # through without timeout and therefore fails this oracle.
         wait = helper.split('    function RunPicker', 1)[1].split('        do {', 1)[1].split('        Guard\n', 1)[0]
         wait = 'do {' + wait
-        script += "\nfunction OwnedPicker { return [IntPtr]20 }\nfunction Start-Sleep {}\n"
+        script += "\nfunction OwnedPicker { return [IntPtr]20 }\nfunction Write-PickerEpochTimeline {}\nfunction Start-Sleep {}\n"
         script += "function Guard { $script:waits++; if($script:waits -ge 2){$script:until=[DateTime]::UtcNow.AddSeconds(-1)} }\n"
         for visible in ('$false', '$true'):
             script += f"\n[Owned019]::Visible={visible}; $script:waits=0; $script:until=[DateTime]::UtcNow.AddSeconds(6); $timedOut=$false\n"
