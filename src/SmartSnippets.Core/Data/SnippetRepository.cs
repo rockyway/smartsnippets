@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using SmartSnippets.Core.Domain;
+using SmartSnippets.Core.Security;
 
 namespace SmartSnippets.Core.Data;
 
@@ -10,9 +11,14 @@ public sealed class SnippetRepository
 
     private readonly SqliteConnectionFactory _factory;
 
-    public SnippetRepository(SqliteConnectionFactory factory)
+    private readonly ISecretProtector _protector;
+
+    public SnippetRepository(SqliteConnectionFactory factory) : this(factory, UnavailableSecretProtector.Instance) { }
+
+    public SnippetRepository(SqliteConnectionFactory factory, ISecretProtector protector)
     {
         _factory = factory;
+        _protector = protector;
     }
 
     public IReadOnlyList<Snippet> LoadAll(SqliteConnection? connection = null)
@@ -66,7 +72,7 @@ public sealed class SnippetRepository
         DateTimeOffset createdAt, DateTimeOffset updatedAt, DateTimeOffset? lastUsedAt, int usageCount) =>
         InsertRow(connection, transaction, text, label, isLabelCustom, folderId, tags, createdAt, updatedAt, lastUsedAt, usageCount, false);
 
-    private static Snippet InsertRow(
+    private Snippet InsertRow(
         SqliteConnection connection, SqliteTransaction transaction,
         string text, string label, bool isLabelCustom, long? folderId, IReadOnlyList<string> tags,
         DateTimeOffset createdAt, DateTimeOffset updatedAt, DateTimeOffset? lastUsedAt, int usageCount, bool isPassword)
@@ -76,7 +82,7 @@ public sealed class SnippetRepository
         command.CommandText =
             "INSERT INTO snippets (text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count, is_password) " +
             "VALUES ($text, $label, $custom, $folder, $tags, $created, $updated, $used, $usage, $password); SELECT last_insert_rowid();";
-        command.Parameters.AddWithValue("$text", text);
+        command.Parameters.AddWithValue("$text", isPassword ? SecretEnvelope.Encode(text, _protector) : text);
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
         command.Parameters.AddWithValue("$folder", folderId is null ? DBNull.Value : folderId.Value);
@@ -145,7 +151,7 @@ public sealed class SnippetRepository
             "UPDATE snippets SET text = $text, label = $label, label_is_custom = $custom, folder_id = $folder, " +
             "tags = $tags, updated_at = $now, is_password = $password WHERE id = $id;";
         command.Parameters.AddWithValue("$password", isPassword ? 1 : 0);
-        command.Parameters.AddWithValue("$text", text);
+        command.Parameters.AddWithValue("$text", isPassword ? SecretEnvelope.Encode(text, _protector) : text);
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
         command.Parameters.AddWithValue("$folder", folderId is null ? DBNull.Value : folderId.Value);
@@ -175,9 +181,9 @@ public sealed class SnippetRepository
         return command.ExecuteNonQuery() > 0;
     }
 
-    private static Snippet Read(SqliteDataReader reader) => new(
+    private Snippet Read(SqliteDataReader reader) => new(
         reader.GetInt64(0),
-        reader.GetString(1),
+        reader.GetInt64(10) != 0 ? SecretEnvelope.Decode(reader.GetString(1), _protector) : reader.GetString(1),
         reader.GetString(2),
         reader.GetInt64(3) != 0,
         reader.IsDBNull(4) ? null : reader.GetInt64(4),
