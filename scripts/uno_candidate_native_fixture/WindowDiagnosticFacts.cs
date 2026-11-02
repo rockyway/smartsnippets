@@ -75,6 +75,17 @@ internal readonly record struct WindowDiagnosticFacts(string ClassToken, bool Vi
     internal bool EqualsARect { get; init; }
     internal bool OnBottomLeftWork { get; init; }
     internal bool TitleNonempty { get; init; }
+    internal WindowDiagnosticFacts WithWindowDetails(long style, long extendedStyle, bool titleNonempty,
+        bool? zeroArea, bool? offscreen, bool? equalsARect, bool? onBottomLeftWork) => this with
+    {
+        WsPopup = (style & 0x80000000) != 0, WsCaption = (style & 0x00c00000) != 0,
+        WsChild = (style & 0x40000000) != 0, WsDisabled = (style & 0x08000000) != 0,
+        WsExTopmost = (extendedStyle & 8) != 0, WsExLayered = (extendedStyle & 0x80000) != 0,
+        WsExTransparent = (extendedStyle & 0x20) != 0, WsExAppwindow = (extendedStyle & 0x40000) != 0,
+        ZeroArea = zeroArea.GetValueOrDefault(), Offscreen = offscreen.GetValueOrDefault(),
+        EqualsARect = equalsARect.GetValueOrDefault(), OnBottomLeftWork = onBottomLeftWork.GetValueOrDefault(),
+        TitleNonempty = titleNonempty
+    };
     private static bool IsTargetClass(ReadOnlySpan<char> name) => name.StartsWith("SS_Target018_") &&
         name.Length == 45 && Guid.TryParseExact(name[13..], "N", out _);
     internal static WindowDiagnosticFacts Capture(nint window, nint a, nint b,

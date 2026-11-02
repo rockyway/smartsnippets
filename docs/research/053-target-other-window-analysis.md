@@ -8,12 +8,15 @@ activation fix or picker epoch exception is established.**
 
 ## nd-07 diagnostic extension (build-only; no new native evidence)
 
-The fixture now snapshots A's EnumThreadWindows inventory at target readiness,
-before host startup or UIA SetFocus. The observer snapshots it again at the first
-latched foreground refusal, alongside native-monitor-failure.json. See the fixture
-README for exact fixed schemas, class_sha8, allowlist provenance and new-at-refusal
-correlation limits. Extended class/style/rectangle facts also accompany startup
-and high-rate trace samples. These independent observers still do not establish
+The fixture best-effort snapshots A's EnumThreadWindows inventory at target
+readiness, before host startup or UIA SetFocus; failure does not gate the
+`fixture_owned` handoff. For positive runs only, after `positive-surfaces.txt` is
+published, the observer snapshots it at the first subsequent latched foreground
+refusal, alongside native-monitor-failure.json. Refusals before publication and
+non-positive scenes do not write this inventory. See the fixture README for exact
+fixed schemas, class_sha8, allowlist provenance and new-at-refusal correlation
+limits. Extended class/style/rectangle facts also accompany startup and high-rate
+trace samples. These independent observers still do not establish
 continuous HWND identity or causality. A new-window marker is a diagnostic lead,
 not proof of creation origin, activation acceptance, or an allowed surface.
 No review gate or product behavior changed; the unknown window has not yet been
@@ -91,7 +94,9 @@ no focus retry/settling exception exists, and no non-A surface is admitted as A.
 `tooltip`, `dialog_32770`, `menu_32768`, `target018_class`, `other`.
 The target token requires the exact class prefix plus 32 hexadecimal GUID digits;
 a prefix alone cannot smuggle a private string. Even a wrong adapter token is
-reduced to `other` before logging. No raw class, title, HWND or PID is emitted.
+reduced to `other` before logging. No raw class, title or PID is emitted. The
+inventory includes a truncated SHA-256 of the decimal HWND for within-run correlation
+only; it is not anonymization or identity authority.
 
 Both `native_startup_foreground` and every `owned_foreground_trace` sample append
 booleans `visible`, `toolwindow` (WS_EX_TOOLWINDOW), `noactivate` (WS_EX_NOACTIVATE),
@@ -104,12 +109,16 @@ continuity; it is not permission.
 The independent Python monitor uses the same fixed mapping/flags, in required
 `windowFacts` on its failure record. Its `owned_a`/`owned_b` relation labels match
 NativeControlDiagnostics; all existing exact identity/order/popup-grant rules are
-unchanged. It captures facts at the first foreground refusal, not teardown.
-`sampled=true` means the complete fact sample was collected with both A and B handles
-known. `sampled=false` means collection was unavailable or either handle was unknown;
-any false fact defaults are not negative runtime evidence. Validator rejects extra fields, arbitrary
-tokens, duplicate JSON keys and non-boolean flags. Read failures do not erase the
-original monitor refusal or cause a retry.
+unchanged. For positive runs, it captures facts at the first foreground refusal
+after surfaces are published, not at teardown; non-positive runs do not write the
+refusal inventory. `sampled=true` means both A and B handles were known; `sampled=false` does not mean
+all fact collection failed. If A or its rect/monitor lookup is unavailable, class
+and style facts remain; `equals_a_rect`/`on_bottom_left_work` stay false, while
+`zero_area`/`offscreen` use the sampled window's own rect when available. Other
+facts retain their independent probes. Unknown facts are not negative runtime
+evidence. Validator rejects extra fields, arbitrary tokens, duplicate JSON keys and
+non-boolean flags. Read failures do not erase the original monitor refusal or cause
+a retry.
 
 These are multiple read-only API calls around one captured foreground HWND, not
 an atomic OS snapshot. Destruction/reuse can race collection. Message-only lookup

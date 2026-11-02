@@ -61,13 +61,45 @@ EXPECTED_CLASSES = [
 
 
 class WindowDiagnosticsTests(unittest.TestCase):
-    def test_sha8_vector_prefixes_and_unknown_collapse(self):
+    def test_sha8_vector_prefixes_and_partial_geometry(self):
         self.assertEqual('fd2fa13c', native.class_sha8('Edit'))
+        self.assertEqual('8003b59e', native.class_sha8('Edit\U0001f600\ud800'))
         for prefix, token in native.WINDOW_PREFIXES.items():
             self.assertEqual(token, native.window_facts(desktop(prefix + 'Synthetic'), 3, 1, 2)['class_token'])
         d = desktop()
-        d.user.GetWindowRect = Fn(lambda *args: 0)
-        self.assertEqual(native.empty_window_facts(), native.window_facts(d, 3, 1, 2))
+        rect_calls = []
+        def rect(h, ptr):
+            rect_calls.append(h)
+            return 0 if not h else set_rect(ptr._obj)
+        d.user.GetWindowRect = Fn(rect)
+        facts = native.window_facts(d, 3, 0, 0)
+        self.assertNotIn(0, rect_calls)  # NULL A is unavailable; its rectangle is never queried.
+        self.assertEqual('ime_default', facts['class_token'])
+        self.assertEqual(native.class_sha8('IME'), facts['class_sha8'])
+        self.assertTrue(facts['toolwindow'] and facts['noactivate'] and facts['ws_disabled'])
+        self.assertFalse(facts['sampled'] or facts['equals_a_rect'] or facts['on_bottom_left_work'])
+        self.assertFalse(facts['zero_area'] or facts['offscreen'])
+
+        d = desktop()
+        d.user.GetWindowRect = Fn(lambda h, ptr: 0 if h == 1 else set_rect(ptr._obj))
+        facts = native.window_facts(d, 3, 1, 2)
+        self.assertEqual('ime_default', facts['class_token'])
+        self.assertTrue(facts['noactivate'] and facts['ws_disabled'])
+        self.assertFalse(facts['equals_a_rect'] or facts['on_bottom_left_work'])
+        d.user.EnumDisplayMonitors = Fn(lambda *args: 0)
+        facts = native.window_facts(d, 3, 1, 2)
+        self.assertEqual('ime_default', facts['class_token'])
+        self.assertTrue(facts['noactivate'] and facts['ws_disabled'])
+        self.assertFalse(facts['offscreen'] or facts['equals_a_rect'] or facts['on_bottom_left_work'])
+
+    def test_csharp_shaped_facts_json_passes_exact_python_validator(self):
+        sample = json.loads('{"class_token":"ime_default","visible":false,"toolwindow":false,"noactivate":false,'
+            '"has_owner":false,"owner_is_a":false,"owner_is_b":false,"is_message_only":false,'
+            '"same_thread_as_a":false,"cloaked":false,"cloaked_known":false,"class_sha8":"29ee788e",'
+            '"ws_popup":false,"ws_caption":false,"ws_child":false,"ws_disabled":false,"ws_ex_topmost":false,'
+            '"ws_ex_layered":false,"ws_ex_transparent":false,"ws_ex_appwindow":false,"zero_area":false,'
+            '"offscreen":false,"equals_a_rect":false,"on_bottom_left_work":false,"title_nonempty":false,"sampled":false}')
+        native.validate_window_facts(sample)
 
     def test_all_new_style_bits_and_geometry_are_independent(self):
         for key, mask, index in [

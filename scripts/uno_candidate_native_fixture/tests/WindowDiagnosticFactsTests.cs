@@ -8,6 +8,7 @@ public sealed class WindowDiagnosticFactsTests
     public void Utf16ClassFingerprintAndSharedTableArePinned()
     {
         Assert.Equal("fd2fa13c", WindowDiagnosticFacts.ClassSha8("Edit"));
+        Assert.Equal("8003b59e", WindowDiagnosticFacts.ClassSha8("Edit\U0001F600\uD800"));
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "scripts", "run_uno_candidate_native.py")))
             directory = directory.Parent;
@@ -15,10 +16,20 @@ public sealed class WindowDiagnosticFactsTests
         var source = File.ReadAllText(Path.Combine(directory.FullName, "scripts", "run_uno_candidate_native.py"));
         var table = source.Split("WINDOW_CLASSES = {")[1].Split("}")[0];
         foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(table, "'([^']+)': '([^']+)'"))
+        {
             Assert.Equal(m.Groups[2].Value, WindowDiagnosticFacts.Classify(m.Groups[1].Value));
-        Assert.Equal("dotnet_broadcast", WindowDiagnosticFacts.Classify(".NET-BroadcastEventWindow.synthetic"));
-        Assert.Equal("microsoft_content", WindowDiagnosticFacts.Classify("Microsoft.UI.Content.synthetic"));
-        Assert.Equal("soft_keyboard", WindowDiagnosticFacts.Classify("SoftKeyboardSynthetic"));
+            AssertJsonToken(m.Groups[1].Value, m.Groups[2].Value);
+        }
+        var prefixTable = source.Split("WINDOW_PREFIXES = {")[1].Split("}")[0];
+        var pythonPrefixes = System.Text.RegularExpressions.Regex.Matches(prefixTable, "'([^']+)': '([^']+)'")
+            .Select(m => (m.Groups[1].Value, m.Groups[2].Value)).ToArray();
+        var csharpSource = File.ReadAllText(Path.Combine(directory.FullName, "scripts", "uno_candidate_native_fixture", "WindowDiagnosticFacts.cs"));
+        var csharpPrefixes = System.Text.RegularExpressions.Regex.Matches(csharpSource,
+                "name\\.StartsWith\\(\\\"([^\\\"]+)\\\"\\) \\? \\\"([^\\\"]+)\\\"")
+            .Select(m => (m.Groups[1].Value, m.Groups[2].Value)).ToArray();
+        Assert.Equal(pythonPrefixes, csharpPrefixes);
+        foreach (var (prefix, token) in pythonPrefixes)
+            AssertJsonToken(prefix + "Synthetic", token);
     }
 
     [Theory]
@@ -42,12 +53,31 @@ public sealed class WindowDiagnosticFactsTests
         using var json = System.Text.Json.JsonDocument.Parse(facts.Json());
         Assert.Equal(facts.ClassSha, json.RootElement.GetProperty("class_sha8").GetString());
         Assert.True(json.RootElement.GetProperty("sampled").GetBoolean());
-        Assert.Equal(26, json.RootElement.EnumerateObject().Count());
+        Assert.Equal(new[] { "class_token", "visible", "toolwindow", "noactivate", "has_owner", "owner_is_a", "owner_is_b",
+                "is_message_only", "same_thread_as_a", "cloaked", "cloaked_known", "class_sha8", "ws_popup", "ws_caption",
+                "ws_child", "ws_disabled", "ws_ex_topmost", "ws_ex_layered", "ws_ex_transparent", "ws_ex_appwindow",
+                "zero_area", "offscreen", "equals_a_rect", "on_bottom_left_work", "title_nonempty", "sampled" }.OrderBy(x => x),
+            json.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(x => x));
         Assert.True(facts.Visible && facts.Toolwindow && facts.Noactivate && facts.HasOwner &&
             facts.OwnerIsB && facts.IsMessageOnly && facts.SameThreadAsA && facts.Cloaked && facts.CloakedKnown);
         Assert.False(facts.OwnerIsA);
         Assert.Contains("class_token=" + token, facts.Fields());
         Assert.DoesNotContain(name, facts.Fields());
+    }
+
+    [Fact]
+    public void UnavailableARectKeepsClassFingerprintAndStyleFacts()
+    {
+        var captured = WindowDiagnosticFacts.Capture(3, 0, 0, _ => "UserAdapterWindowClass", _ => true,
+            _ => 0x08000080, _ => 0, _ => false, _ => 0, _ => null);
+        var facts = captured.WithWindowDetails(0x80000000 | 0x00c00000 | 0x40000000 | 0x08000000,
+            8 | 0x80000 | 0x20 | 0x40000, true, false, false, null, null);
+        Assert.Equal("user_adapter", facts.ClassToken);
+        Assert.Equal(WindowDiagnosticFacts.ClassSha8("UserAdapterWindowClass"), facts.ClassSha);
+        Assert.False(facts.Sampled);
+        Assert.True(facts.Toolwindow && facts.Noactivate && facts.WsPopup && facts.WsCaption && facts.WsChild &&
+            facts.WsDisabled && facts.WsExTopmost && facts.WsExLayered && facts.WsExTransparent && facts.WsExAppwindow);
+        Assert.False(facts.ZeroArea || facts.Offscreen || facts.EqualsARect || facts.OnBottomLeftWork);
     }
 
     [Theory]
@@ -88,6 +118,15 @@ public sealed class WindowDiagnosticFactsTests
         Assert.Equal(sameThread, facts.SameThreadAsA);
         Assert.False(facts.Visible || facts.Toolwindow || facts.Noactivate || facts.IsMessageOnly || facts.Cloaked || facts.CloakedKnown);
         Assert.Contains("class_token=other", (facts with { ClassToken = "private title" }).Fields());
+    }
+
+    private static void AssertJsonToken(string name, string expected)
+    {
+        var facts = WindowDiagnosticFacts.Capture(3, 1, 2, _ => name, _ => false,
+            _ => 0, _ => 0, _ => false, _ => 0, _ => null);
+        Assert.Equal(expected, WindowDiagnosticFacts.Classify(name));
+        using var json = System.Text.Json.JsonDocument.Parse(facts.Json());
+        Assert.Equal(expected, json.RootElement.GetProperty("class_token").GetString());
     }
 
     [Fact]

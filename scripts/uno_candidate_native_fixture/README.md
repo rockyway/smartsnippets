@@ -157,11 +157,14 @@ describes deactivation/removal of focus, not a guarantee to restore our initial 
 A shell/desktop/other replacement is not ruled out. Keep it rejected, not allowlisted;
 the failure record's `closed` boolean distinguishes post-closure observations.
 The historical predicate remains unknown.
-nd-07 diagnostic extension (no acceptance/admission change): the fixture writes
-`target-thread-windows-ready.json` immediately after the authenticated Target018
-readiness receipt, before host startup or any UIA SetFocus. The Python observer
-writes `target-thread-windows-refusal.json` at the first foreground refusal, not
-during teardown. Startup/owned-thread traces and the latched foreground facts use
+nd-07 diagnostic extension (no acceptance/admission change): the fixture best-effort
+writes `target-thread-windows-ready.json` immediately after the authenticated
+Target018 readiness receipt, before host startup or any UIA SetFocus. A write or
+enumeration failure is swallowed and does not gate the `fixture_owned` handoff. The Python observer
+writes `target-thread-windows-refusal.json` only for positive runs, after
+`positive-surfaces.txt` is published, at the first subsequent foreground refusal—not
+during teardown. Refusals before surface publication and non-positive scenes do not
+write this inventory. Startup/owned-thread traces and the latched foreground facts use
 the same class fingerprints and style/rectangle booleans. Research 053's
 `a_other_window` / `same_pid_other` remain observations, never foreground authority.
 
@@ -171,8 +174,8 @@ There are at most 32 entries; incomplete observations collapse to an empty list.
 Each entry is exactly
 `{"window_id":hex8,"is_a":bool,"is_b":bool,"new_at_refusal":bool,"facts":facts}`.
 IDs are SHA-256/UTF-16LE of the invariant decimal HWND, truncated to eight
-lowercase hex characters (no HWND emitted). They are only within-session
-correlation, not identity authority; handle reuse/hash collisions limit inference.
+lowercase hex characters. This is correlation only, not anonymization or identity
+authority; handle reuse/hash collisions limit inference.
 Ready entries have new=false; refusal entries compare IDs with the ready snapshot.
 Duplicate IDs or malformed/missing ready records refuse/collapse rather than
 invent a baseline.
@@ -189,10 +192,14 @@ compares full rectangles; zero_area includes inverted rectangles.
 on_bottom_left_work means intersection with the work area of the monitor that
 holds window A (Target018's own leftmost/bottom selection), not permission to run
 on another screen. title_nonempty uses only GetWindowTextLengthW.
-Unsampled/unavailable facts collapse to other, the empty-class hash, and false
-booleans. Unknown classes remain other but retain their fingerprint.
+If class sampling itself fails, facts collapse to other, the empty-class hash, and
+false booleans. If A or its rect/monitor lookup is unavailable, class and style
+facts remain; `equals_a_rect` and `on_bottom_left_work` stay false, while
+`zero_area`/`offscreen` are still computed from the sampled window's own rect when
+available. Other facts retain their independent probes. Unknown classes remain
+other but retain their fingerprint.
 
-The expanded exact/prefix class table is cross-checked between C# and Python.
+The exact and prefix class strings/tokens are cross-checked between C# and Python.
 The UI Automation-related Message class is sourced from Wine's UIAutomationCore
 event helper implementation:
 https://github.com/wine-mirror/wine/blob/master/dlls/uiautomationcore/uia_event.c

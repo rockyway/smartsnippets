@@ -368,32 +368,52 @@ def extra_window_facts(user, window, a):
             ('GetMonitorInfoW', [W.HMONITOR, C.POINTER(Info)], W.BOOL)):
         fn = getattr(user, name)
         fn.argtypes, fn.restype = args, result
-    rect, ar = Rect(), Rect()
-    if not user.GetWindowRect(window, C.byref(rect)) or not user.GetWindowRect(a, C.byref(ar)):
-        raise ValueError('diagnostic_rect')
+    style, ex = user.GetWindowLongPtrW(window, -16), user.GetWindowLongPtrW(window, -20)
+    facts = dict(ws_popup=bool(style & 0x80000000), ws_caption=bool(style & 0x00c00000),
+                 ws_child=bool(style & 0x40000000), ws_disabled=bool(style & 0x08000000),
+                 ws_ex_topmost=bool(ex & 8), ws_ex_layered=bool(ex & 0x80000),
+                 ws_ex_transparent=bool(ex & 0x20), ws_ex_appwindow=bool(ex & 0x40000),
+                 zero_area=False, offscreen=False, equals_a_rect=False,
+                 on_bottom_left_work=False, title_nonempty=user.GetWindowTextLengthW(window) > 0)
+    rect = Rect()
+    try:
+        if not user.GetWindowRect(window, C.byref(rect)):
+            return facts
+    except Exception:
+        return facts
+    facts['zero_area'] = rect.right <= rect.left or rect.bottom <= rect.top
+    ar = Rect()
+    try:
+        has_a_rect = bool(a and user.GetWindowRect(a, C.byref(ar)))
+    except Exception:
+        has_a_rect = False
+
     def intersects(x, y):
         return max(x.left, y.left) < min(x.right, y.right) and max(x.top, y.top) < min(x.bottom, y.bottom)
     monitors, selected = [], []
     def visit(h, dc, r, param):
-        info = Info()
-        info.size = C.sizeof(info)
-        if not user.GetMonitorInfoW(h, C.byref(info)):
+        try:
+            info = Info()
+            info.size = C.sizeof(info)
+            if not user.GetMonitorInfoW(h, C.byref(info)):
+                return False
+            monitors.append(intersects(rect, info.monitor))
+            if has_a_rect and not selected and intersects(ar, info.monitor):  # A's own monitor/work area.
+                selected.append(intersects(rect, info.work))
+            return True
+        except Exception:
             return False
-        monitors.append(intersects(rect, info.monitor))
-        if not selected and intersects(ar, info.monitor):  # Target018's own (bottom-left) work area: A's monitor.
-            selected.append(intersects(rect, info.work))
-        return True
     cb = callback_type(visit)
-    if not user.EnumDisplayMonitors(None, None, cb, 0) or len(selected) != 1:
-        raise ValueError('diagnostic_monitors')
-    style, ex = user.GetWindowLongPtrW(window, -16), user.GetWindowLongPtrW(window, -20)
-    return dict(ws_popup=bool(style & 0x80000000), ws_caption=bool(style & 0x00c00000),
-                ws_child=bool(style & 0x40000000), ws_disabled=bool(style & 0x08000000),
-                ws_ex_topmost=bool(ex & 8), ws_ex_layered=bool(ex & 0x80000),
-                ws_ex_transparent=bool(ex & 0x20), ws_ex_appwindow=bool(ex & 0x40000),
-                zero_area=rect.right <= rect.left or rect.bottom <= rect.top,
-                offscreen=not any(monitors), equals_a_rect=bytes(rect) == bytes(ar),
-                on_bottom_left_work=selected[0], title_nonempty=user.GetWindowTextLengthW(window) > 0)
+    try:
+        monitors_known = bool(user.EnumDisplayMonitors(None, None, cb, 0))
+    except Exception:
+        monitors_known = False
+    if monitors_known:
+        facts['offscreen'] = not any(monitors)
+        if has_a_rect and len(selected) == 1:
+            facts['equals_a_rect'] = bytes(rect) == bytes(ar)
+            facts['on_bottom_left_work'] = selected[0]
+    return facts
 
 
 def validate_inventory(record):
@@ -454,15 +474,18 @@ def thread_inventory(desktop, a, b, ready):
             return result
         previous = {e['window_id'] for e in ready['windows']}
         def visit(h, param):
-            if len(result['windows']) == 32:
+            try:
+                if len(result['windows']) == 32:
+                    return False
+                facts = window_facts(desktop, h, a, b)
+                if not facts['sampled']:
+                    return False
+                identity = class_sha8(str(h))
+                result['windows'].append(dict(window_id=identity, is_a=h == a, is_b=h == b,
+                                              new_at_refusal=identity not in previous, facts=facts))
+                return True
+            except Exception:
                 return False
-            facts = window_facts(desktop, h, a, b)
-            if not facts['sampled']:
-                return False
-            identity = class_sha8(str(h))
-            result['windows'].append(dict(window_id=identity, is_a=h == a, is_b=h == b,
-                                          new_at_refusal=identity not in previous, facts=facts))
-            return True
         result['complete'] = bool(fn(tid, callback_type(visit), 0))
         validate_inventory(result)
         if not result['complete']:

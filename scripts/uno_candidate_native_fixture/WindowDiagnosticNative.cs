@@ -12,57 +12,72 @@ internal static partial class WindowDiagnosticNative
                 window, a, b, ClassName, h => h != 0 && IsWindowVisible(h) != 0,
                 h => GetWindowLongPtrW(h, -20), h => GetWindow(h, 4), IsMessageOnly,
                 h => GetWindowThreadProcessId(h, out _), h => DwmGetWindowAttribute(h, 14, out var value, 4) >= 0 ? value : null);
-            if (GetWindowRect(window, out var rect) == 0 || GetWindowRect(a, out var ar) == 0)
-                return default;
+            var style = (long)GetWindowLongPtrW(window, -16);
+            var ex = (long)GetWindowLongPtrW(window, -20);
+            var titleNonempty = GetWindowTextLengthW(window) > 0;
+            if (GetWindowRect(window, out var rect) == 0)
+                return facts.WithWindowDetails(style, ex, titleNonempty, null, null, null, null);
+
+            var zeroArea = rect.Right <= rect.Left || rect.Bottom <= rect.Top;
+            var ar = default(Rect);
+            var hasARect = a != 0 && GetWindowRect(a, out ar) != 0;
             var any = false;
             bool? selected = null;
             MonitorCallback callback = (h, dc, r, data) =>
             {
-                var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
-                if (GetMonitorInfoW(h, ref info) == 0) return 0;
-                any |= Intersects(rect, info.Monitor);
-                if (!selected.HasValue && Intersects(ar, info.Monitor)) selected = Intersects(rect, info.Work); // A's (Target018-selected) work area.
-                return 1;
+                try
+                {
+                    var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
+                    if (GetMonitorInfoW(h, ref info) == 0) return 0;
+                    any |= Intersects(rect, info.Monitor);
+                    if (hasARect && !selected.HasValue && Intersects(ar, info.Monitor))
+                        selected = Intersects(rect, info.Work); // A's (Target018-selected) work area.
+                    return 1;
+                }
+                catch { return 0; }
             };
             var ok = EnumDisplayMonitors(0, 0, Marshal.GetFunctionPointerForDelegate(callback), 0);
             GC.KeepAlive(callback);
-            if (ok == 0 || !selected.HasValue) return default;
-            var style = (long)GetWindowLongPtrW(window, -16);
-            var ex = (long)GetWindowLongPtrW(window, -20);
-            return facts with {
-                WsPopup = (style & 0x80000000) != 0, WsCaption = (style & 0x00c00000) != 0,
-                WsChild = (style & 0x40000000) != 0, WsDisabled = (style & 0x08000000) != 0,
-                WsExTopmost = (ex & 8) != 0, WsExLayered = (ex & 0x80000) != 0,
-                WsExTransparent = (ex & 0x20) != 0, WsExAppwindow = (ex & 0x40000) != 0,
-                ZeroArea = rect.Right <= rect.Left || rect.Bottom <= rect.Top, Offscreen = !any,
-                EqualsARect = rect.Equals(ar), OnBottomLeftWork = selected.Value,
-                TitleNonempty = GetWindowTextLengthW(window) > 0 };
+            var monitorsKnown = ok != 0;
+            var aMonitorKnown = monitorsKnown && hasARect && selected.HasValue;
+            return facts.WithWindowDetails(style, ex, titleNonempty, zeroArea,
+                monitorsKnown ? !any : null,
+                aMonitorKnown ? rect.Left == ar.Left && rect.Top == ar.Top && rect.Right == ar.Right && rect.Bottom == ar.Bottom : null,
+                aMonitorKnown ? selected : null);
         }
         catch { return default; }
     }
 
     internal static void WriteReadyInventory(nint a, nint b, string root)
     {
-        var windows = new List<string>();
-        WindowCallback callback = (h, data) =>
+        try
         {
-            if (windows.Count == 32) return 0;
-            var facts = Sample(h, a, b);
-            if (!facts.Sampled) return 0;
-            windows.Add("{\"window_id\":\"" + WindowDiagnosticFacts.ClassSha8(h.ToString(System.Globalization.CultureInfo.InvariantCulture)) +
-                "\",\"is_a\":" + (h == a).ToString().ToLowerInvariant() +
-                ",\"is_b\":" + (h == b).ToString().ToLowerInvariant() +
-                ",\"new_at_refusal\":false,\"facts\":" + facts.Json() + "}");
-            return 1;
-        };
-        var tid = GetWindowThreadProcessId(a, out _);
-        var complete = tid != 0 && EnumThreadWindows(tid, Marshal.GetFunctionPointerForDelegate(callback), 0) != 0;
-        GC.KeepAlive(callback);
-        var json = "{\"phase\":\"ready\",\"complete\":" + complete.ToString().ToLowerInvariant() +
-            ",\"windows\":[" + (complete ? string.Join(",", windows) : "") + "]}";
-        var path = Path.Combine(root, "target-thread-windows-ready.json");
-        File.WriteAllText(path + ".tmp", json, System.Text.Encoding.ASCII);
-        File.Move(path + ".tmp", path);
+            var windows = new List<string>();
+            WindowCallback callback = (h, data) =>
+            {
+                try
+                {
+                    if (windows.Count == 32) return 0;
+                    var facts = Sample(h, a, b);
+                    if (!facts.Sampled) return 0;
+                    windows.Add("{\"window_id\":\"" + WindowDiagnosticFacts.ClassSha8(h.ToString(System.Globalization.CultureInfo.InvariantCulture)) +
+                        "\",\"is_a\":" + (h == a).ToString().ToLowerInvariant() +
+                        ",\"is_b\":" + (h == b).ToString().ToLowerInvariant() +
+                        ",\"new_at_refusal\":false,\"facts\":" + facts.Json() + "}");
+                    return 1;
+                }
+                catch { return 0; }
+            };
+            var tid = GetWindowThreadProcessId(a, out _);
+            var complete = tid != 0 && EnumThreadWindows(tid, Marshal.GetFunctionPointerForDelegate(callback), 0) != 0;
+            GC.KeepAlive(callback);
+            var json = "{\"phase\":\"ready\",\"complete\":" + complete.ToString().ToLowerInvariant() +
+                ",\"windows\":[" + (complete ? string.Join(",", windows) : "") + "]}";
+            var path = Path.Combine(root, "target-thread-windows-ready.json");
+            File.WriteAllText(path + ".tmp", json, System.Text.Encoding.ASCII);
+            File.Move(path + ".tmp", path);
+        }
+        catch { }
     }
     private static bool Intersects(Rect a, Rect b) => Math.Max(a.Left, b.Left) < Math.Min(a.Right, b.Right) &&
         Math.Max(a.Top, b.Top) < Math.Min(a.Bottom, b.Bottom);
