@@ -239,13 +239,13 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
     public bool CanUseRowActions(PopupItemViewModel? item)
     {
-        EnsureCurrent();
         return !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet }
             && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
     }
     public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && _clipboard.IsAvailable && CanUseRowActions(item);
     public void CopyRow(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (IsPreview || !CanUseRowActions(item)) return;
         if (!_clipboard.IsAvailable) { StatusText = UiText.CopyFailed; return; }
         var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
@@ -253,7 +253,11 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         if (StatusText == UiText.CopyFailed) StatusText = string.Empty;
         AppLog.Info("popup_row_copied", $"id={snippet.Id}");
     }
-    public Task InsertRowAsync(PopupItemViewModel item) => CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
+    public Task InsertRowAsync(PopupItemViewModel item)
+    {
+        EnsureCurrent();
+        return CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
+    }
     public bool CanInsertFromMain => Target is not null && !IsPreview && !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss;
     public Task InsertFromMainAsync(long id)
     {
@@ -266,10 +270,12 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public void EditRow(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (CanUseRowActions(item)) OpenEditor(item.SnippetId);
     }
     public async Task DeleteRowAsync(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (!CanUseRowActions(item)) return;
         var view = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId);
         _contextDialogOpen = true;

@@ -533,7 +533,6 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(IsLoading));
         try
         {
-            Text = string.Empty;
             if (snippet?.IsPassword == true) IsLabelCustom = true;
             IsPassword = snippet?.IsPassword ?? false;
             Text = snippet?.Text ?? string.Empty;
@@ -562,7 +561,6 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(IsLoading));
         try
         {
-            Text = string.Empty;
             if (saved.IsPassword) IsLabelCustom = true;
             IsPassword = saved.IsPassword;
             Text = saved.Text;
