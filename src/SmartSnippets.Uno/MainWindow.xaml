@@ -31,6 +31,10 @@
             OpenPaneLength="180"
             PaneDisplayMode="Left"
             SelectionChanged="OnSelectionChanged">
+            <NavigationView.Resources>
+                <!-- Align the shortcut status with the page content's left edge (WinUI default is 56,44,0,0). -->
+                <Thickness x:Key="NavigationViewHeaderMargin">10,44,0,0</Thickness>
+            </NavigationView.Resources>
             <NavigationView.Header>
                 <TextBlock x:Name="NativeStatusText" Text="Global shortcut status is loading." TextWrapping="Wrap" FontSize="14" />
             </NavigationView.Header>
