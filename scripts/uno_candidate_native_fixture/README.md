@@ -145,18 +145,21 @@ The independent monitor's posted/captured-Copy/context policy accepts initial
 foreground only before observed A, then the pinned A; only the exact popup HWND
 of the coordinator-authenticated live worker PID can interrupt A after an atomic
 successful Target018 grant marker. Main, B, other candidate windows and wrong-PID
-HWNDs are not exceptions. Zero is allowed only after observed popup and before
-observed return to A, within the grant deadline and before closure; any nonzero
-non-A/non-popup handoff still fails. The popup window ends on first observed return
-to A, host-exit closure, or 20 seconds after observing the grant. Main-row `copy`
-uses the same monitor but never permits popup foreground or pre-closure zero.
+HWNDs are not exceptions. Raw NULL is pending, never A/popup/initial evidence.
+A gap may last at most 500 ms and must end on stage-allowed A or the exact pinned
+popup; a longer gap, a foreign/initial endpoint, or NULL at process exit refuses.
+The Python monitor, C# popup readiness check and acceptance-native admission use
+this same rule. No grant retry or harness activation is added. The popup window
+ends on first observed return to A, host-exit closure, or 20 seconds after observing
+the grant. Main-row `copy` uses the same monitor but never permits popup foreground.
 
 Closure is published before Target018 disposal. Already-pinned A may remain while
-that disposal drains. After closure and observed A, initial foreground or zero
-enters a terminal teardown state accepting **only initial or zero**: no A reentry,
-B, main, popup, guardian, shell/desktop or other foreign window. Closure does not
-require a sampled return to A after popup destruction; final scene receipts and
-independent boundary checks remain mandatory. Other scenes' policies are unchanged.
+that disposal drains. After closure and observed A, initial foreground enters a
+terminal teardown state accepting **only initial**: no A reentry, B, main, popup,
+guardian, shell/desktop or other foreign window. NULL cannot enter or prove this
+state, and a NULL-to-initial gap refuses. Captured-Copy cleanup now restores exact
+A through the still-live acceptance session before hiding the popup or closing
+admission. Final scene receipts and independent boundary checks remain mandatory.
 Every monitor caller must supply an explicit scene; there is no implicit legacy
 fallback. Sampling is not continuous native-focus proof: missing A before an
 observed popup fails; missing popup entirely is not detected by samples alone;
@@ -233,6 +236,13 @@ boolean `foreground_was_child` (raw WS_CHILD at the failed foreground sample),
 and boolean `closed` (validated closure observed at the failed sample, false for
 legacy scene policies). The first predicate, relation, order and closure phase win;
 final output size is checked even on immediate exit.
+The record also requires `transitions` (first 64 relation changes, including the
+first sample): strictly increasing `sample_order`, nonnegative monotonic
+`elapsed_ms`, allowlisted `relation` and `class_token`, and boolean `null` matching
+relation `none`. `nullGap` is null or a fixed record of `sample_order`, `elapsed_ms`,
+`duration_ms` and allowlisted `end_relation` (`none` means unresolved). The first
+foreground failure retains its gap even while recovery observation continues.
+No HWND/PID, raw class, content or exception payload enters this timeline.
 Python validates the exact schema before reporting failure. This is diagnostics,
 not review approval or permission to rerun.
 
@@ -250,7 +260,16 @@ not review approval or permission to rerun.
   Only a granted receipt plus a still-pinned target permits the immediately following
   **posted WM_HOTKEY**. Refusal fails closed (`foreground_grant_refused`); diagnostics
   use the fixed `target_foreground_grant` last pre-trigger stage, which remains set
-  for later failures and is not a precise failure locator. Registered scenes never request
+  for later failures and is not a precise failure locator. Fixed `native_scene_refusal
+  reason=` tokens now distinguish `callback_duplicate`, `shortcut_foreground_not_ready`,
+  `popup_show_refused`, `popup_readiness_timeout`, `popup_foreground_refused`, and
+  `copy_restore_refused`, `popup_warmup_timeout`, `shortcut_readiness_failed`, and
+  `popup_show_failed`, without exception-message parsing.
+  The fixture waits for the shared coordinator's hidden warmup readiness before
+  preparing A, so a delayed warmup Hide cannot race post-grant capture. Captured activation
+  waits until the popup is uncloaked, then re-enters the shared coordinator's
+  generation-checked focus callback; a native true return without exact popup
+  foreground is `foreground_unconfirmed`, not accepted focus. Registered scenes never request
   this grant. No ASFW_ANY, self-grant, input queue attachment or focus retry exists.
   This models foreground authority, not a physical shortcut.
   Cheap source-pin tests check the real scene-to-lease wiring and the target's

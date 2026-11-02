@@ -56,11 +56,11 @@ class ForegroundIdentityTests(unittest.TestCase):
                                                    scene='restore', evidence_private=private)
                     if root == 10:
                         call()
-                        sampled.assert_not_called()
+                        sampled.assert_called_once_with(d, 101, 0, 0)
                     else:
                         with self.assertRaisesRegex(ValueError, 'native_scene_failed'):
                             call()
-                        sampled.assert_called_once_with(d, 101, 0, 0)
+                        self.assertEqual(2, sampled.call_count)  # transition plus refusal facts
                         record = native.validate_monitor_failure(private)
                         self.assertTrue(record['foreground_was_child'])
                         self.assertTrue(record['windowFacts']['foreground_was_child'])

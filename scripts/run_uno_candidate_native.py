@@ -230,9 +230,9 @@ def validate_monitor_failure(private):
         if len(result) != len(pairs):
             raise ValueError('native_monitor_record')
         return result
-    record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 4096).decode('ascii'),
+    record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 32768).decode('ascii'),
                         object_pairs_hook=unique)
-    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'foreground_was_child', 'windowFacts'}
+    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'foreground_was_child', 'windowFacts', 'transitions', 'nullGap'}
             or type(record['predicate']) is not str or record['predicate'] not in MONITOR_PREDICATES
             or type(record['relation']) is not str or record['relation'] not in MONITOR_RELATIONS
             or type(record['exitCode']) is not int or not -2**31 <= record['exitCode'] <= 2**32-1
@@ -246,6 +246,27 @@ def validate_monitor_failure(private):
             or facts['class_token'] not in {*WINDOW_CLASSES.values(), *WINDOW_PREFIXES.values(), 'target018_class', 'other'}
             or type(facts['class_sha8']) is not str or not re.fullmatch('[0-9a-f]{8}', facts['class_sha8'])
             or any(type(facts[key]) is not bool for key in WINDOW_BOOLS)):
+        raise ValueError('native_monitor_record')
+    transitions = record['transitions']
+    classes = {*WINDOW_CLASSES.values(), *WINDOW_PREFIXES.values(), 'target018_class', 'other'}
+    if type(transitions) is not list or len(transitions) > 64:
+        raise ValueError('native_monitor_record')
+    previous_order, previous_ms, previous_relation = 0, -1, None
+    for item in transitions:
+        if (type(item) is not dict or set(item) != {'sample_order', 'elapsed_ms', 'relation', 'class_token', 'null'}
+                or type(item['sample_order']) is not int or not previous_order < item['sample_order'] <= 2**63-1
+                or type(item['elapsed_ms']) is not int or not 0 <= item['elapsed_ms'] <= 2**63-1 or item['elapsed_ms'] < previous_ms
+                or type(item['relation']) is not str or item['relation'] not in MONITOR_RELATIONS
+                or item['relation'] == previous_relation
+                or type(item['class_token']) is not str or item['class_token'] not in classes
+                or type(item['null']) is not bool or item['null'] != (item['relation'] == 'none')):
+            raise ValueError('native_monitor_record')
+        previous_order, previous_ms, previous_relation = item['sample_order'], item['elapsed_ms'], item['relation']
+    gap = record['nullGap']
+    if gap is not None and (type(gap) is not dict or set(gap) != {'sample_order', 'elapsed_ms', 'duration_ms', 'end_relation'}
+            or any(type(gap[k]) is not int or not (1 if k == 'sample_order' else 0) <= gap[k] <= 2**63-1
+                   for k in ('sample_order', 'elapsed_ms', 'duration_ms'))
+            or type(gap['end_relation']) is not str or gap['end_relation'] not in MONITOR_RELATIONS):
         raise ValueError('native_monitor_record')
     return record
 
@@ -514,7 +535,8 @@ class PostedForegroundMonitor:
 
     Coordinator retains worker/target/guardian handles until settlement (no PID reuse).
     First observed return to A ends the popup window; file closure/deadline also end it.
-    After closure, A may drain until initial/zero enters the terminal-only state.
+    After closure, A may drain until initial enters the terminal-only state.
+    NULL never establishes either state; the outer monitor owns its bounded gap.
     """
     def __init__(self, private, initial, clock, popup_allowed=True):
         self.private, self.initial, self.clock = private, initial, clock
@@ -561,8 +583,8 @@ class PostedForegroundMonitor:
                 raise ValueError('native_monitor_grant')
             self.closed = True
         # Closure precedes Target018 disposal: A may still be alive while it drains.
-        # After initial/zero is observed in teardown, no owned surface is accepted again.
-        if self.closed and self.seen_a and window in (self.initial, 0) and window not in self.surfaces:
+        # After initial is observed in teardown, no owned surface is accepted again.
+        if self.closed and self.seen_a and window == self.initial and window not in self.surfaces:
             self.ended = True
             return None, relation
         if not self.ended and relation == 'owned_a':
@@ -576,7 +598,8 @@ class PostedForegroundMonitor:
         if grant_window and window == popup and relation == 'candidate':
             self.seen_popup = True
             return None, relation
-        if grant_window and window == 0 and self.seen_popup:
+        # NULL is handled by the monitor's bounded gap state, never as a surface or end state.
+        if window == 0:
             return None, relation
         return ('foreground_unexpected_candidate' if relation == 'candidate' else 'foreground_foreign'), relation
 
@@ -588,6 +611,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         raise ValueError('native_monitor_scene')
     failure = None
     failure_facts = empty_window_facts()
+    failure_gap = None
     order = 0
     relation = 'none'
     foreground_was_child = False
@@ -595,6 +619,11 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
     policy = PostedForegroundMonitor(positive_private, foreground, clock, scene != 'copy') if scene in (*POSTED_SCENES, 'copy') else None
     announced = False
     operator_announced = False
+    transitions = []
+    started_at = clock()
+    gap_start = None
+    gap_record = None
+    last_sample = 0
     while process.poll() is None:
         order += 1
         try:
@@ -613,8 +642,29 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
                                    (None if window in allowed else 'foreground_foreign', 'none' if not window else 'foreign'))
             if foreground_was_child and window == raw_window:
                 predicate, relation = 'foreground_foreign', 'foreign'
+            elapsed_ms = max(0, int(round((clock() - started_at) * 1000)))
+            last_sample = order
+            if len(transitions) < 64 and (not transitions or transitions[-1]['relation'] != relation):
+                facts = window_facts(desktop, raw_window, *(policy.surfaces[:2] if policy and policy.surfaces else (0, 0)))
+                transitions.append(dict(sample_order=order, elapsed_ms=elapsed_ms, relation=relation,
+                                        class_token=facts['class_token'], null=not bool(raw_window)))
+            if not raw_window:
+                if gap_start is None:
+                    gap_start = clock()
+                    gap_record = dict(sample_order=order, elapsed_ms=elapsed_ms, duration_ms=0, end_relation='none')
+                gap_record['duration_ms'] = max(0, int(round((clock() - gap_start) * 1000)))
+                predicate = None if gap_record['duration_ms'] <= 500 else 'foreground_foreign'
+            elif gap_start is not None:
+                gap_record['duration_ms'] = max(0, int(round((clock() - gap_start) * 1000)))
+                gap_record['end_relation'] = relation
+                allowed_end = (relation == 'owned_a' or (policy is not None and policy.surfaces is not None
+                               and window == policy.surfaces[2] and relation == 'candidate'))
+                if gap_record['duration_ms'] > 500 or not allowed_end or predicate:
+                    predicate = predicate or 'foreground_foreign'
+                gap_start = None
             if predicate and failure is None:
                 failure = (predicate, order, relation, bool(policy and policy.closed))
+                failure_gap = dict(gap_record) if gap_record else None
                 failure_was_child = foreground_was_child
                 surfaces = policy.surfaces if policy is not None else None
                 if surfaces is None and positive_private is not None and (positive_private / 'positive-surfaces.txt').exists():
@@ -643,6 +693,10 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
     except Exception:
         if failure is None:
             failure = ('observation_exception', order, relation, bool(policy and policy.closed))
+    if gap_start is not None and failure is None:
+        gap_record['duration_ms'] = max(0, int(round((clock() - gap_start) * 1000)))
+        failure = ('foreground_foreign', last_sample, 'none', bool(policy and policy.closed))
+        failure_gap = dict(gap_record)
     if process.returncode and failure is None:
         failure = ('process_exit', order, relation, bool(policy and policy.closed))
     if policy is not None and policy.seen_popup and not policy.returned and not policy.ended and failure is None:
@@ -652,7 +706,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         private = evidence_private or positive_private
         if private is not None:
             record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation, closed=closed,
-                          foreground_was_child=failure_was_child, windowFacts=failure_facts)
+                          foreground_was_child=failure_was_child, windowFacts=failure_facts, transitions=transitions, nullGap=failure_gap)
             with (private / 'native-monitor-failure.json').open('x', encoding='ascii') as stream:
                 json.dump(record, stream)
             validate_monitor_failure(private)

@@ -23,6 +23,7 @@ internal interface ICandidatePopupWindow : IPopupHost, IDisposable
     // A head without a concrete captured-target surface must not advertise native readiness.
     nint NativeHandle => 0; // Owned-surface metadata only; not capture or focus permission.
     bool SupportsCapturedPopup => false;
+    bool IsCaptureSurfaceReady => false; // Read-only warmup metadata, never native permission.
     void ShowCaptured(InsertionTarget target) => throw new NotSupportedException("Captured popup is unavailable.");
 }
 internal interface ICandidateTray : INotifier, IDisposable { }

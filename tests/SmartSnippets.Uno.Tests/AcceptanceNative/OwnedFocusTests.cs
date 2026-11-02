@@ -105,7 +105,7 @@ public sealed class OwnedFocusTests
         var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true);
         var watch = System.Diagnostics.Stopwatch.StartNew();
         Assert.False(await focus.RestoreTargetAsync(default));
-        Assert.InRange(watch.ElapsedMilliseconds, 2900, 6000);
+        Assert.InRange(watch.ElapsedMilliseconds, 500, 1500);
         Assert.Equal(0, os.FocusCalls);
         var restore = focus.RestoreTargetAsync(default);
         os.Foreground = 999;
@@ -165,6 +165,19 @@ public sealed class OwnedFocusTests
         Assert.Equal(0, os.FocusCalls);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(999)]
+    public void NativeSuccessWithoutExactPopupForegroundIsNotActivationEvidence(int partialForeground)
+    {
+        var os = new FocusOs { Foreground = A.WindowHandle, PartialForeground = partialForeground };
+        var receipts = new System.Collections.Generic.List<string>();
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true, focusReceipt: receipts.Add);
+        Assert.False(focus.TryFocusPopup());
+        Assert.Equal(new[] { "foreground_unconfirmed" }, receipts);
+        Assert.Equal(1, os.FocusCalls);
+    }
+
     private sealed class Probe(FocusOs os) : ITargetProbe
     {
         public TargetCheck Check(InsertionTarget target) => target == A ? TargetCheck.Ok : TargetCheck.Closed;
@@ -174,12 +187,13 @@ public sealed class OwnedFocusTests
     {
         internal bool Quiet = true, FocusAccepted = true;
         internal int FocusCalls;
+        internal nint? PartialForeground;
         internal Action? AfterQuietCheck;
         public bool PopupPinned { get; set; } = true;
         private nint rawForeground;
         internal Func<nint, nint> Normalize = h => h;
         public nint Foreground { get => Normalize(rawForeground); set => rawForeground = value; }
         public bool QuietDesktop() { AfterQuietCheck?.Invoke(); return Quiet; }
-        public bool SetForeground(nint window) { FocusCalls++; if (FocusAccepted) Foreground = window; return FocusAccepted; }
+        public bool SetForeground(nint window) { FocusCalls++; if (FocusAccepted) Foreground = PartialForeground ?? window; return FocusAccepted; }
     }
 }

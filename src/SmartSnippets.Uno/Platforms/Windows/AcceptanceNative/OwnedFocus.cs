@@ -38,12 +38,16 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
     public async Task<bool> ReadyForAdmissionAsync(CancellationToken ct)
     {
         var watch = Stopwatch.StartNew();
+        var gap = new ForegroundNullGap();
         try
         {
             while (watch.ElapsedMilliseconds < 3000 && !ct.IsCancellationRequested && AdmissionIdentityReady())
             {
-                if (ReadyForAdmission()) return true;
-                if (os.Foreground != 0 && !OwnedForeground()) return false;
+                var foreground = os.Foreground;
+                var allowed = foreground == popup || (foreground == target.WindowHandle && probe.IsTargetForeground(target));
+                if (!gap.Observe(foreground == 0, allowed, watch.ElapsedMilliseconds)) return false;
+                if (foreground != 0 && ReadyForAdmission()) return true;
+                if (foreground != 0 && !OwnedForeground()) return false;
                 await Task.Delay(50, ct);
             }
         }
@@ -57,12 +61,15 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
         // No arbitrary current foreground window is ever focused/attached/inspected.
         if (!focusPermitted() || !ReadyForAdmission() || !OwnedForeground() || !os.SetForeground(target.WindowHandle)) return false;
         var watch = Stopwatch.StartNew();
-        while (watch.ElapsedMilliseconds < 500)
+        var gap = new ForegroundNullGap();
+        while (watch.ElapsedMilliseconds <= 500)
         {
             ct.ThrowIfCancellationRequested();
             if (!permitted() || !focusPermitted() || !os.PopupPinned || probe.Check(target) != TargetCheck.Ok) return false;
-            if (probe.IsTargetForeground(target)) return true;
-            if (os.Foreground != 0 && !OwnedForeground()) return false;
+            var foreground = os.Foreground;
+            if (!gap.Observe(foreground == 0, foreground == popup || foreground == target.WindowHandle, watch.ElapsedMilliseconds)) return false;
+            if (foreground != 0 && probe.IsTargetForeground(target)) return true;
+            if (foreground != 0 && !OwnedForeground()) return false;
             await Task.Delay(10, ct);
         }
         return false;
@@ -76,7 +83,10 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
         if (!probe.IsTargetForeground(target)) return Result(false, "target");
         if (!os.PopupPinned) return Result(false, "popup");
         var focused = os.SetForeground(popup); // Same single attempt and short-circuit order.
-        return Result(focused, focused ? "foreground_accepted" : "foreground_refused");
+        // The API return alone is not positive foreground evidence (including a partial/NULL transition).
+        if (!focused) return Result(false, "foreground_refused");
+        var confirmed = os.Foreground == popup;
+        return Result(confirmed, confirmed ? "foreground_accepted" : "foreground_unconfirmed");
     }
 }
 

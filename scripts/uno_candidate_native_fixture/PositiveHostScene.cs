@@ -33,6 +33,11 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
         await BootstrapProtocol.WriteAsync(Program.Responses,
             $"positive_surfaces {ready.WindowA} {ready.WindowB} {boundary.Popup!.NativeHandle} {boundary.Main!.NativeHandle}", ct);
         if (await BootstrapProtocol.ReadAsync(Program.Commands, ct) != "lease_positive") throw new InvalidOperationException("native_positive_lease");
+        // Finish the hidden Show(false)/Hide warmup before target preparation. Otherwise its
+        // delayed Hide can overlap the post-grant callback's foreground/capture checks.
+        var warmupWatch = Stopwatch.StartNew();
+        await PositiveSceneChecks.WaitForWarmupAsync(() => boundary.Popup!.IsCaptureSurfaceReady,
+            () => warmupWatch.ElapsedMilliseconds, () => Task.Delay(25, ct));
         admitSession();
         if (scene != "expired") { broker.Admit(); host.RefreshClipboardAvailability(); }
         SmartSnippets.Core.Logging.AppLog.Info("owned_initial_focus", "phase=waiting");
@@ -130,6 +135,12 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             broker.CaptureCalls != (PositiveProtocol.NeedsCapturedPopup(scene) ? 1 : 0) || broker.CopyCommits != (PositiveProtocol.IsCopy(scene) ? 1 : 0))
             throw new InvalidOperationException("native_exact_once");
         await fixture.Lease.RequireQuietProtocolAsync(ct);
+        // Copy does not run insertion's dispatcher focus restore. Return to exact captured A
+        // while the acceptance lease is still live, before host exit hides/destroys the popup.
+        if (PositiveProtocol.CapturedCopy(scene))
+        {
+            await PositiveSceneChecks.RestoreBeforeHideAsync(() => session.RestoreCapturedTargetAsync(ct), boundary.Popup!.Hide);
+        }
         broker.Close();
         if (!await session.DrainOwnedRecoveryAsync()) throw new InvalidOperationException("native_recovery_pending");
         if (Keyboard.Armed)
@@ -197,8 +208,10 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
             await captured.Task.WaitAsync(callbackTimeout, ct);
             try
             {
-                await WaitAsync(() => boundary.PopupShown && host.Popup.Target == session.Target &&
-                    NativeFixtureOs.Foreground() == boundary.Popup!.NativeHandle && NativeOwnedPopup.QuietAllInput(), TimeSpan.FromSeconds(5), ct);
+                var watch = Stopwatch.StartNew();
+                await PositiveSceneChecks.PopupReadyAsync(NativeFixtureOs.Foreground, session.Target.WindowHandle,
+                    popupWindow.NativeHandle, () => boundary.PopupShown && host.Popup.Target == session.Target && NativeOwnedPopup.QuietAllInput(),
+                    () => watch.ElapsedMilliseconds, () => Task.Delay(25, ct));
             }
             catch
             {
@@ -277,8 +290,8 @@ internal sealed class PositiveHostScene(UnoAppHost host, NativeFixtureBoundary b
     {
         try
         {
-            if (!shortcut.AcceptCallback() || !await session.ReadyForAdmissionAsync(ct) || !host.ShowCapturedPopup())
-                throw new InvalidOperationException("native_shortcut_admission");
+            await PositiveSceneChecks.ShortcutAsync(shortcut.AcceptCallback,
+                () => session.ReadyForAdmissionAsync(ct), host.ShowCapturedPopup);
             captured.TrySetResult();
         }
         catch (Exception ex) { captured.TrySetException(ex); }

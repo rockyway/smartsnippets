@@ -169,6 +169,7 @@ public partial class App : Application
             // Pre-host stages fail before the host opens app.log; open only the owned profile's log directory.
             if (NativeStage.BeforeHostLog) AppLog.Initialize(Path.Combine(Program.ProfileRoot, "logs"));
             FlushSamples();
+            if (ex is PositiveSceneFailure failure) AppLog.Info("native_scene_refusal", $"reason={failure.Token}");
             AppLog.Error(NativeStage.FailureEvent, ex); // Fixed stage token + exception type/HResult only.
             lease = false; broker.Close();
             if (positive?.Keyboard.Armed == true)

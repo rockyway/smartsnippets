@@ -46,6 +46,8 @@ internal sealed class NativeAcceptanceSession(OwnedTargetProbe owned, GuardedTar
     internal RestoreStatus CleanupOwnedOwnerControl() => guardian.CleanupOwnedOwnerControl();
     public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
     internal RestoreStatus RestoreClipboardControl() => guardian.Restore();
+    // Acceptance-native cleanup only: never a harness activation or an arbitrary HWND fallback.
+    internal Task<bool> RestoreCapturedTargetAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.RestoreTargetAsync(ct);
     internal Task<bool> ReadyForAdmissionAsync(CancellationToken ct) => closed ? Task.FromResult(false) : focus.ReadyForAdmissionAsync(ct);
     // Invoke ONLY from the existing popup coordinator's ready-surface focus callback.
     public bool TryFocusOwnedPopup() => !closed && permitted(AcceptanceOperation.Focus) && focus.TryFocusPopup();

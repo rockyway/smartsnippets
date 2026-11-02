@@ -254,18 +254,21 @@ public sealed partial class PopupWindow : Window, IPopupHost
         RefreshFrame();
         // A hidden window's swap chain is not presented, so the first frames after Show can be the
         // unpainted (white, then black) surface. Stay cloaked until XAML has produced a frame.
-        if (revealAfterFrame) WindowSurface.Cloak(this, true);
+        if (revealAfterFrame) { _awaitingReveal = true; WindowSurface.Cloak(this, true); }
         AppWindow.Show(activate);
         // First Show can initialize/reconfigure the native surface. Reassert before returning.
         RefreshFrame();
         if (revealAfterFrame) RevealAfterFrame();
     }
+    private bool _awaitingReveal;
+    private PopupFocusTarget? _revealFocus;
     private int _revealToken;
     private EventHandler<object>? _revealFrameHandler;
     private DispatcherQueueTimer? _revealTimer;
     private void CancelReveal()
     {
         _revealToken++;
+        _awaitingReveal = false; _revealFocus = null;
         if (_revealFrameHandler is { } handler) CompositionTarget.Rendered -= handler;
         _revealFrameHandler = null;
         _revealTimer?.Stop(); _revealTimer = null;
@@ -273,12 +276,20 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void RevealAfterFrame()
     {
         CancelReveal();
+        _awaitingReveal = true;
         var token = _revealToken;
         void Reveal()
         {
             if (token != _revealToken || _closed) return;
+            var focus = _revealFocus;
             CancelReveal();
-            if (!_shows.IsWarming) WindowSurface.Cloak(this, false);
+            if (!_shows.IsWarming)
+            {
+                WindowSurface.Cloak(this, false);
+                // SetForegroundWindow on a cloaked surface can deactivate A without a usable popup.
+                // Re-enter the coordinator after reveal, retaining its hide/show/focus generations.
+                if (focus is { } target) _shows.Focus(target);
+            }
         }
         _revealFrameHandler = (_, _) => DispatcherQueue.TryEnqueue(Reveal);
         CompositionTarget.Rendered += _revealFrameHandler;
@@ -288,6 +299,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _revealTimer.Start();
     }
 
+    // Acceptance may wait for hidden warmup to settle BEFORE preparing/capturing a target.
+    internal bool IsCaptureSurfaceReady => !_closed && _shows.IsReady;
     internal void Prewarm() => _shows.BeginWarmup();
     private void StartWindowWarmup()
     {
@@ -398,6 +411,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void ApplyFocus(PopupFocusTarget target)
     {
         if (_closed || CanShow?.Invoke() == false || !_visible) return;
+        if (_awaitingReveal) { _revealFocus = target; return; }
         if (!ViewModel.IsPreview && TryFocusCapturedPopup?.Invoke() != true) return;
         if (target == PopupFocusTarget.Editor) EditorControl.FocusText();
         else if (target == PopupFocusTarget.Footer) PasteAnywayButton.Focus(FocusState.Programmatic);

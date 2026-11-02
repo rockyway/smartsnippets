@@ -26,7 +26,7 @@ def publish(private, sample):
 
 class MonitorTests(unittest.TestCase):
     def run_monitor(self, scene, samples, token=None, expected=None, exit_code=0,
-                    oversized=False, observation_error=False, expire=False):
+                    oversized=False, observation_error=False, expire=False, times=None):
         with tempfile.TemporaryDirectory() as directory:
             private = Path(directory)
             (private / 'positive-surfaces.txt').write_bytes(b'10 20 30 40')
@@ -57,28 +57,33 @@ class MonitorTests(unittest.TestCase):
                         raise ValueError('never retain exception payload')
             with patch.object(native, 'foreground_pid', side_effect=lambda *_: samples[process.index][3]), patch('builtins.print'):
                 call = lambda: native.monitor(process, Desktop(), 1, [output],
-                    clock=lambda: 22 if expire and process.index >= 2 else 1, sleep=lambda _: None,
+                    clock=lambda: (times[min(max(process.index, 0), len(times)-1)] if times else
+                                   22 if expire and process.index >= 2 else 1), sleep=lambda _: None,
                     positive_private=private, evidence_private=private, scene=scene)
                 if token:
                     with self.assertRaisesRegex(ValueError, '^native_scene_failed$'):
                         call()
                     self.assertIsNotNone(expected, 'every refusal must pin order, relation and phase')
                     order, relation, closed = expected
+                    record = native.validate_monitor_failure(private)
                     self.assertEqual(dict(predicate=token, exitCode=exit_code, sampleOrder=order,
-                                          relation=relation, closed=closed, foreground_was_child=False, windowFacts=native.empty_window_facts()), native.validate_monitor_failure(private))
+                                          relation=relation, closed=closed, foreground_was_child=False, windowFacts=native.empty_window_facts()),
+                                     {k: v for k, v in record.items() if k not in ('transitions', 'nullGap')})
+                    self.assertLessEqual(len(record['transitions']), 64)
                 else:
                     call()
                     self.assertFalse((private / 'native-monitor-failure.json').exists())
             self.assertEqual(len(samples), process.index)
+            return native.validate_monitor_failure(private) if token else None
 
     def test_posted_transitions_and_teardown_all_share_monitor(self):
         for scene in native.POSTED_SCENES:
             with self.subTest(scene=scene):
                 self.run_monitor(scene, [(1, False, False, 999), A, POPUP,
-                    (0, True, False, 0), BACK, CLOSED_A, INITIAL, ZERO_END, INITIAL])
+                    (0, True, False, 0), BACK, CLOSED_A, INITIAL])
                 # Copy popup destruction may not expose a sampled A before closure.
-                self.run_monitor(scene, [A, POPUP, (0, True, False, 0), ZERO_END, INITIAL])
-        self.run_monitor('copy', [A, CLOSED_A, INITIAL, ZERO_END])
+                self.run_monitor(scene, [A, POPUP, (0, True, False, 0), BACK, CLOSED_A, INITIAL])
+        self.run_monitor('copy', [A, CLOSED_A, INITIAL])
 
     def test_exact_identity_failures_for_all_copy_and_context_scenes(self):
         for scene in ('posted-row', *native.COPY_SCENES, 'context-insert'):
@@ -102,7 +107,7 @@ class MonitorTests(unittest.TestCase):
                 (20, 100, 'foreground_foreign', 'owned_b'),
                 (40, 200, 'foreground_unexpected_candidate', 'candidate'),
                 (30, 200, 'foreground_unexpected_candidate', 'candidate')]:
-            for prefix in ([A, POPUP, BACK, CLOSED_A], [A, POPUP, BACK, CLOSED_A, INITIAL, ZERO_END]):
+            for prefix in ([A, POPUP, BACK, CLOSED_A], [A, POPUP, BACK, CLOSED_A, INITIAL]):
                 self.run_monitor('posted-row', [*prefix, (window, True, True, pid)],
                                  token, (len(prefix) + 1, relation, True))
         # A is allowed to drain before end-state entry, but cannot re-enter afterwards.
@@ -135,12 +140,48 @@ class MonitorTests(unittest.TestCase):
         self.run_monitor('posted-row', [(99, False, False, 999)], 'foreground_foreign',
                          (1, 'foreign', False), exit_code=7)
 
+    def test_null_gap_requires_owned_endpoint_within_500ms_and_never_terminal_null(self):
+        self.run_monitor('posted-row', [A, (0, True, False, 0), BACK], times=[0, .1, .6])
+        self.run_monitor('posted-row', [A, (0, True, False, 0), POPUP, BACK], times=[0, .1, .6, .7])
+        for samples, times, expected in [
+                ([A, (0, True, False, 0), (99, True, False, 999)], [0, .1, .2], (3, 'foreign', False)),
+                ([A, (0, True, False, 0), BACK], [0, .1, .601], (3, 'owned_a', False)),
+                ([A, (0, True, False, 0), (0, True, False, 0)], [0, .1, .601], (3, 'none', False)),
+                ([A, (0, True, False, 0)], [0, .1], (2, 'none', False)),
+                ([A, CLOSED_A, ZERO_END, INITIAL], [0, .1, .2, .3], (4, 'foreign', True))]:
+            record = self.run_monitor('posted-row', samples, 'foreground_foreign', expected, times=times)
+            self.assertEqual(2 if samples[1][0] == 0 else 3, record['nullGap']['sample_order'])
+            self.assertEqual(expected[1], record['nullGap']['end_relation'])
+            relations = [entry['relation'] for entry in record['transitions']]
+            self.assertTrue(all(a != b for a, b in zip(relations, relations[1:])))
+
+    def test_transition_schema_is_strict_and_timeline_is_capped(self):
+        samples = [A] + [item for _ in range(40) for item in [(0, True, False, 0), BACK]]
+        record = self.run_monitor('posted-row', samples + [(99, True, False, 999)],
+                                  'foreground_foreign', (82, 'foreign', False))
+        self.assertEqual(64, len(record['transitions']))
+        first = record['transitions'][0]
+        self.assertEqual(dict(sample_order=1, elapsed_ms=0, relation='owned_a', class_token='other', null=False), first)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'native-monitor-failure.json'
+            invalid = [*[ [{**first, key: value}] for key, value in [
+                ('sample_order', True), ('sample_order', 0), ('elapsed_ms', -1), ('elapsed_ms', False),
+                ('relation', 'raw'), ('class_token', 'title'), ('null', 1), ('null', True), ('extra', 0)] ],
+                [first, first], [first] * 65]
+            for transitions in invalid:
+                path.write_text(json.dumps({**record, 'transitions': transitions}), encoding='ascii')
+                with self.assertRaises(ValueError): native.validate_monitor_failure(root)
+            for gap in ({}, {**record['nullGap'], 'duration_ms': True}, {**record['nullGap'], 'end_relation': 'title'}):
+                path.write_text(json.dumps({**record, 'nullGap': gap}), encoding='ascii')
+                with self.assertRaises(ValueError): native.validate_monitor_failure(root)
+
     def run_main(self, scene, success):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state = SimpleNamespace(index=-1)
-            samples = ([A, CLOSED_A, INITIAL, ZERO_END] if scene == 'copy' else
-                       [A, POPUP, (0, True, False, 0), BACK, CLOSED_A, INITIAL, ZERO_END]) if success else [A, (30, False, False, 200)]
+            samples = ([A, CLOSED_A, INITIAL] if scene == 'copy' else
+                       [A, POPUP, (0, True, False, 0), BACK, CLOSED_A, INITIAL]) if success else [A, (30, False, False, 200)]
             class Process:
                 returncode = None
                 def __init__(self, *args, **kwargs):
@@ -211,7 +252,8 @@ class MonitorTests(unittest.TestCase):
                     boundary.assert_not_called()
                     self.assertEqual(dict(predicate='foreground_unexpected_candidate', exitCode=0,
                                           sampleOrder=2, relation='candidate', closed=False, foreground_was_child=False, windowFacts=native.empty_window_facts()),
-                                     native.validate_monitor_failure(state.private))
+                                     {k: v for k, v in native.validate_monitor_failure(state.private).items()
+                                      if k not in ('transitions', 'nullGap')})
 
     def test_real_main_granted_success_reaches_real_receipt_and_boundary_verifiers_per_scene(self):
         for scene in (*native.POSTED_SCENES, 'copy'):
@@ -232,7 +274,7 @@ class MonitorTests(unittest.TestCase):
 
     def test_failure_record_rejects_schema_types_duplicates_and_payloads(self):
         good = dict(predicate='foreground_foreign', exitCode=0, sampleOrder=1, relation='foreign', closed=False,
-                    windowFacts=native.empty_window_facts())
+                    foreground_was_child=False, windowFacts=native.empty_window_facts(), transitions=[], nullGap=None)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = root / 'native-monitor-failure.json'

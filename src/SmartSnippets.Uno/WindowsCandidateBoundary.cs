@@ -98,6 +98,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         public void ShowPreview(string? query, bool openSortMenu) => window.ShowPreview(owner(), query, false, openSortMenu);
         public nint NativeHandle => WinRT.Interop.WindowNative.GetWindowHandle(window);
         public bool SupportsCapturedPopup => true;
+        public bool IsCaptureSurfaceReady => !_disposed && window.IsCaptureSurfaceReady;
         public void ShowCaptured(InsertionTarget target) => window.ShowCaptured(target, canShowCaptured);
         public void Hide() => window.Hide();
         public void ShowAgain() => window.ShowAgain();
