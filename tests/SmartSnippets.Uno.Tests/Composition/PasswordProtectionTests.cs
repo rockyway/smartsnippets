@@ -73,5 +73,14 @@ public sealed class PasswordProtectionTests
         Assert.DoesNotContain("PRIVATE-BODY", boundary.StartupFailure);
         Assert.Equal(1, boundary.Exits);
         Assert.Empty(boundary.Popups);
+        host.Dispose();
+        boundary.Protector.Fail = false;
+        using var recovered = new SmartSnippets.Uno.UnoAppHost(boundary, () => SmartSnippets.Uno.AppProfile.OpenOwnedRoot(fixture.Root));
+        await recovered.StartAsync(false, new(null, false, null));
+        var row = Assert.Single(recovered.Store.Snippets).Snippet;
+        Assert.True(row.IsPassword);
+        Assert.True(row.IsLabelCustom);
+        Assert.Equal("manual", row.Label);
+        Assert.Equal("PRIVATE-BODY", row.Text);
     }
 }

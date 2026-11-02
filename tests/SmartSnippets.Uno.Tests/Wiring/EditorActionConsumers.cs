@@ -50,6 +50,9 @@ public sealed partial class SnippetEditor
                 Assert.False(vm.IsPassword);
                 Assert.Equal("first\r\nsecond", SnippetTextBox.Text);
                 Assert.True(FocusText()); Assert.Same(SnippetTextBox, FocusManager.Focused);
+                SnippetTextBox.Visibility = Visibility.Collapsed;
+                Assert.True(FocusText()); Assert.Same(PasswordCheckBox, FocusManager.Focused);
+                SnippetTextBox.Visibility = Visibility.Visible;
                 ViewModel = null;
                 Assert.Empty(SnippetTextBox.Text); Assert.Empty(SnippetPasswordBox.Password);
                 ViewModel = vm; Assert.Equal(vm.Text, SnippetTextBox.Text);
@@ -74,7 +77,10 @@ public sealed partial class SnippetEditor
                 Assert.Equal("changed", vm.Text);
                 OnTextInput(new TextBox { Text = "inactive", FocusState = FocusState.Keyboard }, new());
                 Assert.Equal("changed", vm.Text);
-                OnPasswordTextInput(new PasswordBox { Password = "bad\ninput", FocusState = FocusState.Keyboard }, new());
+                SnippetPasswordBox.Focus(FocusState.Keyboard);
+                SnippetPasswordBox.Password = "bad\ninput";
+                OnPasswordTextInput(SnippetPasswordBox, new());
+                Assert.Equal("changed", SnippetPasswordBox.Password);
                 Assert.Equal("changed", vm.Text); Assert.NotEmpty(PasswordInputHint.Text); break;
             case "OnPasswordPaste":
                 vm.IsPassword = true;
@@ -87,6 +93,8 @@ public sealed partial class SnippetEditor
                     Windows.ApplicationModel.DataTransfer.Clipboard.Text = "pasted";
                     OnPasswordPaste(SnippetPasswordBox, new());
                     Assert.Equal("pasted", vm.Text);
+                    Assert.Equal("pasted", SnippetPasswordBox.Password);
+                    Assert.Empty(PasswordInputHint.Text);
                     Assert.Empty(SnippetTextBox.Text);
                     var pending = new TaskCompletionSource<string>();
                     Windows.ApplicationModel.DataTransfer.Clipboard.PendingText = pending.Task;
@@ -97,6 +105,37 @@ public sealed partial class SnippetEditor
                     Assert.Equal("pasted", vm.Text);
                     Assert.Empty(SnippetPasswordBox.Password);
                     ViewModel = vm;
+                    foreach (var change in new[] { "text", "mode", "unload", "discard", "save", "overlap" })
+                    {
+                        vm.IsPassword = true; vm.Text = "pasted"; vm.Label = "manual";
+                        Assert.True(await vm.SaveAsync());
+                        PasswordInputHint.Text = "old hint";
+                        Windows.ApplicationModel.DataTransfer.Clipboard.Text = "pasted";
+                        Windows.ApplicationModel.DataTransfer.Clipboard.PendingText = null;
+                        OnPasswordPaste(SnippetPasswordBox, new());
+                        Assert.Empty(PasswordInputHint.Text);
+                        pending = new TaskCompletionSource<string>();
+                        Windows.ApplicationModel.DataTransfer.Clipboard.PendingText = pending.Task;
+                        OnPasswordPaste(SnippetPasswordBox, new());
+                        switch (change)
+                        {
+                            case "text": vm.Text = "edited"; break;
+                            case "mode": vm.IsPassword = false; break;
+                            case "unload": OnEditorUnloaded(this, new()); break;
+                            case "discard": vm.ResetToSaved(); Assert.Empty(PasswordInputHint.Text); break;
+                            case "save": Assert.True(await vm.SaveAsync()); Assert.Empty(PasswordInputHint.Text); break;
+                            case "overlap":
+                                Windows.ApplicationModel.DataTransfer.Clipboard.PendingText = null;
+                                Windows.ApplicationModel.DataTransfer.Clipboard.Text = "multi\nline";
+                                OnPasswordPaste(SnippetPasswordBox, new());
+                                Assert.NotEmpty(PasswordInputHint.Text); break;
+                        }
+                        var expected = vm.Text;
+                        pending.SetResult("stale");
+                        await Task.Yield();
+                        Assert.Equal(expected, vm.Text);
+                        OnEditorLoaded(this, new());
+                    }
                 }
                 finally
                 {
@@ -152,7 +191,22 @@ public sealed partial class SnippetEditor
                 await Execute(ViewModel!.DeleteCommand); Assert.Empty(f.Host.Store.Snippets); break;
             case "ViewModel.DiscardCommand":
                 await vm.SaveAsync(); vm.Text = "changed"; await Execute(vm.DiscardCommand);
-                Assert.Equal("original", vm.Text); Assert.False(vm.IsDirty); break;
+                Assert.Equal("original", vm.Text); Assert.False(vm.IsDirty);
+                vm.IsPassword = true; vm.Text = "PRIVATE-DRAFT"; vm.Label = "manual";
+                SnippetTextBox.Writes.Clear(); SnippetPasswordBox.Writes.Clear();
+                vm.ResetToSaved();
+                Assert.DoesNotContain("PRIVATE-DRAFT", SnippetTextBox.Writes);
+                Assert.DoesNotContain("original", SnippetPasswordBox.Writes);
+                Assert.Equal("original", SnippetTextBox.Text);
+                vm.IsPassword = true; vm.Text = "PRIVATE-SAVED"; vm.Label = "manual";
+                Assert.True(await vm.SaveAsync());
+                vm.IsPassword = false; vm.Text = "ordinary draft";
+                SnippetTextBox.Writes.Clear(); SnippetPasswordBox.Writes.Clear();
+                vm.ResetToSaved();
+                Assert.DoesNotContain("PRIVATE-SAVED", SnippetTextBox.Writes);
+                Assert.DoesNotContain("ordinary draft", SnippetPasswordBox.Writes);
+                Assert.Equal("PRIVATE-SAVED", SnippetPasswordBox.Password);
+                break;
             case "OnDiscardAccelerator":
                 vm.StartNewFolderCommand.Execute(null); OnDiscardAccelerator(new(), new()); Assert.False(vm.IsCreatingFolder); break;
             default: throw new InvalidOperationException("Unmapped editor action");

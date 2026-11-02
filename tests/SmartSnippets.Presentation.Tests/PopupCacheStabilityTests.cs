@@ -124,6 +124,27 @@ public sealed class PopupCacheStabilityTests(Xunit.Abstractions.ITestOutputHelpe
         Drain();
     }
 
+    [Theory]
+    [InlineData("move")]
+    [InlineData("insert")]
+    [InlineData("activate")]
+    public async Task SelectionEntryPointsFlushDirtySearch(string entry)
+    {
+        var snippet = _store.SeedSnippet("secretOnly", "Safe");
+        using var vm = Create();
+        vm.OpenPreview();
+        vm.Query = "secretOnly";
+        var old = Assert.Single(vm.Items);
+        _store.UpdateSnippet(snippet.Id, new(snippet.Text, snippet.Label, true, null, "", true));
+        Assert.True(vm.IsCacheDirty);
+        if (entry == "move") vm.MoveSelection(1);
+        else if (entry == "insert") await vm.InsertSelectedAsync();
+        else await vm.ActivateAsync(old);
+        Assert.False(vm.IsCacheDirty);
+        Assert.Empty(vm.Items);
+        Assert.Equal(-1, vm.SelectedIndex);
+    }
+
     private static void AssertMatches(PopupViewModel vm, string query, params long[] expected)
     {
         vm.Query = query;

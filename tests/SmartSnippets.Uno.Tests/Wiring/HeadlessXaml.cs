@@ -226,11 +226,12 @@ namespace Microsoft.UI.Xaml.Controls
     public class TextBox : Control
     {
         private string _text = "";
+        public List<string> Writes { get; } = [];
         public event Action<object, TextChangedEventArgs>? TextChanged;
         public string Text
         {
             get => _text;
-            set { if (_text == value) return; _text = value; TextChanged?.Invoke(this, new()); }
+            set { Writes.Add(value); if (_text == value) return; _text = value; TextChanged?.Invoke(this, new()); }
         }
         public int SelectionStart { get; set; }
         public int SelectionLength { get; set; }
@@ -246,11 +247,12 @@ namespace Microsoft.UI.Xaml.Controls
     public class PasswordBox : Control
     {
         private string _password = "";
+        public List<string> Writes { get; } = [];
         public event Action<object, RoutedEventArgs>? PasswordChanged;
         public string Password
         {
             get => _password;
-            set { if (_password == value) return; _password = value; PasswordChanged?.Invoke(this, new()); }
+            set { Writes.Add(value); if (_password == value) return; _password = value; PasswordChanged?.Invoke(this, new()); }
         }
         public PasswordRevealMode PasswordRevealMode { get; set; }
         public void SelectAll() { }

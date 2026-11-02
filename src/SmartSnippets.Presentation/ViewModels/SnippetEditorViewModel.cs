@@ -47,6 +47,9 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     [NotifyPropertyChangedFor(nameof(IsMultilinePassword))]
     private bool _isPassword;
 
+    /// <summary>Input controls must not project intermediate reload state.</summary>
+    public bool IsLoading => _loading;
+
     public bool HasMultilineText => Text.IndexOfAny(['\r', '\n']) >= 0;
     public bool CanEditPassword => IsPassword && !HasMultilineText;
     public bool IsMultilinePassword => IsPassword && HasMultilineText;
@@ -527,12 +530,15 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         _current = snippet;
         _labelBeforeAuto = null;
         _loading = true;
+        OnPropertyChanged(nameof(IsLoading));
         try
         {
+            Text = string.Empty;
+            if (snippet?.IsPassword == true) IsLabelCustom = true;
             IsPassword = snippet?.IsPassword ?? false;
             Text = snippet?.Text ?? string.Empty;
             TagsInput = snippet is null ? string.Empty : TagList.Format(snippet.Tags);
-            IsLabelCustom = snippet?.IsLabelCustom ?? false;
+            IsLabelCustom = IsPassword || (snippet?.IsLabelCustom ?? false);
             SetLabel(IsLabelCustom ? snippet!.Label : Suggestion);
             SelectedFolder = ChoiceFor(snippet?.FolderId);
             ClearErrors();
@@ -540,6 +546,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         finally
         {
             _loading = false;
+            OnPropertyChanged(nameof(IsLoading));
         }
 
         OnPropertyChanged(nameof(LabelPlaceholder));
@@ -552,17 +559,22 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     {
         _current = saved;
         _loading = true;
+        OnPropertyChanged(nameof(IsLoading));
         try
         {
+            Text = string.Empty;
+            if (saved.IsPassword) IsLabelCustom = true;
             IsPassword = saved.IsPassword;
+            Text = saved.Text;
             TagsInput = TagList.Format(saved.Tags);
-            IsLabelCustom = saved.IsLabelCustom;
+            IsLabelCustom = saved.IsPassword || saved.IsLabelCustom;
             SetLabel(saved.Label);
             SelectedFolder = ChoiceFor(saved.FolderId);
         }
         finally
         {
             _loading = false;
+            OnPropertyChanged(nameof(IsLoading));
         }
 
         OnPropertyChanged(nameof(LabelPlaceholder));

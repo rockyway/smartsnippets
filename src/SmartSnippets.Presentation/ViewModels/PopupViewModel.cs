@@ -117,6 +117,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private long? SelectedId => SelectedIndex >= 0 && SelectedIndex < Items.Count ? Items[SelectedIndex].SnippetId : null;
     public void MoveSelection(int delta)
     {
+        EnsureCurrent();
         ClearTransientFooter(); StatusText = string.Empty;
         if (delta == 0 || Items.Count == 0) return;
         var direction = Math.Sign(delta);
@@ -236,7 +237,12 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public void Dispose() { if (_disposed) return; _disposed = true; _store.Changed -= OnStoreChanged; CloseEditor(); _cache.Clear(); _search = new([]); Items = []; }
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
     public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
-    public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    public bool CanUseRowActions(PopupItemViewModel? item)
+    {
+        EnsureCurrent();
+        return !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet }
+            && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    }
     public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && _clipboard.IsAvailable && CanUseRowActions(item);
     public void CopyRow(PopupItemViewModel item)
     {
@@ -321,6 +327,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void CloseEditor() { if (Editor is not { } editor) return; editor.Saved -= OnEditorSaved; Editor = null; editor.Dispose(); }
     public async Task InsertSelectedAsync()
     {
+        EnsureCurrent();
         if (IsEditorOpen) return;
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return; }
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=keyboard"); return; }
@@ -331,6 +338,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public Task ActivateAsync(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (IsEditorOpen) return Task.CompletedTask;
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=row"); return Task.CompletedTask; }
         if (item.Kind != PopupItemKind.Snippet) return Task.CompletedTask;

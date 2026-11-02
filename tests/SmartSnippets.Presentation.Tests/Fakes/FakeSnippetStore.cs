@@ -49,6 +49,13 @@ internal sealed class FakeSnippetStore : ISnippetStore
         return result.Value ?? throw new InvalidOperationException(result.Message);
     }
 
+    internal void SeedStoredSnippet(Snippet snippet)
+    {
+        _snippets.Add(snippet);
+        Publish();
+        Raise(StoreChangeKind.Reloaded, null, []);
+    }
+
     public Folder SeedFolder(string name) =>
         CreateFolder(name).Value ?? throw new InvalidOperationException("seed folder failed");
 

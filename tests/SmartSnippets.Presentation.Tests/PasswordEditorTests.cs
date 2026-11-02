@@ -95,6 +95,7 @@ public sealed class PasswordEditorTests
         {
             if (!vm.IsPassword) return;
             observed++;
+            Assert.True(vm.IsLabelCustom);
             Assert.Empty(vm.Suggestion);
             Assert.DoesNotContain("secret", vm.LabelPlaceholder);
             Assert.Empty(vm.AutoLabelHint);
@@ -107,6 +108,27 @@ public sealed class PasswordEditorTests
         vm.Text = "another secret";
         vm.ResetToSaved();
         Assert.Equal("secret body", vm.Text);
+        Assert.Empty(vm.Suggestion);
+    }
+
+    [Fact]
+    public void StoredPasswordWithAutomaticFlagKeepsManualLabel()
+    {
+        var saved = _store.SeedSnippet("secret", "safe label");
+        // A legacy/inconsistent stored row must not activate suggestion fallback.
+        var other = new FakeSnippetStore();
+        other.SeedStoredSnippet(saved with { IsPassword = true, IsLabelCustom = false });
+        using var vm = new SnippetEditorViewModel(other, new ScriptedDialogService(), saved.Id);
+        Assert.True(vm.IsPassword);
+        Assert.True(vm.IsLabelCustom);
+        Assert.Equal("safe label", vm.Label);
+        vm.Text = "edited";
+        vm.PropertyChanged += (_, _) =>
+        {
+            if (vm.IsPassword) Assert.True(vm.IsLabelCustom);
+        };
+        vm.ResetToSaved();
+        Assert.Equal("safe label", vm.Label);
         Assert.Empty(vm.Suggestion);
     }
 

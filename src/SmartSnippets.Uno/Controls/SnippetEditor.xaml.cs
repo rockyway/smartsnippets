@@ -110,9 +110,9 @@ public sealed partial class SnippetEditor : UserControl
     {
         // Cancel synchronously: an async clipboard read must never allow native single-line truncation.
         e.Handled = true;
+        var generation = ++_inputGeneration;
         if (_inputUnloaded || _viewModel?.CanEditPassword != true) return;
         var editor = _viewModel;
-        var generation = _inputGeneration;
         var original = editor.Text;
         try
         {
@@ -129,6 +129,7 @@ public sealed partial class SnippetEditor : UserControl
             // PasswordBox exposes no selection range. Explicit whole-value replacement avoids a
             // second native clipboard read (which could race and paste unchecked multiline data).
             editor.Text = text;
+            SyncInputs();
             SnippetPasswordBox.SelectAll();
         }
         catch (Exception)
@@ -157,7 +158,7 @@ public sealed partial class SnippetEditor : UserControl
         _syncingInput = true;
         try
         {
-            var editor = _inputUnloaded ? null : _viewModel;
+            var editor = _inputUnloaded || _viewModel?.IsLoading == true ? null : _viewModel;
             // Clear the inactive input before assigning the active one.
             if (editor?.IsPassword == true)
             {
@@ -271,7 +272,8 @@ public sealed partial class SnippetEditor : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(SnippetEditorViewModel.Text) or nameof(SnippetEditorViewModel.IsPassword))
+        if (e.PropertyName is nameof(SnippetEditorViewModel.Text) or nameof(SnippetEditorViewModel.IsPassword)
+            or nameof(SnippetEditorViewModel.IsLoading))
             SyncInputs();
         if (e.PropertyName == nameof(SnippetEditorViewModel.IsCreatingFolder) && _viewModel?.IsCreatingFolder == true)
         {
