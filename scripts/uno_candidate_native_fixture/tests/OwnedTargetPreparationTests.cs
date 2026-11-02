@@ -328,7 +328,7 @@ public sealed class OwnedTargetPreparationTests
     public async Task FocusedChildMustResolveToExactAThroughoutPreparation(int root, bool accepted)
     {
         var os = new Os { Normalize = h => SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(h,
-            w => w == 103 ? 0x40000000 : 0, _ => root, _ => (7u, 20u), out _) };
+            w => w == 103 ? 0x40000000 : 0, (_, flags) => { Assert.Equal(2u, flags); return root; }, _ => (7u, 20u), out _) };
         var com = new Com(os) { FocusAction = () => os.Foreground = 103 };
         Assert.Equal(accepted ? OwnedPreparationResult.Prepared : OwnedPreparationResult.ForegroundRefused,
             await Prepare(os, () => com));

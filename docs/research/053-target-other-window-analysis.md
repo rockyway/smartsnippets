@@ -27,7 +27,9 @@ followed. The fixture, acceptance adapters, Target018 focus/grant receipts and
 independent Python/PowerShell observers use this identity convention.
 
 Raw window facts remain raw: `foreground_was_child` is a fixed boolean in trace
-facts, windowFacts and the latched monitor record, not permission or an extra
+facts and windowFacts as an alias of that window's `ws_child` (not evidence that
+it was foreground). Only top-level monitor/trace/control booleans describe the raw
+foreground sample. The latched monitor record is not permission or an extra
 relation token. No input epoch exception, focus retry, ordinary product focus,
 PopupShowCoordinator, capture/paste or review gate change accompanies this fix.
 Headless regression/build success is not native nonactivation/input acceptance;

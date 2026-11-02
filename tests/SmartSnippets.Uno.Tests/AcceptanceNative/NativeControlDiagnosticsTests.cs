@@ -61,7 +61,7 @@ public sealed class NativeControlDiagnosticsTests
     public void NormalizedChildRecordKeepsExactRootRelationAndRawChildFact(int root, uint pid, string relation)
     {
         var normalized = SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(101,
-            _ => 0x40000000, _ => root, _ => (1u, pid), out var child);
+            _ => 0x40000000, (_, flags) => { Assert.Equal(2u, flags); return root; }, _ => (1u, pid), out var child);
         var record = NativeControlDiagnostics.Record(normalized, 10, 20, pid, 9, 10, 7,
             true, true, 1, 1, "changed", 1, child);
         Assert.Contains("relation=" + relation + " foreground_was_child=True ", record);

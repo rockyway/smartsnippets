@@ -52,7 +52,9 @@ a matching PID. Child-of-A is A; child-of-B is B (still refused by positive A-on
 policy); a child of another same-PID top-level still refuses.
 
 Trace and windowFacts keep the **raw** class/style/geometry observations.
-`foreground_was_child` records the WS_CHILD fact in those fixed schemas and the
+`foreground_was_child` in per-window facts is an alias of `ws_child`, not evidence
+that the window was foreground. Only top-level monitor/trace/control booleans
+record the raw foreground sample. It records the WS_CHILD fact in those fixed schemas and the
 latched monitor record. Relations remain unchanged. Research 053 records the
 nr-12 evidence identifying A's EDIT child, not an extra top-level activation.
 This is a headless/build-only correction, not native acceptance or review approval.

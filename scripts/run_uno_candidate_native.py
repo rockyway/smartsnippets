@@ -499,7 +499,10 @@ def thread_inventory(desktop, a, b, ready):
 def foreground_pid(desktop, window):
     import ctypes
     from ctypes import wintypes
-    window, _ = foreground_identity.normalize(desktop, window)
+    raw = window
+    window, child = foreground_identity.normalize(desktop, raw)
+    if child and window == raw:
+        return 0
     pid = wintypes.DWORD()
     if window:
         desktop.user.GetWindowThreadProcessId(window, ctypes.byref(pid))
@@ -524,7 +527,7 @@ class PostedForegroundMonitor:
     def sample(self, desktop, window):
         raw = window
         window, self.foreground_was_child = foreground_identity.normalize(desktop, raw)
-        if raw and not window:
+        if self.foreground_was_child and window == raw:
             return 'foreground_foreign', 'foreign'
         path = self.private / 'positive-surfaces.txt'
         if self.surfaces is None and path.exists():
@@ -608,7 +611,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             window, foreground_was_child = foreground_identity.normalize(desktop, raw_window)
             predicate, relation = (policy.sample(desktop, raw_window) if policy is not None else
                                    (None if window in allowed else 'foreground_foreign', 'none' if not window else 'foreign'))
-            if raw_window and not window:
+            if foreground_was_child and window == raw_window:
                 predicate, relation = 'foreground_foreign', 'foreign'
             if predicate and failure is None:
                 failure = (predicate, order, relation, bool(policy and policy.closed))
@@ -828,8 +831,9 @@ def main(argv=None, *, prior_restorative_session=None):
     try:
         desktop.enable_dpi()
         desktop.validate_input_desktop()
-        foreground, _ = foreground_identity.normalize(desktop, desktop.user.GetForegroundWindow())
-        if not foreground:
+        raw_foreground = desktop.user.GetForegroundWindow()
+        foreground, child = foreground_identity.normalize(desktop, raw_foreground)
+        if not foreground or (child and foreground == raw_foreground):
             raise ValueError('native_foreground_unavailable')
         positive = args.scene in POSITIVE_SCENES
         (private / 'native-launch-permit').write_bytes(launch_permit(positive, prior_token))

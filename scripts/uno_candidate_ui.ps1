@@ -67,7 +67,7 @@ public static class Owned019 {
   if(raw == IntPtr.Zero || (GetWindowLongPtrW(raw,-16).ToInt64() & 0x40000000L)==0) return raw;
   var root=GetAncestor(raw,2); uint cp,rp;
   var ct=GetWindowThreadProcessId(raw,out cp); var rt=GetWindowThreadProcessId(root,out rp);
-  return root!=IntPtr.Zero && ct!=0 && cp!=0 && ct==rt && cp==rp ? root : IntPtr.Zero;
+  return root!=IntPtr.Zero && ct!=0 && cp!=0 && ct==rt && cp==rp ? root : raw;
  }
  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);
  [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
@@ -240,10 +240,11 @@ public static class Owned019 {
     function Guard {
         try { GuardCore }
         catch {
+            $err = $_
             if ($Scene -ceq 'file-picker' -and $null -ne $script:pickerTimelinePhase) {
                 Write-PickerEpochTimeline $script:pickerTimelinePhase 'guard_refused'
             }
-            throw
+            throw $err
         }
     }
     function SelectOwnedLeave($items) {

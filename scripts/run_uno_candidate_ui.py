@@ -135,7 +135,7 @@ def parse_picker_epoch_timeline(private):
             if not os.path.lexists(path):
                 continue
             timelines[phase] = _parse_picker_timeline_file(phase, base.owned_bytes(path, private, 65536))
-    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+    except Exception:
         return None
     return timelines or None
 
@@ -500,7 +500,9 @@ def validate_helper_foreground_failure(private, helper_code=None, helper_stderr=
 
 def normalized_snapshot(desktop):
     raw, clip = desktop.snapshot()
-    foreground, _ = foreground_identity.normalize(desktop, raw)
+    foreground, child = foreground_identity.normalize(desktop, raw)
+    if not foreground or (child and foreground == raw):
+        raise ValueError('desktop_unavailable')
     return foreground, clip
 
 

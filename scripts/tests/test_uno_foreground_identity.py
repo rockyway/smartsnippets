@@ -35,7 +35,7 @@ class ForegroundIdentityTests(unittest.TestCase):
                 self.assertEqual(None if root == 10 else 'foreground_foreign', predicate)
                 self.assertEqual(raw != root, policy.foreground_was_child)
         for tid, pid in ((0, 100), (8, 100), (7, 999)):
-            self.assertEqual((0, True), native.foreground_identity.normalize(
+            self.assertEqual((101, True), native.foreground_identity.normalize(
                 desktop(101, 10, root_thread=tid, root_pid=pid), 101))
 
     def test_monitor_allowed_set_and_failure_record_keep_raw_fact(self):
@@ -79,7 +79,7 @@ public static class Owned019 {
  public static long Raw=101, Root=10; public static uint RootPid=30, RootThread=7;
  public static IntPtr GetForegroundWindow(){return new IntPtr(Raw);}
  public static IntPtr GetWindowLongPtrW(IntPtr h,int i){return new IntPtr(h.ToInt64()==101?0x40000000:0);}
- public static IntPtr GetAncestor(IntPtr h,uint f){return new IntPtr(Root);}
+ public static IntPtr GetAncestor(IntPtr h,uint f){return new IntPtr(f == 2 ? Root : 0);}
  public static uint GetWindowThreadProcessId(IntPtr h,out uint p){p=h.ToInt64()==101?30u:RootPid;return h.ToInt64()==101?7u:RootThread;}
  METHOD
 }
@@ -97,12 +97,79 @@ Check 10 101 0 $true
 Check 20 101 20 $true
 Check 99 101 0 $false
 Check 10 10 0 $true
+$InitialForeground=0
 [Owned019]::RootPid=31; Check 10 101 0 $false
 [Owned019]::RootPid=30; [Owned019]::RootThread=8; Check 10 101 0 $false
 '''.replace('METHOD', method).replace('GUARD', guard)
         result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
                                 capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
         self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+
+    def test_invalid_children_refuse_snapshot_and_monitor(self):
+        for tid, pid in ((8, 100), (7, 999)):
+            d = desktop(101, 10, root_thread=tid, root_pid=pid)
+            d.snapshot = lambda: (101, 2)
+            with self.assertRaisesRegex(ValueError, 'desktop_unavailable'):
+                s.normalized_snapshot(d)
+            with tempfile.TemporaryDirectory() as directory:
+                policy = native.PostedForegroundMonitor(Path(directory), 101, lambda: 0)
+                self.assertEqual(('foreground_foreign', 'foreign'), policy.sample(d, 101))
+                class Process:
+                    calls = 0
+                    returncode = 0
+                    def poll(self):
+                        self.calls += 1
+                        return None if self.calls == 1 else 0
+                with patch.object(native, 'window_facts', return_value=native.empty_window_facts()):
+                    with self.assertRaisesRegex(ValueError, 'native_scene_failed'):
+                        native.monitor(Process(), d, 101, [], sleep=lambda _: None,
+                                       scene='restore', evidence_private=Path(directory))
+        d = desktop(0, 0)
+        d.snapshot = lambda: (0, 2)
+        with self.assertRaisesRegex(ValueError, 'desktop_unavailable'):
+            s.normalized_snapshot(d)
+
+    def test_production_adapters_are_wired(self):
+        root = Path(__file__).resolve().parents[2]
+        sites = {
+            'scripts/uno_candidate_native_fixture/Coordinator.cs': ['ForegroundIdentity.Root(RawForeground())'],
+            'scripts/uno_candidate_native_fixture/App.xaml.cs': ['ForegroundIdentity.Root(NativeFixtureOs.RawForeground(), out admissionWasChild)'],
+            'src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative/OwnedFocus.cs': ['public nint Foreground => SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(GetForegroundWindow())', 'GetPropW(window, PropertyName(marker)) == 1 && SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(GetForegroundWindow()) == window'],
+            'prototypes/uno-native-target/identity/WindowsWindowIdentity.cs': ['ForegroundIdentity.Root(GetForegroundWindow()) == identity'],
+            'prototypes/uno-native-target/windows/Program.cs': ['ForegroundIdentity.Root(GetForegroundWindow()) != a', 'ForegroundIdentity.Root(GetForegroundWindow()) == window && GetFocus() == editor'],
+        }
+        for path, patterns in sites.items():
+            for pattern in patterns:
+                self.assertIn(pattern, (root / path).read_text())
+
+    @unittest.skipUnless(s.sys.platform == 'win32', 'PowerShell inert boundary test')
+    def test_guard_wrapper_preserves_reason_even_when_writer_fails(self):
+        import subprocess
+        helper = s.HELPER.read_text()
+        wrapper = 'function Guard {' + helper.split('    function Guard {', 1)[1].split('    function SelectOwnedLeave', 1)[0]
+        script = r'''
+$ErrorActionPreference='Stop'
+$Scene='file-picker'; $script:pickerTimelinePhase='test'
+function GuardCore { throw $script:reason }
+function Write-PickerEpochTimeline { if($script:fail){try {throw 'write_failed'} catch {}} }
+WRAPPER
+foreach($r in @('foreground','input','picker_replaced')) {
+ foreach($f in @($false,$true)) {
+  $script:reason=$r; $script:fail=$f
+  try { Guard; throw 'accepted' } catch { if($_.Exception.Message -cne $r){throw 'reason_lost'} }
+ }
+}
+exit 0
+'''.replace('WRAPPER', wrapper)
+        result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script], capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+
+    def test_timeline_recursion_collapses(self):
+        with patch.object(s, 'parse_picker_epoch_timeline', wraps=s.parse_picker_epoch_timeline):
+            with tempfile.TemporaryDirectory() as directory:
+                private = Path(directory)
+                (private / ('picker-epoch-timeline-' + s.PICKER_PHASES[0] + '.jsonl')).write_text('[' * 64000)
+                self.assertIsNone(s.parse_picker_epoch_timeline(private))
 
     def test_foreground_pid_uses_root_and_mismatch_is_unavailable(self):
         self.assertEqual(100, native.foreground_pid(desktop(101, 10), 101))

@@ -14,9 +14,9 @@ public sealed class ForegroundIdentityTests
     public void DiagnosticComparisonsUseExactRootAndKeepRawFacts(int raw, int root, uint pid, string expected, bool child)
     {
         nint Normalize(nint h) => ForegroundIdentity.Normalize(h, _ => child ? 0x40000000 : 0,
-            _ => root, _ => (1u, pid), out _);
+            (_, flags) => { Assert.Equal(2u, flags); return root; }, _ => (1u, pid), out _);
         Assert.Equal((nint)root, Normalize(raw));
-        ForegroundIdentity.Normalize(raw, _ => child ? 0x40000000 : 0, _ => root, _ => (1u, pid), out var wasChild);
+        ForegroundIdentity.Normalize(raw, _ => child ? 0x40000000 : 0, (_, flags) => { Assert.Equal(2u, flags); return root; }, _ => (1u, pid), out var wasChild);
         Assert.Equal(child, wasChild);
         WindowDiagnosticFacts Facts(nint h)
         {
@@ -36,7 +36,7 @@ public sealed class ForegroundIdentityTests
     public void StartupCannotCallWrongPidRootOwnedA()
     {
         var startup = new NativeStartupDiagnostics(() => 101, _ => 8, 14, () => 10, () => 20,
-            normalize: h => ForegroundIdentity.Normalize(h, _ => 0x40000000, _ => 10, _ => (1u, 8u), out _),
+            normalize: h => ForegroundIdentity.Normalize(h, _ => 0x40000000, (_, flags) => 10, _ => (1u, 8u), out _),
             targetPid: () => 7);
         Assert.Contains("relation=foreign ", startup.Sample("after_focus"));
     }
@@ -45,7 +45,7 @@ public sealed class ForegroundIdentityTests
     [InlineData(0, 7)] [InlineData(2, 7)] [InlineData(1, 8)]
     public void ChildCannotBorrowRootWithChangedThreadOrPid(uint thread, uint pid)
     {
-        Assert.Equal(0, ForegroundIdentity.Normalize(101, _ => 0x40000000, _ => 10,
+        Assert.Equal((nint)101, ForegroundIdentity.Normalize(101, _ => 0x40000000, (_, flags) => 10,
             h => h == 101 ? (1u, 7u) : (thread, pid), out var child));
         Assert.True(child);
     }

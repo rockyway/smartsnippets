@@ -29,4 +29,4 @@ def normalize(desktop, raw):
         tid = user.GetWindowThreadProcessId(h, C.byref(pid)) if h else 0
         return tid, pid.value
     tid, pid = pin(raw)
-    return (root if root and tid and pid and (tid, pid) == pin(root) else 0), True
+    return (root if root and tid and pid and (tid, pid) == pin(root) else raw), True

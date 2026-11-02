@@ -135,13 +135,34 @@ public sealed class OwnedFocusTests
     {
         var os = new FocusOs { Foreground = 101, Normalize = raw =>
             SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(raw,
-                h => h == 101 ? 0x40000000 : 0, _ => root, _ => (7u, 21u), out _) };
+                h => h == 101 ? 0x40000000 : 0, (_, flags) => { Assert.Equal(2u, flags); return root; }, _ => (7u, 21u), out _) };
         var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true, 40, () => true);
         Assert.Equal(admitted, focus.ReadyForAdmission());
         Assert.Equal(admitted, await focus.ReadyForAdmissionAsync(default));
         Assert.Equal(admitted, await focus.RestoreTargetAsync(default));
         Assert.Equal(admitted, focus.TryFocusPopup());
         Assert.Equal(admitted ? (root == 30 ? 2 : root == 11 ? 1 : 2) : 0, os.FocusCalls);
+    }
+
+    [Theory]
+    [InlineData(8u, 21u)]
+    [InlineData(7u, 22u)]
+    public async Task UnvalidatableChildIsImmediateLatchedRefusal(uint thread, uint pid)
+    {
+        var os = new FocusOs { Foreground = 101, Normalize = raw =>
+            SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(raw,
+                h => h == 101 ? 0x40000000 : 0,
+                (_, flags) => { Assert.Equal(2u, flags); return 11; },
+                h => h == 101 ? (7u, 21u) : (thread, pid), out _) };
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true);
+        var admission = focus.ReadyForAdmissionAsync(default);
+        var restore = focus.RestoreTargetAsync(default);
+        Assert.True(admission.IsCompleted);
+        Assert.True(restore.IsCompleted);
+        os.Foreground = Popup;
+        Assert.False(await admission);
+        Assert.False(await restore);
+        Assert.Equal(0, os.FocusCalls);
     }
 
     private sealed class Probe(FocusOs os) : ITargetProbe
