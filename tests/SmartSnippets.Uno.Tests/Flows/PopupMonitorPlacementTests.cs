@@ -59,17 +59,10 @@ public sealed class PopupMonitorPlacementTests
     }
 
     [Fact]
-    public void RealCenterOnMatchesLegacyExactly_AndCapturedAndReshowUseSameCursorPlacement()
+    public void CapturedAndReshowUseSameCursorPlacement()
     {
         string Read(string head, string file) => File.ReadAllText(Path.Combine(CandidateBuildGraphTests.RepoRoot, "src", head, file)).Replace("\r\n", "\n");
-        static string CenterOn(string source)
-        {
-            var start = source.IndexOf("    public static unsafe bool CenterOn(", StringComparison.Ordinal);
-            var end = source.IndexOf("\n    }", start, StringComparison.Ordinal) + 6;
-            return source[start..end];
-        }
         var placement = Read("SmartSnippets.Uno", "Services/WindowPlacement.cs");
-        Assert.Equal(CenterOn(Read("SmartSnippets.App", "Services/WindowPlacement.cs")), CenterOn(placement));
         Assert.Contains("PInvoke.GetCursorPos(&cursor)", placement);
         Assert.Contains("PInvoke.MonitorFromPoint(cursor, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST)", placement);
         Assert.Contains("PInvoke.MonitorFromWindow(default, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY)", placement);

@@ -1,9 +1,0 @@
-{
-  "Properties": {
-    "RuntimeIdentifier": "",
-    "RestorePackagesWithLockFile": "",
-    "RestoreLockedMode": "",
-    "NoWarn": "1701;1702",
-    "IsAotCompatible": "true"
-  }
-}

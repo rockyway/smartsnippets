@@ -11,7 +11,7 @@
             HorizontalAlignment="Left"
             Spacing="12">
             <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Settings" />
-            <TextBlock Text="Use the global shortcut or tray to insert snippets. Copy and start at login are supported; administrator restart is unavailable." TextWrapping="Wrap" />
+            <TextBlock Text="Use the global shortcut or tray to insert snippets. Manage Copy, start at login and administrator restart here." TextWrapping="Wrap" />
 
             <InfoBar
                 x:Name="StatusBar"
@@ -152,7 +152,7 @@
                 Toggled="OnStartupToggled" />
             <TextBlock
                 Opacity="0.7"
-                Text="Start this app in the background when you sign in. The legacy app’s startup setting is separate."
+                Text="Start Smart Snippets in the background when you sign in."
                 TextWrapping="Wrap" />
 
             <!-- Advanced -->
@@ -165,11 +165,12 @@
                 Content="{x:Bind ViewModel.PreviewGlobalDialogText}" />
             <Button
                 automation:AutomationProperties.Name="Restart as administrator"
+                Command="{x:Bind ViewModel.RestartAsAdministratorCommand}"
                 Content="Restart as administrator"
-                IsEnabled="False" />
+                IsEnabled="{x:Bind ViewModel.CanRestartAsAdmin, Mode=OneTime}" />
             <TextBlock
                 Opacity="0.7"
-                Text="Administrator restart is unavailable in this app."
+                Text="Restart with administrator rights to insert into elevated applications."
                 TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>

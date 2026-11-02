@@ -235,9 +235,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         CommitHotkey(_hotkey.RestoreDefault(), HotkeyGesture.Default);
 
     [RelayCommand]
-    private void RestartAsAdministrator()
+    private async Task RestartAsAdministrator()
     {
-        var result = _elevation.RestartAsAdministrator();
+        var result = await _elevation.RestartAsAdministratorAsync();
         switch (result.Outcome)
         {
             case ElevationOutcome.Started:

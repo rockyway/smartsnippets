@@ -5,11 +5,11 @@
     <OutputType>WinExe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
     <DefaultLanguage>en-US</DefaultLanguage>
-    <ApplicationTitle>Smart Snippets — Uno candidate</ApplicationTitle>
-    <ApplicationId>org.smartsnippets.unocandidate019</ApplicationId>
+    <ApplicationTitle>Smart Snippets</ApplicationTitle>
+    <ApplicationId>SmartSnippets</ApplicationId>
     <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
-    <AssemblyName>SmartSnippets.UnoCandidate</AssemblyName>
+    <AssemblyName>SmartSnippets</AssemblyName>
     <RootNamespace>SmartSnippets.Uno</RootNamespace>
     <DisableImplicitUnoPackages>true</DisableImplicitUnoPackages>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -45,7 +45,6 @@
     <ProjectReference Include="../SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
     <Content Update="Assets/*.ico;Assets/TitleIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <Import Project="Platforms/Windows/AcceptanceNative/AcceptanceNative.links.projitems" />
   <Import Project="Sdk.targets" Sdk="Uno.Sdk" Version="6.7.30" />
   <PropertyGroup>
     <!-- Restrict the SDK's default multi-architecture restore to this x64-only head. -->

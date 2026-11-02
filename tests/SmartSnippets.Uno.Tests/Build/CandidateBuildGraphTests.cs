@@ -55,10 +55,10 @@ public sealed class CandidateBuildGraphTests
         }
     }
     [Fact]
-    public void KeepsLegacyPinsAndOutputSeparate()
+    public void OfficialIdentityPreservesPinnedNativeGraph()
     {
         var values = Evaluate("SmartSnippets.Uno.csproj");
-        Assert.Equal("SmartSnippets.UnoCandidate", values["AssemblyName"]);
+        Assert.Equal("SmartSnippets", values["AssemblyName"]);
         Assert.Equal("10.0.17763.0", values["SupportedOSPlatformVersion"]);
         Assert.Equal("10.0.17763.0", values["TargetPlatformMinVersion"]);
         var profile = XDocument.Load(Path.Combine(Candidate, "Properties", "PublishProfiles", "win-x64.pubxml"));

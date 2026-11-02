@@ -9,6 +9,7 @@ on:
       - '**/*.md'
   # Manual run for a feature branch, e.g. to compile WinUI/XAML changes before merging.
   workflow_dispatch:
+  pull_request:
 
 jobs:
   core-linux:
@@ -18,8 +19,8 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-      - run: dotnet test tests/SmartSnippets.Core.Tests
-      - run: dotnet test tests/SmartSnippets.Presentation.Tests
+      - run: dotnet test tests/SmartSnippets.Core.Tests -c Release
+      - run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release
 
   windows:
     runs-on: windows-latest
@@ -29,15 +30,26 @@ jobs:
         with:
           global-json-file: global.json
       - name: Core tests
-        run: dotnet test tests/SmartSnippets.Core.Tests
+        run: dotnet test tests/SmartSnippets.Core.Tests -c Release
       - name: Presentation tests
-        run: dotnet test tests/SmartSnippets.Presentation.Tests
+        run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release
       - name: Import budget (Release)
         run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Budget"
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: src/SmartSnippets.Uno/global.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Uno composition and behavior tests (pinned SDK cwd)
+        working-directory: src/SmartSnippets.Uno
+        run: dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
+      - name: AOT validator negative tests
+        run: python -B -m unittest discover -s scripts/tests -q
       - name: AOT publish + warning gate
         shell: pwsh
         run: |
-          ./scripts/publish-aot.ps1 -Output publish -Version "0.0.0-ci.${{ github.run_number }}" -BuildNumber ${{ github.run_number }}
+          ./scripts/publish-uno-aot.ps1 -Version "0.0.0-ci.${{ github.run_number }}" -BuildNumber ${{ github.run_number }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check stamped version
         shell: pwsh

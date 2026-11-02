@@ -29,6 +29,7 @@ internal interface ICandidatePopupWindow : IPopupHost, IDisposable
 }
 internal interface ICandidateTray : INotifier, IDisposable
 {
+    bool TryNotify(string title, string message) { Notify(title, message); return true; }
     void SetHotkeyState(bool registered, bool popupVisible) { }
 }
 
@@ -36,7 +37,6 @@ internal interface ICandidateTray : INotifier, IDisposable
 internal abstract class CandidateHostBoundary
 {
     internal abstract IUiDispatcher Dispatcher { get; }
-    internal virtual Platforms.Windows.CandidateNativeCapability? NativeCapability => null;
     internal abstract IThemeService CreateTheme(AppSettings settings);
     internal abstract IDisposable CreateMessageWindow();
     internal virtual Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => null;

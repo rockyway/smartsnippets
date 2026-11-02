@@ -387,7 +387,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         }
         AppLog.Info("popup_copy_text", $"id={snippet.Id}");
     }
-    [RelayCommand] private void RestartAsAdmin() { if (!CanRestartAsAdmin) return; var result = _elevation.RestartAsAdministrator(); if (result.Outcome == ElevationOutcome.Started) _requestExit?.Invoke(); else FooterMessage = result.Message; }
+    [RelayCommand] private async Task RestartAsAdmin() { if (!CanRestartAsAdmin) return; var result = await _elevation.RestartAsAdministratorAsync(); if (result.Outcome == ElevationOutcome.Started) _requestExit?.Invoke(); else FooterMessage = result.Message; }
     public void RefreshClipboardAvailability()
     {
         OnPropertyChanged(nameof(CanCopyRow));

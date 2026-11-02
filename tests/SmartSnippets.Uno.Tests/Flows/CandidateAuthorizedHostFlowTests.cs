@@ -5,25 +5,20 @@ using SmartSnippets.Uno.Tests.Composition;
 namespace SmartSnippets.Uno.Tests.Flows;
 
 // All paths use UnoAppHost's real SQLite store, shared VMs and real InsertionService.
-public sealed class CandidateAuthorizedHostFlowTests
+public sealed class DesktopHostFlowTests
 {
-    private const CandidateNativeOperation All = CandidateNativeOperation.Capture | CandidateNativeOperation.Insert
-        | CandidateNativeOperation.Copy | CandidateNativeOperation.Focus | CandidateNativeOperation.Input
-        | CandidateNativeOperation.Clipboard | CandidateNativeOperation.ClipboardLoss;
-
-    private static async Task<(HostFixture Host, NativeOperations Native, LeaseClock Clock, long Id)> Start(
-        CandidateNativeOperation permissions = All)
+    private static async Task<(HostFixture Host, NativeOperations Native, AdmissionControl Clock, long Id)> Start()
     {
-        var f = new HostFixture(); var native = new NativeOperations(); var clock = new LeaseClock();
-        f.Boundary.Capability = new(Guid.NewGuid(), native.Target.WindowHandle, native.Target.ProcessId,
-            permissions, TimeSpan.FromMinutes(1), clock, native);
+        var f = new HostFixture(); var native = new NativeOperations();
+        var clock = new AdmissionControl(() => f.Host.Gate.SuspendAdmission());
+        f.Boundary.DesktopFactory = (_, _) => new TestDesktop(native);
         await f.Start();
         var id = f.Host.Store.CreateSnippet(new("first\nsecond", "synthetic", true, null, "")).Value!.Id;
         return (f, native, clock, id);
     }
 
     [Fact]
-    public Task AuthorizedPopupAndMain_ShareSingleFlightCaptureBeforeShowAndExactTarget() => CandidateHostThread.RunAsync(async () =>
+    public Task DesktopPopupAndMain_ShareSingleFlightCaptureBeforeShowAndExactTarget() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Boundary.Popups[0].CapturedShown = target =>
@@ -59,18 +54,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task AuthorizedTrayCallback_UsesActualHostCaptureRouteBeforeShowing() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, _, _) = await Start(); using var fixture = f;
-        f.Boundary.TrayPreview!.Invoke();
-        Assert.Equal(0, native.Captures); // Native callbacks first marshal to the UI owner.
-        f.Boundary.Drain();
-        Assert.Equal(1, native.Captures); Assert.Same(native.Target, f.Host.Popup.Target);
-        Assert.False(f.Host.Popup.IsPreview); Assert.Equal(1, f.Boundary.Popups[0].Shows);
-    });
-
-    [Fact]
-    public Task AuthorizedCopy_IsSeparateFromInsertionAndNeverCreditsUsage() => CandidateHostThread.RunAsync(async () =>
+    public Task DesktopCopy_IsSeparateFromInsertionAndNeverCreditsUsage() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.Snippets.CanCopyRow); f.Host.Snippets.CopyRow(id);
@@ -88,31 +72,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task ExpiredAndRevokedCapability_RefreshesCommandsAndRejectsStaleExecutionAndLossFallback() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, clock, id) = await Start(); using var fixture = f;
-        Assert.True(f.Host.ShowCapturedPopup());
-        Assert.True(await f.Host.Snippets.RequestEditAsync(id));
-        var editor = f.Host.Snippets.Editor!; editor.Text = "retained draft";
-        Assert.True(editor.CopyTextCommand.CanExecute(null));
-        var before = native.SideEffects;
-        clock.Advance(TimeSpan.FromMinutes(1));
-        f.Host.RefreshClipboardAvailability();
-        Assert.False(f.Host.Snippets.CanCopyRow); Assert.False(editor.CopyTextCommand.CanExecute(null));
-        Assert.False(f.Host.Snippets.CanInsertRow);
-        editor.CopyTextCommand.Execute(null); f.Host.Snippets.CopyRow(id);
-        await f.Host.Popup.InsertSelectedAsync();
-        Assert.False(f.Host.Popup.IsConfirmingClipboardLoss); Assert.False(f.Host.Popup.CanCopyFailedText);
-        foreach (var loss in new[] { false, true })
-            Assert.Equal(InsertionOutcome.PasteFailed, (await f.Host.Gate.InsertAsync(native.Target, id, new(loss))).Outcome);
-        Assert.False(f.Host.ShowCapturedPopup());
-        Assert.Equal(before, native.SideEffects); Assert.True(editor.IsDirty);
-        Assert.Equal(0, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
-        f.Boundary.Capability!.Revoke(); Assert.False(f.Host.Gate.TrySetText("late"));
-    });
-
-    [Fact]
-    public Task Preview_IgnoresEvenAuthorizedCapabilityAcrossRowFooterEditorAndMain() => CandidateHostThread.RunAsync(async () =>
+    public Task Preview_IgnoresEvenDesktopServicesAcrossRowFooterEditorAndMain() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Host.ShowPreview();
@@ -142,7 +102,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     [InlineData("modifiers")]
     [InlineData("swap")]
     [InlineData("foreground")]
-    public Task ExpiryAtEveryBoundary_StopsFollowingMutationButRestoresOwnedClipboard(string expireAt) => CandidateHostThread.RunAsync(async () =>
+    public Task SuspensionAtEveryBoundary_StopsFollowingMutationButRestoresOwnedClipboard(string expireAt) => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         native.After = name => { if (name == expireAt) clock.Advance(TimeSpan.FromMinutes(1)); };
@@ -167,22 +127,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task HostileCaptureOrSafetyRefusalAndMissingPermissions_NeverReachMutation() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, _, id) = await Start(All & ~CandidateNativeOperation.ClipboardLoss); using var fixture = f;
-        native.CaptureResult = native.Target with { WindowHandle = 999 };
-        Assert.False(f.Host.ShowCapturedPopup()); Assert.Null(f.Host.Popup.Target);
-        native.CaptureResult = native.Target;
-        Assert.True(f.Host.ShowCapturedPopup());
-        Assert.Equal(InsertionOutcome.PasteFailed, (await f.Host.Gate.InsertAsync(native.Target, id, new(true))).Outcome);
-        native.Safe = false;
-        await f.Host.Popup.InsertSelectedAsync(); f.Host.Snippets.CopyRow(id);
-        Assert.Equal(0, native.SideEffects);
-        Assert.False(f.Host.Popup.IsConfirmingClipboardLoss); Assert.False(f.Host.Popup.CanCopyFailedText);
-    });
-
-    [Fact]
-    public Task ExpiryWhileSwapThrows_RestoresTransferredSnapshotWithoutSending() => CandidateHostThread.RunAsync(async () =>
+    public Task SuspensionWhileSwapThrows_RestoresTransferredSnapshotWithoutSending() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.ThrowAfterSwap = true;
@@ -193,7 +138,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task Shutdown_DrainsOwnedRecoveryAfterExpiryAndVmContinuationBeforeDisposal() => CandidateHostThread.RunAsync(async () =>
+    public Task Shutdown_DrainsOwnedRecoveryAfterSuspensionAndVmContinuationBeforeDisposal() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.Restore = RestoreStatus.Busy;
@@ -232,35 +177,6 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task Revocation_RefreshesActiveEditorAndFooterCommandsWithoutGrantingNewCalls() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, _, id) = await Start(); using var fixture = f;
-        Assert.True(f.Host.ShowCapturedPopup()); native.Dispatch = DispatchState.Uncertain;
-        await f.Host.Popup.InsertSelectedAsync();
-        Assert.True(f.Host.Popup.CanCopyFailedText);
-        Assert.True(await f.Host.Snippets.RequestEditAsync(id));
-        var editor = f.Host.Snippets.Editor!; editor.Text = "retained draft";
-        var changes = 0;
-        editor.CopyTextCommand.CanExecuteChanged += (_, _) => changes++;
-        f.Boundary.Capability!.Revoke(); f.Boundary.Drain();
-        Assert.True(changes > 0); Assert.False(editor.CopyTextCommand.CanExecute(null));
-        Assert.False(f.Host.Popup.CopyFailedTextCommand.CanExecute(null));
-        var before = native.SideEffects;
-        editor.CopyTextCommand.Execute(null); f.Host.Popup.CopyFailedTextCommand.Execute(null);
-        Assert.Equal(before, native.SideEffects); Assert.True(editor.IsDirty);
-        Assert.Equal(0, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
-    });
-
-    [Fact]
-    public Task ExpiryDuringSafetyValidation_RejectsBeforeCaptureOrCopy() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, clock, id) = await Start(); using var fixture = f;
-        native.After = name => { if (name == "validate") clock.Advance(TimeSpan.FromMinutes(1)); };
-        Assert.False(f.Host.ShowCapturedPopup()); f.Host.Snippets.CopyRow(id);
-        Assert.Equal(0, native.Captures); Assert.Equal(0, native.SideEffects);
-    });
-
-    [Fact]
     public Task RecoveryBoundary_RefusesUnownedSnapshotsAndUnadmittedInputOrManualFallback() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
@@ -286,7 +202,6 @@ public sealed class CandidateAuthorizedHostFlowTests
         await native.RecoveryEntered.Task;
         Assert.Equal(0, f.Boundary.Main.Disposals); Assert.Equal(0, f.Boundary.TrayDisposals);
         Assert.False(f.Host.Gate.TrySetText("late"));
-        Assert.Throws<IOException>(() => SmartSnippets.Uno.CandidateProfile.OpenOwnedRoot(f.Root));
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // The dispatcher provides a UI turn after the asynchronous drain and VM continuations.
         native.RecoveryPause.SetResult(true);
@@ -298,7 +213,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task WarmupExpiry_DoesNotRevealCapturedTargetAfterLeaseEnds() => CandidateHostThread.RunAsync(async () =>
+    public Task WarmupSuspension_DoesNotRevealCapturedTargetAfterAdmissionCloses() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var fixture = f;
         f.Boundary.Popups[0].Dispose(); f.Boundary.PopupAutoReady = false;
@@ -310,15 +225,15 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task AdmissionExpiryAndShutdownReceipts_AreContentFreeFixedTokens() => CandidateHostThread.RunAsync(async () =>
+    public Task AdmissionSuspensionAndShutdownReceipts_AreContentFreeFixedTokens() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); f.Host.Snippets.CopyRow(id);
         clock.Advance(TimeSpan.FromMinutes(1)); Assert.False(f.Host.Gate.IsAvailable);
         await f.Host.ExitAsync();
         var log = File.ReadAllText(Path.Combine(f.Root, "logs", "app.log"));
-        foreach (var token in new[] { "candidate_started", "candidate_native_admission", "state=scoped",
-            "state=closed", "candidate_native_expired", "candidate_shutdown_started", "candidate_shutdown_complete" })
+        foreach (var token in new[] { "candidate_started", "candidate_native_admission", "state=desktop",
+            "state=closed", "candidate_shutdown_started", "candidate_shutdown_complete" })
             Assert.Contains(token, log);
         Assert.DoesNotContain(native.Target.DisplayName, log);
         Assert.DoesNotContain("first", log); Assert.DoesNotContain("second", log);
@@ -395,19 +310,6 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task DeniedClipboardLoss_NotPreservedNeverOffersConsentOrManualFallback() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, _, _) = await Start(All & ~CandidateNativeOperation.ClipboardLoss); using var fixture = f;
-        native.Swap = SwapStatus.NotPreserved;
-        Assert.True(f.Host.ShowCapturedPopup()); await f.Host.Popup.InsertSelectedAsync();
-        Assert.False(f.Host.Popup.IsConfirmingClipboardLoss);
-        Assert.NotEqual(Presentation.ViewModels.PopupFooterState.ConfirmClipboardLoss, f.Host.Popup.FooterState);
-        f.Host.Popup.PasteAnywayCommand.Execute(null); await f.Host.Popup.PasteAnywayCommand.ExecutionTask!;
-        Assert.Equal(1, native.Swaps); Assert.Equal(0, native.Sends); Assert.Equal(0, native.Placements);
-        Assert.Equal(0, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
-    });
-
-    [Fact]
     public Task ForegroundExceptionBeforeNativeDispatch_IsFailedNotMaybePasted() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
@@ -469,7 +371,7 @@ public sealed class CandidateAuthorizedHostFlowTests
         Assert.True(refreshed > 0); Assert.True(f.Host.Snippets.CanInsertRow);
         surface.Dispose();
         Assert.True(f.Host.ShowCapturedPopup()); surface = f.Boundary.Popups[^1];
-        native.Safe = false; surface.Ready(); native.Safe = true;
+        f.Host.Gate.SuspendAdmission(); surface.Ready(); f.Host.Gate.ResumeAdmission();
         Assert.Equal(0, surface.Shows); Assert.False(f.Host.Gate.CanInsert);
         Assert.Equal(InsertionOutcome.PasteFailed, (await f.Host.Gate.InsertAsync(native.Target, id)).Outcome);
         surface.Dispose(); Assert.True(f.Host.ShowCapturedPopup()); surface = f.Boundary.Popups[^1];
@@ -491,65 +393,6 @@ public sealed class CandidateAuthorizedHostFlowTests
         Assert.True(f.Host.ShowCapturedPopup()); surface.Ready();
         Assert.False(f.Host.Popup.IsPreview); Assert.Equal(1, surface.Shows);
     });
-
-    [Theory]
-    [InlineData("reverse")]
-    [InlineData("timestamp")]
-    [InlineData("frequency")]
-    [InlineData("expired")]
-    [InlineData("frequency-change")]
-    [InlineData("validation")]
-    public Task ClockFaultOrExpiry_IsLatchedAndObserverFailuresCannotEscapeOrDuplicateDeactivation(string fault) => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, clock, id) = await Start(); using var fixture = f;
-        Assert.True(f.Host.ShowCapturedPopup()); var changes = 0;
-        f.Boundary.Capability!.AuthorizationChanged += () => throw new InvalidOperationException("synthetic observer");
-        f.Boundary.Capability.AuthorizationChanged += () => changes++;
-        clock.Advance(TimeSpan.FromSeconds(10)); Assert.True(f.Host.Gate.IsAvailable);
-        switch (fault)
-        {
-            case "reverse": clock.Advance(TimeSpan.FromSeconds(-1)); break;
-            case "timestamp": clock.ThrowTimestamp = true; break;
-            case "frequency": clock.ThrowFrequency = true; break;
-            case "frequency-change": clock.Frequency *= 2; break;
-            case "validation": native.After = _ => throw new InvalidOperationException("synthetic validation"); break;
-            default: clock.Advance(TimeSpan.FromMinutes(1)); break;
-        }
-        Assert.False(f.Host.Gate.IsAvailable); Assert.Equal(1, changes);
-        clock.ThrowTimestamp = false; clock.ThrowFrequency = false; clock.Frequency = TimeSpan.TicksPerSecond;
-        native.After = null; clock.Advance(TimeSpan.FromMinutes(-2));
-        Assert.False(f.Host.Gate.TrySetText("latched"));
-        Assert.Equal(InsertionOutcome.PasteFailed, (await f.Host.Gate.InsertAsync(native.Target, id)).Outcome);
-        f.Boundary.Capability.Revoke(); f.Boundary.Capability.Revoke(); Assert.Equal(1, changes);
-        Assert.Equal(0, native.Sends); Assert.Equal(0, native.Copies);
-    });
-
-    [Fact]
-    public Task ProactiveExpiry_PostsAvailabilityRefreshToOwnerWithoutAnyNativeOperationOrUiThreadStoreAccess() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, clock, id) = await Start(); using var fixture = f;
-        Assert.True(await f.Host.Snippets.RequestEditAsync(id)); var editor = f.Host.Snippets.Editor!;
-        var changes = 0; var owner = Environment.CurrentManagedThreadId;
-        editor.CopyTextCommand.CanExecuteChanged += (_, _) => { Assert.Equal(owner, Environment.CurrentManagedThreadId); changes++; };
-        await Task.Run(() => clock.Advance(TimeSpan.FromMinutes(1)));
-        Assert.Equal(0, changes); f.Boundary.Drain();
-        Assert.True(changes > 0); Assert.False(editor.CopyTextCommand.CanExecute(null));
-        Assert.False(f.Host.Snippets.CanCopyRow); Assert.Equal(0, native.SideEffects); Assert.Equal(0, native.Captures);
-    });
-
-    [Fact]
-    public void CapabilityConstructor_RejectsUnboundedLifetimeNullDependenciesAndInvalidFrequency()
-    {
-        var native = new NativeOperations(); var clock = new LeaseClock();
-        CandidateNativeCapability Create(TimeSpan life, TimeProvider time, ICandidateNativeOperations operations) =>
-            new(Guid.NewGuid(), native.Target.WindowHandle, native.Target.ProcessId, All, life, time, operations);
-        Assert.Throws<ArgumentNullException>(() => Create(TimeSpan.FromSeconds(1), null!, native));
-        Assert.Throws<ArgumentNullException>(() => Create(TimeSpan.FromSeconds(1), clock, null!));
-        Assert.Throws<ArgumentException>(() => Create(TimeSpan.Zero, clock, native));
-        Assert.Throws<ArgumentException>(() => Create(CandidateNativeCapability.MaxLifetime + TimeSpan.FromTicks(1), clock, native));
-        clock.Frequency = 0; Assert.Throws<ArgumentException>(() => Create(TimeSpan.FromSeconds(1), clock, native));
-        clock.Frequency = -1; Assert.Throws<ArgumentException>(() => Create(TimeSpan.FromSeconds(1), clock, native));
-    }
 
     [Theory]
     [InlineData("cancel")]
@@ -604,16 +447,6 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task RevocationBeforeDeadline_NotifiesOnlyOnceEvenIfClockLaterExpires() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, clock, _) = await Start(); using var fixture = f;
-        var changes = 0; f.Boundary.Capability!.AuthorizationChanged += () => changes++;
-        f.Boundary.Capability.Revoke(); clock.Advance(TimeSpan.FromMinutes(2));
-        Assert.False(f.Host.Gate.IsAvailable); f.Boundary.Capability.Revoke();
-        Assert.Equal(1, changes); Assert.Equal(0, native.SideEffects);
-    });
-
-    [Fact]
     public Task DisposeSupersedesManagementDrain_NoLateExitOrInteractionResume() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
@@ -640,7 +473,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Fact]
-    public Task ReadySurfaceFocus_RequiresCapturedLiveNonPreviewIdleCapability() => CandidateHostThread.RunAsync(async () =>
+    public Task ReadySurfaceFocus_RequiresCapturedLiveNonPreviewIdleServices() => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var owner = f;
         Assert.False(f.Host.Gate.TryFocusOwnedPopup());
@@ -656,7 +489,6 @@ public sealed class CandidateAuthorizedHostFlowTests
     });
 
     [Theory]
-    [InlineData(false)]
     [InlineData(true)]
     public Task FailedCopy_RetainsUnknownRecoveryBlocksAdmissionAndAlwaysDrains(bool throws) => CandidateHostThread.RunAsync(async () =>
     {
@@ -697,7 +529,7 @@ public sealed class CandidateAuthorizedHostFlowTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task UiCopy_RechecksExpiryOrPreviewAfterQuietWait(bool preview) => CandidateHostThread.RunAsync(async () =>
+    public Task UiCopy_RechecksSuspensionOrPreviewAfterQuietWait(bool preview) => CandidateHostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var owner = f;
         native.CopyPause = new();
@@ -720,31 +552,13 @@ public sealed class CandidateAuthorizedHostFlowTests
         Assert.Equal(0, native.Copies); Assert.Equal(1, f.Boundary.Exits);
     });
 
-    [Fact]
-    public Task DeniedTrayPopup_DoesNotProbeCaptureReadTitleOrFocus() => CandidateHostThread.RunAsync(async () =>
-    {
-        var (f, native, _, _) = await Start(); using var fixture = f;
-        f.Boundary.Capability!.Revoke();
-        native.Trace.Clear(); native.Targets.Clear();
-        f.Boundary.TrayPreview!();
-        Assert.Equal(0, native.Captures);
-        f.Boundary.Drain();
-        Assert.True(f.Host.Popup.IsPreview); Assert.Null(f.Host.Popup.Target);
-        Assert.Equal(0, native.Captures); // CaptureOwnedTarget is the only title-reading boundary.
-        Assert.Empty(native.Targets); // Check/foreground probes.
-        Assert.Empty(native.Trace);
-        Assert.Equal(0, native.SideEffects);
-        Assert.Equal(0, native.PopupFocuses);
-    });
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public Task QaLaunchPreview_NeverCallsNativeCaptureOrProbe(bool redirected) => CandidateHostThread.RunAsync(async () =>
     {
-        using var f = new HostFixture(); var native = new NativeOperations(); var clock = new LeaseClock();
-        f.Boundary.Capability = new(Guid.NewGuid(), native.Target.WindowHandle, native.Target.ProcessId,
-            All, TimeSpan.FromMinutes(1), clock, native);
+        using var f = new HostFixture(); var native = new NativeOperations();
+        f.Boundary.DesktopFactory = (_, _) => new TestDesktop(native);
         var options = new SmartSnippets.Presentation.Navigation.LaunchOptions(null, true, "synthetic", true);
         if (!redirected) await f.Start(options: options);
         else
@@ -767,42 +581,18 @@ public sealed class CandidateAuthorizedHostFlowTests
         return turn.Task;
     }
 
-    private sealed class LeaseClock : TimeProvider
+    private sealed class AdmissionControl(Action suspend)
     {
-        private long _ticks;
-        private readonly List<LeaseTimer> _timers = [];
-        internal long Frequency = TimeSpan.TicksPerSecond;
-        internal bool ThrowTimestamp, ThrowFrequency;
-        public override long TimestampFrequency => ThrowFrequency ? throw new InvalidOperationException("synthetic clock") : Frequency;
-        public override long GetTimestamp() => ThrowTimestamp ? throw new InvalidOperationException("synthetic clock") : _ticks;
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            var timer = new LeaseTimer(this, callback, state); _timers.Add(timer);
-            timer.Change(dueTime, period); return timer;
-        }
-        internal void Advance(TimeSpan time)
-        {
-            _ticks += time.Ticks;
-            foreach (var timer in _timers.ToArray()) timer.FireIfDue();
-        }
-        private sealed class LeaseTimer(LeaseClock clock, TimerCallback callback, object? state) : ITimer
-        {
-            private long _due;
-            private bool _disposed;
-            public bool Change(TimeSpan dueTime, TimeSpan period)
-            {
-                if (_disposed) return false;
-                _due = dueTime == Timeout.InfiniteTimeSpan ? long.MaxValue : clock._ticks + dueTime.Ticks;
-                return true;
-            }
-            internal void FireIfDue()
-            {
-                if (_disposed || clock._ticks < _due) return;
-                _due = long.MaxValue; callback(state);
-            }
-            public void Dispose() => _disposed = true;
-            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
-        }
+        internal void Advance(TimeSpan _) => suspend();
+    }
+
+    private sealed class TestDesktop(NativeOperations operations) : ICandidateDesktopServices
+    {
+        public ICandidateDailyOperations Operations => operations;
+        public IHotkeyManager Hotkeys { get; } = new CandidateHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
+        public IStartupRegistration Startup { get; } = new CandidateStartupRegistration();
+        public IElevation Elevation { get; } = new CandidateElevation();
+        public void Dispose() { }
     }
 
     private sealed class Snapshot : IClipboardSnapshot
@@ -814,10 +604,9 @@ public sealed class CandidateAuthorizedHostFlowTests
         public long ByteCount => 8;
     }
 
-    private sealed class NativeOperations : ICandidateNativeOperations
+    private sealed class NativeOperations : ICandidateDailyOperations
     {
         internal InsertionTarget Target { get; } = new(123, 456, 789, "sensitive synthetic target");
-        internal InsertionTarget? CaptureResult;
         internal readonly List<string> Trace = [];
         internal readonly List<InsertionTarget> Targets = [];
         internal int Captures, Copies, Sends, Swaps, Restores, Placements, KeyCleanups, Drains, Focuses, Modifiers;
@@ -838,15 +627,9 @@ public sealed class CandidateAuthorizedHostFlowTests
         internal TaskCompletionSource RecoveryEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal DispatchState Dispatch = DispatchState.Dispatched;
         internal RestoreStatus Restore = RestoreStatus.Restored;
-        public bool Validate(CandidateNativeOperation operation, Guid sessionId, nint window, uint processId)
-        {
-            Assert.NotEqual(Guid.Empty, sessionId);
-            Assert.Equal(Target.WindowHandle, window); Assert.Equal(Target.ProcessId, processId);
-            After?.Invoke("validate");
-            return Safe;
-        }
-        public InsertionTarget? CaptureOwnedTarget(nint window, uint processId)
-        { Captures++; Trace.Add("capture"); After?.Invoke("capture"); return CaptureResult ?? Target; }
+        public InsertionTarget? CaptureForeground()
+        { Captures++; Trace.Add("capture"); After?.Invoke("capture"); return Safe ? Target : null; }
+        public InsertionTarget? CaptureFrom(nint window) => CaptureForeground();
         public bool IsAvailable => true;
         public bool TrySetText(string text)
         { Copies++; if (ThrowCopy) throw new InvalidOperationException("synthetic copy failure"); return CopyResult; }
@@ -869,6 +652,7 @@ public sealed class CandidateAuthorizedHostFlowTests
             if (ThrowWithoutSnapshot) throw new InvalidOperationException("synthetic untransferred snapshot");
             return new(Swap, NullSnapshot || Swap != SwapStatus.Swapped ? null : snapshot);
         }
+
         public SwapStatus TryPlaceText(string text) { Placements++; return SwapStatus.Swapped; }
         public DispatchState SendPaste() { Sends++; After?.Invoke("send"); return Dispatch; }
         public bool ReleasePasteKeys() { KeyCleanups++; return true; }

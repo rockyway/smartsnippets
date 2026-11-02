@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
@@ -27,6 +28,7 @@ public static class Program
         InitialOptions = LaunchOptions.Parse(args);
 
 
+        WaitForPreviousInstance();
         var mainInstance = AppInstance.FindOrRegisterForKey(InstanceKey);
         if (!mainInstance.IsCurrent)
         {
@@ -61,6 +63,30 @@ public static class Program
         Activations.Close();
         if (_instance is not null && _activated is not null) _instance.Activated -= _activated;
         _instance = null; _activated = null;
+    }
+
+    // Restart-as-administrator hand-off: the old instance is exiting, so wait for it before claiming the instance key.
+    private static void WaitForPreviousInstance()
+    {
+        if (AdministratorRestart.PreviousProcessId(Environment.GetCommandLineArgs()) is not { } pid)
+        {
+            return;
+        }
+
+        try
+        {
+            using var previous = Process.GetProcessById(pid);
+            var exited = previous.WaitForExit(TimeSpan.FromSeconds(5));
+            AppLog.Info("after_pid_wait", $"exited={exited}");
+        }
+        catch (ArgumentException)
+        {
+            // Already gone.
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("after_pid_wait_failed", ex);
+        }
     }
 
     // RedirectActivationToAsync completes through the apartment, so it runs on a worker thread

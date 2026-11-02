@@ -22,7 +22,7 @@ namespace SmartSnippets.Uno.Services
     // The real factory is linked, but no desktop registration/input is allowed in headless tests.
     internal sealed class WindowsDesktopServices : SmartSnippets.Uno.Platforms.Windows.ICandidateDesktopServices
     {
-        internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey) => throw new NotSupportedException();
+        internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey, Func<bool> mainHidden) => throw new NotSupportedException();
         public SmartSnippets.Uno.Platforms.Windows.ICandidateDailyOperations Operations => throw new NotSupportedException();
         public IHotkeyManager Hotkeys => throw new NotSupportedException();
         public IStartupRegistration Startup => throw new NotSupportedException();
@@ -33,7 +33,7 @@ namespace SmartSnippets.Uno.Services
     {
         internal TrayState State { get; set; }
         internal void Add() { _ = window; _ = open; _ = preview; _ = settings; _ = restart; _ = exit; _ = elevated; _ = target; _ = captureTargets; }
-        internal void ShowBalloon(string title, string message) { }
+        internal bool ShowBalloon(string title, string message) => true;
         public void Dispose() { }
     }
     internal sealed class ThemeService(ThemeMode mode, ColorPalette palette) : IThemeService

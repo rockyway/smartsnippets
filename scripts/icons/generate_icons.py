@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT / 'assets/icons'
-ASSETS = ROOT / 'src/SmartSnippets.App/Assets'
+ASSETS = ROOT / 'src/SmartSnippets.Uno/Assets'
 APP_SIZES = (16, 20, 24, 32, 40, 48, 64, 256)
 TRAY_SIZES = (16, 20, 24, 32, 40, 48)
 

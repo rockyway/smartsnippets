@@ -13,7 +13,7 @@ namespace SmartSnippets.Uno.Services;
 internal sealed unsafe class TrayIcon : IDisposable
 {
     private const uint CallbackMessage = PInvoke.WM_APP + 1;
-    private const uint IconId = 2019;
+    private const uint IconId = 1;
     private const nuint CommandOpen = 1;
     private const nuint CommandSettings = 2;
     private const nuint CommandRestartAdmin = 3;

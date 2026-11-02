@@ -92,6 +92,9 @@ public sealed partial class SettingsPage
                 if (action == "OnRecorderCanceled") OnRecorderCanceled(this, EventArgs.Empty);
                 if (action == "OnRecorderLostFocus") OnRecorderLostFocus(this, new());
                 Assert.Equal(Visibility.Collapsed, Recorder.Visibility); Assert.Equal(Visibility.Visible, KeycapsPanel.Visibility); break;
+            case "ViewModel.RestartAsAdministratorCommand":
+                await Execute(ViewModel.RestartAsAdministratorCommand);
+                Assert.True(ViewModel.IsStatusVisible); Assert.Equal(0, f.Boundary.Exits); break;
             case "ViewModel.RestoreDefaultHotkeyCommand":
                 await Execute(ViewModel.RestoreDefaultHotkeyCommand);
                 Assert.Equal(SmartSnippets.Presentation.ViewModels.StatusSeverity.Error, ViewModel.HotkeyFeedbackSeverity);

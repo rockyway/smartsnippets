@@ -34,9 +34,21 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     internal FoldersPageViewModel Folders { get; private set; } = null!;
     internal SettingsViewModel SettingsPage { get; private set; } = null!;
     internal PopupViewModel Popup { get; private set; } = null!;
-    private CandidateNativeGate? _gate;
-    private CandidateNativeCapability? _nativeCapability;
-    internal CandidateNativeGate Gate => _gate ??= new(_nativeCapability = boundary.NativeCapability, () => _previewActive);
+    private DesktopInsertionCoordinator? _gate;
+    internal DesktopInsertionCoordinator Gate => _gate ??= new(() => _previewActive);
+    private IElevation? _elevation;
+    internal bool IsElevated => _elevation?.IsElevated == true;
+    internal async Task<ElevationResult> RestartAsAdministratorAsync()
+    {
+        var result = new ElevationResult(ElevationOutcome.Cancelled, "Restart cancelled; Smart Snippets keeps running.");
+        await ExitAsync(() =>
+        {
+            result = _elevation?.RestartAsAdministrator() ?? new(ElevationOutcome.Failed, "Administrator restart is unavailable.");
+            if (result.Outcome != ElevationOutcome.Started) _tray?.Notify("Restart as administrator", result.Message);
+            return result.Outcome == ElevationOutcome.Started;
+        });
+        return result;
+    }
 
     internal async Task StartAsync(bool background, LaunchOptions options)
     {
@@ -65,7 +77,8 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             if (_desktop is not null) Gate.ComposeDesktop(_desktop.Operations);
             Gate.Compose(Store);
             Dialogs = boundary.CreateDialogs(false, TextSize);
-            var elevation = _desktop?.Elevation ?? new CandidateElevation();
+            _elevation = _desktop?.Elevation ?? new CandidateElevation();
+            var elevation = new CoordinatedElevation(this);
             var sort = new SortPreference(SettingsStore, Settings.PopupSort);
             _popupHost = new DeferredPopupHost(new Popup.RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
             Popup = new PopupViewModel(Store, SettingsStore, Settings, Gate, Gate, elevation, _popupHost,
@@ -78,7 +91,6 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             SettingsPage = new SettingsViewModel(Settings, SettingsStore, _theme, TextSize,
                 _desktop?.Startup ?? new CandidateStartupRegistration(), _desktop?.Hotkeys ?? new CandidateHotkeyManager(Settings.Hotkey), elevation,
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()), () => ShowPreview());
-            if (_nativeCapability is { } capability) capability.AuthorizationChanged += OnAuthorizationChanged;
             Gate.AvailabilityChanged += RefreshClipboardAvailability;
             Popup.PropertyChanged += OnPopupPropertyChanged;
             RefreshClipboardAvailability();
@@ -89,6 +101,9 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
                 window => { if (_desktop is null) boundary.Dispatcher.Post(ShowPopupFromNativeRequest); else if (window != 0) ShowCapturedPopup(window); }, () => PostNavigation(PageKind.Settings),
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()));
             RefreshHotkeyUi();
+            if (_desktop?.StartupMigrationFailed == true && !_tray.TryNotify("Startup could not be updated",
+                "Open Settings and toggle Start with Windows to repair startup registration."))
+                await Dialogs.ShowInfoAsync("Startup could not be updated", "Open Settings and toggle Start with Windows to repair startup registration.");
             EnsurePopup();
             if (_desktop is not null && !_desktop.Hotkeys.Status.IsRegistered)
                 _tray.Notify("Shortcut not registered", _desktop.Hotkeys.Status.Message);
@@ -115,10 +130,6 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         _tray?.SetHotkeyState(status.IsRegistered, _popupVisible);
     }
 
-    private void OnAuthorizationChanged() => boundary.Dispatcher.Post(() =>
-    {
-        if (!_disposed) RefreshClipboardAvailability();
-    });
     private void OnPopupPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(PopupViewModel.IsInserting) or nameof(PopupViewModel.Editor))
@@ -130,7 +141,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     internal void RefreshClipboardAvailability()
     {
         if (_disposed || Snippets is null || Popup is null) return;
-        // Execution also rechecks the lease; notification never grants authorization.
+        // Execution also rechecks admission; notifications never grant permission.
         Snippets.RefreshClipboardAvailability();
         Popup.RefreshClipboardAvailability();
     }
@@ -235,7 +246,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         popup.Prewarm();
         return popup;
     }
-    internal async Task ExitAsync()
+    internal async Task ExitAsync(Func<bool>? commit = null)
     {
         if (_exiting || ExitSuperseded) return;
         _exiting = true;
@@ -266,6 +277,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             if (!canExitPopup) { CancelExit(); return; }
             await DrainManagementAsync();
             if (ExitSuperseded) return;
+            if (commit is not null && !commit()) { CancelExit(); return; }
             Gate.CloseAdmission();
             _popupHost?.Commit();
             ReleaseResources();
@@ -405,11 +417,6 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         if (_disposed) return;
         _disposed = true;
         if (_ownsLog) AppLog.Info("candidate_cleanup_stage", "stage=begin");
-        if (_nativeCapability is { } capability)
-        {
-            capability.AuthorizationChanged -= OnAuthorizationChanged;
-            capability.Revoke();
-        }
         if (_desktop is not null) _desktop.Hotkeys.StatusChanged -= OnHotkeyStatusChanged;
         Gate.AvailabilityChanged -= RefreshClipboardAvailability;
         if (Popup is not null) Popup.PropertyChanged -= OnPopupPropertyChanged;
@@ -433,6 +440,12 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     {
         try { release(); }
         catch (Exception ex) { if (_ownsLog) AppLog.Error("candidate_cleanup_failed", ex); }
+    }
+    private sealed class CoordinatedElevation(UnoAppHost host) : IElevation
+    {
+        public bool IsElevated => host.IsElevated;
+        public ElevationResult RestartAsAdministrator() => new(ElevationOutcome.Failed, "Use the coordinated asynchronous restart.");
+        public Task<ElevationResult> RestartAsAdministratorAsync() => host.RestartAsAdministratorAsync();
     }
     private sealed class HostNotifier(UnoAppHost host) : INotifier
     {

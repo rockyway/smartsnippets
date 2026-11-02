@@ -65,7 +65,7 @@ public sealed partial class PopupWindow
                 menu.Items[0].Invoke(); await last; Assert.Equal(1, native.Copies);
                 menu.Items[1].Invoke(); await last; Assert.Equal(1, native.Sends);
                 Assert.Equal(1, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
-                f.Boundary.Capability!.Revoke(); f.Host.RefreshClipboardAvailability();
+                f.Host.Gate.SuspendAdmission(); f.Host.RefreshClipboardAvailability();
                 Assert.False(menu.Items[0].IsEnabled); Assert.False(menu.Items[1].IsEnabled);
                 menu.Items[0].Invoke(); menu.Items[1].Invoke(); await last;
                 Assert.Equal(1, native.Copies); Assert.Equal(1, native.Sends);
@@ -76,6 +76,15 @@ public sealed partial class PopupWindow
                 OnCopyFailedText(this, new()); await last; Assert.Equal(1, native.Copies);
                 native.CopyResult = false; OnCopyFailedText(this, new()); await last;
                 Assert.Equal(SmartSnippets.Presentation.Text.UiText.CopyFailed, ViewModel.FooterMessage); Assert.Equal(2, native.Copies); break;
+            case "ViewModel.RestartAsAdminCommand":
+                native.TargetCheck = TargetCheck.Elevated; await ViewModel.InsertSelectedAsync();
+                Assert.True(ViewModel.CanRestartAsAdmin); await Execute(ViewModel.RestartAsAdminCommand);
+                Assert.Equal(0, f.Boundary.Exits); Assert.Equal(0, native.Sends); break;
+            case "ViewModel.PasteAnywayCommand":
+                native.Swap = SwapStatus.NotPreserved; await ViewModel.InsertSelectedAsync();
+                Assert.True(ViewModel.IsConfirmingClipboardLoss); Assert.Equal(0, native.Sends);
+                native.Swap = SwapStatus.Swapped; await Execute(ViewModel.PasteAnywayCommand);
+                Assert.Equal(1, native.Sends); Assert.Equal(1, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount); break;
             case "ViewModel.CancelPasteAnywayCommand":
                 native.Swap = SwapStatus.NotPreserved; await ViewModel.InsertSelectedAsync();
                 Assert.True(ViewModel.IsConfirmingClipboardLoss); await Execute(ViewModel.CancelPasteAnywayCommand);

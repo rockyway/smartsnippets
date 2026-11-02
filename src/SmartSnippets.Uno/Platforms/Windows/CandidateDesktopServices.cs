@@ -9,6 +9,7 @@ internal interface ICandidateDesktopServices : IDisposable
     IHotkeyManager Hotkeys { get; }
     IStartupRegistration Startup { get; }
     IElevation Elevation { get; }
+    bool StartupMigrationFailed => false;
 }
 
 internal interface ICandidateClipboardOperations : ITargetProbe, IPasteDispatcher, IClipboardService

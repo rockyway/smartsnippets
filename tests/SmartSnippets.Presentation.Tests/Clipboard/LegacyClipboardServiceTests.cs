@@ -1,5 +1,5 @@
 using Microsoft.UI.Dispatching;
-using SmartSnippets.App.Services;
+using SmartSnippets.Uno.Services;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Services;
 using Windows.ApplicationModel.DataTransfer;

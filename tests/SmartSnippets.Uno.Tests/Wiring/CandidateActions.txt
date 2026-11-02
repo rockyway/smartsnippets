@@ -48,6 +48,7 @@ Pages/SettingsPage.xaml|32|SelectionChanged|OnThemeSelectionChanged
 Pages/SettingsPage.xaml|37|SelectionChanged|OnPaletteSelectionChanged
 Pages/SettingsPage.xaml|43|Toggled|OnStartupToggled
 Pages/SettingsPage.xaml|46|Command|{x:Bind ViewModel.PreviewGlobalDialogCommand}
+Pages/SettingsPage.xaml|47|Command|{x:Bind ViewModel.RestartAsAdministratorCommand}
 Pages/SnippetsPage.xaml|0|Loaded|OnLoaded
 Pages/SnippetsPage.xaml|15|Invoked|OnNewAccelerator
 Pages/SnippetsPage.xaml|16|Invoked|OnFindAccelerator
@@ -83,6 +84,8 @@ Popup/PopupWindow.xaml|28|Command|{x:Bind ViewModel.OpenMainWindowCommand, Mode=
 Popup/PopupWindow.xaml|31|ItemClick|OnItemClick
 Popup/PopupWindow.xaml|31|ContainerContentChanging|OnContainerContentChanging
 Popup/PopupWindow.xaml|50|Click|OnCopyFailedText
+Popup/PopupWindow.xaml|51|Command|{x:Bind ViewModel.RestartAsAdminCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|52|Command|{x:Bind ViewModel.PasteAnywayCommand, Mode=OneWay}
 Popup/PopupWindow.xaml|53|Command|{x:Bind ViewModel.CancelPasteAnywayCommand, Mode=OneWay}
 Popup/PopupWindow.xaml|54|Command|{x:Bind ViewModel.DismissFooterCommand, Mode=OneWay}
 Popup/PopupWindow.xaml|55|PreviewKeyDown|OnEditorPreviewKeyDown

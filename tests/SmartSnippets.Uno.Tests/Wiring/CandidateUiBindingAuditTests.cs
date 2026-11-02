@@ -8,14 +8,15 @@ public sealed class CandidateUiBindingAuditTests
     private static string Read(string file) => File.ReadAllText(Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.Uno", file));
 
     [Fact]
-    public void IntentionallyDisabledButtons_HaveNoCommandThatCanReenableThem()
+    public void AdministratorRestartAndExplicitConsentAreWiredToGuardedCommands()
     {
-        foreach (var file in new[] { "Pages/SettingsPage.xaml", "Popup/PopupWindow.xaml", "Controls/SnippetEditor.xaml" })
-        {
-            var xaml = XDocument.Parse(Read(file));
-            foreach (var button in xaml.Descendants().Where(e => e.Name.LocalName == "Button" && (string?)e.Attribute("IsEnabled") == "False"))
-                Assert.Null(button.Attribute("Command"));
-        }
+        var settings = XDocument.Parse(Read("Pages/SettingsPage.xaml"));
+        var restart = settings.Descendants().Single(e => (string?)e.Attribute("Content") == "Restart as administrator");
+        Assert.Equal("{x:Bind ViewModel.RestartAsAdministratorCommand}", (string?)restart.Attribute("Command"));
+        Assert.Equal("{x:Bind ViewModel.CanRestartAsAdmin, Mode=OneTime}", (string?)restart.Attribute("IsEnabled"));
+        var popup = XDocument.Parse(Read("Popup/PopupWindow.xaml"));
+        foreach (var command in new[] { "RestartAsAdminCommand", "PasteAnywayCommand" })
+            Assert.Single(popup.Descendants(), e => (string?)e.Attribute("Command") == "{x:Bind ViewModel." + command + ", Mode=OneWay}");
     }
 
     [Fact]
@@ -39,7 +40,7 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Contains("_main?.BringToFront()", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("if (await NavigateGuardedAsync(kind) && show)", Read("MainWindow.xaml.cs"));
         Assert.Contains("Services.WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, qaPlacement)", Read("MainWindow.xaml.cs"));
-        Assert.Contains("Program.InitialOptions.HasRequest || NativeCapability is not null", Read("WindowsCandidateBoundary.cs"));
+        Assert.Contains("Program.InitialOptions.HasRequest", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("if (selected.Handle == (nint)primary.Value) return false;", Read("Services/WindowPlacement.cs"));
         Assert.Contains("CandidateUiPolicy.IsBetterBottomLeft(", Read("Services/WindowPlacement.cs"));
         Assert.Contains("EnumDisplayMonitors", Read("Services/WindowPlacement.cs"));

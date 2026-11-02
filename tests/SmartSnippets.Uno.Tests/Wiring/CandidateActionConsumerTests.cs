@@ -106,10 +106,7 @@ public sealed class CandidateActionConsumerTests
                 action = action[8..].Split(',', '}')[0];
             }
             if (file == "Popup/PopupWindow.xaml" || action == "CopyAfterAdmissionCommand")
-                f.Boundary.Capability = new(Guid.NewGuid(), native.Target.WindowHandle, native.Target.ProcessId,
-                    CandidateNativeOperation.Capture | CandidateNativeOperation.Insert | CandidateNativeOperation.Copy |
-                    CandidateNativeOperation.Focus | CandidateNativeOperation.Input | CandidateNativeOperation.Clipboard |
-                    CandidateNativeOperation.ClipboardLoss, TimeSpan.FromMinutes(1), TimeProvider.System, native);
+                f.Boundary.DesktopFactory = (_, _) => new ActionAuditSupport.Desktop(native);
             await f.Start();
             var views = new WindowsCandidateBoundary();
             views.CreateTheme(f.Host.Settings);

@@ -6,14 +6,11 @@ public sealed class CandidateCommandPolicyTests
     public void CandidateCommands_UsePinnedCwdAndRid()
     {
         var root = CandidateBuildGraphTests.RepoRoot;
-        var workflow = File.ReadAllText(Path.Combine(root, ".github/workflows/uno-windows-candidate.yml"));
+        var workflow = File.ReadAllText(Path.Combine(root, ".github/workflows/ci.yml"));
         var steps = workflow.Split("      - name:");
         var test = Assert.Single(steps, s => s.Contains("dotnet test ../../tests/SmartSnippets.Uno.Tests"));
         Assert.Contains("working-directory: src/SmartSnippets.Uno", test);
-        var restore = Assert.Single(steps, s => s.Contains("dotnet restore SmartSnippets.Uno.csproj"));
-        Assert.Contains("working-directory: src/SmartSnippets.Uno", restore);
-        Assert.Contains("-r win-x64", restore);
-        var publish = File.ReadAllText(Path.Combine(root, "scripts/publish-uno-candidate-aot.ps1"));
+        var publish = File.ReadAllText(Path.Combine(root, "scripts/publish-uno-aot.ps1"));
         var cwd = publish.IndexOf("Set-Location -LiteralPath $candidate", StringComparison.Ordinal);
         var restoreIndex = publish.IndexOf("dotnet restore SmartSnippets.Uno.csproj -r win-x64", StringComparison.Ordinal);
         var publishIndex = publish.IndexOf("dotnet publish SmartSnippets.Uno.csproj -c Release -r win-x64 --no-restore", StringComparison.Ordinal);

@@ -7,8 +7,8 @@ public sealed class DailyStartupTests
     [Fact]
     public void EnableReadDisable_UsesQuotedCurrentPathAndCandidateValueOnly()
     {
-        var values = new Dictionary<string, object?> { ["SmartSnippets"] = "legacy sentinel" };
-        const string exe = @"C:\synthetic folder\SmartSnippets.UnoCandidate.exe";
+        var values = new Dictionary<string, object?> { ["UnrelatedApp"] = "unrelated sentinel" };
+        const string exe = @"C:\synthetic folder\SmartSnippets.exe";
         var service = new StartupRegistration(() => exe, name => values.GetValueOrDefault(name),
             (name, command) => values[name] = command, name => values.Remove(name));
         Assert.False(service.IsEnabled());
@@ -19,7 +19,7 @@ public sealed class DailyStartupTests
         Assert.False(service.IsEnabled());
         Assert.True(service.Disable().Success);
         Assert.False(service.IsEnabled());
-        Assert.Equal("legacy sentinel", Assert.Single(values).Value);
+        Assert.Equal("unrelated sentinel", Assert.Single(values).Value);
         Assert.True(service.Disable().Success);
     }
 

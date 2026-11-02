@@ -14,10 +14,15 @@ internal sealed class WindowsDesktopServices : ICandidateDesktopServices
     public ICandidateDailyOperations Operations { get; }
     public IHotkeyManager Hotkeys { get; }
     public IStartupRegistration Startup { get; } = new StartupRegistration();
-    public IElevation Elevation { get; } = new CandidateElevation();
+    public IElevation Elevation { get; }
+    public bool StartupMigrationFailed { get; }
 
-    internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey)
+    internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey, Func<bool> mainHidden)
     {
+        Elevation = new ElevationService(mainHidden);
+        StartupMigrationFailed = StartupMigrationCoordinator.Start(
+            new WindowsStartupMigrationRegistry(@"Software\Microsoft\Windows\CurrentVersion\Run"),
+            Environment.ProcessPath, result => SmartSnippets.Core.Logging.AppLog.Info("startup_migration", result)) == StartupMigrationResult.Failed;
         Operations = new DesktopOperations(message.Handle, popup);
         _registration = new HotkeyService(message);
         _pressed = _ => hotkey();

@@ -46,10 +46,21 @@ jobs:
           global-json-file: global.json
       - run: dotnet test tests/SmartSnippets.Core.Tests -c Release
       - run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: src/SmartSnippets.Uno/global.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Uno composition and behavior tests (pinned SDK cwd)
+        working-directory: src/SmartSnippets.Uno
+        run: dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
+      - name: AOT validator negative tests
+        run: python -B -m unittest discover -s scripts/tests -q
       - name: AOT publish + warning gate
         shell: pwsh
         run: |
-          ./scripts/publish-aot.ps1 -Output publish -Version '${{ steps.tag.outputs.version }}' -BuildNumber ${{ github.run_number }}
+          ./scripts/publish-uno-aot.ps1 -Version '${{ steps.tag.outputs.version }}' -BuildNumber ${{ github.run_number }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check stamped version
         shell: pwsh
@@ -68,7 +79,7 @@ jobs:
           $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
           try {
             $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-            if (($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') }).Count -or 'SmartSnippets/SmartSnippets.exe' -notin $entries -or 'SmartSnippets/Assets/TitleIcon.png' -notin $entries -or 'SmartSnippets/SmartSnippets.App.exe' -in $entries -or 'SmartSnippets/SmartSnippets.App.dll' -in $entries -or 'SmartSnippets/SmartSnippets.dll' -in $entries) { throw 'Invalid zip layout' }
+            if (($entries | Where-Object { -not $_.StartsWith('SmartSnippets/') }).Count -or 'SmartSnippets/SmartSnippets.exe' -notin $entries -or 'SmartSnippets/Assets/TitleIcon.png' -notin $entries -or 'SmartSnippets/e_sqlite3.dll' -notin $entries -or 'SmartSnippets/SmartSnippets.App.exe' -in $entries -or 'SmartSnippets/SmartSnippets.App.dll' -in $entries -or 'SmartSnippets/SmartSnippets.dll' -in $entries) { throw 'Invalid zip layout' }
           } finally { $archive.Dispose() }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText("$zip.sha256", "$hash  $zip`n", [Text.UTF8Encoding]::new($false))

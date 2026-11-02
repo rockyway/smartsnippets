@@ -31,37 +31,6 @@ public sealed class CandidateIsolationFlowTests
         Assert.Equal(1, f.Boundary.Main.Disposals);
     }
     [Fact]
-    public async Task Profile_ConcurrentOwnerRefusedAndReacquiredAfterDispose()
-    {
-        using var f = new HostFixture();
-        await f.Start();
-        Assert.Throws<IOException>(() => CandidateProfile.OpenOwnedRoot(f.Root));
-        f.Host.Dispose();
-        using var profile = CandidateProfile.OpenOwnedRoot(f.Root);
-        Assert.Equal(f.Root, profile.Paths.Root);
-    }
-    [Fact]
-    public async Task ConcurrentHostFailure_DoesNotDisposeTheExistingOwnerOrItsLog()
-    {
-        using var f = new HostFixture(); await f.Start();
-        var secondBoundary = new TestBoundary();
-        using var second = new UnoAppHost(secondBoundary, () => CandidateProfile.OpenOwnedRoot(f.Root));
-        await second.StartAsync(false, new(null, false, null));
-        Assert.Equal(1, secondBoundary.Reports); Assert.Equal(1, secondBoundary.Exits);
-        Assert.Equal(0, secondBoundary.Messages); Assert.Equal(0, f.Boundary.MessageDisposals);
-        SmartSnippets.Core.Logging.AppLog.Info("candidate_existing_owner_alive");
-        f.Host.Dispose();
-        var logs = string.Join(Environment.NewLine, Directory.GetFiles(Path.Combine(f.Root, "logs")).Select(File.ReadAllText));
-        Assert.Contains("candidate_existing_owner_alive", logs);
-    }
-    [Fact]
-    public void ProfileAliasToProduction_IsRejectedBeforeAccess()
-    {
-        Assert.Throws<InvalidOperationException>(() => CandidateProfile.OpenOwnedRoot(new AppPaths().Root));
-        Assert.Throws<InvalidOperationException>(() => CandidateProfile.OpenOwnedRoot(Path.Combine(new AppPaths().Root, "child")));
-        Assert.Throws<InvalidOperationException>(() => CandidateProfile.OpenOwnedRoot(Path.Combine(new AppPaths().Root, "..", "SmartSnippets")));
-    }
-    [Fact]
     public async Task StartupFailure_ExitsThroughSubstitutionAndReleasesProfile()
     {
         using var f = new HostFixture(); f.Boundary.FailWindow = true;
@@ -123,7 +92,6 @@ public sealed class CandidateIsolationFlowTests
         Assert.True(f.Host.Snippets.Porting.IsBusy);
         var exit = f.Host.ExitAsync();
         Assert.False(exit.IsCompleted); Assert.Equal(0, f.Boundary.Exits);
-        Assert.Throws<IOException>(() => CandidateProfile.OpenOwnedRoot(f.Root));
         picker.SetResult(null);
         Assert.False(await operation); await exit;
         Assert.False(f.Host.Snippets.Porting.IsBusy); Assert.Equal(1, f.Boundary.Exits);

@@ -18,6 +18,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     private MessageWindow? _message;
     private ThemeService? _theme;
     private IHotkeyManager? _hotkeys;
+    private UnoAppHost? _host;
     // Read-only linked-fixture observation; no production activation or native unlock.
     internal MainWindow? MainWindow => _main;
     internal PopupWindow? PopupWindow => _popup;
@@ -31,9 +32,10 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     }
     internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey)
     {
+        _host = host;
         if (Program.InitialOptions.HasRequest) return null;
         var desktop = new WindowsDesktopServices(_message!, settings,
-            () => _popup is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_popup), hotkey);
+            () => _popup is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_popup), hotkey, () => _main?.IsHidden ?? true);
         _hotkeys = desktop.Hotkeys;
         return desktop;
     }
@@ -50,7 +52,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
             PageKind.Folders => new FoldersPage { RunOperation = host.RunOperationAsync, TextSize = host.TextSize, ViewModel = host.Folders },
             _ => new SettingsPage { ViewModel = host.SettingsPage },
         };
-        _main = new MainWindow(CreatePage, Program.InitialOptions.HasRequest || NativeCapability is not null);
+        _main = new MainWindow(CreatePage, Program.InitialOptions.HasRequest);
         _theme!.Register(_main);
         return new MainSurface(_main);
     }
@@ -64,7 +66,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         window.ViewModel = host.Popup;
         window.RunOperation = host.RunOperationAsync;
         window.RunCopy = host.RunCopyOperationAsync;
-        window.UseQaPlacement = Program.InitialOptions.HasRequest || NativeCapability is not null;
+        window.UseQaPlacement = Program.InitialOptions.HasRequest;
         _theme!.Register(window);
         window.Closed += (_, _) => { if (ReferenceEquals(_popup, window)) _popup = null; };
         var surface = new PopupSurface(window,
@@ -76,7 +78,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     internal override ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
     {
         // Tray supplies the pre-menu target HWND; the host captures it before showing.
-        var tray = new TrayIcon(_message!, open, preview, settings, () => { }, exit, false,
+        var tray = new TrayIcon(_message!, open, preview, settings, () => { if (_host is { } host) Dispatcher.Post(() => _ = host.RestartAsAdministratorAsync()); }, exit, _hotkeys is not null && _host?.IsElevated == false,
             () => _hotkeys?.Status is { IsRegistered: true } status ? status.Gesture.ToDisplayString() : null, _hotkeys is not null)
             { State = TrayStatePolicy.Compute(_hotkeys?.Status.IsRegistered == true, false) };
         tray.Add();
@@ -136,6 +138,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     private sealed class TraySurface(TrayIcon tray) : ICandidateTray
     {
         public void Notify(string title, string message) => tray.ShowBalloon(title, message);
+        public bool TryNotify(string title, string message) => tray.ShowBalloon(title, message);
         public void SetHotkeyState(bool registered, bool popupVisible) => tray.State = TrayStatePolicy.Compute(registered, popupVisible);
         public void Dispose() => tray.Dispose();
     }

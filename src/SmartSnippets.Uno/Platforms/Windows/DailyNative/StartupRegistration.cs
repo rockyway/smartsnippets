@@ -6,11 +6,11 @@ using SmartSnippets.Presentation.Services;
 
 namespace SmartSnippets.Uno.Services;
 
-// Legacy per-user Run semantics, with a separate candidate value and no legacy migration.
+// Official per-user Run registration. StartupMigration normalizes existing registration before Settings reads it.
 internal sealed class StartupRegistration : IStartupRegistration
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    internal const string ValueName = "SmartSnippets.UnoCandidate019";
+    internal const string ValueName = "SmartSnippets";
     private readonly Func<string?> _executable;
     private readonly Func<string, object?> _read;
     private readonly Action<string, string> _write;

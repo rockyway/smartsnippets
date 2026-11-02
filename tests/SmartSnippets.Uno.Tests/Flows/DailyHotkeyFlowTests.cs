@@ -186,7 +186,7 @@ namespace SmartSnippets.Uno.Tests.Flows
         public Task DailyStartup_SettingsReflectsRegistryAndToggleChangesOnlyCandidateValue() => CandidateHostThread.RunAsync(async () =>
         {
             using var f = new HostFixture();
-            var values = new Dictionary<string, object?> { ["SmartSnippets"] = "legacy" };
+            var values = new Dictionary<string, object?> { ["UnrelatedApp"] = "sentinel" };
             var startup = new Services.StartupRegistration(() => @"C:\synthetic\candidate.exe",
                 name => values.GetValueOrDefault(name), (name, command) => values[name] = command,
                 name => values.Remove(name));
@@ -198,7 +198,7 @@ namespace SmartSnippets.Uno.Tests.Flows
             Assert.False(startup.IsEnabled());
             f.Host.SettingsPage.StartAtLogin = true;
             Assert.True(startup.IsEnabled());
-            Assert.Equal("legacy", values["SmartSnippets"]);
+            Assert.Equal("sentinel", values["UnrelatedApp"]);
         });
 
         [Fact]

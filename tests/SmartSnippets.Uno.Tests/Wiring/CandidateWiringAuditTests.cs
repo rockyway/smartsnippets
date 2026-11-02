@@ -13,72 +13,10 @@ namespace SmartSnippets.Uno.Tests.Wiring;
 public sealed class CandidateWiringAuditTests
 {
     private static string Candidate => Path.Combine(CandidateBuildGraphTests.RepoRoot, "src", "SmartSnippets.Uno");
-    // R6: same-relative-path ports plus the explicitly renamed composition root.
-    // Deliberately reviewed, not regenerated in the test. Both heads are pinned:
-    // a legacy fix must trigger review even when candidate source is unchanged.
-    private const string PortedSources = """
-        App.xaml
-        App.xaml.cs
-        Controls/HoverDetailsSurface.xaml
-        Controls/HoverDetailsSurface.xaml.cs
-        Controls/PaletteBaseline.xaml
-        Controls/PaletteBaseline.xaml.cs
-        Controls/PopupRow.xaml
-        Controls/PopupRow.xaml.cs
-        Controls/ShortcutRecorder.xaml
-        Controls/ShortcutRecorder.xaml.cs
-        Controls/SnippetEditor.xaml
-        Controls/SnippetEditor.xaml.cs
-        Controls/SnippetRowDetails.xaml
-        Controls/SnippetRowDetails.xaml.cs
-        Converters/VisibilityConverters.cs
-        MainWindow.xaml
-        MainWindow.xaml.cs
-        Pages/FoldersPage.xaml
-        Pages/FoldersPage.xaml.cs
-        Pages/SettingsPage.xaml
-        Pages/SettingsPage.xaml.cs
-        Pages/SnippetsPage.xaml
-        Pages/SnippetsPage.xaml.cs
-        Popup/PopupWindow.xaml
-        Popup/PopupWindow.xaml.cs
-        Popup/RecoverablePopupHost.cs
-        Program.cs
-        Services/DialogService.cs
-        Services/FlyoutSurface.cs
-        Services/MessageWindow.cs
-        Services/PaletteResources.cs
-        Services/SnippetFileService.cs
-        Services/TaskbarTheme.cs
-        Services/ThemeService.cs
-        Services/TrayIcon.cs
-        Services/TrayIconNative.cs
-        Services/UiDispatcher.cs
-        Services/WindowPlacement.cs
-        Services/WindowSurface.cs
-        """;
-
     private static IEnumerable<string> Sources(string root) => Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
         .Select(p => Path.GetRelativePath(root, p).Replace('\\', '/'))
         .Where(p => !p.Split('/').Any(part => part is "bin" or "obj"))
         .Where(p => Path.GetExtension(p) is ".cs" or ".xaml");
-
-    private static string SourceDigest(string root, IEnumerable<string> paths) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", paths.Select(p =>
-            p + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-                File.ReadAllText(Path.Combine(root, p)).Replace("\r\n", "\n")))).ToLowerInvariant()))))).ToLowerInvariant();
-
-    [Fact]
-    public void DuplicatedHeadSources_AreEnumeratedAndPinnedAgainstLegacy()
-    {
-        var legacy = Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.App");
-        var ports = PortedSources.Replace("\r", "").Split('\n');
-        Assert.Equal(ports, Sources(Candidate).Intersect(Sources(legacy), StringComparer.Ordinal).Order(StringComparer.Ordinal));
-        Assert.Equal("68766b458691d74a5675855bdc2e6decaf2eccb72cfe6d9c40b911ca383f39a9",
-            SourceDigest(Candidate, ports.Append("UnoAppHost.cs")));
-        Assert.Equal("236480e57647f200648b36bc9bb14b59ef46154ab03e9ea86b1b36aa306c7966",
-            SourceDigest(legacy, ports.Append("AppHost.cs")));
-    }
 
     [Fact]
     public Task PopupSurface_OpenMainForwardsThroughRealFactoryToGuardedManagement() => CandidateHostThread.RunAsync(async () =>
@@ -128,9 +66,8 @@ public sealed class CandidateWiringAuditTests
             .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) && !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
             .Select(File.ReadAllText));
         // D80: ordinary Windows hotkey/capture/paste is now real. Keep all other unlocks absent.
-        foreach (var forbidden in new[] { "StartupMigrationCoordinator", "GetEnvironmentVariable(", "--after-pid", "--profile" })
+        foreach (var forbidden in new[] { "GetEnvironmentVariable(", "--profile" })
             Assert.DoesNotContain(forbidden, source);
-        Assert.DoesNotContain("SmartSnippets.App", source);
         var windows = File.ReadAllText(Path.Combine(Candidate, "WindowsCandidateBoundary.cs"));
         Assert.Contains("if (Program.InitialOptions.HasRequest) return null;", windows);
         Assert.Contains("new WindowsDesktopServices", windows);
@@ -141,15 +78,13 @@ public sealed class CandidateWiringAuditTests
         Assert.Contains("new StartupRegistration()", desktop);
         Assert.Contains("ClipboardService _copy = new()", desktop);
         var startup = File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/DailyNative/StartupRegistration.cs"));
-        Assert.Contains("ValueName = \"SmartSnippets.UnoCandidate019\"", startup);
-        Assert.DoesNotContain("ValueName = \"SmartSnippets\"", startup);
+        Assert.Contains("ValueName = \"SmartSnippets\"", startup);
         Assert.Contains("_write(ValueName, Command(exe))", startup);
         Assert.Contains("_delete(ValueName)", startup);
         Assert.Contains("key.SetValue(name, command, RegistryValueKind.String)", startup);
         Assert.Contains("string.Equals(stored, Command(exe)", startup);
-        Assert.Contains("new CandidateElevation()", desktop);
-        Assert.Contains("SourceReviewed = false", File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/AcceptanceNative/NativeAcceptanceFactory.cs")));
-        var gatePath = Path.Combine(Candidate, "Platforms", "Windows", "CandidateNativeGate.cs");
+        Assert.Contains("new ElevationService(mainHidden)", desktop);
+        var gatePath = Path.Combine(Candidate, "Platforms", "Windows", "DesktopInsertionCoordinator.cs");
         Assert.Contains("new InsertionService(store, this, this)", File.ReadAllText(gatePath));
         foreach (var path in Directory.GetFiles(Candidate, "*.cs", SearchOption.AllDirectories)
             .Where(path => path != gatePath))
@@ -173,7 +108,7 @@ public sealed class CandidateWiringAuditTests
         var host = File.ReadAllText(Path.Combine(Candidate, "UnoAppHost.cs"));
         Assert.Contains("popup.Hidden += OnPopupHidden", host);
         Assert.Contains("popup.PresentationChanged += OnPopupPresentationChanged", host);
-        Assert.Contains("capability.Revoke();", host);
+        Assert.Contains("Gate.CloseAdmission();", host);
     }
 
     [Fact]
@@ -193,7 +128,7 @@ public sealed class CandidateWiringAuditTests
         var tray = File.ReadAllText(Path.Combine(Candidate, "Services", "TrayIcon.cs"));
         Assert.Equal("Smart Snippets", Services.CandidateTrayText.Tooltip(false));
         Assert.Equal("Smart Snippets — hotkey unavailable", Services.CandidateTrayText.Tooltip(true));
-        Assert.Contains("private const uint IconId = 2019;", tray);
+        Assert.Contains("private const uint IconId = 1;", tray);
         Assert.Contains("data.hWnd = _window.Handle;", tray);
         Assert.DoesNotContain("NIF_GUID", tray);
         Assert.DoesNotContain("guidItem", tray);
@@ -224,6 +159,6 @@ public sealed class CandidateWiringAuditTests
         Assert.Contains("FlyoutPlacementMode.Bottom", popup);
         var settings = XDocument.Load(Path.Combine(Candidate, "Pages", "SettingsPage.xaml"));
         Assert.Null(settings.Descendants().Single(e => (string?)e.Attribute(ns + "Name") == "StartupToggle").Attribute("IsEnabled")); // Actual registration controls the toggle state.
-        Assert.Contains("Administrator restart is unavailable", settings.ToString());
+        Assert.Contains("Restart with administrator rights", settings.ToString());
     }
 }
