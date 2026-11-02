@@ -20,6 +20,7 @@ GetWindowRect
 DwmGetWindowAttribute
 DWMWINDOWATTRIBUTE
 MessageBox
+MonitorFromPoint
 MonitorFromWindow
 GetMonitorInfo
 GetDpiForMonitor
@@ -75,6 +76,8 @@ SetForegroundWindow
 AttachThreadInput
 RegisterHotKey
 UnregisterHotKey
+GetClipboardOwner
+IsClipboardFormatAvailable
 OpenClipboard
 CloseClipboard
 EmptyClipboard

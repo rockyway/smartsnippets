@@ -22,7 +22,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private DeferredPopupHost? _popupHost;
     private IThemeService? _theme;
     private bool _exiting, _disposed, _started, _ownsLog, _disposing, _disposeRequested;
-    private bool _previewActive, _previewHidden, _pendingCaptured;
+    private bool _previewActive, _previewHidden, _pendingCaptured, _popupVisible;
     internal bool CanPresentPopup => !_exiting && !ExitSuperseded;
     private bool ExitSuperseded => _disposed || _disposeRequested;
     internal ISnippetStore Store { get; private set; } = null!;
@@ -84,9 +84,11 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             RefreshClipboardAvailability();
             _main = boundary.CreateMain(this);
             _main.HiddenByClose += OnHiddenByClose;
+            if (_desktop is not null) _desktop.Hotkeys.StatusChanged += OnHotkeyStatusChanged;
             _tray = boundary.CreateTray(() => PostNavigation(PageKind.Snippets),
                 () => boundary.Dispatcher.Post(() => { if (_desktop is null) ShowPopupFromNativeRequest(); else ShowPreview(); }), () => PostNavigation(PageKind.Settings),
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()));
+            RefreshHotkeyUi();
             EnsurePopup();
             if (_desktop is not null && !_desktop.Hotkeys.Status.IsRegistered)
                 _tray.Notify("Shortcut not registered", _desktop.Hotkeys.Status.Message);
@@ -102,6 +104,15 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             boundary.ReportStartupFailure();
             boundary.Exit();
         }
+    }
+
+    private void OnHotkeyStatusChanged(object? sender, EventArgs args) => boundary.Dispatcher.Post(RefreshHotkeyUi);
+    private void RefreshHotkeyUi()
+    {
+        if (_disposed) return;
+        var status = _desktop?.Hotkeys.Status ?? new CandidateHotkeyManager(Settings.Hotkey).Status;
+        _main?.SetHotkeyStatus(status);
+        _tray?.SetHotkeyState(status.IsRegistered, _popupVisible);
     }
 
     private void OnAuthorizationChanged() => boundary.Dispatcher.Post(() =>
@@ -178,6 +189,8 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private void OnPopupHidden(object? sender, EventArgs args)
     {
         if (!ReferenceEquals(sender, _popup)) return;
+        _popupVisible = false;
+        RefreshHotkeyUi();
         _previewHidden = true;
         _previewActive = Popup.IsPreview && Popup.IsEditorOpen;
         if (_pendingCaptured) Gate.ClearCapturedTarget();
@@ -187,6 +200,8 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private void OnPopupPresentationChanged(object? sender, bool shown)
     {
         if (!ReferenceEquals(sender, _popup)) return;
+        _popupVisible = shown;
+        RefreshHotkeyUi();
         if (!shown)
         {
             if (_pendingCaptured) Gate.ClearCapturedTarget();
@@ -395,6 +410,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             capability.AuthorizationChanged -= OnAuthorizationChanged;
             capability.Revoke();
         }
+        if (_desktop is not null) _desktop.Hotkeys.StatusChanged -= OnHotkeyStatusChanged;
         Gate.AvailabilityChanged -= RefreshClipboardAvailability;
         if (Popup is not null) Popup.PropertyChanged -= OnPopupPropertyChanged;
         _popupHost?.Commit();

@@ -106,6 +106,28 @@ namespace SmartSnippets.Uno.Tests.Flows
             Assert.Equal(0, desktop.Native.Captures); Assert.Equal(0, desktop.Native.Sends);
         });
 
+        [Fact]
+        public Task HotkeyUi_UsesRegisteredGestureAndTracksPopupAndSettingsChanges() => CandidateHostThread.RunAsync(async () =>
+        {
+            using var f = new HostFixture(); Desktop? desktop = null;
+            f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
+            await f.Start();
+            Assert.True(f.Boundary.Main.HotkeyStatus!.IsRegistered);
+            Assert.Equal(TrayState.Ready, f.Boundary.TrayState);
+            var views = new WindowsCandidateBoundary(); views.CreateTheme(f.Host.Settings);
+            using var main = views.CreateMain(f.Host);
+            main.SetHotkeyStatus(desktop!.Hotkeys.Status);
+            Assert.Contains(desktop.Hotkeys.Status.Message, views.MainWindow!.NativeStatusText.Text);
+            Assert.DoesNotContain("insertion unavailable", views.MainWindow.NativeStatusText.Text);
+            var changed = new HotkeyGesture(HotkeyGesture.ModControl | HotkeyGesture.ModAlt, 0x78);
+            Assert.True(desktop.Hotkeys.TryChange(changed).Success); f.Boundary.Drain();
+            Assert.Equal(changed, f.Boundary.Main.HotkeyStatus.Gesture);
+            desktop.Press(); Assert.Equal(TrayState.PopupOpen, f.Boundary.TrayState);
+            f.Boundary.Popups[0].Hide(); Assert.Equal(TrayState.Ready, f.Boundary.TrayState);
+            main.SetHotkeyStatus(new(false, changed, "Synthetic registration conflict"));
+            Assert.Equal("Synthetic registration conflict", views.MainWindow.NativeStatusText.Text);
+        });
+
         private sealed class Registration : ICandidateHotkeyRegistration
         {
             internal bool Conflict;

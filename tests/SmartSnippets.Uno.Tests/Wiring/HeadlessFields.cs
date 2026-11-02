@@ -11,6 +11,7 @@ private SmartSnippets.Uno.Tests.Wiring.HeadlessBindings Bindings { get; } = new(
 internal Grid RootGrid { get; } = new();
 internal Grid AppTitleBar { get; } = new();
 internal NavigationView Navigation { get; } = new();
+internal TextBlock NativeStatusText { get; } = new();
 internal NavigationViewItem SnippetsItem { get; } = new();
 internal NavigationViewItem FoldersItem { get; } = new();
 internal NavigationViewItem SettingsItem { get; } = new();

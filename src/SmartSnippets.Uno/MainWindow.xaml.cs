@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Navigation;
+using SmartSnippets.Presentation.Services;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -86,6 +87,9 @@ public sealed partial class MainWindow : Window
     public event EventHandler? HiddenByClose;
 
     internal void SetInteractionEnabled(bool enabled) => Navigation.IsEnabled = enabled;
+    internal void SetHotkeyStatus(HotkeyStatus status) => NativeStatusText.Text = status.IsRegistered
+        ? status.Message + " Focus a target app, press the shortcut, then Enter to insert. Copy and start at login remain unavailable."
+        : status.Message;
 
     public bool IsHidden => !AppWindow.IsVisible;
 

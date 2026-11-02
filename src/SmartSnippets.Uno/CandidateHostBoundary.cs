@@ -12,6 +12,7 @@ internal interface ICandidateMainWindow : IDisposable
     Task NavigateAsync(PageKind page, bool show);
     Task<bool> CanExitAsync();
     void SetInteractionEnabled(bool enabled);
+    void SetHotkeyStatus(HotkeyStatus status) { }
 }
 internal interface ICandidatePopupWindow : IPopupHost, IDisposable
 {
@@ -26,7 +27,10 @@ internal interface ICandidatePopupWindow : IPopupHost, IDisposable
     bool IsCaptureSurfaceReady => false; // Read-only warmup metadata, never native permission.
     void ShowCaptured(InsertionTarget target) => throw new NotSupportedException("Captured popup is unavailable.");
 }
-internal interface ICandidateTray : INotifier, IDisposable { }
+internal interface ICandidateTray : INotifier, IDisposable
+{
+    void SetHotkeyState(bool registered, bool popupVisible) { }
+}
 
 /// <summary>Only external UI/OS boundaries are substituted; UnoAppHost always composes the real store and VMs.</summary>
 internal abstract class CandidateHostBoundary

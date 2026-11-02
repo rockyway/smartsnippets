@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Navigation;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Presentation.Text;
 using SmartSnippets.Uno.Pages;
 using SmartSnippets.Uno.Popup;
 using SmartSnippets.Uno.Services;
@@ -16,6 +17,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     private PopupWindow? _popup;
     private MessageWindow? _message;
     private ThemeService? _theme;
+    private IHotkeyManager? _hotkeys;
     // Read-only linked-fixture observation; no production activation or native unlock.
     internal MainWindow? MainWindow => _main;
     internal PopupWindow? PopupWindow => _popup;
@@ -27,8 +29,14 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         _theme!.ObserveSystemMessages(_message);
         return _message;
     }
-    internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) =>
-        Program.InitialOptions.HasRequest ? null : new WindowsDesktopServices(_message!, settings, () => _popup is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_popup), hotkey);
+    internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey)
+    {
+        if (Program.InitialOptions.HasRequest) return null;
+        var desktop = new WindowsDesktopServices(_message!, settings,
+            () => _popup is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_popup), hotkey);
+        _hotkeys = desktop.Hotkeys;
+        return desktop;
+    }
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => new DialogService(
         () => popup ? _popup?.ContentXamlRoot : _main?.ContentXamlRoot,
         () => { if (!popup) _main?.BringToFront(); }, textSize, _theme,
@@ -66,9 +74,10 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     }
     internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
     {
-        // Denied branch is passed directly: there is no native target enumerator/capture adapter in this head.
-        var tray = new TrayIcon(_message!, open, preview, settings, () => { }, exit, false, () => null)
-            { State = TrayState.HotkeyUnavailable };
+        // Tray popup remains a non-inserting preview, but its shortcut display/state is real.
+        var tray = new TrayIcon(_message!, open, preview, settings, () => { }, exit, false,
+            () => _hotkeys?.Status is { IsRegistered: true } status ? status.Gesture.ToDisplayString() : null)
+            { State = TrayStatePolicy.Compute(_hotkeys?.Status.IsRegistered == true, false) };
         tray.Add();
         return new TraySurface(tray);
     }
@@ -88,6 +97,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         public Task NavigateAsync(PageKind page, bool show) => window.ShowPageWithoutActivationAsync(page, show);
         public Task<bool> CanExitAsync() => window.CanExitAsync();
         public void SetInteractionEnabled(bool enabled) => window.SetInteractionEnabled(enabled);
+        public void SetHotkeyStatus(HotkeyStatus status) => window.SetHotkeyStatus(status);
         public void Dispose() => window.CloseForExit();
     }
     private sealed class PopupSurface(PopupWindow window, Func<HWND> owner, Func<bool> canShowCaptured) : ICandidatePopupWindow
@@ -125,6 +135,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     private sealed class TraySurface(TrayIcon tray) : ICandidateTray
     {
         public void Notify(string title, string message) => tray.ShowBalloon(title, message);
+        public void SetHotkeyState(bool registered, bool popupVisible) => tray.State = TrayStatePolicy.Compute(registered, popupVisible);
         public void Dispose() => tray.Dispose();
     }
 }

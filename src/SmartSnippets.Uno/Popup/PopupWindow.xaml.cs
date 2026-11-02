@@ -365,10 +365,14 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void Center()
     {
-        if (ViewModel.Target is { } target
-            && WindowPlacement.CenterOn(AppWindow, new HMONITOR(target.MonitorHandle), LogicalWidth, LogicalHeight)) return;
-        if (!WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
-            throw new InvalidOperationException("Candidate preview bottom-left placement could not be verified.");
+        if (ViewModel.IsPreview)
+        {
+            if (!WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
+                throw new InvalidOperationException("Candidate preview bottom-left placement could not be verified.");
+            return;
+        }
+        if (!WindowPlacement.CenterAtCursor(AppWindow, ViewModel.Target?.MonitorHandle ?? 0, LogicalWidth, LogicalHeight))
+            throw new InvalidOperationException("Candidate popup monitor placement could not be verified.");
     }
     public void Hide()
     {

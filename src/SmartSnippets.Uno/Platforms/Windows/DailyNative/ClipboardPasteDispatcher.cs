@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Presentation.Services;
+using SmartSnippets.Uno.Platforms.Windows;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Memory;
@@ -16,6 +17,8 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
     private const int FocusTimeoutMs = 500;
     private const long SnapshotLimit = 64L * 1024 * 1024;
     private const uint EnhancedMetafile = 14;
+    private const string TransactionFormat = "SmartSnippets.UnoCandidate019.PasteTransaction";
+    private static readonly string[] MarkerNames = ["ExcludeClipboardContentFromMonitorProcessing", "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"];
     private Snapshot? _pending;
 
     [LibraryImport("user32.dll")]
@@ -92,13 +95,25 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
             if (!PInvoke.EmptyClipboard()) return new(SwapStatus.Failed, null);
             // Once empty, retain the snapshot even if allocation or setting the text fails.
             _pending = snapshot;
-            try { status = SetText(text) ? SwapStatus.Swapped : SwapStatus.Failed; }
+            try { status = SetText(text, snapshot) ? SwapStatus.Swapped : SwapStatus.Failed; }
             catch (Exception ex) { AppLog.Info("clipboard_set_exception", $"kind={ex.GetType().Name}"); }
         }
         finally
         {
             if (_pending == snapshot && snapshot is not null)
-                snapshot.Sequence = ClipboardSafety.CaptureBeforeClose(GetClipboardSequenceNumber, () => PInvoke.CloseClipboard());
+            {
+                try
+                {
+                    var beforeClose = GetClipboardSequenceNumber();
+                    snapshot.Sequence = ClipboardPublication.CloseAndCapture(
+                        () => PInvoke.CloseClipboard(), () => PInvoke.OpenClipboard(clipboardOwner),
+                        () => RecognizesPublication(snapshot), MaterializeTextFormats,
+                        GetClipboardSequenceNumber, () => PInvoke.CloseClipboard());
+                    AppLog.Info("clipboard_publication", $"confirmed={snapshot.Sequence.HasValue} sequence_before_close={beforeClose} sequence_confirmed={snapshot.Sequence.GetValueOrDefault()}");
+                    if (snapshot.Sequence is null) status = SwapStatus.Failed;
+                }
+                catch { status = SwapStatus.Failed; AppLog.Info("clipboard_publication_unconfirmed"); }
+            }
             else PInvoke.CloseClipboard();
         }
         return new(status, snapshot);
@@ -139,7 +154,17 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         if (!PInvoke.OpenClipboard(clipboardOwner)) return RestoreStatus.Busy;
         try
         {
-            if (GetClipboardSequenceNumber() != snapshot.Sequence) { _pending = null; return RestoreStatus.ClipboardChanged; }
+            // If sealing was contended before paste, recovery may finish it under this lock.
+            // A confirmed publication is NEVER rebased: later foreign writes retain legacy refusal.
+            snapshot.Sequence ??= ClipboardPublication.CaptureLocked(
+                () => RecognizesPublication(snapshot), MaterializeTextFormats, GetClipboardSequenceNumber);
+            var currentSequence = GetClipboardSequenceNumber();
+            var sameOwner = PInvoke.GetClipboardOwner() == clipboardOwner;
+            if (!ClipboardPublication.CanRestore(snapshot.Sequence, currentSequence, sameOwner))
+            {
+                AppLog.Info("clipboard_restore_guard", $"confirmed={snapshot.Sequence.HasValue} expected={snapshot.Sequence.GetValueOrDefault()} current={currentSequence} same_owner={sameOwner}");
+                _pending = null; return RestoreStatus.ClipboardChanged;
+            }
             if (!PInvoke.EmptyClipboard()) { _pending = null; return RestoreStatus.Failed; }
             var failed = SetMarkers(out var markers) ? 0 : 1;
             foreach (var entry in snapshot.Entries)
@@ -218,19 +243,27 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         return result;
     }
 
-    private static bool SetText(string text)
+    private static bool SetText(string text, Snapshot? publication = null)
     {
-        // Never publish the text unless all privacy markers were installed first.
+        bool Write(uint format, byte[] bytes)
+        {
+            if (format == 0 || !SetData(format, bytes)) return false;
+            publication?.PublishedEntries.Add(new(format, bytes));
+            return true;
+        }
+        if (publication is not null && !Write(PInvoke.RegisterClipboardFormat(TransactionFormat), publication.Transaction.ToByteArray())) return false;
+        // Retain the exact successful writes too: a partial/failed publication still needs recovery.
         return ClipboardSafety.PublishProtectedText(
-            () => SetMarkers(out _),
-            () => SetData((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0")));
+            () => ClipboardSafety.InstallMarkers(MarkerNames, PInvoke.RegisterClipboardFormat,
+                format => Write(format, new byte[4]), new HashSet<uint>()),
+            () => Write((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT, Encoding.Unicode.GetBytes(text + "\0")));
     }
 
     private static bool SetMarkers(out HashSet<uint> formats)
     {
         formats = [];
         var success = ClipboardSafety.InstallMarkers(
-            ["ExcludeClipboardContentFromMonitorProcessing", "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"],
+            MarkerNames,
             PInvoke.RegisterClipboardFormat, format => SetData(format, new byte[4]), formats);
         if (!success) AppLog.Info("clipboard_markers_failed");
         return success;
@@ -276,6 +309,46 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         return input;
     }
 
+    private bool RecognizesPublication(Snapshot snapshot)
+    {
+        if (PInvoke.GetClipboardOwner() != clipboardOwner) return false;
+        var allowed = new HashSet<uint>();
+        foreach (var entry in snapshot.PublishedEntries)
+        {
+            if (!MatchesData(entry.Format, entry.Data)) return false;
+            allowed.Add(entry.Format);
+        }
+        if (allowed.Contains((uint)CLIPBOARD_FORMAT.CF_UNICODETEXT))
+            allowed.UnionWith(new uint[] { 1, 7, 13, 16 }); // Windows' text/OEM/Unicode/locale synthesis only
+        var recognized = true;
+        return ClipboardSafety.EnumerateFormats(previous =>
+        {
+            var format = EnumerateClipboardFormats(previous);
+            return (format, format == 0 ? Marshal.GetLastPInvokeError() : 0);
+        }, format => { if (!allowed.Contains(format)) recognized = false; }) && recognized;
+    }
+
+    private static bool MaterializeTextFormats()
+    {
+        // Windows synthesizes ANSI/OEM/locale from Unicode during close/read. Resolve those before
+        // recording the committed sequence so an ordinary target read cannot invalidate our token.
+        foreach (uint format in new uint[] { 1, 7, 13, 16 })
+            if (PInvoke.IsClipboardFormatAvailable(format) && PInvoke.GetClipboardData(format).IsNull) return false;
+        return true;
+    }
+
+    private static unsafe bool MatchesData(uint format, ReadOnlySpan<byte> expected)
+    {
+        var handle = PInvoke.GetClipboardData(format);
+        if (handle.IsNull) return false;
+        var global = new HGLOBAL(handle.Value);
+        if (PInvoke.GlobalSize(global) < (nuint)expected.Length) return false;
+        var data = PInvoke.GlobalLock(global);
+        if (data is null) return false;
+        try { return new ReadOnlySpan<byte>(data, expected.Length).SequenceEqual(expected); }
+        finally { PInvoke.GlobalUnlock(global); }
+    }
+
     private sealed record Entry(uint Format, byte[] Data);
     private sealed class Snapshot : IClipboardSnapshot
     {
@@ -285,6 +358,8 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         public int UnsavedCount { get; set; }
         public bool CapExceeded { get; set; }
         public long ByteCount { get; set; }
-        public uint Sequence { get; set; }
+        public uint? Sequence { get; set; }
+        public Guid Transaction { get; } = Guid.NewGuid();
+        public List<Entry> PublishedEntries { get; } = [];
     }
 }

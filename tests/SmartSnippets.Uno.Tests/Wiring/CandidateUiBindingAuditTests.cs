@@ -26,7 +26,11 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Contains("IsEnabled = vm.CanCopyRow", Read("Pages/SnippetsPage.xaml.cs"));
         Assert.Contains("_lifecycle.Preview(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("_lifecycle.Reopen(ViewModel", Read("Popup/PopupWindow.xaml.cs"));
-        Assert.Contains("new HMONITOR(target.MonitorHandle)", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("WindowPlacement.CenterAtCursor(AppWindow, ViewModel.Target?.MonitorHandle ?? 0", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("if (ViewModel.IsPreview)", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("PopupPlacement.CenterIn(work, width, height)", Read("Services/WindowPlacement.cs"));
+        Assert.Contains("PInvoke.GetCursorPos(&cursor)", Read("Services/WindowPlacement.cs"));
+        Assert.Contains("PInvoke.MonitorFromPoint(cursor, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST)", Read("Services/WindowPlacement.cs"));
         Assert.Contains("WindowPlacement.ParkBottomLeft(AppWindow", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("_previewMonitor", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("MONITOR_DEFAULTTOPRIMARY", Read("Popup/PopupWindow.xaml.cs"));

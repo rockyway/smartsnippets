@@ -32,7 +32,7 @@
             PaneDisplayMode="Left"
             SelectionChanged="OnSelectionChanged">
             <NavigationView.Header>
-                <TextBlock Text="Uno candidate: clipboard and insertion unavailable — management and target-free preview only." TextWrapping="Wrap" FontSize="14" />
+                <TextBlock x:Name="NativeStatusText" Text="Global shortcut status is loading." TextWrapping="Wrap" FontSize="14" />
             </NavigationView.Header>
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="SnippetsItem" Content="Snippets" Tag="Snippets">

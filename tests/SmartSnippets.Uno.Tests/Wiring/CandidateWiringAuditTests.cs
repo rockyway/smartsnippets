@@ -74,7 +74,7 @@ public sealed class CandidateWiringAuditTests
         var legacy = Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.App");
         var ports = PortedSources.Replace("\r", "").Split('\n');
         Assert.Equal(ports, Sources(Candidate).Intersect(Sources(legacy), StringComparer.Ordinal).Order(StringComparer.Ordinal));
-        Assert.Equal("16ead3614f62f558482820d05f5d7f2ada8b3df23f7026c1bad6e985f65884a5",
+        Assert.Equal("d14a7657a8c843d6c57928557a8efc7c1048a8724edf7076c0793f04107f6ef0",
             SourceDigest(Candidate, ports.Append("UnoAppHost.cs")));
         Assert.Equal("236480e57647f200648b36bc9bb14b59ef46154ab03e9ea86b1b36aa306c7966",
             SourceDigest(legacy, ports.Append("AppHost.cs")));
@@ -133,7 +133,8 @@ public sealed class CandidateWiringAuditTests
             Assert.DoesNotContain(forbidden, source);
         Assert.DoesNotContain("SmartSnippets.App", source);
         var windows = File.ReadAllText(Path.Combine(Candidate, "WindowsCandidateBoundary.cs"));
-        Assert.Contains("Program.InitialOptions.HasRequest ? null : new WindowsDesktopServices", windows);
+        Assert.Contains("if (Program.InitialOptions.HasRequest) return null;", windows);
+        Assert.Contains("new WindowsDesktopServices", windows);
         var desktop = File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/DailyNative/WindowsDesktopServices.cs"));
         Assert.Contains("new HotkeyService(message)", desktop);
         Assert.Contains("manager.Initialize(settings.Hotkey)", desktop);

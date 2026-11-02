@@ -7,6 +7,7 @@ using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.Graphics.Dwm;
 using Windows.Win32.UI.HiDpi;
 using SmartSnippets.Core.Layout;
+using SmartSnippets.Uno.Platforms.Windows;
 
 namespace SmartSnippets.Uno.Services;
 
@@ -23,7 +24,7 @@ internal static unsafe partial class WindowPlacement
         var selected = new Selection();
         if (EnumDisplays(0, 0, &VisitMonitor, (nint)(&selected)) == 0 || selected.Failed != 0 || selected.Found == 0)
             return false;
-        return CenterOn(window, new HMONITOR(selected.Handle), logicalWidth, logicalHeight);
+        return ParkOn(window, new HMONITOR(selected.Handle), logicalWidth, logicalHeight);
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int VisitMonitor(nint monitor, nint dc, Windows.Win32.Foundation.RECT* clip, nint context)
@@ -67,6 +68,48 @@ internal static unsafe partial class WindowPlacement
     }
 
     public static unsafe bool CenterOn(AppWindow window, HMONITOR monitor, int logicalWidth, int logicalHeight)
+    {
+        var info = default(MONITORINFO);
+        info.cbSize = (uint)sizeof(MONITORINFO);
+        if (!PInvoke.GetMonitorInfo(monitor, ref info))
+        {
+            return false;
+        }
+
+        var scale = 1.0;
+        if (PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var dpiX, out _).Succeeded && dpiX > 0)
+        {
+            scale = dpiX / 96.0;
+        }
+
+        var width = (int)Math.Round(logicalWidth * scale);
+        var height = (int)Math.Round(logicalHeight * scale);
+        var work = new PixelRect(info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom);
+        var origin = PopupPlacement.CenterIn(work, width, height);
+
+        var bounds = new RectInt32(origin.X, origin.Y, Math.Min(width, work.Width), Math.Min(height, work.Height));
+        window.MoveAndResize(bounds);
+        // A mixed-DPI transition can apply the suggested WM_DPICHANGED size after the move.
+        if (window.Size.Width != bounds.Width || window.Size.Height != bounds.Height)
+        {
+            window.MoveAndResize(bounds);
+        }
+        return true;
+    }
+
+    internal static bool CenterAtCursor(AppWindow window, nint capturedMonitor, int logicalWidth, int logicalHeight) =>
+        PopupMonitorPlacement.Center(
+            () =>
+            {
+                var cursor = new System.Drawing.Point();
+                return PInvoke.GetCursorPos(&cursor)
+                    ? (nint)PInvoke.MonitorFromPoint(cursor, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST).Value : 0;
+            },
+            capturedMonitor,
+            () => (nint)PInvoke.MonitorFromWindow(default, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY).Value,
+            monitor => CenterOn(window, new HMONITOR(monitor), logicalWidth, logicalHeight));
+
+    private static unsafe bool ParkOn(AppWindow window, HMONITOR monitor, int logicalWidth, int logicalHeight)
     {
         var info = default(MONITORINFO);
         info.cbSize = (uint)sizeof(MONITORINFO);

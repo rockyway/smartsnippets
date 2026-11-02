@@ -31,6 +31,7 @@ internal sealed class TestBoundary : CandidateHostBoundary
     internal MainSurface Main { get; private set; } = null!;
     internal List<PopupSurface> Popups { get; } = [];
     internal int Reports, Exits, Messages, MessageDisposals, TrayDisposals;
+    internal TrayState? TrayState;
     internal bool FailWindow;
     internal bool PopupAutoReady = true;
     internal Action? TrayPreview, TrayOpen, TraySettings, TrayExit;
@@ -53,13 +54,17 @@ internal sealed class TestBoundary : CandidateHostBoundary
     internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
     {
         TrayOpen = open; TrayPreview = preview; TraySettings = settings; TrayExit = exit;
-        return new TestTray(() => TrayDisposals++);
+        return new TestTray(() => TrayDisposals++, (registered, visible) => TrayState = TrayStatePolicy.Compute(registered, visible));
     }
     internal override void ReportStartupFailure() => Reports++;
     internal override void Exit() => Exits++;
     private sealed class TestDispatcher(Queue<Action> queue) : IUiDispatcher { public void Post(Action action) => queue.Enqueue(action); }
-    private sealed class TestTray(Action dispose) : ICandidateTray
-    { public void Dispose() => dispose(); public void Notify(string title, string message) { } }
+    private sealed class TestTray(Action dispose, Action<bool, bool> state) : ICandidateTray
+    {
+        public void Dispose() => dispose();
+        public void Notify(string title, string message) { }
+        public void SetHotkeyState(bool registered, bool popupVisible) => state(registered, popupVisible);
+    }
     private sealed class Release(Action dispose) : IDisposable { public void Dispose() => dispose(); }
 }
 internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
@@ -68,8 +73,10 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
     internal int Navigations, Disposals;
     internal bool Visible;
     internal bool InteractionEnabled = true;
+    internal HotkeyStatus? HotkeyStatus;
     internal Func<Task<bool>>? ExitGuard;
     public void SetInteractionEnabled(bool enabled) => InteractionEnabled = enabled;
+    public void SetHotkeyStatus(HotkeyStatus status) => HotkeyStatus = status;
     public event EventHandler? HiddenByClose;
     public async Task NavigateAsync(PageKind page, bool show)
     {
