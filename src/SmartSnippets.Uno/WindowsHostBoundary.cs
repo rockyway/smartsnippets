@@ -29,10 +29,40 @@ internal sealed class WindowsHostBoundary : HostBoundary
         // Candidate builds retain independent switches; the measurement driver owns their trim.
         return null;
 #else
-        return new IdleMemoryTrimmer(() => _main is { IsHidden: true }
-            && _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle());
+        bool PopupSettled() => _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle();
+        var trimmer = _trimmer = new IdleMemoryTrimmer(() => _main is { IsHidden: true } && PopupSettled(), settled: PopupSettled);
+        // Startup has just finished; the main window outlives the trimmer, which ignores requests once disposed.
+        trimmer.RequestSettleTrim();
+        if (_main is { } main)
+        {
+            // A new monitor may mean another graphics adapter; keep postponing while the drag continues.
+            main.Moved += (_, monitorChanged) =>
+            {
+                if (!monitorChanged) { trimmer.PostponeSettleTrim(); return; }
+                _backgroundTrimRequested = false;
+                trimmer.RequestSettleTrim();
+            };
+            main.Backgrounded += (_, _) => RequestBackgroundTrim();
+            main.Foregrounded += (_, _) =>
+            {
+                if (_backgroundTrimRequested) trimmer.CancelSettleTrim();
+                _backgroundTrimRequested = false;
+            };
+        }
+        return trimmer;
 #endif
     }
+#if !SMARTSNIPPETS_MEASURE
+    private IdleMemoryTrimmer? _trimmer;
+    private bool _backgroundTrimRequested;
+    /// <summary>Minimized, behind another app or the hotkey popup closed: trim, unless the user returns to the main window first.</summary>
+    private void RequestBackgroundTrim()
+    {
+        if (_trimmer is null) return;
+        _backgroundTrimRequested = true;
+        _trimmer.RequestSettleTrim();
+    }
+#endif
     internal override IThemeService CreateTheme(AppSettings settings) => _theme = new ThemeService(settings.Theme, settings.ColorPalette);
     internal override IDisposable CreateMessageWindow()
     {
@@ -79,6 +109,9 @@ internal sealed class WindowsHostBoundary : HostBoundary
         window.UseQaPlacement = Program.InitialOptions.HasRequest;
         _theme!.Register(window);
         window.Closed += (_, _) => { if (ReferenceEquals(_popup, window)) _popup = null; };
+#if !SMARTSNIPPETS_MEASURE
+        window.VisibleChanged += (_, visible) => { if (!visible) RequestBackgroundTrim(); };
+#endif
         var surface = new PopupSurface(window,
             () => _main is null ? default : new HWND(WinRT.Interop.WindowNative.GetWindowHandle(_main)),
             () => ReferenceEquals(_popup, window) && host.Gate.CanInsert);

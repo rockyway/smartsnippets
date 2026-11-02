@@ -122,7 +122,7 @@ public sealed class WiringAuditTests
         Assert.DoesNotContain("Closed += (_, _) => Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot)", source);
         Assert.Contains("ContentXamlRoot => _closingForExit || _closed ? null : Content?.XamlRoot;", source);
         Assert.Contains("if (_closingForExit || _closed) return;\n                var currentDpi", source.Replace("\r\n", "\n"));
-        Assert.Contains("if (!_closingForExit && !_closed && args.WindowActivationState", source);
+        Assert.Contains("Activated += (_, args) =>\n        {\n            if (_closingForExit || _closed) return;", source.Replace("\r\n", "\n"));
     }
 
     [Fact]

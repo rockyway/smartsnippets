@@ -7,6 +7,7 @@ using SmartSnippets.Presentation.Services;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace SmartSnippets.Uno;
@@ -26,6 +27,7 @@ public sealed partial class MainWindow : Window
     private bool _closingForExit;
     private bool _closed;
     private bool _guardInProgress;
+    private HMONITOR _monitor;
 
     public MainWindow(Func<PageKind, UIElement> pageFactory, bool qaPlacement = false)
     {
@@ -48,9 +50,13 @@ public sealed partial class MainWindow : Window
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
         presenter.PreferredMinimumWidth = Math.Min(AppWindow.Size.Width, (int)(MinimumLogicalWidth * scale));
         presenter.PreferredMinimumHeight = Math.Min(AppWindow.Size.Height, (int)(MinimumLogicalHeight * scale));
+        _monitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         AppWindow.Changed += (_, args) =>
         {
-            if (_closingForExit || _closed || (!args.DidPositionChange && !args.DidSizeChange)) return;
+            if (_closingForExit || _closed) return;
+            if (args.DidPresenterChange && presenter.State == OverlappedPresenterState.Minimized)
+                Backgrounded?.Invoke(this, EventArgs.Empty);
+            if (!args.DidPositionChange && !args.DidSizeChange) return;
             // Re-read after move or size/DPI processing, rather than using the
             // monitor on which the hidden window was originally constructed.
             DispatcherQueue.TryEnqueue(() =>
@@ -63,14 +69,23 @@ public sealed partial class MainWindow : Window
                 var height = (int)(MinimumLogicalHeight * currentScale);
                 if (presenter.PreferredMinimumWidth != width) presenter.PreferredMinimumWidth = width;
                 if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
+                var monitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+                var monitorChanged = monitor != _monitor;
+                _monitor = monitor;
+                Moved?.Invoke(this, monitorChanged);
             });
         };
         if (!Place()) throw new InvalidOperationException("Window placement could not be verified.");
         AppWindow.Closing += OnClosing;
         Activated += (_, args) =>
         {
-            if (!_closingForExit && !_closed && args.WindowActivationState == WindowActivationState.Deactivated)
+            if (_closingForExit || _closed) return;
+            if (args.WindowActivationState == WindowActivationState.Deactivated)
+            {
                 Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
+                Backgrounded?.Invoke(this, EventArgs.Empty);
+            }
+            else Foregrounded?.Invoke(this, EventArgs.Empty);
         };
         // Content is no longer readable during Closed. Hover cancellation happens before Close/hide.
         Closed += (_, _) => _closed = true;
@@ -83,6 +98,15 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Raised after the user's close button hid the window (not for exit and not when the page's guard refused).</summary>
     public event EventHandler? HiddenByClose;
+
+    /// <summary>Raised after each move or resize; the argument is true when the window is now on a different monitor.</summary>
+    internal event EventHandler<bool>? Moved;
+
+    /// <summary>Raised when the window is minimized or stops being the active window.</summary>
+    internal event EventHandler? Backgrounded;
+
+    /// <summary>Raised when the window becomes the active window again.</summary>
+    internal event EventHandler? Foregrounded;
 
     internal void SetInteractionEnabled(bool enabled) => Navigation.IsEnabled = enabled;
     internal void SetHotkeyStatus(HotkeyStatus status) => NativeStatusText.Text = status.IsRegistered

@@ -300,7 +300,7 @@ namespace Microsoft.UI.Xaml.Media
 }
 namespace Microsoft.UI.Windowing
 {
-    public sealed class AppWindowChangedEventArgs : EventArgs { public bool DidPositionChange { get; set; } public bool DidSizeChange { get; set; } }
+    public sealed class AppWindowChangedEventArgs : EventArgs { public bool DidPositionChange { get; set; } public bool DidSizeChange { get; set; } public bool DidPresenterChange { get; set; } }
     public sealed class AppWindowClosingEventArgs : EventArgs { public bool Cancel { get; set; } }
     public sealed class AppWindow
     {
@@ -317,8 +317,10 @@ namespace Microsoft.UI.Windowing
         public void MoveAndResize(Windows.Graphics.RectInt32 rect) { Size = new(rect.Width,rect.Height); Changed?.Invoke(this,new()); }
         public void RequestClose() => Closing?.Invoke(this,new());
     }
+    public enum OverlappedPresenterState { Maximized, Minimized, Restored }
     public sealed class OverlappedPresenter
     {
+        public OverlappedPresenterState State { get; set; } = OverlappedPresenterState.Restored;
         public static OverlappedPresenter Create() => new();
         public int PreferredMinimumWidth { get; set; }
         public int PreferredMinimumHeight { get; set; }
@@ -337,9 +339,9 @@ namespace Windows.UI.ViewManagement
     public sealed class UISettings { public event Action<UISettings,object>? ColorValuesChanged; public void ChangeBoundary() => ColorValuesChanged?.Invoke(this,new()); }
 }
 namespace Windows.Win32.Foundation { public readonly record struct HWND(nint Value); }
-namespace Windows.Win32.Graphics.Gdi { public readonly record struct HMONITOR(nint Value); }
+namespace Windows.Win32.Graphics.Gdi { public readonly record struct HMONITOR(nint Value); public enum MONITOR_FROM_FLAGS : uint { MONITOR_DEFAULTTONEAREST = 2 } }
 namespace Windows.Win32.UI.WindowsAndMessaging { }
-namespace Windows.Win32 { public static class PInvoke { public static int MessageBox(Foundation.HWND owner, string text, string title, UI.WindowsAndMessaging.MESSAGEBOX_STYLE style) => 0; public static uint GetDpiForWindow(Foundation.HWND window) => 96; public static Foundation.HWND GetForegroundWindow() => new(1); } }
+namespace Windows.Win32 { public static class PInvoke { public static int MessageBox(Foundation.HWND owner, string text, string title, UI.WindowsAndMessaging.MESSAGEBOX_STYLE style) => 0; public static uint GetDpiForWindow(Foundation.HWND window) => 96; public static Foundation.HWND GetForegroundWindow() => new(1); public static Graphics.Gdi.HMONITOR MonitorFromWindow(Foundation.HWND window, Graphics.Gdi.MONITOR_FROM_FLAGS flags) => new(1); } }
 namespace WinRT.Interop { public static class WindowNative { public static nint GetWindowHandle(object window) => 1; } }
 namespace Microsoft.UI.Xaml.Automation.Peers
 {
