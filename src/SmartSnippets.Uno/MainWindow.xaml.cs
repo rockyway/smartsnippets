@@ -7,6 +7,7 @@ using SmartSnippets.Presentation.Services;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace SmartSnippets.Uno;
@@ -26,6 +27,7 @@ public sealed partial class MainWindow : Window
     private bool _closingForExit;
     private bool _closed;
     private bool _guardInProgress;
+    private HMONITOR _monitor;
 
     public MainWindow(Func<PageKind, UIElement> pageFactory, bool qaPlacement = false)
     {
@@ -48,6 +50,7 @@ public sealed partial class MainWindow : Window
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
         presenter.PreferredMinimumWidth = Math.Min(AppWindow.Size.Width, (int)(MinimumLogicalWidth * scale));
         presenter.PreferredMinimumHeight = Math.Min(AppWindow.Size.Height, (int)(MinimumLogicalHeight * scale));
+        _monitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         AppWindow.Changed += (_, args) =>
         {
             if (_closingForExit || _closed || (!args.DidPositionChange && !args.DidSizeChange)) return;
@@ -63,6 +66,10 @@ public sealed partial class MainWindow : Window
                 var height = (int)(MinimumLogicalHeight * currentScale);
                 if (presenter.PreferredMinimumWidth != width) presenter.PreferredMinimumWidth = width;
                 if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
+                var monitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+                var monitorChanged = monitor != _monitor;
+                _monitor = monitor;
+                Moved?.Invoke(this, monitorChanged);
             });
         };
         if (!Place()) throw new InvalidOperationException("Window placement could not be verified.");
@@ -83,6 +90,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Raised after the user's close button hid the window (not for exit and not when the page's guard refused).</summary>
     public event EventHandler? HiddenByClose;
+
+    /// <summary>Raised after each move or resize; the argument is true when the window is now on a different monitor.</summary>
+    internal event EventHandler<bool>? Moved;
 
     internal void SetInteractionEnabled(bool enabled) => Navigation.IsEnabled = enabled;
     internal void SetHotkeyStatus(HotkeyStatus status) => NativeStatusText.Text = status.IsRegistered

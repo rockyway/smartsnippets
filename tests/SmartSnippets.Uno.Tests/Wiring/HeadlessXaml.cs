@@ -337,9 +337,9 @@ namespace Windows.UI.ViewManagement
     public sealed class UISettings { public event Action<UISettings,object>? ColorValuesChanged; public void ChangeBoundary() => ColorValuesChanged?.Invoke(this,new()); }
 }
 namespace Windows.Win32.Foundation { public readonly record struct HWND(nint Value); }
-namespace Windows.Win32.Graphics.Gdi { public readonly record struct HMONITOR(nint Value); }
+namespace Windows.Win32.Graphics.Gdi { public readonly record struct HMONITOR(nint Value); public enum MONITOR_FROM_FLAGS : uint { MONITOR_DEFAULTTONEAREST = 2 } }
 namespace Windows.Win32.UI.WindowsAndMessaging { }
-namespace Windows.Win32 { public static class PInvoke { public static int MessageBox(Foundation.HWND owner, string text, string title, UI.WindowsAndMessaging.MESSAGEBOX_STYLE style) => 0; public static uint GetDpiForWindow(Foundation.HWND window) => 96; public static Foundation.HWND GetForegroundWindow() => new(1); } }
+namespace Windows.Win32 { public static class PInvoke { public static int MessageBox(Foundation.HWND owner, string text, string title, UI.WindowsAndMessaging.MESSAGEBOX_STYLE style) => 0; public static uint GetDpiForWindow(Foundation.HWND window) => 96; public static Foundation.HWND GetForegroundWindow() => new(1); public static Graphics.Gdi.HMONITOR MonitorFromWindow(Foundation.HWND window, Graphics.Gdi.MONITOR_FROM_FLAGS flags) => new(1); } }
 namespace WinRT.Interop { public static class WindowNative { public static nint GetWindowHandle(object window) => 1; } }
 namespace Microsoft.UI.Xaml.Automation.Peers
 {

@@ -29,8 +29,16 @@ internal sealed class WindowsHostBoundary : HostBoundary
         // Candidate builds retain independent switches; the measurement driver owns their trim.
         return null;
 #else
-        return new IdleMemoryTrimmer(() => _main is { IsHidden: true }
-            && _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle());
+        bool PopupSettled() => _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle();
+        var trimmer = new IdleMemoryTrimmer(() => _main is { IsHidden: true } && PopupSettled(), settled: PopupSettled);
+        // Startup has just finished; the main window outlives the trimmer, which ignores requests once disposed.
+        trimmer.RequestSettleTrim();
+        // A new monitor may mean another graphics adapter; keep postponing while the drag continues.
+        if (_main is not null) _main.Moved += (_, monitorChanged) =>
+        {
+            if (monitorChanged) trimmer.RequestSettleTrim(); else trimmer.PostponeSettleTrim();
+        };
+        return trimmer;
 #endif
     }
     internal override IThemeService CreateTheme(AppSettings settings) => _theme = new ThemeService(settings.Theme, settings.ColorPalette);

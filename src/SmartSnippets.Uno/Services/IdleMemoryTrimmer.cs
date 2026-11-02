@@ -5,18 +5,23 @@ using SmartSnippets.Core.Logging;
 
 namespace SmartSnippets.Uno.Services;
 
-/// <summary>Best-effort resident-memory reclamation after continuous tray idle. Never releases UI or popup state.</summary>
+/// <summary>
+/// Best-effort resident-memory reclamation after continuous tray idle, and once after startup or a main-window
+/// monitor change settles. Never releases UI or popup state.
+/// </summary>
 internal sealed partial class IdleMemoryTrimmer : IDisposable
 {
     private readonly DispatcherQueueTimer _timer;
     private readonly IdleTrimSchedule _schedule = new();
-    private readonly Func<bool> _idle, _trim;
+    private readonly Func<bool> _idle, _settled, _trim;
     private readonly Func<long> _clock;
+    private long? _settleSince;
     private bool _disposed;
 
-    internal IdleMemoryTrimmer(Func<bool> idle, Func<bool>? trim = null, Func<long>? clock = null)
+    internal IdleMemoryTrimmer(Func<bool> idle, Func<bool>? trim = null, Func<long>? clock = null, Func<bool>? settled = null)
     {
         _idle = idle;
+        _settled = settled ?? idle;
         _trim = trim ?? TrimNative;
         _clock = clock ?? (() => Environment.TickCount64);
         _timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
@@ -27,9 +32,32 @@ internal sealed partial class IdleMemoryTrimmer : IDisposable
         _timer.Start();
     }
     private void OnTick(object? sender, object args) => Poll();
+    /// <summary>
+    /// Trim once more after the delay, even with the main window open: startup and a move to another monitor
+    /// (possibly another graphics adapter) leave resident pages the visible window no longer touches.
+    /// Each request restarts the delay.
+    /// </summary>
+    internal void RequestSettleTrim()
+    {
+        if (!_disposed) _settleSince = _clock();
+    }
+    /// <summary>Restart the delay of a pending settle trim, for example while the window is still being dragged.</summary>
+    internal void PostponeSettleTrim()
+    {
+        if (!_disposed && _settleSince is not null) _settleSince = _clock();
+    }
     internal void Poll()
     {
-        if (_disposed || !_schedule.Poll(_clock(), _idle())) return;
+        if (_disposed) return;
+        var now = _clock();
+        if (_schedule.Poll(now, _idle())) { _settleSince = null; Trim(); return; }
+        if (_settleSince is not { } since) return;
+        // Busy work or a visible popup restarts the delay rather than dropping the request.
+        if (!_settled()) _settleSince = now;
+        else if (now - since >= IdleTrimSchedule.DelayMilliseconds) { _settleSince = null; Trim(); }
+    }
+    private void Trim()
+    {
         try
         {
             if (!_trim()) AppLog.Info("idle_memory_trim", "result=unavailable");
