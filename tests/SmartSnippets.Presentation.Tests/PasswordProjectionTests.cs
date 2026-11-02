@@ -15,7 +15,8 @@ public sealed class PasswordProjectionTests
         var store = new FakeSnippetStore();
         var folder = store.SeedFolder("Folder");
         store.CreateSnippet(new(body, "Safe label", true, folder.Id, "tag", IsPassword: true));
-        var main = SnippetRowViewModel.From(Assert.Single(store.Snippets));
+        using var list = new SnippetListViewModel(store);
+        var main = Assert.Single(list.Items);
         using var popup = new PopupViewModel(store, new MemorySettingsStore(),
             new() { PopupLayout = grouped ? PopupLayout.Folder : PopupLayout.Flat },
             new FakeInsertionService(), new FakeClipboardService(), new FakeElevation(),
@@ -27,6 +28,10 @@ public sealed class PasswordProjectionTests
         Assert.Equal(SnippetDisplayPolicy.PasswordMask, main.ContentText);
         Assert.Equal(main.ContentText, row.ContentText);
         Assert.Empty(row.Preview);
+        list.Query = body;
+        Assert.Empty(list.Items);
+        list.Query = "Safe Folder tag";
+        Assert.Single(list.Items);
         popup.Query = body;
         Assert.True(popup.IsEmpty);
         popup.Query = "Safe Folder tag";
@@ -38,9 +43,12 @@ public sealed class PasswordProjectionTests
     {
         var store = new FakeSnippetStore();
         var snippet = store.SeedSnippet(SnippetDisplayPolicy.PasswordMask, "Label");
-        var before = SnippetRowViewModel.From(Assert.Single(store.Snippets));
+        using var list = new SnippetListViewModel(store);
+        var before = Assert.Single(list.Items);
         store.UpdateSnippet(snippet.Id, new(snippet.Text, snippet.Label, true, null, "", IsPassword: true));
-        var after = SnippetRowViewModel.From(Assert.Single(store.Snippets));
+        var after = Assert.Single(list.Items);
+        Assert.NotSame(before, after);
+        Assert.NotEqual(before.GetHashCode(), after.GetHashCode());
         Assert.Equal(before.ContentText, after.ContentText);
         Assert.NotEqual(before, after);
         Assert.Equal(after, after with { });

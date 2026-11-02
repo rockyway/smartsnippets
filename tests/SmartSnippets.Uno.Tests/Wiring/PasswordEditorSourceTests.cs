@@ -19,10 +19,13 @@ public sealed class PasswordEditorSourceTests
         Assert.Null(password.Attribute("IsTextPredictionEnabled"));
         var text = document.Descendants().Single(e => (string?)e.Attribute(Xaml + "Name") == "SnippetTextBox");
         Assert.Null(text.Attribute("Text"));
-        Assert.All(document.Descendants().Attributes(), a => Assert.DoesNotContain("x:Bind ViewModel.Text,", a.Value));
+        Assert.Equal("{x:Bind Hide(ViewModel.IsPassword), Mode=OneWay}", (string?)text.Attribute("Visibility"));
+        Assert.Equal("{x:Bind Show(ViewModel.CanEditPassword), Mode=OneWay}", (string?)password.Attribute("Visibility"));
+        Assert.All(document.Descendants().Attributes(), a => Assert.DoesNotContain("ViewModel.Text", a.Value.Replace("ViewModel.TextError", "")));
         Assert.DoesNotContain(document.Descendants().Where(e => e.Name.LocalName is "Button" or "ToggleButton"),
             e => e.Attributes().Any(a => a.Value.Contains("reveal", StringComparison.OrdinalIgnoreCase)));
         var mask = document.Descendants().Single(e => (string?)e.Attribute(Xaml + "Name") == "MultilinePasswordMask");
+        Assert.Equal("{x:Bind Show(ViewModel.IsMultilinePassword), Mode=OneWay}", (string?)mask.Attribute("Visibility"));
         Assert.Equal("True", (string?)mask.Attribute("IsReadOnly"));
         Assert.Equal("••••••••", (string?)mask.Attribute("Text"));
         var labelToggle = Assert.Single(document.Descendants(), e => e.Name.LocalName == "ToggleSwitch");

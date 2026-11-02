@@ -503,6 +503,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        ViewModel.EnsureCurrent();
         if (e.Handled || !_visible || ViewModel.IsEditorOpen || _isComposing || _contextFlyout is not null || _sortMenuOpen) return;
         var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as DependencyObject;
         var inList = false;
@@ -535,6 +536,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        ViewModel.EnsureCurrent();
         if (e.Handled || ViewModel.IsEditorOpen || _isComposing) return;
         if (e.Key == VirtualKey.Escape && _contextFlyout is { } flyout) { e.Handled = true; flyout.Hide(); }
         else if (e.Key == VirtualKey.Escape)

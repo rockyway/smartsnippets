@@ -24,6 +24,8 @@ public sealed class AppLogPrivacyTests : IDisposable
         Assert.Throws<SmartSnippets.Core.Store.StoreException>(store.Load);
         var log = File.ReadAllText(Path.Combine(_directory, "app.log"));
         Assert.Contains("store_write_failed", log);
+        Assert.Contains("op=update_snippet error=SecretProtectionException", log);
+        Assert.Contains("op=load error=SecretProtectionException", log);
         Assert.DoesNotContain("PRIVATE-PASSWORD", log);
         Assert.DoesNotContain("PRIVATE-NEW-PASSWORD", log);
         Assert.DoesNotContain(cipher, log);
