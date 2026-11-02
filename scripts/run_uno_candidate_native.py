@@ -380,7 +380,7 @@ def extra_window_facts(user, window, a):
         if not user.GetMonitorInfoW(h, C.byref(info)):
             return False
         monitors.append(intersects(rect, info.monitor))
-        if info.flags & 1:  # Operator-selected primary landscape; legacy field name retained.
+        if not selected and intersects(ar, info.monitor):  # Target018's own (bottom-left) work area: A's monitor.
             selected.append(intersects(rect, info.work))
         return True
     cb = callback_type(visit)

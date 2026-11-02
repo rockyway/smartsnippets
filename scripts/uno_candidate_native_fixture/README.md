@@ -186,9 +186,9 @@ ws_child ws_disabled ws_ex_topmost ws_ex_layered ws_ex_transparent ws_ex_appwind
 zero_area offscreen equals_a_rect on_bottom_left_work title_nonempty`.
 offscreen means no positive-area intersection with any monitor; equals_a_rect
 compares full rectangles; zero_area includes inverted rectangles.
-The legacy on_bottom_left_work name now means intersection with the selected
-**primary landscape** work area (operator choice, primary monitor flag), not
-permission to run on another screen. title_nonempty uses only GetWindowTextLengthW.
+on_bottom_left_work means intersection with the work area of the monitor that
+holds window A (Target018's own leftmost/bottom selection), not permission to run
+on another screen. title_nonempty uses only GetWindowTextLengthW.
 Unsampled/unavailable facts collapse to other, the empty-class hash, and false
 booleans. Unknown classes remain other but retain their fingerprint.
 

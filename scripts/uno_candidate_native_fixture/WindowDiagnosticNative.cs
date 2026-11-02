@@ -21,7 +21,7 @@ internal static partial class WindowDiagnosticNative
                 var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
                 if (GetMonitorInfoW(h, ref info) == 0) return 0;
                 any |= Intersects(rect, info.Monitor);
-                if ((info.Flags & 1) != 0) selected = Intersects(rect, info.Work);
+                if (!selected.HasValue && Intersects(ar, info.Monitor)) selected = Intersects(rect, info.Work); // A's (Target018-selected) work area.
                 return 1;
             };
             var ok = EnumDisplayMonitors(0, 0, Marshal.GetFunctionPointerForDelegate(callback), 0);
