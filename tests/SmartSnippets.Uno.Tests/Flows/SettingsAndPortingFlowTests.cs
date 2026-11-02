@@ -21,12 +21,26 @@ public sealed class SettingsAndPortingFlowTests
         using (var connection = sourceFactory.Open())
         using (var command = connection.CreateCommand())
         { command.CommandText = "INSERT INTO probe(text) VALUES ('synthetic fixture');"; command.ExecuteNonQuery(); }
+        const string v2Text = "synthetic\n😀";
+        string[] v2Tags = ["tag", "日本語"];
         if (version == 2)
         {
-            var store = new SnippetStore(sourceFactory, TimeProvider.System); store.Load();
-            var folder = store.CreateFolder("Synthetic 日本語").Value!;
-            var snippet = store.CreateSnippet(new SnippetDraft("synthetic\n😀", "Label", true, folder.Id, "tag, 日本語")).Value!;
-            store.RecordUsage(snippet.Id);
+            // Seed with raw v2-schema SQL: the current repository reads columns added by later migrations.
+            var now = DbTime.ToDb(DateTimeOffset.UtcNow);
+            using (var connection = sourceFactory.Open())
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    "INSERT INTO folders (id, name, name_key, created_at, updated_at) VALUES (1, $name, $key, $now, $now);" +
+                    "INSERT INTO snippets (id, text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count) " +
+                    "VALUES (1, $text, 'Label', 1, 1, $tags, $now, $now, $now, 1);";
+                command.Parameters.AddWithValue("$name", "Synthetic 日本語");
+                command.Parameters.AddWithValue("$key", FolderNameRules.Key("Synthetic 日本語"));
+                command.Parameters.AddWithValue("$text", v2Text);
+                command.Parameters.AddWithValue("$tags", TagList.ToStorage(v2Tags));
+                command.Parameters.AddWithValue("$now", now);
+                command.ExecuteNonQuery();
+            }
             new AppSettings { Theme = ThemeMode.Dark, ColorPalette = ColorPalette.Plum, PopupSort = SortField.UsageCount }.Save(new SettingsRepository(sourceFactory));
         }
         using (var connection = sourceFactory.Open())
@@ -46,11 +60,11 @@ public sealed class SettingsAndPortingFlowTests
         }
         else
         {
-            var shared = new SnippetStore(sourceFactory, TimeProvider.System); shared.Load();
-            var expected = Assert.Single(shared.Snippets).Snippet; var actual = Assert.Single(f.Host.Store.Snippets).Snippet;
-            Assert.Equal(expected.Id, actual.Id); Assert.Equal(expected.Text, actual.Text);
-            Assert.Equal(expected.Tags, actual.Tags); Assert.Equal(expected.UsageCount, actual.UsageCount);
-            Assert.Equal(expected.IsLabelCustom, actual.IsLabelCustom); Assert.Equal(expected.FolderId, actual.FolderId);
+            var actual = Assert.Single(f.Host.Store.Snippets).Snippet;
+            Assert.Equal(1, actual.Id); Assert.Equal(v2Text, actual.Text);
+            Assert.Equal(v2Tags, actual.Tags); Assert.Equal(1, actual.UsageCount);
+            Assert.True(actual.IsLabelCustom); Assert.Equal(1, actual.FolderId);
+            Assert.False(actual.IsPassword);
             Assert.Equal(AppSettings.Load(new SettingsRepository(sourceFactory)), f.Host.Settings);
         }
         SqliteConnection.ClearAllPools();
