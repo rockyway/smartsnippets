@@ -160,6 +160,8 @@ public sealed partial class MainWindow : Window
         }
 
         _current = kind;
+        // The shortcut status is a Snippets-page hint; other pages have their own titles.
+        NativeStatusText.Visibility = kind == PageKind.Snippets ? Visibility.Visible : Visibility.Collapsed;
         Navigation.Content = page;
         _suppressSelection = true;
         Navigation.SelectedItem = ItemFor(kind);
