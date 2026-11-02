@@ -1,12 +1,126 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Xml.Linq;
+using SmartSnippets.Presentation.Navigation;
+using SmartSnippets.Uno.Pages;
 using SmartSnippets.Uno.Tests.Build;
+using SmartSnippets.Uno.Tests.Composition;
 
 namespace SmartSnippets.Uno.Tests.Wiring;
 
-/// <summary>Source supplements only: native callbacks, compiled view delivery and foreground behavior still need T7.</summary>
+/// <summary>Headless factory bridge and source supplements; native delivery and foreground behavior still need T7.</summary>
+[Collection("Candidate XAML actions")]
 public sealed class CandidateWiringAuditTests
 {
     private static string Candidate => Path.Combine(CandidateBuildGraphTests.RepoRoot, "src", "SmartSnippets.Uno");
+    // R6: same-relative-path ports plus the explicitly renamed composition root.
+    // Deliberately reviewed, not regenerated in the test. Both heads are pinned:
+    // a legacy fix must trigger review even when candidate source is unchanged.
+    private const string PortedSources = """
+        App.xaml
+        App.xaml.cs
+        Controls/HoverDetailsSurface.xaml
+        Controls/HoverDetailsSurface.xaml.cs
+        Controls/PaletteBaseline.xaml
+        Controls/PaletteBaseline.xaml.cs
+        Controls/PopupRow.xaml
+        Controls/PopupRow.xaml.cs
+        Controls/ShortcutRecorder.xaml
+        Controls/ShortcutRecorder.xaml.cs
+        Controls/SnippetEditor.xaml
+        Controls/SnippetEditor.xaml.cs
+        Controls/SnippetRowDetails.xaml
+        Controls/SnippetRowDetails.xaml.cs
+        Converters/VisibilityConverters.cs
+        MainWindow.xaml
+        MainWindow.xaml.cs
+        Pages/FoldersPage.xaml
+        Pages/FoldersPage.xaml.cs
+        Pages/SettingsPage.xaml
+        Pages/SettingsPage.xaml.cs
+        Pages/SnippetsPage.xaml
+        Pages/SnippetsPage.xaml.cs
+        Popup/PopupWindow.xaml
+        Popup/PopupWindow.xaml.cs
+        Popup/RecoverablePopupHost.cs
+        Program.cs
+        Services/DialogService.cs
+        Services/FlyoutSurface.cs
+        Services/MessageWindow.cs
+        Services/PaletteResources.cs
+        Services/SnippetFileService.cs
+        Services/TaskbarTheme.cs
+        Services/ThemeService.cs
+        Services/TrayIcon.cs
+        Services/TrayIconNative.cs
+        Services/UiDispatcher.cs
+        Services/WindowPlacement.cs
+        Services/WindowSurface.cs
+        """;
+
+    private static IEnumerable<string> Sources(string root) => Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+        .Select(p => Path.GetRelativePath(root, p).Replace('\\', '/'))
+        .Where(p => !p.Split('/').Any(part => part is "bin" or "obj"))
+        .Where(p => Path.GetExtension(p) is ".cs" or ".xaml");
+
+    private static string SourceDigest(string root, IEnumerable<string> paths) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", paths.Select(p =>
+            p + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                File.ReadAllText(Path.Combine(root, p)).Replace("\r\n", "\n")))).ToLowerInvariant()))))).ToLowerInvariant();
+
+    [Fact]
+    public void DuplicatedHeadSources_AreEnumeratedAndPinnedAgainstLegacy()
+    {
+        var legacy = Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.App");
+        var ports = PortedSources.Replace("\r", "").Split('\n');
+        Assert.Equal(ports, Sources(Candidate).Intersect(Sources(legacy), StringComparer.Ordinal).Order(StringComparer.Ordinal));
+        Assert.Equal("f2f433bde7e9ac1d0ee4713b3c48abbb0c9f78e6b38323c70603bd6c66db132a",
+            SourceDigest(Candidate, ports.Append("UnoAppHost.cs")));
+        Assert.Equal("236480e57647f200648b36bc9bb14b59ef46154ab03e9ea86b1b36aa306c7966",
+            SourceDigest(legacy, ports.Append("AppHost.cs")));
+    }
+
+    [Fact]
+    public Task PopupSurface_OpenMainForwardsThroughRealFactoryToGuardedManagement() => CandidateHostThread.RunAsync(async () =>
+    {
+        using var fixture = new HostFixture();
+        await fixture.Start(background: true);
+        var views = new WindowsCandidateBoundary();
+        views.CreateTheme(fixture.Host.Settings);
+        using var main = views.CreateMain(fixture.Host);
+        using var popup = views.CreatePopup(fixture.Host);
+        await main.NavigateAsync(PageKind.Folders, false);
+        Assert.IsType<FoldersPage>(views.MainWindow!.AuditPage);
+        Assert.True(views.MainWindow.IsHidden);
+        // Exercise the real forwarding surface AND PopupWindow callback; the
+        // action audit's VM uses HostFixture's separate external popup boundary.
+        popup.OpenMainWindow();
+        await Task.Yield();
+        Assert.IsType<SnippetsPage>(views.MainWindow.AuditPage);
+        Assert.False(views.MainWindow.IsHidden);
+    });
+
+    [Fact]
+    public void CandidateSourceAndViews_RejectReflectionAndRuntimeBindings()
+    {
+        foreach (var relative in Sources(Candidate))
+        {
+            var source = File.ReadAllText(Path.Combine(Candidate, relative));
+            if (relative.EndsWith(".cs", StringComparison.Ordinal))
+            {
+                foreach (var forbidden in new[] { "System.Reflection", "Activator.", "Type.GetType(",
+                    ".GetMethod(", ".GetProperty(", ".GetField(", ".DynamicInvoke(", "Assembly.Load" })
+                    Assert.DoesNotContain(forbidden, source);
+            }
+            else
+            {
+                var attributes = XDocument.Parse(source).Descendants().Attributes().ToArray();
+                Assert.DoesNotContain(attributes, a => a.Value.StartsWith("{Binding", StringComparison.Ordinal));
+                Assert.DoesNotContain(attributes, a => a.Name.LocalName == "DataContext");
+            }
+        }
+    }
+
     [Fact]
     public void CandidateSources_OnlyComposeInsertionBehindGuardedBoundaryWithoutRuntimeUnlock()
     {
