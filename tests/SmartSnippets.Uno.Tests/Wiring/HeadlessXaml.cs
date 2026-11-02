@@ -85,6 +85,7 @@ namespace Microsoft.UI.Xaml
     }
     public class UIElement : DependencyObject
     {
+        public static object RightTappedEvent { get; } = new();
         public static object PointerPressedEvent { get; } = new();
         public static object PointerReleasedEvent { get; } = new();
         public static object PointerCaptureLostEvent { get; } = new();
@@ -94,8 +95,15 @@ namespace Microsoft.UI.Xaml
         public static object PreviewKeyDownEvent { get; } = new();
         public static object KeyUpEvent { get; } = new();
         public XamlRoot XamlRoot { get; set; } = new();
-        public void AddHandler(object routedEvent, Delegate handler, bool handled) { }
-        public void RemoveHandler(object routedEvent, Delegate handler) { }
+        private readonly List<(object Event, Delegate Handler, bool Handled)> _handlers = [];
+        public void AddHandler(object routedEvent, Delegate handler, bool handled) => _handlers.Add((routedEvent, handler, handled));
+        public void RemoveHandler(object routedEvent, Delegate handler) => _handlers.RemoveAll(entry => entry.Event == routedEvent && entry.Handler == handler);
+        protected void RaiseRightTapHandlers(Input.RightTappedRoutedEventArgs args, object sender)
+        {
+            foreach (var entry in _handlers.ToArray())
+                if (entry.Event == RightTappedEvent && (!args.Handled || entry.Handled))
+                    ((Input.RightTappedEventHandler)entry.Handler)(sender, args);
+        }
     }
     public class FrameworkElement : UIElement
     {
@@ -235,9 +243,12 @@ namespace Microsoft.UI.Xaml.Controls
     }
     public class ListViewItem : Primitives.SelectorItem
     {
-        public object? Content { get; set; }
         public event Input.RightTappedEventHandler? RightTapped;
-        public void RaiseRightTap(Input.RightTappedRoutedEventArgs args) => RightTapped?.Invoke(this, args);
+        public void RaiseRightTap(Input.RightTappedRoutedEventArgs args, object? sender = null)
+        {
+            if (!args.Handled) RightTapped?.Invoke(sender ?? this, args);
+            RaiseRightTapHandlers(args, sender ?? this);
+        }
     }
     public sealed class ItemClickEventArgs : RoutedEventArgs { public object? ClickedItem { get; set; } }
     public sealed class ContainerContentChangingEventArgs : EventArgs { public object? Item { get; set; } public ListViewItem ItemContainer { get; set; } = new(); }
@@ -268,7 +279,7 @@ namespace Microsoft.UI.Xaml.Controls
 namespace Microsoft.UI.Xaml.Controls.Primitives
 {
     public class ButtonBase : Controls.Control { }
-    public class SelectorItem : Controls.Control { }
+    public class SelectorItem : Controls.Control { public object? Content { get; set; } }
     public class RangeBase : Controls.Control { }
     public enum FlyoutPlacementMode { Bottom }
     public enum FlyoutShowMode { Transient }

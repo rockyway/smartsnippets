@@ -59,8 +59,11 @@ public sealed partial class PopupWindow
             case "OnContainerContentChanging":
                 var container = new ListViewItem { Content = row };
                 OnContainerContentChanging(PopupList, new() { Item = row, ItemContainer = container });
+                // Recycled containers can be prepared more than once; handled gestures still open one menu.
+                OnContainerContentChanging(PopupList, new() { Item = row, ItemContainer = container });
                 Assert.True(container.IsEnabled); Assert.True(container.IsTabStop);
-                container.RaiseRightTap(new()); var menu = Assert.IsType<MenuFlyout>(MenuFlyout.LastShown);
+                // Native AOT can project the routed sender as a different object.
+                container.RaiseRightTap(new() { Handled = true }, new object()); var menu = Assert.IsType<MenuFlyout>(MenuFlyout.LastShown);
                 Assert.Equal(4, menu.Items.Count); Assert.True(menu.Items[0].IsEnabled); Assert.True(menu.Items[1].IsEnabled);
                 menu.Items[0].Invoke(); await last; Assert.Equal(1, native.Copies);
                 menu.Items[1].Invoke(); await last; Assert.Equal(1, native.Sends);

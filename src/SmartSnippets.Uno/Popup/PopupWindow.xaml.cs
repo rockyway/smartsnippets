@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Microsoft.UI.Input;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using Microsoft.UI.Windowing;
@@ -56,6 +57,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private readonly PopupKeyboardPreviewPolicy _keyboardPreview = new();
     private Controls.HoverDetailsSurface? _keyboardSurface;
     private bool _movingKeyboardSelection, _isComposing, _sortMenuOpen;
+    private readonly ConditionalWeakTable<Microsoft.UI.Xaml.Controls.Primitives.SelectorItem, RightTappedEventHandler> _rowRightTapHandlers = new();
     internal bool ShellSortMenuOpen => _sortMenuOpen;
     internal void ShellCloseSortMenu() => SortFlyout.Hide();
 
@@ -543,7 +545,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         }
         else if (e.Key == VirtualKey.Application || (e.Key == VirtualKey.F10 && (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & CoreVirtualKeyStates.Down) != 0))
         {
-            if (PopupList.SelectedItem is PopupItemViewModel selected && PopupList.ContainerFromItem(selected) is ListViewItem container)
+            if (PopupList.SelectedItem is PopupItemViewModel selected && PopupList.ContainerFromItem(selected) is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container)
             { e.Handled = true; ShowRowMenu(container, selected); }
         }
         else if (ReferenceEquals(FocusManager.GetFocusedElement(RootGrid.XamlRoot), SearchBox) && e.Key == VirtualKey.Enter && !ViewModel.IsConfirmingClipboardLoss) { e.Handled = true; _ = RunOperation(() => ViewModel.InsertSelectedAsync()); }
@@ -558,19 +560,24 @@ public sealed partial class PopupWindow : Window, IPopupHost
         Controls.HoverDetailsSurface.CancelRowHovers(RootGrid.XamlRoot);
         if (e.Item is PopupItemViewModel item)
         {
-            e.ItemContainer.RightTapped -= OnRowRightTapped;
-            e.ItemContainer.RightTapped += OnRowRightTapped;
+            // Capture the strongly typed container: the untyped routed-event sender does not
+            // necessarily project back to ListViewItem under Native AOT. Reuse the delegate
+            // when virtualized containers are prepared again.
+            var container = e.ItemContainer;
+            var handler = _rowRightTapHandlers.GetValue(container, key => (_, args) => OnRowRightTapped(key, args));
+            container.RemoveHandler(UIElement.RightTappedEvent, handler);
+            container.AddHandler(UIElement.RightTappedEvent, handler, true);
             e.ItemContainer.IsEnabled = item.Kind == PopupItemKind.Snippet;
             e.ItemContainer.IsTabStop = item.Kind == PopupItemKind.Snippet;
         }
     }
-    private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs e)
+    private void OnRowRightTapped(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, RightTappedRoutedEventArgs e)
     {
-        if (sender is not ListViewItem container || container.Content is not PopupItemViewModel item || !ViewModel.CanUseRowActions(item)) return;
+        if (container.Content is not PopupItemViewModel item || !ViewModel.CanUseRowActions(item)) return;
         e.Handled = true;
         ShowRowMenu(container, item, e.GetPosition(container));
     }
-    private void ShowRowMenu(ListViewItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
+    private void ShowRowMenu(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
     {
         ResetKeyboardNavigation();
         if (!ViewModel.CanUseRowActions(item)) return;
