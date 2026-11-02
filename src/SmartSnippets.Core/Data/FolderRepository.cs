@@ -50,6 +50,31 @@ public sealed class FolderRepository
         return new Folder(id, name, stored, stored);
     }
 
+    /// <summary>
+    /// Inserts folders in order. Ids are max(id)+1.. inside the caller's write transaction, which is exactly
+    /// what SQLite assigns to INTEGER PRIMARY KEY rows (no AUTOINCREMENT), so rows match repeated <see cref="Insert"/>.
+    /// </summary>
+    public List<Folder> InsertMany(SqliteConnection connection, SqliteTransaction transaction,
+        IReadOnlyList<(string Name, string NameKey)> folders, DateTimeOffset now)
+    {
+        var result = new List<Folder>(folders.Count);
+        if (folders.Count == 0) return result;
+        var stored = DbTime.FromDb(DbTime.ToDb(now));
+        var nextId = BulkInsert.NextId(connection, transaction, "folders");
+        BulkInsert.Run(connection, transaction, "INSERT INTO folders (id, name, name_key, created_at, updated_at) VALUES ",
+            "($id{0}, $name{0}, $key{0}, $now, $now)", ["$id", "$name", "$key"], folders.Count,
+            command => command.Parameters.AddWithValue("$now", DbTime.ToDb(now)),
+            (parameters, i) =>
+            {
+                var id = checked(nextId + i);
+                parameters[0].Value = id;
+                parameters[1].Value = folders[i].Name;
+                parameters[2].Value = folders[i].NameKey;
+                result.Add(new Folder(id, folders[i].Name, stored, stored));
+            });
+        return result;
+    }
+
     /// <summary>Returns false when no folder has the id. Never touches snippets.</summary>
     public bool Rename(SqliteConnection connection, SqliteTransaction transaction, long id, string name, string nameKey, DateTimeOffset now)
     {
