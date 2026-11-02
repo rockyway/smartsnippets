@@ -13,6 +13,6 @@ Gate Phase 1 release on Windows x64/Apple Silicon macOS parity, strict Native AO
 - Search ≤150 ms on 10k fixtures and popup ≤300 ms on agreed recorded reference hardware.
 - Native dependencies, executable identities, supported OS floors, x64/arm64 architecture and signatures are verified; macOS notarization passes.
 - CI, sequential test execution and safety runbooks match the new production targets.
-- Final task audits all desktop producer/composition/caller/UI/native lifecycle edges and parallel Insert/Copy/preview paths; unchecked native cases block Phase 1 completion.
+- Final task audits all desktop producer/composition/caller/UI/native lifecycle edges and parallel Insert/Copy/preview paths; the Windows check is a working daily flow plus a live check, not native-acceptance receipts (Plan 019 §0, 2026-11-01).
 
 Not implementation-ready or approved. Expand only after 020 completes. Mobile remains pending after this release gate.

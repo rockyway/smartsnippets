@@ -1,12 +1,20 @@
 # 019 — Uno shared shell and platform contracts
 
 **Date:** 2026-10-30 (original reservation; revised following latest G1 confirmation)
-**Status:** In progress — implementation authorized; native acceptance pending
+**Status:** In progress — revised 2026-11-01 (user D80/D82): target is a functional everyday Uno app on Windows; native-proof acceptance requirements removed (§0)
 **Size:** L
 **Area:** isolated Windows Uno candidate, Core/Presentation reuse, Windows shell, privacy, tests and additive CI
 **Requirement brief confirmed:** latest user confirmation (G1; verbatim below)
 **Master:** [017 — Uno migration](017-master-uno-cross-platform-migration.md)
 **Prerequisite disposition:** explicit Windows-candidate sequence exception to 017/018; 018 remains In progress. User G2 approves this plan, including the proposed Windows graph and bounded shared Copy/logging corrections. The user subsequently instructed “implement plan 019”; implementation is authorized, not native gate relaxation.
+
+## 0. Revision 2026-11-01 — user decisions D80/D82 (supersede conflicting text below)
+
+- **Target app:** the Uno candidate is the Windows app to make usable ("I need uno works, no legacy"). Port legacy behaviour; do not fall back to legacy.
+- **Native features on by default:** the candidate's ordinary launch composes real global hotkey, foreground capture, paste/insertion, Copy and (later) start-with-Windows, using the legacy semantics (capture before show, revalidate before paste, preserve clipboard, usage only for `Inserted`, Copy never credits usage, preview never copies/pastes). The default-deny requirement (§2 Behaviour, AC4) is removed.
+- **No heavy native proof:** the owned native-acceptance harness, guardian, screen-run scenes, evidence matrix and §7 runbook rows are **no longer required** for any task or for completion. They stay in the repo as optional tools only.
+- **Verification now:** targeted tests for the code a change touches, one strict candidate AOT publish (zero warnings), and a short live check of the changed feature on a granted screen slot. Full suites run once before the final merge.
+- **Priority:** the global hotkey first, then the rest of the daily flow.
 
 ## 1. Goal
 
@@ -36,10 +44,10 @@ These are 019-specific AC1–AC7, contributing to master AC1/AC3/AC5/AC6, not re
 1. **AC1 — Coexistence:** distinct candidate identity/profile/output/instance/tray; initial and redirected launch cannot reach legacy state or production registration. Legacy remains usable; compatible copied database/settings fixtures roundtrip.
 2. **AC2 — Management:** real Core/Presentation composition supports snippet CRUD/search/sort/folders, folder create/rename/delete-to-Unfiled, persisted settings and JSON import/export, including cancel/failure/unsaved Save–Discard–Cancel behavior.
 3. **AC3 — Popup/lifecycle:** compiled views preserve cache invalidation, warmup/recovery/focus policy, theme/palette/text size, preview/hover, background close and orderly exit. Initial and redirected QA navigation obey unsaved guards without foreground activation; preview has zero clipboard, dispatch and usage.
-4. **AC4 — Safe Windows boundaries:** Windows insertion contracts/CRLF/settings remain compatible; additive clipboard availability/result semantics require G2 and legacy compatibility tests. Default candidate registration/capture/focus/clipboard/input/restart refuse before native side effects; all Copy paths are gated too. Reviewed candidate flow tests and separately authorized native acceptance establish both insertion entry paths, Copy, exact target, single-flight, restore and success-only usage before this criterion is closed.
+4. **AC4 — Safe Windows boundaries:** Windows insertion contracts/CRLF/settings remain compatible; additive clipboard availability/result semantics require G2 and legacy compatibility tests. ~~Default candidate registration/capture/focus/clipboard/input/restart refuse before native side effects; all Copy paths are gated too.~~ Removed by §0: ordinary launch uses the real native services. Reviewed candidate flow tests and separately authorized native acceptance establish both insertion entry paths, Copy, exact target, single-flight, restore and success-only usage before this criterion is closed.
 5. **AC5 — Privacy/legacy compatibility:** shared logging emits no content/labels/tags/titles/query/document paths or raw exception payloads; legacy startup/failure/event consumers and normal data/settings behavior remain compatible and legacy AOT gate passes.
 6. **AC6 — Reproducible AOT:** fresh Windows x64 native artifact, correct effective properties and dependencies, zero warnings and no hidden IL suppression; additive candidate CI preserves existing legacy CI. Oldest runtime support is not inferred.
-7. **AC7 — Honest evidence:** named Windows outstanding checks retain owner/task/status; no 018 completion, native parity or release claim from shell/policy/build evidence. Do not mark 019 Complete until its own AC1–AC7 evidence passes, including AC4's live candidate flows; a useful closed-gate shell checkpoint may remain In progress/Blocked.
+7. **AC7 — Honest evidence:** named Windows outstanding checks retain owner/task/status; no 018 completion, native parity or release claim from shell/policy/build evidence. Revised by §0: 019 is complete when the daily flow (hotkey → popup → paste, Copy, management) works in the published candidate, checked by targeted tests, the AOT publish and a live check; native acceptance receipts are not required.
 
 ## 3. Current state (as-built)
 
@@ -287,7 +295,7 @@ Statuses distinguish scoped receipts from missing acceptance; headless tests do 
 | 10 | Synthetic leakage scan app/process/owned diagnostics, negative/fault receipts and final matrix | Content-free evidence, no fabricated PASS; 018 T6/T8 remain independently open until their gates pass (T1/T8) | PARTIAL — scans clean; final audit missing |
 | 11 | Oldest supported serviced Windows runtime compatibility | NOT RUN, release owner in 021; 17763 metadata/build success is not runtime support evidence | MISSING — 021 owner |
 
-Rows 1–10 are accepted candidate criteria, not optional demonstrations; blocked required rows keep 019 In progress/Blocked, not Complete. Existing unfinished 018 Windows T3/T4/T5/T6/T8 obligations remain with the 018 implementation owner; candidate T7 may supply reusable evidence only after reviewer checks source/adapter equivalence. Passing candidate tests does not retroactively complete 018. Mac outstanding native acceptance is deferred to 020/021, mobile paired app/keyboard/device/10k/offline evidence to 022–025; no evidence is manufactured by deferral.
+Revised by §0: rows 1–10 are optional, not completion criteria. Historical text: blocked required rows keep 019 In progress/Blocked, not Complete. Existing unfinished 018 Windows T3/T4/T5/T6/T8 obligations remain with the 018 implementation owner; candidate T7 may supply reusable evidence only after reviewer checks source/adapter equivalence. Passing candidate tests does not retroactively complete 018. Mac outstanding native acceptance is deferred to 020/021, mobile paired app/keyboard/device/10k/offline evidence to 022–025; no evidence is manufactured by deferral.
 
 ## 8. Rollout / phasing
 
@@ -319,3 +327,4 @@ No further G1 clarification is required. These are explicit gates/deferred owner
 | Confirming independent review | No issues found; ready for G2 | antigravity/gemini-4-argon:high; prior findings cleared, report c8dd59c7-4fb1-4ca4-9ebf-c5b3c1b7f3e5. Documentation review only |
 | Latest user approval | Plan approved (G2) | User approved the reviewed Windows-first plan, proposed Windows dependency graph and bounded shared Copy/logging corrections; no native safety gate is waived |
 | Subsequent user instruction | Implementation started | “implement plan 019”; Windows candidate work authorized, Mac deferred, native acceptance and safety gates unchanged |
+| 2026-11-01 | User decisions D80/D82 | "I need uno works, no legacy"; focus on the global hotkey; remove heavy test/native-proof requirements (§0) |

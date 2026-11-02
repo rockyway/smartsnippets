@@ -1,4 +1,6 @@
-# Plan 019 Windows Uno candidate — closed-gate checkpoint
+# Plan 019 Windows Uno candidate
+
+> **2026-11-01 (Plan 019 §0):** the candidate is being made the everyday Windows app. Real global hotkey, capture, paste and Copy are being enabled in the ordinary launch; statements below that these are unavailable describe the pre-revision checkpoint. Native-acceptance proof is no longer required.
 
 This is an isolated implementation checkpoint, **not completed Plan 019, native parity, release readiness, or completion of Plan 018**. The legacy app remains unchanged by this candidate commit. Shared privacy/clipboard changes are separate prerequisites.
 
