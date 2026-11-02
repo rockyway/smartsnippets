@@ -254,6 +254,47 @@ public sealed class OwnedTargetPreparationTests
         Assert.Equal(1, com.Focuses); Assert.True(com.Released); Assert.Equal(0, os.EditorCommands);
     }
 
+    [Fact]
+    public async Task TraceWithFocusEpochChangePreservesPreparedAndThe1500MsQuietWait()
+    {
+        var os = new Os();
+        var com = new Com(os) { FocusAction = () => { os.Epoch++; os.Quiet = false; } };
+        os.OnDelay = () => { if (os.Milliseconds >= 1500) os.Quiet = true; };
+        Assert.Equal(OwnedPreparationResult.Prepared, await OwnedTargetPreparation.PrepareAsync(os,
+            () => com, 1, 2, 3, CancellationToken.None, traceAfterFocus: () => Task.CompletedTask));
+        Assert.Equal(60, os.DelayCalls);
+        Assert.Equal(1500, os.Milliseconds);
+        Assert.Equal(1, os.EditorCommands);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task TraceFailureIsUnavailableDiagnosticAndDoesNotChangePreparation(bool synchronous)
+    {
+        var os = new Os();
+        var com = new Com(os) { FocusAction = () => { os.Epoch++; os.Quiet = false; } };
+        os.OnDelay = () => { if (os.Milliseconds >= 1500) os.Quiet = true; };
+        var emittedRecords = new List<string>();
+        var failures = new List<string>();
+        Task Trace()
+        {
+            if (synchronous) throw new InvalidOperationException("private diagnostic failure");
+            return TraceAsync();
+            async Task TraceAsync()
+            {
+                await Task.FromException(new InvalidOperationException("private diagnostic failure"));
+                emittedRecords.Add("sample");
+            }
+        }
+        var result = await OwnedTargetPreparation.PrepareAsync(os, () => com, 1, 2, 3, CancellationToken.None,
+            traceAfterFocus: Trace, traceUnavailable: failures.Add);
+        Assert.Equal(OwnedPreparationResult.Prepared, result);
+        Assert.Empty(emittedRecords);
+        Assert.Equal(new[] { "trace_unavailable" }, failures);
+        Assert.Equal(60, os.DelayCalls);
+        Assert.Equal(1, os.EditorCommands);
+    }
+
     [Theory]
     [InlineData(false)] [InlineData(true)]
     public async Task TraceWaitCannotBroadenEpochChangeAllowance(bool epochChangedByFocus)
@@ -288,7 +329,7 @@ public sealed class OwnedTargetPreparationTests
     {
         internal bool Identity = true, Permission = true, Desktop = true, Quiet = true;
         internal uint Epoch = 10;
-        internal int EditorCommands;
+        internal int EditorCommands, DelayCalls;
         internal Action? OnDelay, OnEditor, OnEpoch;
         public nint Foreground { get; set; } = 1;
         public long Milliseconds { get; private set; }
@@ -297,7 +338,7 @@ public sealed class OwnedTargetPreparationTests
         public bool VisibleDesktop() => Desktop;
         public bool QuietAllInput() => Quiet;
         public bool TryInputEpoch(out uint epoch) { OnEpoch?.Invoke(); epoch = Epoch; return true; }
-        public Task DelayAsync(CancellationToken ct) { Milliseconds += 25; OnDelay?.Invoke(); return Task.CompletedTask; }
+        public Task DelayAsync(CancellationToken ct) { DelayCalls++; Milliseconds += 25; OnDelay?.Invoke(); return Task.CompletedTask; }
         public Task FocusEditorAsync(CancellationToken ct) { EditorCommands++; OnEditor?.Invoke(); return Task.CompletedTask; }
         public bool TargetForeground() => Foreground == 2;
     }

@@ -5,6 +5,17 @@ internal sealed class NativeStartupDiagnostics(Func<nint> foreground, Func<nint,
     uint launcherPid, Func<nint> windowA, Func<nint> windowB)
 {
     private int order;
+
+    internal static uint LauncherPidOrUnavailable(Func<uint> lookup, Action<string>? unavailable = null)
+    {
+        try { return lookup(); }
+        catch
+        {
+            try { unavailable?.Invoke("trace_unavailable"); }
+            catch { }
+            return 0;
+        }
+    }
     internal string Sample(string phase)
     {
         // Only fixed call-site tokens; refuse arbitrary text before sampling.

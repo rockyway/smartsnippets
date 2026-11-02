@@ -23,9 +23,11 @@ public partial class App : Application
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(PositiveProtocol.IsPositive(Program.Configuration[0]) ? 65 : 25));
         var ct = deadline.Token;
         var startupSamples = new List<string>();
+        var launcherPid = NativeStartupDiagnostics.LauncherPidOrUnavailable(
+            () => RetainedIdentity.Parent(Program.CoordinatorHandle), startupSamples.Add);
         var diagnostics = new NativeStartupDiagnostics(NativeFixtureOs.Foreground,
             window => { NativeFixtureOs.GetWindowThreadProcessId(window, out var pid); return pid; },
-            RetainedIdentity.Parent(Program.CoordinatorHandle), () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0);
+            launcherPid, () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0);
         void FlushSamples()
         {
             foreach (var sample in startupSamples) AppLog.Info("native_startup_foreground", sample);

@@ -4,6 +4,20 @@ namespace SmartSnippets.Uno;
 
 public sealed class NativeStartupDiagnosticsTests
 {
+    [Fact]
+    public void LauncherParentFailureUsesZeroAndFixedUnavailableToken()
+    {
+        var records = new List<string>();
+        var launcherPid = NativeStartupDiagnostics.LauncherPidOrUnavailable(
+            () => throw new InvalidOperationException("private parent lookup failure"), records.Add);
+        Assert.Equal(0u, launcherPid);
+        Assert.Equal(new[] { "trace_unavailable" }, records);
+
+        var diagnostics = new NativeStartupDiagnostics(() => 3, _ => 99, launcherPid, () => 1, () => 2);
+        Assert.Equal("phase=target_launch relation=foreign launcher_foreground=False sample_order=1",
+            diagnostics.Sample("target_launch"));
+    }
+
     [Theory]
     [InlineData(0, "none", false)]
     [InlineData(1, "owned_a", false)]

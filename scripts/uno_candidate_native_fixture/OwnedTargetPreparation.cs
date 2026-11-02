@@ -27,9 +27,28 @@ internal static class OwnedTargetPreparation
     internal static bool ShouldPrepare(string scene) => SourceReviewed && PositiveProtocol.IsPositive(scene);
     internal static bool IsExpectedEditorClass(ReadOnlySpan<char> value) => value.SequenceEqual("Edit");
 
+    private static Task StartTraceSafely(Func<Task> trace, Action<string>? unavailable)
+    {
+        try { return ObserveTraceAsync(trace(), unavailable); }
+        catch { RecordTraceUnavailable(unavailable); return Task.CompletedTask; }
+    }
+
+    private static async Task ObserveTraceAsync(Task trace, Action<string>? unavailable)
+    {
+        try { await trace.ConfigureAwait(false); }
+        catch { RecordTraceUnavailable(unavailable); }
+    }
+
+    private static void RecordTraceUnavailable(Action<string>? unavailable)
+    {
+        try { unavailable?.Invoke("trace_unavailable"); }
+        catch { }
+    }
+
     internal static async Task<OwnedPreparationResult> PrepareAsync(IOwnedPreparationOs os,
         Func<IOwnedPreparationAutomation> automation, nint originalForeground, nint windowA, nint editorA, CancellationToken ct,
-        Action<string>? initialReceipt = null, Action<string>? sample = null, Func<Task>? traceAfterFocus = null)
+        Action<string>? initialReceipt = null, Action<string>? sample = null, Func<Task>? traceAfterFocus = null,
+        Action<string>? traceUnavailable = null)
     {
         sample?.Invoke("preparation_start");
         bool Guard() => !ct.IsCancellationRequested && os.Permitted() && os.PinnedIdentity() && os.VisibleDesktop();
@@ -81,7 +100,7 @@ internal static class OwnedTargetPreparation
                 sample?.Invoke("after_focus");
                 // Start a read-only independent sampler before the expensive identity guard.
                 // Latch the original refusal BEFORE awaiting diagnostics: a transient recovery is never authority.
-                var trace = traceAfterFocus?.Invoke();
+                var trace = traceAfterFocus is null ? null : StartTraceSafely(traceAfterFocus, traceUnavailable);
                 try
                 {
                     if (!Guard()) return OwnedPreparationResult.Refused;

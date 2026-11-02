@@ -20,6 +20,7 @@ helper_schema_spec = importlib.util.spec_from_file_location(
 helper_schema = importlib.util.module_from_spec(helper_schema_spec)
 helper_schema_spec.loader.exec_module(helper_schema)
 HELPER_FAILURE_ALLOWLISTS = helper_schema.HELPER_FAILURE_ALLOWLISTS
+INPUT_PHASES = helper_schema.INPUT_PHASES
 FULL_HOST_OBSERVER_REVIEWED = False
 spec = importlib.util.spec_from_file_location('startup_observer', REPO / 'scripts/run_uno_candidate_startup.py')
 startup = importlib.util.module_from_spec(spec)
@@ -355,8 +356,7 @@ def record_failure(private, error, *, helper_failure=None):
                 phase = getattr(error, 'input_phase', None)
                 if (subreason == 'epoch_changed' and type(delta) is int and 0 <= delta <= 0xffffffff
                         and type(idle) is int and 0 <= idle <= 0xffffffff
-                        and phase in ('unspecified', 'management', 'verification', 'shutdown',
-                                      'import-cancel', 'import', 'export-cancel', 'export')):
+                        and phase in INPUT_PHASES):
                     record.update(inputEpochDelta=delta, inputIdleMs=idle, inputPhase=phase)
             if (safe_helper_failure is not None and reason == 'operation'
                     and safe_helper_failure['reason'] == 'operation'):

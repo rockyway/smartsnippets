@@ -73,7 +73,8 @@ def validate_settings_actions(value):
         raise ValueError('ui_settings_actions')
 
 
-PICKER_PHASES = ('import-cancel', 'import', 'export-cancel', 'export')
+PICKER_PHASES = helper_schema.PICKER_PHASES
+INPUT_PHASES = helper_schema.INPUT_PHASES
 HELPER_FAILURE_ALLOWLISTS = helper_schema.HELPER_FAILURE_ALLOWLISTS
 HELPER_FAILURE_PATTERN = helper_schema.HELPER_FAILURE_PATTERN
 
@@ -200,10 +201,6 @@ def require_all_input_up(desktop):
     user.GetAsyncKeyState.restype = startup.C.c_short
     if any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 256)):
         raise InputRefused('held')
-
-
-INPUT_PHASES = ('unspecified', 'management', 'verification', 'shutdown',
-                'import-cancel', 'import', 'export-cancel', 'export')
 
 
 def quiet_input(desktop, expected=None, phase='unspecified'):
@@ -554,7 +551,12 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             while helper.poll() is None:
                 if process.poll() is not None:
                     raise ValueError('early_exit')
-                phase = picker_phase(private) if scene == 'file-picker' else None
+                if scene == 'file-picker':
+                    # Refuse known input changes before trusting the poll-time phase marker.
+                    quiet_input(desktop, epoch)
+                    phase = picker_phase(private)
+                else:
+                    phase = None
                 quiet_input(desktop, epoch, phase or 'management')
                 if previous_phase is not None and phase != previous_phase and previous_phase not in visible_phases:
                     raise ValueError('ui_picker_phase')

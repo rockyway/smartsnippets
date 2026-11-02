@@ -3,6 +3,9 @@ import re
 from types import MappingProxyType
 
 
+PICKER_PHASES = ('import-cancel', 'import', 'export-cancel', 'export')
+INPUT_PHASES = ('unspecified', 'management', 'verification', 'shutdown', *PICKER_PHASES)
+
 HELPER_FAILURE_ALLOWLISTS = MappingProxyType({
     'stages': frozenset((
         'bootstrap', 'ready', 'picker_import_cancel', 'picker_import', 'picker_export_cancel', 'picker_export',

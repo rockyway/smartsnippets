@@ -120,16 +120,22 @@ Classification adapters are `OwnedTargetPreparationNative.cs:12-32`. No raw clas
 PID/HWND, title, content or path is emitted. `initial_foreground` identifies return
 to the original snapshot without claiming that it belongs to the shell. Launcher
 means coordinator's direct parent; coordinator/worker are separately classified.
-Historical nd-04 startup `launcher_foreground` actually tested worker PID; nd-05
-corrects that wiring (`App.xaml.cs:26-28`). Historical false values must not be
-reinterpreted as observations of the trusted Python parent.
+The Python launcher is a console process, so its foreground window is usually
+conhost/terminal rather than the launcher's PID; the `launcher` relation rarely
+fires and does not observe the shell. Historical nd-04 startup `launcher_foreground`
+actually tested worker PID; nd-05 corrects that wiring (`App.xaml.cs:26-28`).
+Historical false values must not be reinterpreted as observations of the trusted
+Python parent.
 
-The original refusal is latched before awaiting the trace (`OwnedTargetPreparation.cs:84-96`).
+The original refusal is latched before awaiting the trace (`OwnedTargetPreparation.cs:101-115`).
 A later return to A cannot rescue it. A successful immediate check still goes
 through every original subsequent guard. The post-focus epoch is frozen before
-awaiting diagnostics and must remain equal afterward (`:90-104`), so the extra
-wait cannot expand the existing UIA epoch-change allowance. No input synthesis,
-ASFW_ANY, AttachThreadInput, foreign manipulation or foreign admission was added.
+awaiting diagnostics and must remain equal afterward (`:109-120`), so the extra
+wait cannot expand the existing UIA epoch-change allowance. Trace failures emit no
+sample records and only the fixed `trace_unavailable` token; the preparation result
+still follows the original guards. The launcher-parent lookup has the same fixed-token
+fallback and uses PID 0. No input synthesis, ASFW_ANY, AttachThreadInput, foreign
+manipulation or foreign admission was added.
 
 An A-PID IME/tooltip/owned window is **not** the exact captured editor/A identity.
 Ownership alone does not prove input goes to A or that the surface is benign.
@@ -143,11 +149,18 @@ needed if only foreign/none is observed.
 ## Picker epoch_changed
 
 The Python immutable epoch is LASTINPUTINFO.dwTime, not clipboard sequence and
-not a count of physical events (`scripts/run_uno_candidate_ui.py:209-234`). After
+not a count of physical events (`scripts/run_uno_candidate_ui.py:206-230`). After
 startup-only settling, it is fixed before helper launch (`:540-545`). Held keys,
 any epoch difference, or insufficient idle still refuse. Worker checks continue
-through helper observation, verification and shutdown (`:558`, `:604-623`).
-PowerShell separately checks the same timestamp (`scripts/uno_candidate_ui.ps1:71-78,174`).
+through helper observation, verification and shutdown (`:551`, `:605-625`). At
+file-picker polls, the worker performs a phase-independent quiet-input refusal before
+reading the marker, then repeats the check with the observed marker phase. This keeps
+an input refusal ahead of a malformed marker while retaining the phase as a poll-time
+label, not proof of when or why the epoch changed. A behavioral worker-loop test
+asserts that the actual picker marker reaches `quiet_input`. The picker/input phase
+allowlists are shared through `uno_candidate_helper_schema.py`, not maintained as
+duplicate literals. PowerShell separately checks the same timestamp
+(`scripts/uno_candidate_ui.ps1:71-78,174`).
 Import Cancel marks active **before** opening invocation (`:440-442`); the dialog
 Cancel Invoke occurs later (`:507-510`), followed by closed marker (`:520`). The
 nr-09 active-only record cannot place the change before/after creation or Cancel.
@@ -165,27 +178,31 @@ No tolerated delta, backward-time exception or system-event rebaseline is safe
 statically. The worker now adds unsigned inputEpochDelta, inputIdleMs and inputPhase
 (current fixed picker marker or management/verification/shutdown/unspecified).
 Persistence strictly allowlists phases and uint32 integers, rejecting bools/free
-text (`scripts/run_uno_candidate_acceptance.py:350-360`). Delta is timestamp
+text (`scripts/run_uno_candidate_acceptance.py:348-360`). Delta is timestamp
 subtraction modulo 2^32, not an event count; wrap/backward cases remain refusals.
 Phase identifies the observed marker, not proof that Invoke completed. This is the
 brief's sub-diagnostic alternative, not a claimed picker fix or acceptance.
 
-## Verification and limits
+## nd-05b verification and limits
 
-Final sequential verification (all PASS, zero warnings):
+The three requested checks ran sequentially, all PASS with zero warnings/errors:
 
-1. Native fixture tests: **206**.
-2. Target018 identity tests: **86**.
-3. Candidate tests from pinned Uno cwd: **348**.
-4. Python tests: **216**.
-5. `pwsh -NoProfile -File scripts/uno_candidate_native_fixture/build.ps1 -BuildOnly`:
-   fresh native x64 strict gate PASS, token `a926966a19a347afaff9f818b652dea4`,
-   SHA256 `669c22b43d5922d954e3639fb2fbd5fa1c9ff6e2a080650fa6ad3498723e1123`.
+1. Native fixture tests: **210 passed**.
+2. Python tests: **219 passed**.
+3. `pwsh -NoProfile -File scripts/uno_candidate_native_fixture/build.ps1 -BuildOnly`:
+   fresh native x64 strict gate PASS, token `f211dd2f70d543d7bc79a94bc2465c80`,
+   SHA256 `b241ad4ad10da143e58f05ee946f3bbd4f26bf486d29f827280e5c1810c9675e`.
+
+Target018 identity (**86**) and pinned Uno candidate (**348**) suites were not
+rerun for nd-05b; those prior counts remain historical. No UI, screen, or native
+fixture run occurred.
 
 Behavioral stubs cover all trace relations, wrong-PID A, allowlisted kinds and
 invalid class privacy, time/count bounds, foreground changes across samples,
 trace-before-disposal ordering, latched foreground/identity refusal despite recovery,
 post-trace foreground/epoch drift refusal, unsigned epoch forward/backward/wrap,
-actual picker phase tokens, persisted phase/delta and hostile metadata rejection.
+the worker loop's actual picker phase argument, shared persisted phase allowlist,
+phase/delta persistence and hostile metadata rejection. Tests cover synchronous and
+asynchronous trace exceptions plus launcher-parent lookup failure.
 No gate changed, warning suppressed, app launched or clipboard touched. These
 results do not resolve the runtime thief or establish native/picker acceptance.

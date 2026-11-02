@@ -306,7 +306,11 @@ Each records only `relation=none|owned_a|owned_b|launcher|foreign`,
 `launcher_foreground=True|False` and a worker-local increasing `sample_order`.
 In nd-04/nr-09 the field called launcher was actually the candidate worker which
 starts Target018. nd-05 corrects it to the coordinator's direct parent (the trusted
-Python launcher); the high-rate trace separately distinguishes worker/coordinator. A foreground sample is not proof of Windows foreground eligibility.
+Python launcher); the high-rate trace separately distinguishes worker/coordinator.
+Because the Python launcher is a console process, the foreground window is usually
+conhost/terminal rather than the launcher's PID, so the `launcher` relation rarely
+fires and does not observe the shell. A foreground sample is not proof of Windows
+foreground eligibility.
 The launch record is buffered until the host log opens; samples are not atomic with
 subsequent OS calls and do not identify a foreign process or explain Windows denial.
 `native_host_readiness reason=` records the first failing existing predicate (or

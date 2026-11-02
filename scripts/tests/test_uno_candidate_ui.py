@@ -42,7 +42,7 @@ class UiManagementTests(unittest.TestCase):
         desktop.user.GetAsyncKeyState.return_value = 0
         kernel.GetTickCount.return_value = 1600  # original inclusive 1500ms boundary
         with patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
-            for phase in (*s.PICKER_PHASES, 'management', 'verification', 'shutdown'):
+            for phase in s.INPUT_PHASES:
                 self.assertEqual(100, s.quiet_input(desktop, 100, phase))
         with patch.object(s.startup.C, 'WinDLL', return_value=kernel, create=True):
             self.assertEqual(100, s.quiet_input(desktop, 100))
@@ -822,7 +822,8 @@ class PickerObserverLoopTests(unittest.TestCase):
 
     def run_worker_error_path(self, *, helper_code=None, helper_output=b'', failure_file=None,
                               observer_error=None, diagnostic_error=None, foreground_save_error=None,
-                              picker_record=None, helper_stderr=b'', include_record=False):
+                              picker_record=None, helper_stderr=b'', include_record=False,
+                              scene='snippets', quiet_errors=None):
         import json
         with tempfile.TemporaryDirectory() as tmp:
             private = Path(tmp)
@@ -834,6 +835,8 @@ class PickerObserverLoopTests(unittest.TestCase):
                 encoding='ascii')
             if picker_record is not None:
                 (private / 'ui-helper-picker-schema.json').write_text(json.dumps(picker_record), encoding='ascii')
+            if scene == 'file-picker':
+                (private / 'picker-import-cancel.active').write_bytes(b'owned_picker_019\n')
             process = Mock()
             process.pid = 123
             process.poll.return_value = None
@@ -847,6 +850,9 @@ class PickerObserverLoopTests(unittest.TestCase):
             desktop.snapshot.return_value = (1, 2)
             pops = iter((process, helper))
             original_validator = s.validate_helper_foreground_failure
+            original_picker_phase = s.picker_phase
+            quiet_probe = Mock(side_effect=observer_error if observer_error is not None else quiet_errors)
+            marker_probe = Mock(wraps=original_picker_phase)
             with (patch.object(s.startup, 'require_job_membership'),
                   patch.object(s.startup, 'validate_private'),
                   patch.object(s.base, 'validate_fixture', return_value=Path('fixture.exe')),
@@ -858,12 +864,10 @@ class PickerObserverLoopTests(unittest.TestCase):
                   patch.object(s.subprocess, 'Popen', side_effect=lambda *args, **kwargs: next(pops)),
                   patch.object(s.startup, 'stop_app'),
                   patch.object(s.sys, 'argv', ['worker', '--worker-private']),
+                  patch.object(s, 'quiet_input', quiet_probe),
+                  patch.object(s, 'picker_phase', marker_probe),
                   patch.object(s, 'validate_helper_foreground_failure', wraps=original_validator) as validate_failure):
-                if observer_error is not None:
-                    patcher = patch.object(s, 'quiet_input', side_effect=observer_error)
-                else:
-                    patcher = patch.object(s, 'quiet_input')
-                with patcher:
+                try:
                     if diagnostic_error is not None:
                         patch_diag = patch.object(s, 'save_helper_diagnostics', side_effect=diagnostic_error)
                     else:
@@ -875,10 +879,34 @@ class PickerObserverLoopTests(unittest.TestCase):
                     with patch_diag, patch_foreground:
                         with self.assertRaises(ValueError) as caught:
                             s.worker(Path('fixture.exe'), 'digest', private, (0, 0, 1, 1),
-                                     stream=io.BytesIO(s.startup.PERMIT))
+                                     stream=io.BytesIO(s.startup.PERMIT), scene=scene)
+                finally:
+                    self.last_quiet_calls = quiet_probe.call_args_list
+                    self.last_picker_calls = marker_probe.call_args_list
             validate_failure.assert_called()
             failure_record = json.loads((private / 'observer-worker-failure.json').read_text(encoding='ascii'))
             return caught.exception, failure_record if include_record else failure_record['reason'], validate_failure.call_count
+
+    def test_phase_allowlists_share_one_schema(self):
+        self.assertIs(s.PICKER_PHASES, s.helper_schema.PICKER_PHASES)
+        self.assertIs(s.INPUT_PHASES, s.helper_schema.INPUT_PHASES)
+        self.assertEqual(s.base.INPUT_PHASES, s.helper_schema.INPUT_PHASES)
+
+    def test_worker_loop_passes_poll_time_picker_phase_to_quiet_input(self):
+        _, reason, _ = self.run_worker_error_path(
+            scene='file-picker', quiet_errors=[None, s.InputRefused('held')])
+        self.assertEqual('input', reason)
+        self.assertEqual(2, len(self.last_quiet_calls))
+        self.assertEqual(3, len(self.last_quiet_calls[-1].args))
+        self.assertEqual('import-cancel', self.last_quiet_calls[-1].args[-1])
+        self.assertEqual(1, len(self.last_picker_calls))
+
+    def test_quiet_input_refusal_precedes_picker_marker_failure(self):
+        _, reason, _ = self.run_worker_error_path(
+            scene='file-picker', observer_error=s.InputRefused('held'))
+        self.assertEqual('input', reason)
+        self.assertEqual(1, len(self.last_quiet_calls))
+        self.assertEqual([], self.last_picker_calls)
 
     def test_worker_helper_operation_failure_is_recorded_with_fixed_tokens(self):
         failure = (b'ui_helper_failed stage=picker_import_cancel reason=operation '
