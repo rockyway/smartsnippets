@@ -70,7 +70,7 @@ class ForegroundIdentityTests(unittest.TestCase):
         import subprocess
         helper = s.HELPER.read_text()
         method = 'public static IntPtr ForegroundRoot' + helper.split('public static IntPtr ForegroundRoot', 1)[1].split(' [DllImport', 1)[0]
-        guard = helper.split('        # Sample after authentication, then recheck once if picker activation raced it.', 1)[1].split('    function SelectOwnedLeave', 1)[0].rsplit('    }', 1)[0]
+        guard = helper.split('        # Sample after authentication, then recheck once if picker activation raced it.', 1)[1].split('    function Guard {', 1)[0].split('    function SelectOwnedLeave', 1)[0].rsplit('    }', 1)[0]
         script = r'''
 $ErrorActionPreference='Stop'
 Add-Type @'
