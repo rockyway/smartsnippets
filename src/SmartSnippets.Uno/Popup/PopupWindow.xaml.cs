@@ -576,6 +576,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnRowRightTapped(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, RightTappedRoutedEventArgs e)
     {
+        ViewModel.EnsureCurrent();
         if (container.Content is not PopupItemViewModel item || !ViewModel.CanUseRowActions(item)) return;
         e.Handled = true;
         ShowRowMenu(container, item, e.GetPosition(container));
@@ -583,6 +584,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void ShowRowMenu(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
     {
         ResetKeyboardNavigation();
+        ViewModel.EnsureCurrent();
         if (!ViewModel.CanUseRowActions(item)) return;
         Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);

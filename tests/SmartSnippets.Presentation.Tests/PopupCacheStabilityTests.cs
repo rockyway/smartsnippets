@@ -124,6 +124,28 @@ public sealed class PopupCacheStabilityTests(Xunit.Abstractions.ITestOutputHelpe
         Drain();
     }
 
+    [Fact]
+    public void RowMenuRefreshDoesNotRebuildDuringInvalidation()
+    {
+        var snippet = _store.SeedSnippet("old", "Label");
+        using var vm = Create();
+        var row = Assert.Single(vm.Items);
+        var items = vm.Items;
+        var before = vm.CacheRebuildCount;
+        vm.PropertyChanged += (_, _) => { _ = vm.CanUseRowActions(row); _ = vm.CanCopyRow(row); };
+        _store.UpdateSnippet(snippet.Id, new("new", "Label", true, null, ""));
+        Assert.True(vm.IsCacheDirty);
+        Assert.Same(items, vm.Items);
+        Assert.Equal(before, vm.CacheRebuildCount);
+        vm.EditRow(row);
+        Assert.False(vm.IsCacheDirty);
+        var current = Assert.Single(vm.Items);
+        Assert.Equal("new", current.ContentText);
+        vm.EditRow(current);
+        Assert.Equal("new", vm.Editor!.Text);
+        Drain();
+    }
+
     [Theory]
     [InlineData("move")]
     [InlineData("insert")]

@@ -190,7 +190,13 @@ public sealed partial class SnippetEditor
                 Assert.Same(f.Host.Snippets.Editor, ViewModel);
                 await Execute(ViewModel!.DeleteCommand); Assert.Empty(f.Host.Store.Snippets); break;
             case "ViewModel.DiscardCommand":
-                await vm.SaveAsync(); vm.Text = "changed"; await Execute(vm.DiscardCommand);
+                await vm.SaveAsync();
+                vm.Text = "edited ordinary";
+                SnippetTextBox.Writes.Clear();
+                Assert.True(await vm.SaveAsync());
+                Assert.Empty(SnippetTextBox.Writes);
+                vm.Text = "original"; Assert.True(await vm.SaveAsync());
+                vm.Text = "changed"; await Execute(vm.DiscardCommand);
                 Assert.Equal("original", vm.Text); Assert.False(vm.IsDirty);
                 vm.IsPassword = true; vm.Text = "PRIVATE-DRAFT"; vm.Label = "manual";
                 SnippetTextBox.Writes.Clear(); SnippetPasswordBox.Writes.Clear();

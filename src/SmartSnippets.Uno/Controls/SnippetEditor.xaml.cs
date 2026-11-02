@@ -155,20 +155,22 @@ public sealed partial class SnippetEditor : UserControl
     private void SyncInputs()
     {
         _inputGeneration++;
+        PasswordInputHint.Text = string.Empty;
+        if (_viewModel?.IsLoading == true) return;
         _syncingInput = true;
         try
         {
-            var editor = _inputUnloaded || _viewModel?.IsLoading == true ? null : _viewModel;
+            var editor = _inputUnloaded ? null : _viewModel;
             // Clear the inactive input before assigning the active one.
             if (editor?.IsPassword == true)
             {
-                SnippetTextBox.Text = string.Empty;
+                if (SnippetTextBox.Text.Length != 0) SnippetTextBox.Text = string.Empty;
                 var password = editor.CanEditPassword ? editor.Text : string.Empty;
                 if (SnippetPasswordBox.Password != password) SnippetPasswordBox.Password = password;
             }
             else
             {
-                SnippetPasswordBox.Password = string.Empty;
+                if (SnippetPasswordBox.Password.Length != 0) SnippetPasswordBox.Password = string.Empty;
                 var text = editor?.Text ?? string.Empty;
                 if (SnippetTextBox.Text != text) SnippetTextBox.Text = text;
             }

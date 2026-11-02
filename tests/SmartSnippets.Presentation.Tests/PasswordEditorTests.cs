@@ -157,6 +157,26 @@ public sealed class PasswordEditorTests
     }
 
     [Fact]
+    public async Task MultilineMetadataSaveAndDiscardNeverChangeMaskState()
+    {
+        var saved = _store.CreateSnippet(new("first\nsecond", "label", true, null, "", true)).Value!;
+        using var vm = Edit(saved.Id);
+        var changes = new List<string?>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(vm.Text) or nameof(vm.HasMultilineText) or nameof(vm.CanEditPassword) or nameof(vm.IsMultilinePassword))
+                changes.Add(e.PropertyName);
+            Assert.True(vm.IsMultilinePassword);
+            Assert.False(vm.CanEditPassword);
+        };
+        vm.TagsInput = "saved";
+        Assert.True(await vm.SaveAsync());
+        vm.TagsInput = "discarded";
+        vm.ResetToSaved();
+        Assert.Empty(changes);
+    }
+
+    [Fact]
     public async Task FailedConversionKeepsPasswordDraftAndCommittedOrdinaryMode()
     {
         var saved = _store.SeedSnippet("exact body", "safe label");
