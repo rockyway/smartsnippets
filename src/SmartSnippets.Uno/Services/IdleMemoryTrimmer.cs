@@ -20,7 +20,8 @@ internal sealed partial class IdleMemoryTrimmer : IDisposable
         _trim = trim ?? TrimNative;
         _clock = clock ?? (() => Environment.TickCount64);
         _timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _timer.Interval = TimeSpan.FromMilliseconds(100);
+        // Coarse polling: a tray app should not wake its UI thread often while idle.
+        _timer.Interval = TimeSpan.FromSeconds(1);
         _timer.IsRepeating = true;
         _timer.Tick += OnTick;
         _timer.Start();
