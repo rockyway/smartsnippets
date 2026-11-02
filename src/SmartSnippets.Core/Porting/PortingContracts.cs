@@ -89,4 +89,4 @@ public enum ExportRefusal { TooLarge, TooManySnippets, TooManyEntries }
 /// <summary>Exactly one of <see cref="Utf8Json"/> (compact, ≤ MaxImportBytes) and <see cref="Refusal"/> is non-null.
 /// For TooLarge, <see cref="Bytes"/> is "more than MaxImportBytes" (the writer stops at the limit, so the exact size of
 /// an oversized export is never computed).</summary>
-public sealed record NativeExportResult(byte[]? Utf8Json, ExportRefusal? Refusal, long Bytes, int SnippetCount, int FolderCount);
+public sealed record NativeExportResult(byte[]? Utf8Json, ExportRefusal? Refusal, long Bytes, int SnippetCount, int FolderCount, int ExcludedPasswordCount = 0);

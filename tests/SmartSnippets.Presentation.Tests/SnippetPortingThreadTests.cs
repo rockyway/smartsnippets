@@ -6,6 +6,21 @@ namespace SmartSnippets.Presentation.Tests;
 
 public class SnippetPortingThreadTests
 {
+    [Fact] public Task WorkerReceivesOnlyOrdinaryRows() => QueueSynchronizationContext.RunOnOwnerThread(async () =>
+    {
+        int owner = Environment.CurrentManagedThreadId;
+        var store = new FakeSnippetStore();
+        store.SeedSnippet("ordinary");
+        store.CreateSnippet(new SmartSnippets.Core.Domain.SnippetDraft("secret", "safe", true, null, "", true));
+        var workers = PortingWorkers.Default with { ExportAsync = (folders, rows, now) =>
+        {
+            Assert.Equal(owner, Environment.CurrentManagedThreadId);
+            Assert.Single(rows);
+            Assert.False(rows[0].Snippet.IsPassword);
+            return Task.Run(() => NativeExport.Write(folders, rows, now));
+        }};
+        Assert.True(await new SnippetPortingViewModel(store, new ScriptedDialogService(), new FakeSnippetFileService(), workers: workers).ExportAsync());
+    });
     private static Task Hop(bool asynchronous) => QueueSynchronizationContext.RunOnOwnerThread(async () =>
     {
         int owner = Environment.CurrentManagedThreadId, storeThread = 0, eventThread = 0;

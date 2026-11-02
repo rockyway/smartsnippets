@@ -209,7 +209,7 @@
                 </Button>
                 <Button Grid.Column="4"
                     Command="{x:Bind ViewModel.Porting.ExportCommand, Mode=OneWay}"
-                    ToolTipService.ToolTip="Export all snippets and folders to a .json file"
+                    ToolTipService.ToolTip="Export snippets and folders to a .json file (password snippets are excluded)"
                     automation:AutomationProperties.AutomationId="ExportSnippetsButton"
                     automation:AutomationProperties.Name="Export snippets">
                     <FontIcon FontSize="14" Glyph="{x:Bind ExportGlyph}" />
