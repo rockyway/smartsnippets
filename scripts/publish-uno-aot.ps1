@@ -1,7 +1,8 @@
 #Requires -Version 7.2
 # Build/inspect only: no app launch, UI, clipboard, input, registry or profile access.
 [CmdletBinding()]
-param([string]$Version, [Nullable[int]]$BuildNumber, [ValidateRange(1, 64)][int]$MaxCpuCount = 4)
+param([string]$Version, [Nullable[int]]$BuildNumber, [ValidateRange(1, 64)][int]$MaxCpuCount = 4, [switch]$Measure,
+    [ValidateSet('baseline','gc','trim','release','backdrop-off','gc-trim','gc-release','trim-release','combined')][string]$MeasureVariant)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repository = Split-Path -Parent $PSScriptRoot
@@ -9,7 +10,8 @@ $app = Join-Path $repository 'src/SmartSnippets.Uno'
 $token = [Guid]::NewGuid().ToString('N')
 $private = Join-Path ([IO.Path]::GetTempPath()) "ss-uno019-build-$token"
 $output = Join-Path $app "bin/publish-native/$token"
-$destination = Join-Path $repository "publish"
+if ($MeasureVariant) { $Measure = $true }
+$destination = Join-Path $repository $(if ($MeasureVariant) { "publish-measure-$MeasureVariant" } elseif ($Measure) { "publish-measure" } else { "publish" })
 $previous = Get-Location
 $stage = 'host'
 try {
@@ -37,6 +39,13 @@ try {
         '-p:PublishTrimmed=true', '-p:PublishSingleFile=false',
         '-p:SuppressTrimAnalysisWarnings=false', '-p:TrimmerSingleWarn=false',
         '-p:EnableTrimAnalyzer=true', '-p:EnableAotAnalyzer=true', '-p:TreatWarningsAsErrors=true')
+    $measureProperties = @()
+    if ($Measure) { $measureProperties += '-p:SmartSnippetsMeasure=true' }
+    if ($MeasureVariant -in @('gc','gc-trim','gc-release','combined')) { $measureProperties += '-p:SmartSnippetsMeasureGc=true' }
+    if ($MeasureVariant -in @('trim','gc-trim','trim-release','combined')) { $measureProperties += '-p:SmartSnippetsMeasureTrim=true' }
+    if ($MeasureVariant -in @('release','gc-release','trim-release','combined')) { $measureProperties += '-p:SmartSnippetsMeasureRelease=true' }
+    if ($MeasureVariant -eq 'backdrop-off') { $measureProperties += '-p:SmartSnippetsMeasureBackdropOff=true' }
+    $common += $measureProperties
     if ($Version) {
         if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$') { throw 'invalid_version' }
         if ($null -eq $BuildNumber -or $BuildNumber -lt 0 -or $BuildNumber -gt 65535) { throw 'invalid_build_number' }
@@ -47,9 +56,11 @@ try {
     & dotnet restore SmartSnippets.Uno.csproj -r win-x64 @common 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'locked_restore_failed' }
     $names = 'PublishAot,PublishTrimmed,PublishSingleFile,IsAotCompatible,EnableTrimAnalyzer,EnableAotAnalyzer,TreatWarningsAsErrors,SuppressTrimAnalysisWarnings,TrimmerSingleWarn,NoWarn,DisableImplicitUnoPackages,ImplicitUsings,RuntimeIdentifier,RuntimeIdentifiers,TargetFramework,NETCoreSdkVersion,MSBuildVersion,WindowsPackageType,WindowsAppSDKSelfContained,AssemblyName,SupportedOSPlatformVersion,TargetPlatformMinVersion,RestorePackagesWithLockFile,RestoreLockedMode'
+    $names += ',SmartSnippetsMeasure,SmartSnippetsMeasureGc,SmartSnippetsMeasureTrim,SmartSnippetsMeasureRelease,SmartSnippetsMeasureBackdropOff,ServerGarbageCollection,ConcurrentGarbageCollection,DefineConstants'
     $stage = 'effective_properties'
     # Inspect authored settings without global AOT/trim/NoWarn/RID overrides masking defects.
     $evaluation = @('-p:Configuration=Release', '-p:ContinuousIntegrationBuild=true', '-p:_IsPublishing=true')
+    $evaluation += $measureProperties
     & dotnet msbuild SmartSnippets.Uno.csproj @evaluation "-getProperty:$names" 2>&1 | Set-Content -LiteralPath $properties -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'effective_properties_failed' }
     $references = @{}
@@ -81,11 +92,24 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'artifact_gate_rejected' }
     $receipt | Set-Content -LiteralPath (Join-Path $output 'build-checks.json') -Encoding utf8
     if (!(Test-Path -LiteralPath (Join-Path $output "Assets/TitleIcon.png") -PathType Leaf)) { throw 'title_icon_missing' }
+    if ($Measure) {
+        if ($MeasureVariant -in @('gc','gc-trim','gc-release','combined')) {
+            $response = Get-Content -LiteralPath (Join-Path $app 'obj/x64/Release/net10.0-windows10.0.26100/win-x64/native/SmartSnippets.ilc.rsp')
+            foreach ($knob in @('System.GC.Server=false','System.GC.Concurrent=false','System.GC.ConserveMemory=9')) {
+                if ($response -notcontains "--runtimeknob:$knob") { throw 'gc_runtime_knob_not_embedded' }
+            }
+        }
+        (Get-FileHash -LiteralPath (Join-Path $output 'SmartSnippets.exe') -Algorithm SHA256).Hash |
+            Set-Content -LiteralPath (Join-Path $output 'measurement-build.txt')
+        @{ Variant = $(if ($MeasureVariant) { $MeasureVariant } else { 'baseline' }); Properties = $measureProperties } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'measurement-variant.json')
+        Copy-Item -LiteralPath $properties -Destination (Join-Path $output 'measurement-properties.json')
+    }
     if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
     Copy-Item -LiteralPath $output -Destination $destination -Recurse
     Write-Output $receipt
     Write-Output "build_token=$token"
-    Write-Output "Published publish/SmartSnippets.exe"
+    Write-Output "Published $(Split-Path -Leaf $destination)/SmartSnippets.exe"
     # Log paths and compiler diagnostics can contain user roots; do not print/upload them.
 } catch {
     Write-Error "Official build rejected stage=$stage; private evidence token=$token. No native artifact launched." -ErrorAction Continue

@@ -12,7 +12,11 @@ public static class Program
     private static AppInstance? _instance;
     private static EventHandler<AppActivationArguments>? _activated;
     internal static ActivationQueue Activations { get; } = new();
+#if SMARTSNIPPETS_MEASURE
+    private static readonly string InstanceKey = AppProfile.Identity;
+#else
     private const string InstanceKey = AppProfile.Identity;
+#endif
 
     internal static bool StartInBackground { get; private set; }
 

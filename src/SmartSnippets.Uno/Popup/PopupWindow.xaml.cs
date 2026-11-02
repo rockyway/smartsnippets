@@ -315,7 +315,12 @@ public sealed partial class PopupWindow : Window, IPopupHost
         _prewarmTimer.IsRepeating = false;
         _prewarmTimer.Tick += (_, _) => _shows.WarmupTimedOut(generation);
         _prewarmTimer.Start();
+#if SMARTSNIPPETS_MEASURE
+        if (!Measurement.MeasurementDisplay.Place(AppWindow, LogicalWidth, LogicalHeight))
+            throw new InvalidOperationException("Measurement warmup placement failed.");
+#else
         AppWindow.MoveAndResize(new RectInt32(-32000, -32000, LogicalWidth, LogicalHeight));
+#endif
         ShowSurface(false, revealAfterFrame: false);
     }
     private void StopWindowWarmup()

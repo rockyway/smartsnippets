@@ -7,6 +7,9 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         await _host.StartAsync(Program.StartInBackground, Program.InitialOptions);
+#if SMARTSNIPPETS_MEASURE
+        _host.StartMeasurementCommands();
+#endif
         Program.Activations.Attach(new Services.UiDispatcher(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()),
             options => _host.ApplyLaunchOptionsAsync(options));
     }

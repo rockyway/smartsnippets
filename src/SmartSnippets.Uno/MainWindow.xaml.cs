@@ -160,6 +160,9 @@ public sealed partial class MainWindow : Window
         }
 
         _current = kind;
+#if SMARTSNIPPETS_MEASURE
+        RestoreMeasurementPageState(page);
+#endif
         // The shortcut status is a Snippets-page hint; other pages have their own titles.
         var showHint = kind == PageKind.Snippets;
         NativeStatusText.Visibility = showHint ? Visibility.Visible : Visibility.Collapsed;

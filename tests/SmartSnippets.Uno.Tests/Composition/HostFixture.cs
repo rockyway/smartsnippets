@@ -39,6 +39,13 @@ internal sealed class TestBoundary : HostBoundary
     internal override IUiDispatcher Dispatcher => new TestDispatcher(Posted);
     internal override IThemeService CreateTheme(AppSettings settings) => new TestTheme(settings);
     internal override IDisposable CreateMessageWindow() { Messages++; return new Release(() => MessageDisposals++); }
+    internal Func<bool>? MemoryTrimAdmission;
+    internal int MemoryTrimmerDisposals;
+    internal override IDisposable? CreateIdleMemoryTrimmer(Func<bool> idle)
+    {
+        MemoryTrimAdmission = idle;
+        return new Release(() => MemoryTrimmerDisposals++);
+    }
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => Dialogs;
     internal override ISnippetFileService CreateFiles() => Files;
     internal override IMainWindow CreateMain(UnoAppHost host)

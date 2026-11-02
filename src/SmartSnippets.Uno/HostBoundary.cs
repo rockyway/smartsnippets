@@ -39,6 +39,7 @@ internal abstract class HostBoundary
     internal abstract IUiDispatcher Dispatcher { get; }
     internal abstract IThemeService CreateTheme(AppSettings settings);
     internal abstract IDisposable CreateMessageWindow();
+    internal virtual IDisposable? CreateIdleMemoryTrimmer(Func<bool> idle) => null;
     internal virtual Platforms.Windows.IDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => null;
     internal abstract IDialogService CreateDialogs(bool popup, ITextSizeService textSize);
     internal abstract ISnippetFileService CreateFiles();

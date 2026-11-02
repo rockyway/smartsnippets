@@ -11,7 +11,11 @@ internal interface IMessageWindowNative
 /// <summary>Owns exactly one registration. Never adopts a pre-existing native class.</summary>
 internal sealed class MessageWindowLifetime : IDisposable
 {
+#if SMARTSNIPPETS_MEASURE
+    internal const string ClassName = "SmartSnippets.Measure.MessageWindow";
+#else
     internal const string ClassName = "SmartSnippets.MessageWindow";
+#endif
     private readonly IMessageWindowNative _native;
     private bool _registered;
     internal nint Handle { get; private set; }

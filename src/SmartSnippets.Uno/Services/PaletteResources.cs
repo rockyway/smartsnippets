@@ -197,6 +197,9 @@ internal sealed class PaletteResources
                 acrylic.Opacity = original.Opacity;
                 acrylic.AlwaysUseFallback = original.AlwaysUseFallback;
             }
+#if SMARTSNIPPETS_MEASURE
+            if (Measurement.MeasurementOptions.BackdropOff) acrylic.AlwaysUseFallback = true;
+#endif
             foreach (var entry in entries.Values)
             {
                 if (highContrast)

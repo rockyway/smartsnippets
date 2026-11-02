@@ -23,6 +23,16 @@ internal sealed class WindowsHostBoundary : HostBoundary
     internal MainWindow? MainWindow => _main;
     internal PopupWindow? PopupWindow => _popup;
     internal override IUiDispatcher Dispatcher { get; } = new UiDispatcher(DispatcherQueue.GetForCurrentThread());
+    internal override IDisposable? CreateIdleMemoryTrimmer(Func<bool> idle)
+    {
+#if SMARTSNIPPETS_MEASURE
+        // Candidate builds retain independent switches; the measurement driver owns their trim.
+        return null;
+#else
+        return new IdleMemoryTrimmer(() => _main is { IsHidden: true }
+            && _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle());
+#endif
+    }
     internal override IThemeService CreateTheme(AppSettings settings) => _theme = new ThemeService(settings.Theme, settings.ColorPalette);
     internal override IDisposable CreateMessageWindow()
     {

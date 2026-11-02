@@ -13,16 +13,22 @@ internal sealed class WindowsDesktopServices : IDesktopServices
     private readonly Action<long> _pressed;
     public IDailyOperations Operations { get; }
     public IHotkeyManager Hotkeys { get; }
+#if SMARTSNIPPETS_MEASURE
+    public IStartupRegistration Startup { get; } = new UnavailableStartupRegistration();
+#else
     public IStartupRegistration Startup { get; } = new StartupRegistration();
+#endif
     public IElevation Elevation { get; }
     public bool StartupMigrationFailed { get; }
 
     internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey, Func<bool> mainHidden)
     {
         Elevation = new ElevationService(mainHidden);
+#if !SMARTSNIPPETS_MEASURE
         StartupMigrationFailed = StartupMigrationCoordinator.Start(
             new WindowsStartupMigrationRegistry(@"Software\Microsoft\Windows\CurrentVersion\Run"),
             Environment.ProcessPath, result => SmartSnippets.Core.Logging.AppLog.Info("startup_migration", result)) == StartupMigrationResult.Failed;
+#endif
         Operations = new DesktopOperations(message.Handle, popup);
         _registration = new HotkeyService(message);
         _pressed = _ => hotkey();

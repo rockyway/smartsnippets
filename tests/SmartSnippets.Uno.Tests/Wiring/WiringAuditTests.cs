@@ -64,6 +64,9 @@ public sealed class WiringAuditTests
     {
         var source = string.Join(Environment.NewLine, Directory.GetFiles(App, "*.cs", SearchOption.AllDirectories)
             .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) && !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
+            // MeasurementIsolationTests pins this directory's exclusion from ordinary builds.
+            // Its explicit throwaway-profile/display environment is instrumentation, never a product unlock.
+            .Where(p => !Path.GetRelativePath(App, p).Replace('\\', '/').StartsWith("Measurement/", StringComparison.Ordinal))
             .Select(File.ReadAllText));
         // D80: ordinary Windows hotkey/capture/paste is now real. Keep all other unlocks absent.
         foreach (var forbidden in new[] { "GetEnvironmentVariable(", "--profile" })

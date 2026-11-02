@@ -8,6 +8,7 @@
     <Compile Include="../../src/SmartSnippets.Uno/UiPolicy.cs;../../src/SmartSnippets.Uno/UnoAppHost.cs;../../src/SmartSnippets.Uno/ActivationQueue.cs;../../src/SmartSnippets.Uno/AppProfile.cs;../../src/SmartSnippets.Uno/HostBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs;../../src/SmartSnippets.Uno/Popup/PopupContextInsert.cs;../../src/SmartSnippets.Uno/Services/TrayText.cs;../../src/SmartSnippets.Uno/Services/MessageWindowLifetime.cs" LinkBase="App" />
     <Compile Include="../../src/SmartSnippets.Uno/AdministratorRestart.cs" Link="AdministratorRestart.cs" />
     <Compile Include="../../src/SmartSnippets.Uno/Platforms/Windows/DailyNative/StartupRegistration.cs" Link="App/StartupRegistration.cs" />
+    <Compile Include="../../src/SmartSnippets.Uno/Services/IdleTrimSchedule.cs;../../src/SmartSnippets.Uno/Services/IdleMemoryTrimmer.cs" LinkBase="App" />
     <!-- Actual app handlers; only XAML/native rendering primitives are substituted. -->
     <Compile Include="../../src/SmartSnippets.Uno/Pages/*.xaml.cs;../../src/SmartSnippets.Uno/Controls/*.xaml.cs;../../src/SmartSnippets.Uno/Popup/PopupWindow.xaml.cs;../../src/SmartSnippets.Uno/MainWindow.xaml.cs;../../src/SmartSnippets.Uno/WindowsHostBoundary.cs" Exclude="../../src/SmartSnippets.Uno/Controls/PaletteBaseline.xaml.cs" LinkBase="Views" />
   </ItemGroup>

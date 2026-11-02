@@ -20,9 +20,13 @@ internal static unsafe partial class WindowPlacement
         internal int Found, Failed;
     }
     internal static bool PlaceManagement(AppWindow window, int logicalWidth, int logicalHeight, bool qa) =>
+#if SMARTSNIPPETS_MEASURE
+        Measurement.MeasurementDisplay.Place(window, logicalWidth, logicalHeight);
+#else
         UiPolicy.PlaceManagement(qa,
             () => ParkBottomLeft(window, logicalWidth, logicalHeight),
             () => CenterOn(window, PInvoke.MonitorFromWindow(default, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), logicalWidth, logicalHeight));
+#endif
 
     internal static bool ParkBottomLeft(AppWindow window, int logicalWidth, int logicalHeight)
     {
