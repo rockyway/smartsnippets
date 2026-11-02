@@ -4,6 +4,7 @@ using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Query;
 using SmartSnippets.Core.Porting;
+using SmartSnippets.Core.Security;
 
 namespace SmartSnippets.Core.Store;
 
@@ -25,11 +26,14 @@ public sealed class SnippetStore : ISnippetStore
     private IReadOnlyList<SnippetView> _views = [];
 
     public SnippetStore(SqliteConnectionFactory factory, TimeProvider time)
+        : this(factory, time, UnavailableSecretProtector.Instance) { }
+
+    public SnippetStore(SqliteConnectionFactory factory, TimeProvider time, ISecretProtector protector)
     {
         _factory = factory;
         _time = time;
         _folderRepository = new FolderRepository(factory);
-        _snippetRepository = new SnippetRepository(factory);
+        _snippetRepository = new SnippetRepository(factory, protector);
     }
 
     public event EventHandler<StoreChangedEventArgs>? Changed;
@@ -92,7 +96,7 @@ public sealed class SnippetStore : ISnippetStore
         var (label, isCustom, tags, _) = prepared;
         var now = _time.GetUtcNow();
         var created = Write("create_snippet", (c, tx) =>
-            _snippetRepository.Insert(c, tx, draft.Text, label, isCustom, draft.FolderId, tags, now));
+            _snippetRepository.Insert(c, tx, draft.Text, label, isCustom, draft.FolderId, tags, now, draft.IsPassword));
 
         Publish(_folders, [.. _snippets, created]);
         Raise(StoreChangeKind.SnippetCreated, created.Id, [created.Id]);
@@ -117,7 +121,7 @@ public sealed class SnippetStore : ISnippetStore
         var (label, isCustom, tags, _) = prepared;
         var now = Stored(_time.GetUtcNow());
         var found = Write("update_snippet", (c, tx) =>
-            _snippetRepository.Update(c, tx, id, draft.Text, label, isCustom, draft.FolderId, tags, now));
+            _snippetRepository.Update(c, tx, id, draft.Text, label, isCustom, draft.FolderId, tags, now, draft.IsPassword));
         if (!found)
         {
             return StoreResult<Snippet>.Fail(ValidationError.SnippetNotFound);
@@ -128,6 +132,7 @@ public sealed class SnippetStore : ISnippetStore
             Text = draft.Text,
             Label = label,
             IsLabelCustom = isCustom,
+            IsPassword = draft.IsPassword,
             FolderId = draft.FolderId,
             Tags = tags,
             UpdatedAt = now,
@@ -290,6 +295,10 @@ public sealed class SnippetStore : ISnippetStore
 
     private static StoreException ToStoreException(Exception ex)
     {
+        if (ex is SecretProtectionException)
+            return new StoreException(StoreFailure.SecretProtection,
+                "Password data could not be protected or read. Restore the original Windows profile/key or a compatible backup.");
+
         if (ex is SqliteException sqlite)
         {
             return sqlite.SqliteErrorCode switch
@@ -315,7 +324,7 @@ public sealed class SnippetStore : ISnippetStore
         {
             return action();
         }
-        catch (Exception ex) when (ex is SqliteException or IOException)
+        catch (Exception ex) when (ex is SqliteException or IOException or SecretProtectionException)
         {
             // Never pass the exception: SQLite trigger and I/O messages can contain private data.
             AppLog.Error("store_write_failed", null,
@@ -336,6 +345,9 @@ public sealed class SnippetStore : ISnippetStore
 
     private (string Label, bool IsCustom, IReadOnlyList<string> Tags, ValidationError? Error) Prepare(SnippetDraft draft)
     {
+        if (draft.IsPassword && (!draft.IsLabelCustom || string.IsNullOrWhiteSpace(draft.Label)))
+            return (draft.Label, true, [], ValidationError.LabelRequired);
+
         var tags = TagList.Parse(draft.TagsInput);
         var (label, isCustom) = LabelSuggester.ResolveLabel(draft, tags);
         var errors = SnippetValidator.Validate(draft.Text, label);

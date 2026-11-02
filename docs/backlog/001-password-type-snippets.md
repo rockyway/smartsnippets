@@ -1,6 +1,6 @@
 # 001 — Password-type snippets and masked previews
 
-**Status:** Backlog — requirement captured, not designed or approved for implementation
+**Status:** Implemented by [plan 016](../plan/016-password-type-snippets.md) (2026-11-02). The "Current safety boundary" section below describes the state before plan 016 and is kept for history.
 **Requested:** 2026-10-29
 **Related work:** [012 — Shared snippet hover details](../plan/012-shared-snippet-hover-details.md)
 

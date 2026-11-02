@@ -23,6 +23,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private readonly ITextSizeService? _textSize;
     private readonly Action<Action> _schedule;
     private bool _cacheDirty;
+    public bool IsCacheDirty => _cacheDirty;
     private bool _rebuildQueued;
     public int CacheRebuildCount { get; private set; }
     public int CachedRowCount => _cache.Count;
@@ -116,6 +117,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private long? SelectedId => SelectedIndex >= 0 && SelectedIndex < Items.Count ? Items[SelectedIndex].SnippetId : null;
     public void MoveSelection(int delta)
     {
+        EnsureCurrent();
         ClearTransientFooter(); StatusText = string.Empty;
         if (delta == 0 || Items.Count == 0) return;
         var direction = Math.Sign(delta);
@@ -186,7 +188,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             v.Snippet.Id, v.Snippet.Label, string.Empty,
             IsFolderLayout ? string.Empty : v.FolderName ?? string.Empty,
             v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty)
-            { TextSize = _textSize, ContentText = v.Snippet.Text, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
+            { TextSize = _textSize, ContentText = SnippetDisplayPolicy.Content(v.Snippet), IsPassword = v.Snippet.IsPassword, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
     }
     private void Refresh(long? keep)
     {
@@ -218,6 +220,8 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void OnStoreChanged(object? sender, StoreChangedEventArgs e)
     {
         _cacheDirty = true;
+        // Synchronous invalidation closes even pending previews before deferred rebuilding.
+        OnPropertyChanged(nameof(IsCacheDirty));
         if (_rebuildQueued) return;
         _rebuildQueued = true;
         _schedule(() =>
@@ -233,10 +237,15 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     public void Dispose() { if (_disposed) return; _disposed = true; _store.Changed -= OnStoreChanged; CloseEditor(); _cache.Clear(); _search = new([]); Items = []; }
     public void Close() { if (IsConfirmingClipboardLoss) { CancelPasteAnyway(); return; } _host.Hide(); AppLog.Info("popup_closed", "reason=esc"); }
     public void OnDeactivated() { if (!IsEditorOpen && !IsInserting && !_contextDialogOpen) { _host.Hide(); AppLog.Info("popup_closed", "reason=deactivated"); } }
-    public bool CanUseRowActions(PopupItemViewModel? item) => !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet } && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    public bool CanUseRowActions(PopupItemViewModel? item)
+    {
+        return !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss && item is { Kind: PopupItemKind.Snippet }
+            && Items.Contains(item) && _store.Snippets.Any(s => s.Snippet.Id == item.SnippetId);
+    }
     public bool CanCopyRow(PopupItemViewModel? item) => !IsPreview && _clipboard.IsAvailable && CanUseRowActions(item);
     public void CopyRow(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (IsPreview || !CanUseRowActions(item)) return;
         if (!_clipboard.IsAvailable) { StatusText = UiText.CopyFailed; return; }
         var snippet = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId).Snippet;
@@ -244,7 +253,11 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
         if (StatusText == UiText.CopyFailed) StatusText = string.Empty;
         AppLog.Info("popup_row_copied", $"id={snippet.Id}");
     }
-    public Task InsertRowAsync(PopupItemViewModel item) => CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
+    public Task InsertRowAsync(PopupItemViewModel item)
+    {
+        EnsureCurrent();
+        return CanUseRowActions(item) ? ActivateAsync(item) : Task.CompletedTask;
+    }
     public bool CanInsertFromMain => Target is not null && !IsPreview && !IsInserting && !IsEditorOpen && !IsConfirmingClipboardLoss;
     public Task InsertFromMainAsync(long id)
     {
@@ -257,10 +270,12 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public void EditRow(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (CanUseRowActions(item)) OpenEditor(item.SnippetId);
     }
     public async Task DeleteRowAsync(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (!CanUseRowActions(item)) return;
         var view = _store.Snippets.First(s => s.Snippet.Id == item.SnippetId);
         _contextDialogOpen = true;
@@ -318,6 +333,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void CloseEditor() { if (Editor is not { } editor) return; editor.Saved -= OnEditorSaved; Editor = null; editor.Dispose(); }
     public async Task InsertSelectedAsync()
     {
+        EnsureCurrent();
         if (IsEditorOpen) return;
         if (FooterState == PopupFooterState.MaybePasted) { DismissFooter(); return; }
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=keyboard"); return; }
@@ -328,6 +344,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     }
     public Task ActivateAsync(PopupItemViewModel item)
     {
+        EnsureCurrent();
         if (IsEditorOpen) return Task.CompletedTask;
         if (IsInserting) { AppLog.Info("popup_insert_ignored", "reason=inserting source=row"); return Task.CompletedTask; }
         if (item.Kind != PopupItemKind.Snippet) return Task.CompletedTask;

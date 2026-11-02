@@ -479,6 +479,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void ShowKeyboardPreview()
     {
+        ViewModel.EnsureCurrent();
         if (!_visible || _closed || ViewModel.IsEditorOpen || SelectedSnippet is not { } selected)
         { ResetKeyboardNavigation(); return; }
         if (_keyboardSurface is null)
@@ -502,6 +503,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        ViewModel.EnsureCurrent();
         if (e.Handled || !_visible || ViewModel.IsEditorOpen || _isComposing || _contextFlyout is not null || _sortMenuOpen) return;
         var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as DependencyObject;
         var inList = false;
@@ -534,6 +536,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        ViewModel.EnsureCurrent();
         if (e.Handled || ViewModel.IsEditorOpen || _isComposing) return;
         if (e.Key == VirtualKey.Escape && _contextFlyout is { } flyout) { e.Handled = true; flyout.Hide(); }
         else if (e.Key == VirtualKey.Escape)
@@ -573,6 +576,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnRowRightTapped(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, RightTappedRoutedEventArgs e)
     {
+        ViewModel.EnsureCurrent();
         if (container.Content is not PopupItemViewModel item || !ViewModel.CanUseRowActions(item)) return;
         e.Handled = true;
         ShowRowMenu(container, item, e.GetPosition(container));
@@ -580,6 +584,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private void ShowRowMenu(Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container, PopupItemViewModel item, Windows.Foundation.Point? position = null)
     {
         ResetKeyboardNavigation();
+        ViewModel.EnsureCurrent();
         if (!ViewModel.CanUseRowActions(item)) return;
         Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);
         ViewModel.SelectedIndex = ViewModel.Items.IndexOf(item);
@@ -696,7 +701,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor))
+        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor)
+            || (_visible && e.PropertyName == nameof(PopupViewModel.IsCacheDirty)))
         {
             ResetKeyboardNavigation();
             Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);

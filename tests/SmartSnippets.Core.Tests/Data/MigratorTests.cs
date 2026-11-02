@@ -14,22 +14,22 @@ public class MigratorTests
         using var db = new TempDatabase();
         var migrator = new Migrator(db.Factory);
 
-        Assert.Equal(2, migrator.MigrateToLatest());
-        Assert.Equal(2, migrator.MigrateToLatest());
+        Assert.Equal(3, migrator.MigrateToLatest());
+        Assert.Equal(3, migrator.MigrateToLatest());
 
         Assert.Equal(1L, db.Scalar("SELECT COUNT(*) FROM schema_version"));
-        Assert.Equal(2L, db.Scalar("SELECT version FROM schema_version"));
+        Assert.Equal(3L, db.Scalar("SELECT version FROM schema_version"));
         Assert.Equal(1L, db.Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'probe'"));
     }
 
     [Fact]
-    public void EmptyDb_MigratesTo2()
+    public void EmptyDb_MigratesTo3()
     {
         using var db = new TempDatabase();
 
-        Assert.Equal(2, new Migrator(db.Factory).MigrateToLatest());
+        Assert.Equal(3, new Migrator(db.Factory).MigrateToLatest());
 
-        Assert.Equal(2L, db.Scalar("SELECT version FROM schema_version"));
+        Assert.Equal(3L, db.Scalar("SELECT version FROM schema_version"));
         foreach (var table in new[] { "probe", "folders", "snippets", "settings" })
         {
             Assert.Equal(1L, db.Scalar($"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '{table}'"));
@@ -39,13 +39,13 @@ public class MigratorTests
     }
 
     [Fact]
-    public void V1Db_UpgradesTo2_PreservesProbeRows_WritesBackup()
+    public void V1Db_UpgradesTo3_PreservesProbeRows_WritesBackup()
     {
         using var db = new TempDatabase();
         V1Only(db).MigrateToLatest();
         db.Exec("INSERT INTO probe (text) VALUES ('keep me')");
 
-        Assert.Equal(2, new Migrator(db.Factory).MigrateToLatest());
+        Assert.Equal(3, new Migrator(db.Factory).MigrateToLatest());
 
         Assert.Equal("keep me", (string?)db.Scalar("SELECT text FROM probe"));
         Assert.Equal(1L, db.Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'snippets'"));

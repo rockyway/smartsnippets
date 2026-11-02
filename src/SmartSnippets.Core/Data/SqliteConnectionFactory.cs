@@ -42,7 +42,7 @@ public sealed class SqliteConnectionFactory
         {
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;";
+            command.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;";
             command.ExecuteNonQuery();
             return connection;
         }

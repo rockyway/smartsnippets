@@ -25,7 +25,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     private long? _snippetId;
     private Snippet? _current;
-    private Baseline _baseline = new(string.Empty, string.Empty, false, null, []);
+    private Baseline _baseline = new(string.Empty, string.Empty, false, null, [], false);
     private bool _loading;
     private bool _updatingChoices;
     private bool _settingLabel;
@@ -33,7 +33,27 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private bool _disposed;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMultilineText))]
+    [NotifyPropertyChangedFor(nameof(CanEditPassword))]
+    [NotifyPropertyChangedFor(nameof(IsMultilinePassword))]
     private string _text = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Suggestion))]
+    [NotifyPropertyChangedFor(nameof(LabelPlaceholder))]
+    [NotifyPropertyChangedFor(nameof(AutoLabelHint))]
+    [NotifyPropertyChangedFor(nameof(CanChangeLabelMode))]
+    [NotifyPropertyChangedFor(nameof(CanEditPassword))]
+    [NotifyPropertyChangedFor(nameof(IsMultilinePassword))]
+    private bool _isPassword;
+
+    /// <summary>Input controls must not project intermediate reload state.</summary>
+    public bool IsLoading => _loading;
+
+    public bool HasMultilineText => Text.IndexOfAny(['\r', '\n']) >= 0;
+    public bool CanEditPassword => IsPassword && !HasMultilineText;
+    public bool IsMultilinePassword => IsPassword && HasMultilineText;
+    public bool CanChangeLabelMode => !IsPassword;
 
     [ObservableProperty]
     private string _label = string.Empty;
@@ -171,13 +191,13 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     public bool IsLabelAuto => !IsLabelCustom;
 
     /// <summary>"Auto: &lt;suggestion&gt;" while the label is automatic, otherwise "Label".</summary>
-    public string LabelPlaceholder => IsLabelCustom ? "Label" : $"Auto: {Suggestion}";
+    public string LabelPlaceholder => IsPassword || IsLabelCustom ? "Label" : $"Auto: {Suggestion}";
 
     /// <summary>"Edit the label to stop it following your tags." while the label is automatic, otherwise empty.</summary>
-    public string AutoLabelHint => IsLabelCustom ? string.Empty : UiText.AutoLabelHint;
+    public string AutoLabelHint => IsPassword || IsLabelCustom ? string.Empty : UiText.AutoLabelHint;
 
     /// <summary>The label the store would assign automatically for the current text and tags.</summary>
-    public string Suggestion => LabelSuggester.Suggest(Text, TagList.Parse(TagsInput));
+    public string Suggestion => IsPassword ? string.Empty : LabelSuggester.Suggest(Text, TagList.Parse(TagsInput));
 
     /// <summary>Raised after a successful save with the saved snippet's id (the popup host closes on it).</summary>
     public event EventHandler<long>? Saved;
@@ -213,7 +233,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         try
         {
             ClearErrors();
-            var draft = new SnippetDraft(Text, Label, IsLabelCustom, SelectedFolder.Id, TagsInput);
+            var draft = new SnippetDraft(Text, Label, IsLabelCustom, SelectedFolder.Id, TagsInput, IsPassword);
             StoreResult<Snippet> result;
             try
             {
@@ -365,6 +385,25 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         SaveFailureMessage = string.Empty;
     }
 
+    partial void OnIsPasswordChanged(bool value)
+    {
+        if (_loading) return;
+        _labelBeforeAuto = null;
+        if (value)
+        {
+            if (!IsLabelCustom) SetLabel(string.Empty);
+            IsLabelCustom = true;
+        }
+        else if (string.IsNullOrWhiteSpace(Label))
+        {
+            IsLabelCustom = false;
+            SetLabel(Suggestion);
+            _labelBeforeAuto = null;
+        }
+        LabelError = string.Empty;
+        RecomputeDirty();
+    }
+
     partial void OnTextChanged(string value)
     {
         if (_loading)
@@ -395,7 +434,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         }
 
         LabelError = string.Empty;
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value) && !IsPassword)
         {
             IsLabelCustom = false;
             SetLabel(Suggestion);
@@ -412,6 +451,11 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     partial void OnIsLabelCustomChanged(bool value)
     {
+        if (IsPassword && !value)
+        {
+            IsLabelCustom = true;
+            return;
+        }
         if (_loading)
         {
             return;
@@ -449,7 +493,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private void OnInputChanged()
     {
         OnPropertyChanged(nameof(LabelPlaceholder));
-        if (!IsLabelCustom)
+        if (!IsPassword && !IsLabelCustom)
         {
             SetLabel(Suggestion);
         }
@@ -473,7 +517,8 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private void RecomputeDirty()
     {
         var tags = TagList.Parse(TagsInput);
-        IsDirty = !string.Equals(Text, _baseline.Text, StringComparison.Ordinal)
+        IsDirty = IsPassword != _baseline.IsPassword
+            || !string.Equals(Text, _baseline.Text, StringComparison.Ordinal)
             || IsLabelCustom != _baseline.IsLabelCustom
             || (IsLabelCustom && !string.Equals(Label, _baseline.Label, StringComparison.Ordinal))
             || SelectedFolder.Id != _baseline.FolderId
@@ -485,11 +530,14 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         _current = snippet;
         _labelBeforeAuto = null;
         _loading = true;
+        OnPropertyChanged(nameof(IsLoading));
         try
         {
+            if (snippet?.IsPassword == true) IsLabelCustom = true;
+            IsPassword = snippet?.IsPassword ?? false;
             Text = snippet?.Text ?? string.Empty;
             TagsInput = snippet is null ? string.Empty : TagList.Format(snippet.Tags);
-            IsLabelCustom = snippet?.IsLabelCustom ?? false;
+            IsLabelCustom = IsPassword || (snippet?.IsLabelCustom ?? false);
             SetLabel(IsLabelCustom ? snippet!.Label : Suggestion);
             SelectedFolder = ChoiceFor(snippet?.FolderId);
             ClearErrors();
@@ -497,6 +545,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         finally
         {
             _loading = false;
+            OnPropertyChanged(nameof(IsLoading));
         }
 
         OnPropertyChanged(nameof(LabelPlaceholder));
@@ -509,16 +558,21 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     {
         _current = saved;
         _loading = true;
+        OnPropertyChanged(nameof(IsLoading));
         try
         {
+            if (saved.IsPassword) IsLabelCustom = true;
+            IsPassword = saved.IsPassword;
+            Text = saved.Text;
             TagsInput = TagList.Format(saved.Tags);
-            IsLabelCustom = saved.IsLabelCustom;
+            IsLabelCustom = saved.IsPassword || saved.IsLabelCustom;
             SetLabel(saved.Label);
             SelectedFolder = ChoiceFor(saved.FolderId);
         }
         finally
         {
             _loading = false;
+            OnPropertyChanged(nameof(IsLoading));
         }
 
         OnPropertyChanged(nameof(LabelPlaceholder));
@@ -528,7 +582,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     }
 
     private Baseline CaptureBaseline() =>
-        new(Text, Label, IsLabelCustom, SelectedFolder.Id, TagList.Parse(TagsInput));
+        new(Text, Label, IsLabelCustom, SelectedFolder.Id, TagList.Parse(TagsInput), IsPassword);
 
     private void RefreshMetadata()
     {
@@ -687,5 +741,6 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
         string Label,
         bool IsLabelCustom,
         long? FolderId,
-        IReadOnlyList<string> Tags);
+        IReadOnlyList<string> Tags,
+        bool IsPassword);
 }

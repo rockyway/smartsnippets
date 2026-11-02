@@ -101,7 +101,14 @@ public sealed partial class SnippetPortingViewModel : ObservableObject
                 await _dialogs.ShowErrorAsync(UiText.ExportFailedTitle, UiText.ExportNotJsonFile); return false;
             }
             fileName = Path.GetFileName(path);
-            var folders = _store.Folders; var snippets = _store.Snippets;
+            var folders = _store.Folders;
+            var snippets = new List<SmartSnippets.Core.Query.SnippetView>();
+            int excluded = 0;
+            foreach (var view in _store.Snippets)
+            {
+                if (view.Snippet.IsPassword) excluded++;
+                else snippets.Add(view);
+            }
             var result = await _workers.ExportAsync(folders, snippets, _time.GetUtcNow());
             if (result.Refusal is { } refusal)
             {
@@ -120,7 +127,7 @@ public sealed partial class SnippetPortingViewModel : ObservableObject
             written = true;
             stage = "after_write";
             AppLog.Info("export_done", $"snippets={result.SnippetCount} folders={result.FolderCount} bytes={result.Bytes}");
-            await _dialogs.ShowInfoAsync(UiText.ExportCompleteTitle, UiText.ExportComplete(result.SnippetCount, result.FolderCount, fileName));
+            await _dialogs.ShowInfoAsync(UiText.ExportCompleteTitle, UiText.ExportComplete(result.SnippetCount, result.FolderCount, fileName, excluded + result.ExcludedPasswordCount));
             return true;
         }
         catch (OperationCanceledException) { throw; }

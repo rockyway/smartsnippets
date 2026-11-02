@@ -35,6 +35,12 @@ public static class UiText
 
     // Editor.
     public const string CustomLabel = "Custom label";
+    public const string Password = "Password";
+    public const string PasswordAccountHint = "Protected by your Windows account and omitted from exports. Unchecking reveals the draft; saving unchecked stores ordinary text.";
+    public const string PasswordMultilineHint = "Uncheck Password to edit multiline text.";
+    public const string PasswordPasteHint = "Multiline paste is not supported. Uncheck Password to edit multiline text.";
+    public const string PasswordPasteFailed = "Could not read clipboard text. Try again.";
+    public const string PasswordPasteReplacesHint = "Pasting replaces the whole password.";
     public const string AutoLabelHint = "Edit the label to stop it following your tags.";
     public const string UnsavedChanges = "Unsaved changes";
     public static string UsedTimes(int usageCount) => usageCount switch
@@ -152,7 +158,7 @@ public static class UiText
     public const string ImportButtonName = "Import snippets";
     public const string ExportButtonName = "Export snippets";
     public const string ImportButtonTooltip = "Import snippets from Smart Snippets, TermFlow, Rephlo or InkSpoke (.json)";
-    public const string ExportButtonTooltip = "Export all snippets and folders to a .json file";
+    public const string ExportButtonTooltip = "Export snippets and folders to a .json file (password snippets are excluded)";
     public const string ImportCompleteTitle = "Import complete";
     public const string ImportNothingTitle = "Nothing imported";
     public const string ImportFailedTitle = "Couldn't import";
@@ -200,7 +206,7 @@ public static class UiText
     public static string ExportTooManySnippets(int count) => $"Your library has {count:N0} snippets. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0}, so that it can be imported again. No file was written.";
     public static string ExportTooManyEntries(int snippets, int folders) => $"Your library has {snippets:N0} snippets and {folders:N0} folders. One export file can hold up to {SnippetFileRules.MaxImportEntries:N0} entries (snippets and folders), so that it can be imported again. No file was written.";
     public static string ExportOutcomeUnknown(string fileName) => $"Couldn't finish the export. Check {fileName} before relying on it.";
-    public static string ExportComplete(int snippets, int folders, string fileName) => $"Exported {snippets} {(snippets == 1 ? "snippet" : "snippets")} and {folders} {(folders == 1 ? "folder" : "folders")} to {fileName}.";
+    public static string ExportComplete(int snippets, int folders, string fileName, int excludedPasswords = 0) => $"Exported {snippets} {(snippets == 1 ? "snippet" : "snippets")} and {folders} {(folders == 1 ? "folder" : "folders")} to {fileName}." + (excludedPasswords == 0 ? "" : $" Excluded {excludedPasswords} password {(excludedPasswords == 1 ? "snippet" : "snippets")}.");
     public static string ExportWriteFailed(string fileName) => $"Couldn't write {fileName}. Choose another folder and try again. Any existing file was left unchanged.";
 
     // Tray.

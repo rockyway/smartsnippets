@@ -80,6 +80,22 @@ public class SnippetPortingViewModelTests : IDisposable
     [Fact] public async Task Export_Cancelled_NoWrite() { _files.ExportPath = null; Assert.False(await Vm().ExportAsync()); Assert.Empty(_files.Writes); Assert.Empty(_dialogs.Infos); Assert.Empty(_dialogs.Errors); }
     [Fact] public async Task Export_NotJson_Refused_NoWrite() { _files.ExportPath = "output.txt"; Assert.False(await Vm().ExportAsync()); Assert.Empty(_files.Writes); Assert.Equal(UiText.ExportNotJsonFile, Assert.Single(_dialogs.Errors).Message); }
     [Fact] public async Task Export_Success_WritesNativeBytes_ShowsCountsAndFileName() { _store.SeedSnippet("body", folder: "Folder"); Assert.True(await Vm().ExportAsync()); var write = Assert.Single(_files.Writes); Assert.Equal(ImportFormat.Native, ImportParser.Parse(write.Bytes, DateTimeOffset.UtcNow).Parsed!.Format); Assert.Equal(UiText.ExportComplete(1, 1, "output.json"), Assert.Single(_dialogs.Infos).Message); }
+    [Fact] public async Task PasswordExclusionsReportedOnce()
+    {
+        _store.SeedSnippet("ordinary");
+        _store.CreateSnippet(new SmartSnippets.Core.Domain.SnippetDraft("secret", "safe", true, null, "", true));
+        Assert.True(await Vm().ExportAsync());
+        Assert.Equal(UiText.ExportComplete(1, 0, "output.json", 1), Assert.Single(_dialogs.Infos).Message);
+        Assert.DoesNotContain("secret", Encoding.UTF8.GetString(Assert.Single(_files.Writes).Bytes));
+    }
+    [Fact] public async Task Export_IncludesWorkerExclusionsInReport()
+    {
+        _store.CreateSnippet(new SmartSnippets.Core.Domain.SnippetDraft("secret", "safe", true, null, "", true));
+        var workers = PortingWorkers.Default with { ExportAsync = (folders, rows, now) =>
+            Task.FromResult(NativeExport.Write(folders, rows, now) with { ExcludedPasswordCount = 2 }) };
+        Assert.True(await Vm(workers).ExportAsync());
+        Assert.Equal(UiText.ExportComplete(0, 0, "output.json", 3), Assert.Single(_dialogs.Infos).Message);
+    }
     [Fact] public async Task Export_WriteThrows_ShowsWriteFailed() { _files.WriteException = new IOException("private"); Assert.False(await Vm().ExportAsync()); Assert.Equal(UiText.ExportWriteFailed("output.json"), Assert.Single(_dialogs.Errors).Message); }
     private async Task ExportRefused(ExportRefusal refusal) { var workers = PortingWorkers.Default with { ExportAsync = (_, _, _) => Task.FromResult(new NativeExportResult(null, refusal, 0, SnippetFileRules.MaxImportEntries + 1, 0)) }; Assert.False(await Vm(workers).ExportAsync()); Assert.Empty(_files.Writes); Assert.Equal(refusal == ExportRefusal.TooLarge ? UiText.ExportTooLarge : UiText.ExportTooManySnippets(SnippetFileRules.MaxImportEntries + 1), Assert.Single(_dialogs.Errors).Message); }
     [Fact]

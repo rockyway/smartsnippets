@@ -13,10 +13,13 @@ public static class LabelSuggester
     }
 
     /// <summary>
-    /// Final label for a draft: automatic unless the user set a non-blank custom label.
+    /// Password labels stay manual, including blank labels for boundary validation.
+    /// Ordinary labels are automatic unless the user set a non-blank custom label.
     /// </summary>
     public static (string Label, bool IsCustom) ResolveLabel(SnippetDraft draft, IReadOnlyList<string> tags) =>
-        !draft.IsLabelCustom || string.IsNullOrWhiteSpace(draft.Label)
+        draft.IsPassword
+            ? (draft.Label, true)
+            : !draft.IsLabelCustom || string.IsNullOrWhiteSpace(draft.Label)
             ? (Suggest(draft.Text, tags), false)
             : (draft.Label, true);
 

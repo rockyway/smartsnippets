@@ -62,7 +62,10 @@ internal sealed class TestBoundary : HostBoundary
         TrayOpen = open; TrayPreview = () => preview(0); TrayCaptured = preview; TraySettings = settings; TrayExit = exit;
         return new TestTray(() => TrayDisposals++, (registered, visible) => TrayState = TrayStatePolicy.Compute(registered, visible));
     }
-    internal override void ReportStartupFailure() => Reports++;
+    internal TestSecretProtector Protector { get; } = new();
+    internal override SmartSnippets.Core.Security.ISecretProtector CreateSecretProtector() => Protector;
+    internal string? StartupFailure;
+    internal override void ReportStartupFailure(string message) { Reports++; StartupFailure = message; }
     internal override void Exit() => Exits++;
     private sealed class TestDispatcher(Queue<Action> queue) : IUiDispatcher { public void Post(Action action) => queue.Enqueue(action); }
     private sealed class TestTray(Action dispose, Action<bool, bool> state) : ITray

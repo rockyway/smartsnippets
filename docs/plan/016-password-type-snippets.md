@@ -1,7 +1,7 @@
 # 016 — Password-type snippets
 
 **Date:** 2026-10-30
-**Status:** Draft — awaiting approval
+**Status:** Implemented — PR to `develop` (2026-11-02)
 **Size:** L
 **Area:** Core domain/persistence/query/export; Presentation editor/projections; App encryption/editor/composition
 **Requirement brief confirmed:** 2026-10-30 (G1, in chat)
@@ -43,7 +43,7 @@ The confirmed chat brief:
 
 ## 3. Current state (as-built)
 
-Paths below abbreviated as Core, Presentation and App refer to `src/SmartSnippets.*`.
+Paths below abbreviated as Core, Presentation and App refer to `src/SmartSnippets.*`. **2026-11-02 path update:** the legacy WinUI `SmartSnippets.App` was removed on 2026-11-01; "App" now means the official Uno head `src/SmartSnippets.Uno` (`AppHost.cs` → `UnoAppHost.cs`; `Controls/`, `Popup/`, `Services/`, `NativeMethods.txt` keep the same relative names). Line numbers cited for App files are from the legacy app and are indicative only. App tests live in `tests/SmartSnippets.Uno.Tests`.
 
 - `Core/Domain/Snippet.cs:3–14` and `SnippetDraft.cs:4` contain text and label state but no password flag. `Core/Domain/LabelSuggester.cs:18–21` falls back to tags/text even for blank custom labels. `Core/Store/SnippetStore.cs:343–350` resolves the label before validation, so UI-only validation cannot enforce the new invariant.
 - `Core/Data/Migrations.cs:5–33` currently ends at migration 2. `Migrator.cs:45–48,78–99` creates a pre-upgrade `VACUUM INTO` backup; `:118–152` applies each migration transactionally and refuses newer schemas. That backup may contain formerly ordinary plaintext.
@@ -151,6 +151,20 @@ Parallel flows checked: main and popup share editor but independently build rows
 | Paste and explicit copy | Regression coverage, no mask substitution | T7 |
 | Backlog/user documentation/QA | Security boundaries and evidence | T8 |
 
+### 4.8 Plan-review amendments (2026-11-02, authoritative)
+
+Independent review [`docs/review/014`](../review/014-plan-016-password-snippets-review.md) (F1–F10) is folded in here. Where this section conflicts with §§3–4.7 or §6, **this section wins**.
+
+- **A1 (F1) Protector composition via HostBoundary.** Add `internal abstract ISecretProtector CreateSecretProtector()` to `Uno/HostBoundary.cs`; `WindowsHostBoundary` returns `new WindowsSecretProtector()`; `UnoAppHost` passes `boundary.CreateSecretProtector()` into `SnippetStore`. `UnoAppHost.cs` must not reference `WindowsSecretProtector` (Uno.Tests compiles it as portable `net10.0`). `tests/SmartSnippets.Uno.Tests/Composition/HostFixture.cs` `TestBoundary` supplies a deterministic test protector with a failure toggle. T2 owns these files.
+- **A2 (F4) Startup recovery message.** `HostBoundary.ReportStartupFailure(string message)`: `UnoAppHost` passes `ex.Message` only for `StoreException`/`MigrationException` (already sanitized), else the generic "Smart Snippets could not start."; `WindowsHostBoundary` shows it. Update `HostFixture.cs` and `UiBindingAuditTests.cs`. T2.
+- **A3 (F7) DPAPI details.** Serialize raw UTF-16LE code units (`MemoryMarshal.AsBytes`), never `Encoding.Unicode`, so lone surrogates round-trip; reject odd decrypted lengths and an empty/invalid base64 envelope. Use a non-null dummy pointer when the input is 0 bytes. Wipe managed buffers and native output with `CryptographicOperations.ZeroMemory` before `LocalFree`. `NativeMethods.txt` adds `CryptProtectData`, `CryptUnprotectData`, `LocalFree`, `CRYPTPROTECT_UI_FORBIDDEN`. Allowlist any new diagnostic token in `Core/Logging/AppLog.cs`. Real DPAPI round-trip/tamper tests run inside `SmartSnippets.Uno.Tests` on Windows (CI already runs it on windows-latest) — link `WindowsSecretProtector.cs` + CsWin32 into that project or an equivalent Windows-only test project wired into `ci.yml`; a standalone probe script alone is not enough. T2.
+- **A4 (F2, F3) Uno headless XAML gate.** T4 also owns `tests/SmartSnippets.Uno.Tests/Wiring/{HeadlessXaml.cs,HeadlessFields.cs,Actions.txt,ActionConsumerTests.cs,EditorActionConsumers.cs}`: add `CheckBox`/`PasswordBox`/`PasswordRevealMode` stubs, new named fields, re-index `Actions.txt` entries for `SnippetEditor.xaml`, register new handlers. `PasswordEditorSourceTests.cs` lives in `tests/SmartSnippets.Uno.Tests/Wiring/`. WinUI 3 `PasswordBox` has **no** `IsSpellCheckEnabled`/`IsTextPredictionEnabled`; use only `PasswordRevealMode="Hidden"` on it.
+- **A5 (F5) Editor control swap.** Remove `Text="{x:Bind ViewModel.Text, ...}"` from `SnippetTextBox`; both inputs are driven imperatively from code-behind. All programmatic `Text`/`Password` assignments run under a `_syncingInput` guard so they never write back to the VM. Clear the inactive control on mode change, on `ViewModel` change (including `null`) and on `Unloaded`. `FocusText()` focuses a visible control in all three states (TextBox / PasswordBox / multiline read-only mask, falling back to the Password checkbox). Handle `PasswordBox.Paste`: multiline clipboard text is refused with an inline hint (never silently truncated).
+- **A6 (F8) Label state.** `Suggestion` returns empty while `IsPassword`; `IsLabelCustom` cannot become false while `IsPassword`. `Load`/`ApplySaved` set `IsPassword` before text/tags/label. On Password true→false: keep custom mode if the label is nonblank; if blank, restore automatic mode (`IsLabelCustom=false`, suggestion label) so an accidental check→uncheck on an untouched auto-labeled snippet returns to not-dirty. This supersedes the §4.2 sentence "Returning to ordinary mode keeps custom label mode…" for blank labels.
+- **A7 (F6) Export.** `NativeExport.Write` keeps the `folders.Count` cap check before any enumeration, then single-pass filters snippets, then applies the snippet/combined caps to the filtered count; update `NativeExportTests` `UnreadableList` cases to concrete collections and add an ordinary+password cap test. `SnippetPortingViewModel` partitions `_store.Snippets` once on the UI thread into `(ordinary, excluded)`, passes `ordinary` to the worker and reports `excluded + result.ExcludedPasswordCount`. `UiText.ExportComplete` wording is unchanged when excluded is 0; otherwise append the excluded-password count. Update `UiText.ExportButtonTooltip` and the hard-coded tooltip at `Uno/Pages/SnippetsPage.xaml` to stop claiming "all snippets".
+- **A8 (F9) Popup stale preview.** `PopupWindow.ShowKeyboardPreview()` calls `ViewModel.EnsureCurrent()` first; when the popup cache goes dirty while visible, close any open popup hover/keyboard preview immediately. T5.
+- **A9 (F10) Citations and QA.** Line numbers in §3 are indicative only (legacy). Live checks follow `AGENTS.md` (pc-manager screen slot, bottom-left or granted non-primary monitor, isolated profile, no leftover processes); the native-acceptance harness in guide 002 is optional.
+
 ## 5. Impact and risk
 
 | Question | Answer |
@@ -224,10 +238,12 @@ Implementation must stop and report contradictions or platform-test failures rat
 Run test projects sequentially to avoid shared Core output collisions:
 
 ```bash
-dotnet test tests/SmartSnippets.Core.Tests
-dotnet test tests/SmartSnippets.Presentation.Tests
-dotnet build
-dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish
+dotnet test tests/SmartSnippets.Core.Tests -c Release
+dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+# From src/SmartSnippets.Uno:
+dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
+# From repository root:
+pwsh -NoProfile -File scripts/publish-uno-aot.ps1
 ```
 
 Use new tests first against the missing behavior where feasible, then implementation; record actual tests run, no unmatched/skipped test as evidence. Run native verification only on Windows. Use fake encryption solely to pin repository/composition behavior; the headless Windows probe must exercise the production adapter. A different-user test is optional evidence requiring an operator-provided test account, not a reason to create or modify accounts automatically.
@@ -263,3 +279,7 @@ No unresolved requirement questions. Plan approval must explicitly accept the na
 |---|---|---|
 | 2026-10-30 | Requirement brief confirmed (G1) | User confirmed account-protected database content, checkbox-as-reveal, export omission and mandatory manual label. |
 | 2026-10-30 | Draft/self-review | ACs mapped to tasks; parallel editor/preview/export/copy paths enumerated; native-control limitation and historical-plaintext limits explicit. No implementation changes or runtime verification performed. |
+| 2026-11-02 | Approved and kicked off | User: "kick off the plan". Taken as approval including the §4.3 native multiline fallback. App paths remapped to the Uno head. Branch `feature/016-password-snippets`. |
+| 2026-11-02 | Plan review folded | Review 014 (gemini-4-argon:medium) PLAN READY: no — 3 blockers, 5 major, 2 minor; all folded as §4.8 A1–A9. T1 already merged (98d8788). |
+| 2026-11-02 | Implemented | T1–T8 merged on `feature/016-password-snippets`. Code review round 1 (`docs/review/015`, argon:high): 1 blocker, 7 others, fixed in `54a41c8`. Round 2 (`docs/review/016`): F1–F8 verified; 2 new defects from the round-1 fixes (ordinary save rewrote the text box; mutating barrier inside a popup predicate), fixed in `71ad2d4` with red-then-green tests. |
+| 2026-11-02 | Verification | Sequential suites on merge `58c56d8`: Core 471, Presentation 650, Uno 178, all pass, zero warnings. Strict AOT publish passed from worktree `016-fx2` on `71ad2d4` (same source; build token `a1341405d5da4bdcad2b99cef09503ea`). Desktop live check NOT run: posted input does not reach WinUI 3 content and pc-manager declined UI Automation patterns on the shared screen, so live rows (editor, mask, search, DB envelope, UIA tree, cleanup) are covered by automated tests only (`PasswordProtectionTests` real DPAPI, `PasswordSnippetFlowTests`, `PasswordEditorTests`, `PasswordProjectionTests`, `AppLogPrivacyTests`). |

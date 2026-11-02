@@ -19,7 +19,7 @@ public class NativeExportTests(ITestOutputHelper output)
     [Fact] public void Export_DatesAreEpochMs() { using var d = JsonDocument.Parse(Export().Utf8Json!); Assert.Equal(Fixture.Now.ToUnixTimeMilliseconds(), d.RootElement.GetProperty("exportedAt").GetInt64()); Assert.Equal(Fixture.Now.AddDays(-3).ToUnixTimeMilliseconds(), d.RootElement.GetProperty("snippets")[0].GetProperty("createdAt").GetInt64()); }
     [Fact] public void Export_NoBom() => Assert.False(Export().Utf8Json!.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }));
     [Fact] public void Export_LoneSurrogate_WrittenAsReplacementChar() { using var d = JsonDocument.Parse(Export("a\ud800b").Utf8Json!); Assert.Equal("a\ufffdb", d.RootElement.GetProperty("snippets")[0].GetProperty("text").GetString()); }
-    [Fact] public void Export_TooManySnippets_RefusedWithoutSerializing() { var r = NativeExport.Write([], new UnreadableList(SnippetFileRules.MaxImportEntries + 1), Fixture.Now); Assert.Equal(ExportRefusal.TooManySnippets, r.Refusal); Assert.Null(r.Utf8Json); }
+    [Fact] public void Export_TooManySnippets_RefusedWithoutSerializing() { var r = NativeExport.Write([], Enumerable.Repeat(View("x"), SnippetFileRules.MaxImportEntries + 1).ToArray(), Fixture.Now); Assert.Equal(ExportRefusal.TooManySnippets, r.Refusal); Assert.Null(r.Utf8Json); }
     [Fact] public void Export_AtEntryLimit_Exports() { var r = NativeExport.Write([], Enumerable.Repeat(View("x"), SnippetFileRules.MaxImportEntries).ToArray(), Fixture.Now); Assert.Null(r.Refusal); Assert.NotEmpty(r.Utf8Json!); }
     [Fact] public void Export_Oversized_StopsAtBound() { var r = Export(new string('é', 34 * 1024 * 1024)); Assert.Equal(ExportRefusal.TooLarge, r.Refusal); Assert.Null(r.Utf8Json); Assert.Equal(SnippetFileRules.MaxImportBytes + 1L, r.Bytes); }
     [Fact]
@@ -92,7 +92,7 @@ public class NativeExportTests(ITestOutputHelper output)
     public void Export_CombinedLimitPlusOne_Refused()
     {
         Folder[] folders = [new(1, "Empty", Fixture.Now, Fixture.Now)];
-        var result = NativeExport.Write(folders, new UnreadableList(SnippetFileRules.MaxImportEntries), Fixture.Now);
+        var result = NativeExport.Write(folders, Enumerable.Repeat(View("x"), SnippetFileRules.MaxImportEntries).ToArray(), Fixture.Now);
         Assert.Equal(ExportRefusal.TooManyEntries, result.Refusal);
         Assert.Null(result.Utf8Json);
     }
@@ -127,5 +127,4 @@ public class NativeExportTests(ITestOutputHelper output)
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    private sealed class UnreadableList(int count) : IReadOnlyList<SnippetView> { public int Count => count; public SnippetView this[int index] => throw new InvalidOperationException("Must refuse before enumeration"); public IEnumerator<SnippetView> GetEnumerator() => throw new InvalidOperationException("Must refuse before enumeration"); System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator(); }
 }

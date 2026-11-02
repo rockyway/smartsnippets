@@ -13,14 +13,24 @@ public static class NativeExport
 
     public static NativeExportResult Write(IReadOnlyList<Folder> folders, IReadOnlyList<SnippetView> snippets, DateTimeOffset exportedAt)
     {
+        if (folders.Count > SnippetFileRules.MaxImportEntries)
+            return new(null, ExportRefusal.TooManyEntries, 0, 0, folders.Count);
+        var included = new List<SnippetView>();
+        int excluded = 0;
+        foreach (var view in snippets)
+        {
+            if (view.Snippet.IsPassword) excluded++;
+            else included.Add(view);
+        }
+        snippets = included;
         if (snippets.Count > SnippetFileRules.MaxImportEntries)
-            return new(null, ExportRefusal.TooManySnippets, 0, snippets.Count, folders.Count);
+            return new(null, ExportRefusal.TooManySnippets, 0, snippets.Count, folders.Count, excluded);
         if ((long)snippets.Count + folders.Count > SnippetFileRules.MaxImportEntries)
-            return new(null, ExportRefusal.TooManyEntries, 0, snippets.Count, folders.Count);
+            return new(null, ExportRefusal.TooManyEntries, 0, snippets.Count, folders.Count, excluded);
         // The serializer buffers a complete escaped token before writing to the bounded sink.
         // Refuse large string payloads BEFORE it can rent those token-sized intermediate buffers.
         if (StringPayloadExceedsLimit(folders, snippets))
-            return new(null, ExportRefusal.TooLarge, SnippetFileRules.MaxImportBytes + 1L, snippets.Count, folders.Count);
+            return new(null, ExportRefusal.TooLarge, SnippetFileRules.MaxImportBytes + 1L, snippets.Count, folders.Count, excluded);
         var document = new NativeDocument(FormatMarker, Version, exportedAt.ToUnixTimeMilliseconds(),
             folders.Select(f => new NativeFolder(f.Name)).ToArray(),
             snippets.Select(v => new NativeSnippet(v.Snippet.Text, v.Snippet.Label, v.Snippet.IsLabelCustom, v.FolderName,
@@ -31,11 +41,11 @@ public static class NativeExport
         {
             JsonSerializer.Serialize(buffer, document, NativeJsonContext.Default.NativeDocument);
             var bytes = buffer.ToArray();
-            return new(bytes, null, bytes.Length, snippets.Count, folders.Count);
+            return new(bytes, null, bytes.Length, snippets.Count, folders.Count, excluded);
         }
         catch (ExportLimitExceededException)
         {
-            return new(null, ExportRefusal.TooLarge, SnippetFileRules.MaxImportBytes + 1L, snippets.Count, folders.Count);
+            return new(null, ExportRefusal.TooLarge, SnippetFileRules.MaxImportBytes + 1L, snippets.Count, folders.Count, excluded);
         }
     }
 
