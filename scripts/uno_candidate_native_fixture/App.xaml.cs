@@ -25,10 +25,11 @@ public partial class App : Application
         var startupSamples = new List<string>();
         var launcherPid = NativeStartupDiagnostics.LauncherPidOrUnavailable(
             () => RetainedIdentity.Parent(Program.CoordinatorHandle), startupSamples.Add);
-        var diagnostics = new NativeStartupDiagnostics(NativeFixtureOs.Foreground,
+        var diagnostics = new NativeStartupDiagnostics(NativeFixtureOs.RawForeground,
             window => { NativeFixtureOs.GetWindowThreadProcessId(window, out var pid); return pid; },
             launcherPid, () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0,
-            window => WindowDiagnosticNative.Sample(window, fixture?.Lease.Readiness.WindowA ?? 0, fixture?.Lease.Readiness.WindowB ?? 0));
+            window => WindowDiagnosticNative.Sample(window, fixture?.Lease.Readiness.WindowA ?? 0, fixture?.Lease.Readiness.WindowB ?? 0),
+            SmartSnippets.TargetIdentity018.ForegroundIdentity.Root, () => fixture?.Lease.ExpectedPid ?? 0);
         void FlushSamples()
         {
             foreach (var sample in startupSamples) AppLog.Info("native_startup_foreground", sample);
@@ -110,6 +111,8 @@ public partial class App : Application
             lease = true; // Only the distinct clipboard-control operation is admitted; broker stays denied.
             var ready = fixture.Lease.Readiness;
             nint admissionForeground = 0;
+            bool admissionWasChild = false;
+            nint SampleAdmission() => SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(NativeFixtureOs.RawForeground(), out admissionWasChild);
             void ForegroundRefused(string check, int order)
             {
                 var fg = admissionForeground;
@@ -118,13 +121,13 @@ public partial class App : Application
                 AppLog.Info("native_control_foreground", NativeControlDiagnostics.Record(fg, ready.WindowA, ready.WindowB,
                     pid, session.DiagnosticGuardianPid, (uint)Environment.ProcessId, ownedPid,
                     NativeFixtureOs.IsWindowVisible(fg) != 0, NativeFixtureOs.IsWindowEnabled(fg) != 0,
-                    thread, ownedThread, check, order));
+                    thread, ownedThread, check, order, admissionWasChild));
             }
             var admissionSamples = 0;
             var admission = await ClipboardControlReadiness.WaitAsync(session.ClassifyClipboardControl,
-                () => { admissionSamples++; admissionForeground = NativeFixtureOs.Foreground(); return admissionForeground == foreground; }, ct, refused: ForegroundRefused);
+                () => { admissionSamples++; admissionForeground = SampleAdmission(); return admissionForeground == foreground; }, ct, refused: ForegroundRefused);
             if (admission == ClipboardControlAdmission.Ready && !NativeControlDiagnostics.CheckIdle(
-                () => { admissionForeground = NativeFixtureOs.Foreground(); return admissionForeground == foreground; },
+                () => { admissionForeground = SampleAdmission(); return admissionForeground == foreground; },
                 ref admissionSamples, ForegroundRefused))
                 admission = ClipboardControlAdmission.ForegroundChanged;
             // Enum values are fixed, content-free diagnostic tokens; no native identity is logged.

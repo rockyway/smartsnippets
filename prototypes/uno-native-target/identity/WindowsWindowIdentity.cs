@@ -7,6 +7,8 @@ internal sealed partial class WindowsWindowIdentity(IOwnedFixtureLease lease, Gu
     private bool disposed;
     private readonly nint windowA = readiness.WindowA, windowB = readiness.WindowB;
     private readonly uint expectedPid = lease.ExpectedPid;
+    private readonly uint threadA = GetWindowThreadProcessId(readiness.WindowA, out _);
+    private readonly uint threadB = GetWindowThreadProcessId(readiness.WindowB, out _);
     private readonly string expectedClass = "SS_Target018_" + run.ToString("N");
 
     public nint Capture(string fixtureWindow)
@@ -20,7 +22,9 @@ internal sealed partial class WindowsWindowIdentity(IOwnedFixtureLease lease, Gu
     {
         if (disposed || !lease.IsAliveAndPinned() || expectedPid == (uint)Environment.ProcessId || !OperatingSystem.IsWindows() || identity == 0 ||
             (identity != windowA && identity != windowB) || IsWindow(identity) == 0 ||
-            ProcessId(identity) != expectedPid) return false;
+            ProcessId(identity) != expectedPid ||
+            GetWindowThreadProcessId(identity, out _) != (identity == windowA ? threadA : threadB) ||
+            (identity == windowA ? threadA : threadB) == 0) return false;
         var editor = identity == windowA ? readiness.EditorA : readiness.EditorB;
         if (editor == 0 || GetDlgItem(identity, 101) != editor || IsChild(identity, editor) == 0 || ProcessId(editor) != expectedPid) return false;
         var name = stackalloc char[128];
@@ -31,7 +35,7 @@ internal sealed partial class WindowsWindowIdentity(IOwnedFixtureLease lease, Gu
     public uint ProcessId(nint identity) => !disposed && OperatingSystem.IsWindows() &&
         GetWindowThreadProcessId(identity, out var pid) != 0 ? pid : 0;
 
-    public bool IsForeground(nint identity) => Exists(identity) && GetForegroundWindow() == identity &&
+    public bool IsForeground(nint identity) => Exists(identity) && ForegroundIdentity.Root(GetForegroundWindow()) == identity &&
         ProcessId(identity) == expectedPid;
 
     public void Dispose() => disposed = true; // HWNDs belong to the fixture, never destroyed here.

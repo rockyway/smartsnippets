@@ -32,7 +32,9 @@ LF-only text and NFC normalization fail exact verification.
 
 Focus makes one bounded UI-thread `SetForegroundWindow`/`SetFocus` attempt after
 owned parent/editor PID and child checks. It reports success only when both exact
-foreground HWND and editor focus match. Foreground restrictions produce truthful
+foreground top-level identity (GA_ROOT only for a WS_CHILD foreground, with
+matching PID/thread) and editor focus match. A different same-PID top-level is
+never accepted. The foreground grant uses the same exact-root rule. Foreground restrictions produce truthful
 failure; no input synthesis, AttachThreadInput or foreign activation is used.
 The composed, hash-pinned direct-child identity harness and mandatory outer
 watchdog are documented in `../identity/README.md`. Native exact-focus/empty/closed-window identity verification now succeeds on both desktops; see [research 023](../../../docs/research/023-composed-native-target-identity.md). Positive pasted-text verification remains NOT RUN; the fixture comparison policies are unit-tested, not a paste-delivery PASS.

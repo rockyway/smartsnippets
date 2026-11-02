@@ -3,7 +3,8 @@ namespace SmartSnippets.Uno;
 /// <summary>Read-only samples, not foreground authority. No identities leave this recorder.</summary>
 internal sealed class NativeStartupDiagnostics(Func<nint> foreground, Func<nint, uint> processId,
     uint launcherPid, Func<nint> windowA, Func<nint> windowB,
-    Func<nint, WindowDiagnosticFacts>? windowFacts = null)
+    Func<nint, WindowDiagnosticFacts>? windowFacts = null, Func<nint, nint>? normalize = null,
+    Func<uint>? targetPid = null)
 {
     private int order;
 
@@ -22,13 +23,15 @@ internal sealed class NativeStartupDiagnostics(Func<nint> foreground, Func<nint,
         // Only fixed call-site tokens; refuse arbitrary text before sampling.
         if (phase is not ("target_launch" or "host_ready" or "preparation_start" or "before_focus" or "after_focus"))
             throw new ArgumentException("diagnostic_phase");
-        var window = foreground(); // Exactly one foreground read per sample.
+        var raw = foreground(); // Exactly one foreground read per sample.
+        var window = normalize is null ? raw : normalize(raw);
         var pid = window == 0 ? 0 : processId(window);
         var launcher = pid != 0 && pid == launcherPid;
-        var relation = window == 0 ? "none" : window == windowA() ? "owned_a" :
-            window == windowB() ? "owned_b" : launcher ? "launcher" : "foreign";
+        var expectedPid = targetPid?.Invoke() ?? (windowA() == 0 ? 0 : processId(windowA()));
+        var relation = window == 0 ? "none" : pid != 0 && pid == expectedPid && window == windowA() ? "owned_a" :
+            pid != 0 && pid == expectedPid && window == windowB() ? "owned_b" : launcher ? "launcher" : "foreign";
         return $"phase={phase} relation={relation} launcher_foreground={launcher} sample_order={++order}" +
-            (windowFacts is null ? "" : " " + windowFacts(window).Fields());
+            (windowFacts is null ? "" : " " + windowFacts(raw).Fields());
     }
 }
 
@@ -36,11 +39,12 @@ internal sealed class NativeStartupDiagnostics(Func<nint> foreground, Func<nint,
 internal sealed class OwnedForegroundTrace(Func<nint> foreground, Func<nint, uint> processId,
     nint windowA, uint targetPid, uint workerPid, uint guardianPid, uint coordinatorPid, uint launcherPid,
     nint initial, Func<nint, string> windowKind, Func<long> milliseconds, Func<Task> delay,
-    nint windowB = 0, Func<nint, WindowDiagnosticFacts>? windowFacts = null)
+    nint windowB = 0, Func<nint, WindowDiagnosticFacts>? windowFacts = null, Func<nint, nint>? normalize = null)
 {
     internal string Sample(int order, long elapsed)
     {
-        var window = foreground();
+        var raw = foreground();
+        var window = normalize is null ? raw : normalize(raw);
         var pid = window == 0 ? 0 : processId(window);
         var relation = window == 0 ? "none" : pid == 0 ? "foreign" :
             pid == targetPid ? window == windowA ? "owned_a" : window == windowB ? "owned_b" : "a_other_window" :
@@ -50,7 +54,7 @@ internal sealed class OwnedForegroundTrace(Func<nint> foreground, Func<nint, uin
         if (kind is not ("owned_by_a" or "ime" or "tooltip" or "toplevel_other" or "not_applicable"))
             kind = "toplevel_other";
         return $"relation={relation} kind={kind} initial_foreground={window != 0 && window == initial} sample_order={order} elapsed_ms={elapsed}" +
-            (windowFacts is null ? "" : " " + windowFacts(window).Fields());
+            (windowFacts is null ? "" : " " + windowFacts(raw).Fields());
     }
     internal async Task<List<string>> RecordAsync()
     {

@@ -54,12 +54,25 @@ public sealed class NativeControlDiagnosticsTests
         Assert.Equal(unchanged ? null : "idle", reportedCheck);
     }
 
+    [Theory]
+    [InlineData(10, 7, "owned_a")] [InlineData(20, 7, "owned_b")]
+    [InlineData(30, 7, "same_pid_other")] [InlineData(40, 8, "foreign")]
+    [InlineData(10, 8, "foreign")]
+    public void NormalizedChildRecordKeepsExactRootRelationAndRawChildFact(int root, uint pid, string relation)
+    {
+        var normalized = SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(101,
+            _ => 0x40000000, _ => root, _ => (1u, pid), out var child);
+        var record = NativeControlDiagnostics.Record(normalized, 10, 20, pid, 9, 10, 7,
+            true, true, 1, 1, "changed", 1, child);
+        Assert.Contains("relation=" + relation + " foreground_was_child=True ", record);
+    }
+
     [Fact]
     public void RecordHasOnlyTheFixedFieldsAndNoNativeIdentity()
     {
-        Assert.Equal("relation=guardian fgVisible=True fgEnabled=False fgSameThreadAsOwned=True check=idle sampleOrder=5",
+        Assert.Equal("relation=guardian foreground_was_child=False fgVisible=True fgEnabled=False fgSameThreadAsOwned=True check=idle sampleOrder=5",
             NativeControlDiagnostics.Record(12345, 10, 20, 54321, 54321, 9, 8, true, false, 7, 7, "idle", 5));
-        Assert.Equal("relation=foreign fgVisible=False fgEnabled=True fgSameThreadAsOwned=False check=initial sampleOrder=1",
+        Assert.Equal("relation=foreign foreground_was_child=False fgVisible=False fgEnabled=True fgSameThreadAsOwned=False check=initial sampleOrder=1",
             NativeControlDiagnostics.Record(12345, 10, 20, 0, 0, 0, 0, false, true, 0, 0, "initial", 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => NativeControlDiagnostics.Record(0, 0, 0, 0, 0, 0, 0,
             false, false, 0, 0, "free text", 1));

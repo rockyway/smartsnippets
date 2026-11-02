@@ -6,6 +6,33 @@ scene execution, clipboard access or input synthesis. All review gates stay fals
 Plans 018/019 remain incomplete. **Diagnostics only: no defensible exact Target018
 activation fix or picker epoch exception is established.**
 
+## fg-01: nr-12 root-identity correction (headless/build-only)
+
+The later nr-12 / 19:14 / nd-07 inventory analysis identifies the defect class:
+
+> The "same_pid_other" window that "steals" foreground right after
+> OwnedTargetPreparation's UIA SetFocus is Target018 A's own CHILD EDIT control:
+> class Edit (system_0, sha8 fd2fa13c), ws_child=1, same thread as A, visible,
+> on the bottom-left work area. Thread inventories at ready and refusal contain
+> only A, B, the IME window and a NEW msctfime_ui (zero-area IME window); there
+> is no other top-level window. Five of six positives exhibit this pattern;
+> posted-row passed once foreground came back as A itself.
+
+This supersedes the earlier inference that the sampled different HWND was a
+different top-level. Acceptance foreground identity is now GA_ROOT (2) **only
+for WS_CHILD**, otherwise the raw HWND. Raw-child and root PID/thread must agree
+and be nonzero; exact retained top-level pins and all existing admission guards
+still apply. A different same-PID top-level remains forbidden. Owners are never
+followed. The fixture, acceptance adapters, Target018 focus/grant receipts and
+independent Python/PowerShell observers use this identity convention.
+
+Raw window facts remain raw: `foreground_was_child` is a fixed boolean in trace
+facts, windowFacts and the latched monitor record, not permission or an extra
+relation token. No input epoch exception, focus retry, ordinary product focus,
+PopupShowCoordinator, capture/paste or review gate change accompanies this fix.
+Headless regression/build success is not native nonactivation/input acceptance;
+a fresh separately authorized scene and fresh pinned artifacts remain necessary.
+
 ## nd-07 diagnostic extension (build-only; no new native evidence)
 
 The fixture best-effort snapshots A's EnumThreadWindows inventory at target

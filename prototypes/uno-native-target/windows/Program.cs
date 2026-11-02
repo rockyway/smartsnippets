@@ -53,7 +53,7 @@ internal static unsafe partial class Program
     {
         try
         {
-            if (grantee is null || grantee.HasExited || IsWindow(a) == 0 || GetForegroundWindow() != a) return "failed";
+            if (grantee is null || grantee.HasExited || IsWindow(a) == 0 || SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(GetForegroundWindow()) != a) return "failed";
             VerifyOwner(a);
             return AllowSetForegroundWindow((uint)grantee.Id) != 0 ? "granted" : "refused";
         }
@@ -208,7 +208,7 @@ internal static unsafe partial class Program
                 // One UI-thread attempt; no queue attachment, input synthesis or foreign activation.
                 ok = SetForegroundWindow(window) != 0;
                 if (ok) _ = SetFocus(editor);
-                ok = ok && GetForegroundWindow() == window && GetFocus() == editor;
+                ok = ok && SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(GetForegroundWindow()) == window && GetFocus() == editor;
             }
             else if (ok)
             {

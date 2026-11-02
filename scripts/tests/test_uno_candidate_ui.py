@@ -15,6 +15,7 @@ class UiManagementTests(unittest.TestCase):
     def test_input_subreasons_from_real_guards_and_persisted_allowlist(self):
         import json
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.user.GetAsyncKeyState.return_value = 0
         def epoch(pointer):
             pointer._obj.time = 100
@@ -54,6 +55,7 @@ class UiManagementTests(unittest.TestCase):
     def test_epoch_delta_phase_wrap_and_privacy_do_not_rebaseline(self):
         import json
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.user.GetAsyncKeyState.return_value = 0
         kernel = Mock()
         kernel.GetTickCount.return_value = 2000
@@ -95,6 +97,7 @@ class UiManagementTests(unittest.TestCase):
 
     def test_picker_close_race_only_accepts_authenticated_exact_handle(self):
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         user = desktop.user
         user.GetWindow.side_effect = lambda h, command: 20 if command == 6 else 10
         def thread(h, pid):
@@ -148,11 +151,14 @@ class UiManagementTests(unittest.TestCase):
         frame = source.split('def observe_foreground_frame(', 1)[1].split('def shutdown_frame(', 1)[0]
         self.assertLess(frame.index('popup = owned_picker('), frame.index('fg, clip = observe_desktop('))
         self.assertLess(frame.index('picker_handles.setdefault('), frame.index('fg, clip = observe_desktop('))
-        self.assertTrue(s.picker_foreground(Mock(), 20, 20, 20))
-        self.assertFalse(s.picker_foreground(Mock(), 21, 20, 20))
+        desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
+        self.assertTrue(s.picker_foreground(desktop, 20, 20, 20))
+        self.assertFalse(s.picker_foreground(desktop, 21, 20, 20))
 
     def test_picker_foreground_close_transition(self):
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.user.IsWindow.return_value = False
         self.assertTrue(s.picker_foreground(desktop, 20, None, 20))
         self.assertFalse(s.picker_foreground(desktop, 21, None, 20))
@@ -469,6 +475,7 @@ class UiManagementTests(unittest.TestCase):
     def test_foreground_failure_preserves_captured_sample_and_logs_only_relation(self):
         import json
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         def owner(hwnd, target):
             target._obj.value = 42 if hwnd == 20 else 99
             return 1
@@ -541,12 +548,14 @@ class UiManagementTests(unittest.TestCase):
 
     def test_foreign_foreground_aborts_before_window_attach(self):
         desktop=Mock(); desktop.snapshot.return_value=(99,2)
+        desktop.user.GetWindowLongPtrW.return_value = 0
         with self.assertRaisesRegex(ValueError,'desktop_changed'):
             s.retain_window(Mock(),None,desktop,None,Mock(),(1,2))
         desktop.windows.assert_not_called()
 
     def test_post_ready_epoch_is_settled_before_any_uia_action(self):
         desktop = Mock(); desktop.snapshot.return_value = (1, 2)
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.windows.return_value = [(0, 0, 10, 10)]
         process = Mock(); process.poll.return_value = None
         with patch.object(s, 'require_all_input_up') as up, \
@@ -566,6 +575,7 @@ class UiManagementTests(unittest.TestCase):
 
     def test_shutdown_keeps_foreground_strict_until_monotonic_owned_close(self):
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.user.GetClipboardSequenceNumber.return_value = 2
         desktop.user.GetForegroundWindow.return_value = 10
         desktop.windows.return_value = [(0, 0, 10, 10)]
@@ -594,6 +604,7 @@ class UiManagementTests(unittest.TestCase):
     def test_close_tick_samples_foreground_before_owned_liveness(self):
         events = []
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.user.GetForegroundWindow.side_effect = lambda: events.append('foreground') or 0
         desktop.user.GetClipboardSequenceNumber.return_value = 2
         desktop.windows.side_effect = lambda _: events.append('rects') or []
@@ -606,6 +617,7 @@ class UiManagementTests(unittest.TestCase):
 
     def test_zero_foreground_allowed_only_during_verified_shutdown(self):
         desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         desktop.user.GetForegroundWindow.return_value = 0
         desktop.user.GetClipboardSequenceNumber.return_value = 2
         with self.assertRaisesRegex(ValueError, 'desktop_unavailable'):
@@ -695,6 +707,7 @@ class FakeWindows:
             self.PICKER: dict(pid=pid, thread=40, cls='#32770', owner=self.MAIN, root=self.MAIN),
             self.FOREIGN: dict(pid=pid, thread=41, cls='#32770', owner=self.MAIN, root=self.MAIN)}
         self.desktop = desktop = Mock()
+        desktop.user.GetWindowLongPtrW.return_value = 0
         user = desktop.user
         def get_window(h, command):
             if command == 6:
@@ -847,6 +860,7 @@ class PickerObserverLoopTests(unittest.TestCase):
                 helper.poll.return_value = None
             helper.communicate.return_value = (helper_output, helper_stderr)
             desktop = Mock()
+            desktop.user.GetWindowLongPtrW.return_value = 0
             desktop.snapshot.return_value = (1, 2)
             pops = iter((process, helper))
             original_validator = s.validate_helper_foreground_failure
@@ -1011,6 +1025,7 @@ Add-Type @'
 using System;
 using System.Text;
 public static class Owned019 {
+ public static IntPtr ForegroundRoot(IntPtr raw) { return raw; }
  public static uint GetWindowThreadProcessId(IntPtr h, out uint pid) { pid=30; return 40; }
  public static int GetClassName(IntPtr h, StringBuilder b, int n) { b.Append("#32770"); return 6; }
  public static IntPtr GetWindow(IntPtr h, int n) { return new IntPtr(10); }

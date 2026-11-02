@@ -24,8 +24,8 @@ internal static class NativeControlDiagnostics
     {
         if (foreground == 0) return "none";
         if (pid == 0) return "foreign";
-        if (foreground == windowA) return "owned_a";
-        if (foreground == windowB) return "owned_b";
+        if (foreground == windowA && ownedPid != 0 && pid == ownedPid) return "owned_a";
+        if (foreground == windowB && ownedPid != 0 && pid == ownedPid) return "owned_b";
         if (guardianPid != 0 && pid == guardianPid) return "guardian";
         if (candidatePid != 0 && pid == candidatePid) return "candidate";
         return ownedPid != 0 && pid == ownedPid ? "same_pid_other" : "foreign";
@@ -33,12 +33,13 @@ internal static class NativeControlDiagnostics
 
     internal static string Record(nint foreground, nint windowA, nint windowB,
         uint pid, uint guardianPid, uint candidatePid, uint ownedPid,
-        bool visible, bool enabled, uint thread, uint ownedThread, string check, int order)
+        bool visible, bool enabled, uint thread, uint ownedThread, string check, int order,
+        bool foregroundWasChild = false)
     {
         if (check is not ("initial" or "changed" or "idle") || order < 1)
             throw new ArgumentOutOfRangeException(nameof(order));
         var relation = Relation(foreground, windowA, windowB, pid, guardianPid, candidatePid, ownedPid);
         return string.Create(CultureInfo.InvariantCulture,
-            $"relation={relation} fgVisible={visible} fgEnabled={enabled} fgSameThreadAsOwned={thread != 0 && thread == ownedThread} check={check} sampleOrder={order}");
+            $"relation={relation} foreground_was_child={foregroundWasChild} fgVisible={visible} fgEnabled={enabled} fgSameThreadAsOwned={thread != 0 && thread == ownedThread} check={check} sampleOrder={order}");
     }
 }

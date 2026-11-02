@@ -42,6 +42,21 @@ The target and guardian remain separately built, native/hash-pinned operator
 artifacts under their own prototype bin directories; this does not attest an
 untrusted compiler or replace independent review of their exact source/build hashes.
 
+## Foreground identity (fg-01)
+
+Acceptance comparisons use the exact top-level root: if the raw foreground has
+WS_CHILD, resolve GetAncestor(raw, GA_ROOT=2); otherwise keep raw. Normalization
+requires matching nonzero raw/root PID and thread, and does not replace retained
+target/popup/guardian identity pins. Never use GA_ROOTOWNER or allow any window of
+a matching PID. Child-of-A is A; child-of-B is B (still refused by positive A-only
+policy); a child of another same-PID top-level still refuses.
+
+Trace and windowFacts keep the **raw** class/style/geometry observations.
+`foreground_was_child` records the WS_CHILD fact in those fixed schemas and the
+latched monitor record. Relations remain unchanged. Research 053 records the
+nr-12 evidence identifying A's EDIT child, not an extra top-level activation.
+This is a headless/build-only correction, not native acceptance or review approval.
+
 ## Topology and scenes
 
 The Python runner starts this executable in coordinator mode **without any Job or
@@ -185,7 +200,7 @@ Facts are exactly `class_token` (fixed allowlist/prefix token or other/target018
 Edit = fd2fa13c), and these boolean keys:
 `sampled visible toolwindow noactivate has_owner owner_is_a owner_is_b
 is_message_only same_thread_as_a cloaked cloaked_known ws_popup ws_caption
-ws_child ws_disabled ws_ex_topmost ws_ex_layered ws_ex_transparent ws_ex_appwindow
+ws_child foreground_was_child ws_disabled ws_ex_topmost ws_ex_layered ws_ex_transparent ws_ex_appwindow
 zero_area offscreen equals_a_rect on_bottom_left_work title_nonempty`.
 offscreen means no positive-area intersection with any monitor; equals_a_rect
 compares full rectangles; zero_area includes inverted rectangles.
@@ -212,6 +227,7 @@ A latched failure is retained after process exit in `native-monitor-failure.json
 `predicate` (`foreground_foreign`, `foreground_unexpected_candidate`,
 `output_oversized`, `observation_exception`, `process_exit`), integer `exitCode`,
 positive integer `sampleOrder`, `relation` using the control diagnostic tokens,
+boolean `foreground_was_child` (raw WS_CHILD at the failed foreground sample),
 and boolean `closed` (validated closure observed at the failed sample, false for
 legacy scene policies). The first predicate, relation, order and closure phase win;
 final output size is checked even on immediate exit.

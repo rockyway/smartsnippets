@@ -199,7 +199,8 @@ internal static class Coordinator
 
 internal static partial class NativeFixtureOs
 {
-    [LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")] internal static partial nint Foreground();
+    internal static nint Foreground() => SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(RawForeground());
+    [LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")] internal static partial nint RawForeground();
     internal static bool WindowOwnedBy(nint window, uint expectedPid) => expectedPid != 0 && GetWindowThreadProcessId(window, out var pid) != 0 && pid == expectedPid;
     [LibraryImport("user32.dll")] internal static partial uint GetWindowThreadProcessId(nint window, out uint pid);
     [LibraryImport("user32.dll")] internal static partial int IsWindowVisible(nint window);

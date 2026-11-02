@@ -323,6 +323,18 @@ public sealed class OwnedTargetPreparationTests
         Assert.Equal(1, com.Focuses); Assert.Equal(0, os.EditorCommands);
     }
 
+    [Theory]
+    [InlineData(2, true)] [InlineData(4, false)] [InlineData(99, false)]
+    public async Task FocusedChildMustResolveToExactAThroughoutPreparation(int root, bool accepted)
+    {
+        var os = new Os { Normalize = h => SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(h,
+            w => w == 103 ? 0x40000000 : 0, _ => root, _ => (7u, 20u), out _) };
+        var com = new Com(os) { FocusAction = () => os.Foreground = 103 };
+        Assert.Equal(accepted ? OwnedPreparationResult.Prepared : OwnedPreparationResult.ForegroundRefused,
+            await Prepare(os, () => com));
+        Assert.Equal(accepted ? 1 : 0, os.EditorCommands);
+    }
+
     private static Task<OwnedPreparationResult> Prepare(Os os, Func<IOwnedPreparationAutomation> com) =>
         OwnedTargetPreparation.PrepareAsync(os, com, 1, 2, 3, CancellationToken.None);
     private sealed class Os : IOwnedPreparationOs
@@ -331,7 +343,9 @@ public sealed class OwnedTargetPreparationTests
         internal uint Epoch = 10;
         internal int EditorCommands, DelayCalls;
         internal Action? OnDelay, OnEditor, OnEpoch;
-        public nint Foreground { get; set; } = 1;
+        private nint rawForeground = 1;
+        internal Func<nint, nint> Normalize = h => h;
+        public nint Foreground { get => Normalize(rawForeground); set => rawForeground = value; }
         public long Milliseconds { get; private set; }
         public bool PinnedIdentity() => Identity;
         public bool Permitted() => Permission;

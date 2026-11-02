@@ -96,7 +96,7 @@ class WindowDiagnosticsTests(unittest.TestCase):
         sample = json.loads('{"class_token":"ime_default","visible":false,"toolwindow":false,"noactivate":false,'
             '"has_owner":false,"owner_is_a":false,"owner_is_b":false,"is_message_only":false,'
             '"same_thread_as_a":false,"cloaked":false,"cloaked_known":false,"class_sha8":"29ee788e",'
-            '"ws_popup":false,"ws_caption":false,"ws_child":false,"ws_disabled":false,"ws_ex_topmost":false,'
+            '"ws_popup":false,"ws_caption":false,"ws_child":false,"foreground_was_child":false,"ws_disabled":false,"ws_ex_topmost":false,'
             '"ws_ex_layered":false,"ws_ex_transparent":false,"ws_ex_appwindow":false,"zero_area":false,'
             '"offscreen":false,"equals_a_rect":false,"on_bottom_left_work":false,"title_nonempty":false,"sampled":false}')
         native.validate_window_facts(sample)
@@ -195,7 +195,7 @@ class WindowDiagnosticsTests(unittest.TestCase):
         self.assertIn('() => fixture?.Lease.Readiness.WindowB ?? 0,', app)
         self.assertIn('window => WindowDiagnosticNative.Sample(window, fixture?.Lease.Readiness.WindowA ?? 0, fixture?.Lease.Readiness.WindowB ?? 0)', app)
         preparation = (native.ROOT / 'OwnedTargetPreparationNative.cs').read_text(encoding='utf-8')
-        self.assertIn('fixture.Lease.Readiness.WindowB,\n            window => WindowDiagnosticNative.Sample(window, fixture.Lease.Readiness.WindowA, fixture.Lease.Readiness.WindowB));', preparation)
+        self.assertIn('fixture.Lease.Readiness.WindowB,\n            window => WindowDiagnosticNative.Sample(window, fixture.Lease.Readiness.WindowA, fixture.Lease.Readiness.WindowB), SmartSnippets.TargetIdentity018.ForegroundIdentity.Root);', preparation)
 
     def test_real_monitor_latches_facts_at_first_refusal_not_teardown(self):
         with tempfile.TemporaryDirectory() as directory:

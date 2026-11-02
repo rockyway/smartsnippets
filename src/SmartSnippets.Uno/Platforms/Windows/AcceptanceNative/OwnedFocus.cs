@@ -108,7 +108,7 @@ internal sealed partial class NativeOwnedPopup : IOwnedFocusOs, IDisposable
     public bool PopupPinned => !disposed && RetainedIdentity.Pinned(self.SafeHandle, image) &&
         GetWindowThreadProcessId(window, out var pid) == thread && pid == (uint)Environment.ProcessId &&
         ExpectedClass() && GetPropW(window, Property) == 1;
-    public nint Foreground => GetForegroundWindow();
+    public nint Foreground => SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(GetForegroundWindow());
     public bool QuietDesktop() => QuietAllInput();
     internal static bool QuietAllInput()
     {
@@ -119,7 +119,7 @@ internal sealed partial class NativeOwnedPopup : IOwnedFocusOs, IDisposable
     public bool SetForeground(nint target) => PopupPinned && SetForegroundWindow(target) != 0;
     internal static bool RemoteForegroundReady(nint window, uint pid, Guid marker, uint expectedThread) =>
         expectedThread != 0 && GetWindowThreadProcessId(window, out var actualPid) == expectedThread && actualPid == pid && ExpectedClass(window) &&
-        GetPropW(window, PropertyName(marker)) == 1 && GetForegroundWindow() == window;
+        GetPropW(window, PropertyName(marker)) == 1 && SmartSnippets.TargetIdentity018.ForegroundIdentity.Root(GetForegroundWindow()) == window;
     private bool ExpectedClass() => ExpectedClass(window);
     private static unsafe bool ExpectedClass(nint window)
     {

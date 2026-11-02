@@ -22,6 +22,7 @@ spec = importlib.util.spec_from_file_location('ui_full_host', REPO / 'scripts/ru
 base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)
 startup = base.startup
+foreground_identity = startup.repo_module('ui_foreground_identity', 'scripts/uno_foreground_identity.py')
 HELPER = REPO / 'scripts/uno_candidate_ui.ps1'
 
 
@@ -199,7 +200,7 @@ def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None, *, sam
         # supplies its sampled foreground to avoid taking a second focus sample.
         if foreground is None and not sample_foreground:
             return None
-        popup = foreground if foreground is not None else user.GetForegroundWindow()
+        popup, _ = foreground_identity.normalize(desktop, foreground if foreground is not None else user.GetForegroundWindow())
         if not popup or popup == hwnd:
             return None
     owner = user.GetWindow(popup, 4)  # GW_OWNER must be the retained main, not an ancestor.
@@ -229,6 +230,7 @@ def owned_picker(desktop, hwnd, pid, authenticated=None, foreground=None, *, sam
 
 
 def picker_foreground(desktop, fg, popup, authenticated):
+    fg, _ = foreground_identity.normalize(desktop, fg)
     if popup is not None:
         return fg == popup
     return bool(authenticated and fg == authenticated and
@@ -293,7 +295,7 @@ def quiet_input(desktop, expected=None, phase='unspecified'):
 def retain_window(process, private, desktop, work, visible_windows, initial, epoch=None):
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
-        if desktop.snapshot() != initial:
+        if normalized_snapshot(desktop) != initial:
             raise ValueError('desktop_changed')
         require_all_input_up(desktop)
         if epoch is not None:
@@ -314,7 +316,7 @@ def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sl
     # startup, establish the immutable epoch again before any UIA lookup/focus/action.
     deadline = clock() + 4
     while clock() < deadline:
-        if desktop.snapshot() != initial:
+        if normalized_snapshot(desktop) != initial:
             raise ValueError('desktop_changed')
         if process is not None and process.poll() is not None:
             raise ValueError('early_exit')
@@ -329,7 +331,7 @@ def settle_quiet_epoch(process, desktop, initial, work, clock=time.monotonic, sl
             if str(error) != 'input':
                 raise
         else:
-            if desktop.snapshot() != initial:
+            if normalized_snapshot(desktop) != initial:
                 raise ValueError('desktop_changed')
             return epoch
         sleep(.05)
@@ -366,7 +368,9 @@ def foreground_failure_record(desktop, foreground, initial, hwnd, pid, popup=Non
     user.IsWindowEnabled.restype = startup.W.BOOL
     fg_pid = startup.W.DWORD()
     main_pid = startup.W.DWORD()
-    thread = user.GetWindowThreadProcessId(foreground, startup.C.byref(fg_pid)) if foreground else 0
+    raw_foreground = foreground
+    foreground, _ = foreground_identity.normalize(desktop, raw_foreground)
+    thread = user.GetWindowThreadProcessId(raw_foreground, startup.C.byref(fg_pid)) if raw_foreground else 0
     main_thread = user.GetWindowThreadProcessId(hwnd, startup.C.byref(main_pid)) if hwnd else 0
     if not foreground:
         relation = 'none'
@@ -378,7 +382,7 @@ def foreground_failure_record(desktop, foreground, initial, hwnd, pid, popup=Non
         relation = 'unknown' if not thread else 'owned_other' if fg_pid.value == pid else 'external'
     live = bool(foreground and thread)
     cls = startup.C.create_unicode_buffer(256)
-    class_ok = live and user.GetClassNameW(foreground, cls, len(cls))
+    class_ok = live and user.GetClassNameW(raw_foreground, cls, len(cls))
     return privacy_schema().validate_foreground_failure({
         'foregroundRelation': relation,
         'fgIsMain': bool(foreground and foreground == hwnd),
@@ -386,11 +390,11 @@ def foreground_failure_record(desktop, foreground, initial, hwnd, pid, popup=Non
         'popupPresent': popup is not None,
         'fgSamePid': bool(live and fg_pid.value == pid),
         'fgThreadIsMainThread': bool(live and main_thread and thread == main_thread),
-        'fgOwnerIsMain': bool(live and user.GetWindow(foreground, 4) == hwnd),  # GW_OWNER
-        'fgRootOwnerIsMain': bool(live and user.GetAncestor(foreground, 3) == hwnd),  # GA_ROOTOWNER
+        'fgOwnerIsMain': bool(live and user.GetWindow(raw_foreground, 4) == hwnd),  # GW_OWNER
+        'fgRootOwnerIsMain': bool(live and user.GetAncestor(raw_foreground, 3) == hwnd),  # GA_ROOTOWNER
         'fgClassIs32770': bool(class_ok and cls.value == '#32770'),
-        'fgVisible': bool(live and user.IsWindowVisible(foreground)),
-        'fgEnabled': bool(live and user.IsWindowEnabled(foreground)),
+        'fgVisible': bool(live and user.IsWindowVisible(raw_foreground)),
+        'fgEnabled': bool(live and user.IsWindowEnabled(raw_foreground)),
         'phaseIndex': phase_index,
         'sampleOrder': sample_order})
 
@@ -494,9 +498,15 @@ def validate_helper_foreground_failure(private, helper_code=None, helper_stderr=
     return True
 
 
+def normalized_snapshot(desktop):
+    raw, clip = desktop.snapshot()
+    foreground, _ = foreground_identity.normalize(desktop, raw)
+    return foreground, clip
+
+
 def observe_desktop(desktop, allow_zero_fg=False):
     desktop.validate_input_desktop()
-    fg = desktop.user.GetForegroundWindow()
+    fg, _ = foreground_identity.normalize(desktop, desktop.user.GetForegroundWindow())
     clip = desktop.user.GetClipboardSequenceNumber()
     if not clip or (not allow_zero_fg and not fg):
         raise ValueError('desktop_unavailable')
@@ -580,7 +590,7 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
     try:
         desktop.enable_dpi()
         desktop.validate_work_area(work)
-        initial = desktop.snapshot()
+        initial = normalized_snapshot(desktop)
         epoch = settle_quiet_epoch(None, desktop, initial, work)
         (private / 'fixture-launch-permit').write_bytes(b'owned_fixture_only\n')
         (private / 'fixture-rendered-ui-permit').write_bytes(b'owned_rendered_ui_019\n')

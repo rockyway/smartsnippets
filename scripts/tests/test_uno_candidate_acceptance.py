@@ -208,7 +208,7 @@ class AcceptanceTests(unittest.TestCase):
             driver.parent.mkdir(parents=True); driver.write_text('first')
             ui_driver = driver.parent / 'UiAssertDriver.cs'; ui_driver.write_text('ui first')
             for relative in ('scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1',
-                             'scripts/uno_candidate_helper_schema.py'):
+                             'scripts/uno_candidate_helper_schema.py', 'scripts/uno_foreground_identity.py'):
                 helper = root / relative; helper.parent.mkdir(parents=True, exist_ok=True); helper.write_text('fixed helper')
             for name in ('Directory.Build.props', 'Directory.Packages.props'):
                 (root / name).write_text('fixed')
@@ -217,7 +217,8 @@ class AcceptanceTests(unittest.TestCase):
             before = s.source_fingerprint(); ui_driver.write_text('ui changed')
             self.assertNotEqual(before, s.source_fingerprint())
             for relative in ('prototypes/uno-native-target/identity/OwnedFixtureLease.cs',
-                             'prototypes/uno-native-target/windows-insertion/InputPreflight.cs'):
+                             'prototypes/uno-native-target/windows-insertion/InputPreflight.cs',
+                             'scripts/uno_foreground_identity.py'):
                 linked = root / relative; linked.parent.mkdir(parents=True, exist_ok=True)
                 linked.write_text('linked source')
                 before = s.source_fingerprint(); linked.write_text('modified linked source')

@@ -84,6 +84,7 @@ class NativeBootstrapTests(unittest.TestCase):
                 self.polls += 1
                 return None if self.polls < 4 else 0
         class User:
+            def GetWindowLongPtrW(self, h, i): return 0
             def GetForegroundWindow(self): return 1
         class Desktop:
             user = User()
@@ -163,6 +164,7 @@ class NativeBootstrapTests(unittest.TestCase):
             def kill(self):
                 raise AssertionError('must not kill guardian/coordinator')
         class User:
+            def GetWindowLongPtrW(self, h, i): return 0
             def GetForegroundWindow(self): return 1
         class Desktop:
             user = User()
@@ -179,6 +181,7 @@ class NativeBootstrapTests(unittest.TestCase):
                 self.polls += 1
                 return None if self.polls < 3 else 0
         class User:
+            def GetWindowLongPtrW(self, h, i): return 0
             def GetForegroundWindow(self): return 2
         class Desktop:
             user = User()

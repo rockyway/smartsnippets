@@ -42,6 +42,7 @@ ROOT = REPO / 'scripts/uno_candidate_native_fixture'
 spec = importlib.util.spec_from_file_location('native_nonmutating_helpers', REPO / 'scripts/run_uno_candidate_acceptance.py')
 helpers = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helpers)
+foreground_identity = helpers.startup.repo_module('native_foreground_identity', 'scripts/uno_foreground_identity.py')
 
 
 def source_fingerprint():
@@ -52,7 +53,7 @@ def source_fingerprint():
                      'prototypes/uno-candidate-native'):
         paths.extend(p for p in (REPO / relative).rglob('*') if p.is_file()
                      and not {'bin', 'obj', '__pycache__'}.intersection(p.relative_to(REPO / relative).parts))
-    paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props', 'scripts/run_uno_candidate_native.py'))
+    paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props', 'scripts/run_uno_candidate_native.py', 'scripts/uno_foreground_identity.py'))
     result = hashlib.sha256()
     for path in sorted(paths):
         data = helpers.owned_bytes(path, REPO)
@@ -231,12 +232,12 @@ def validate_monitor_failure(private):
         return result
     record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 4096).decode('ascii'),
                         object_pairs_hook=unique)
-    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'windowFacts'}
+    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'foreground_was_child', 'windowFacts'}
             or type(record['predicate']) is not str or record['predicate'] not in MONITOR_PREDICATES
             or type(record['relation']) is not str or record['relation'] not in MONITOR_RELATIONS
             or type(record['exitCode']) is not int or not -2**31 <= record['exitCode'] <= 2**32-1
             or type(record['sampleOrder']) is not int or record['sampleOrder'] < 1
-            or type(record['closed']) is not bool
+            or type(record['closed']) is not bool or type(record['foreground_was_child']) is not bool
             or (record['predicate'] == 'process_exit' and record['exitCode'] == 0)):
         raise ValueError('native_monitor_record')
     facts = record['windowFacts']
@@ -291,7 +292,7 @@ WINDOW_CLASSES = {
 WINDOW_PREFIXES = {'.NET-BroadcastEventWindow': 'dotnet_broadcast', 'Microsoft.UI.Content.': 'microsoft_content', 'SoftKeyboard': 'soft_keyboard'}
 WINDOW_BOOLS = ('sampled', 'visible', 'toolwindow', 'noactivate', 'has_owner', 'owner_is_a',
                 'owner_is_b', 'is_message_only', 'same_thread_as_a', 'cloaked', 'cloaked_known',
-                'ws_popup', 'ws_caption', 'ws_child', 'ws_disabled', 'ws_ex_topmost', 'ws_ex_layered', 'ws_ex_transparent', 'ws_ex_appwindow', 'zero_area', 'offscreen', 'equals_a_rect', 'on_bottom_left_work', 'title_nonempty')
+                'foreground_was_child', 'ws_popup', 'ws_caption', 'ws_child', 'ws_disabled', 'ws_ex_topmost', 'ws_ex_layered', 'ws_ex_transparent', 'ws_ex_appwindow', 'zero_area', 'offscreen', 'equals_a_rect', 'on_bottom_left_work', 'title_nonempty')
 
 
 def class_sha8(name):
@@ -370,7 +371,7 @@ def extra_window_facts(user, window, a):
         fn.argtypes, fn.restype = args, result
     style, ex = user.GetWindowLongPtrW(window, -16), user.GetWindowLongPtrW(window, -20)
     facts = dict(ws_popup=bool(style & 0x80000000), ws_caption=bool(style & 0x00c00000),
-                 ws_child=bool(style & 0x40000000), ws_disabled=bool(style & 0x08000000),
+                 ws_child=bool(style & 0x40000000), foreground_was_child=bool(style & 0x40000000), ws_disabled=bool(style & 0x08000000),
                  ws_ex_topmost=bool(ex & 8), ws_ex_layered=bool(ex & 0x80000),
                  ws_ex_transparent=bool(ex & 0x20), ws_ex_appwindow=bool(ex & 0x40000),
                  zero_area=False, offscreen=False, equals_a_rect=False,
@@ -498,6 +499,7 @@ def thread_inventory(desktop, a, b, ready):
 def foreground_pid(desktop, window):
     import ctypes
     from ctypes import wintypes
+    window, _ = foreground_identity.normalize(desktop, window)
     pid = wintypes.DWORD()
     if window:
         desktop.user.GetWindowThreadProcessId(window, ctypes.byref(pid))
@@ -520,6 +522,10 @@ class PostedForegroundMonitor:
         self.granted_at = None
 
     def sample(self, desktop, window):
+        raw = window
+        window, self.foreground_was_child = foreground_identity.normalize(desktop, raw)
+        if raw and not window:
+            return 'foreground_foreign', 'foreign'
         path = self.private / 'positive-surfaces.txt'
         if self.surfaces is None and path.exists():
             positive_foregrounds(self.private, self.initial)  # strict existing shape validation
@@ -581,6 +587,8 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
     failure_facts = empty_window_facts()
     order = 0
     relation = 'none'
+    foreground_was_child = False
+    failure_was_child = False
     policy = PostedForegroundMonitor(positive_private, foreground, clock, scene != 'copy') if scene in (*POSTED_SCENES, 'copy') else None
     announced = False
     operator_announced = False
@@ -596,16 +604,20 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             if registered and positive_private is not None and not operator_announced and registered_operator_ready(positive_private):
                 print('native_phase=operator_ready press_Ctrl_Alt_Shift_F11_then_release_all_input', flush=True)
                 operator_announced = True
-            window = desktop.user.GetForegroundWindow()
-            predicate, relation = (policy.sample(desktop, window) if policy is not None else
+            raw_window = desktop.user.GetForegroundWindow()
+            window, foreground_was_child = foreground_identity.normalize(desktop, raw_window)
+            predicate, relation = (policy.sample(desktop, raw_window) if policy is not None else
                                    (None if window in allowed else 'foreground_foreign', 'none' if not window else 'foreign'))
+            if raw_window and not window:
+                predicate, relation = 'foreground_foreign', 'foreign'
             if predicate and failure is None:
                 failure = (predicate, order, relation, bool(policy and policy.closed))
+                failure_was_child = foreground_was_child
                 surfaces = policy.surfaces if policy is not None else None
                 if surfaces is None and positive_private is not None and (positive_private / 'positive-surfaces.txt').exists():
                     positive_foregrounds(positive_private, foreground)
                     surfaces = tuple(map(int, helpers.owned_bytes(positive_private / 'positive-surfaces.txt', positive_private, 256).split()))
-                failure_facts = window_facts(desktop, window, *(surfaces[:2] if surfaces else (0, 0)))
+                failure_facts = window_facts(desktop, raw_window, *(surfaces[:2] if surfaces else (0, 0)))
                 if surfaces:
                     try:
                         ready = read_inventory(positive_private, 'ready')
@@ -637,7 +649,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         private = evidence_private or positive_private
         if private is not None:
             record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation, closed=closed,
-                          windowFacts=failure_facts)
+                          foreground_was_child=failure_was_child, windowFacts=failure_facts)
             with (private / 'native-monitor-failure.json').open('x', encoding='ascii') as stream:
                 json.dump(record, stream)
             validate_monitor_failure(private)
@@ -816,7 +828,7 @@ def main(argv=None, *, prior_restorative_session=None):
     try:
         desktop.enable_dpi()
         desktop.validate_input_desktop()
-        foreground = desktop.user.GetForegroundWindow()
+        foreground, _ = foreground_identity.normalize(desktop, desktop.user.GetForegroundWindow())
         if not foreground:
             raise ValueError('native_foreground_unavailable')
         positive = args.scene in POSITIVE_SCENES

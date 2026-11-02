@@ -101,6 +101,7 @@ public static class Owned019 {
  public static uint Pid=30; public static string Class="#32770";
  public static int Owner=10; public static bool Visible=false;
  public static IntPtr GetWindow(IntPtr h,int n) { return new IntPtr(n==6?0:Owner); }
+ public static IntPtr ForegroundRoot(IntPtr raw) { return raw; }
  public static IntPtr GetForegroundWindow() { return new IntPtr(20); }
  public static uint GetWindowThreadProcessId(IntPtr h,out uint pid) { pid=h.ToInt64()==10?30:Pid; return h.ToInt64()==10?40u:41u; }
  public static int GetClassName(IntPtr h,StringBuilder b,int n) { b.Append(Class); return Class.Length; }

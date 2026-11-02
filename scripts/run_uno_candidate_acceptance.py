@@ -85,7 +85,7 @@ def source_fingerprint():
         'tests/SmartSnippets.Uno.Tests/Acceptance/CandidateAcceptanceFlow.cs',
         'tests/SmartSnippets.Uno.Tests/Acceptance/UiAssertDriver.cs',
         'scripts/run_uno_candidate_ui.py', 'scripts/uno_candidate_ui.ps1',
-        'scripts/uno_candidate_helper_schema.py'))
+        'scripts/uno_candidate_helper_schema.py', 'scripts/uno_foreground_identity.py'))
     paths.extend(REPO / name for name in ('Directory.Build.props', 'Directory.Packages.props'))
     result = hashlib.sha256()
     for path in sorted(paths):

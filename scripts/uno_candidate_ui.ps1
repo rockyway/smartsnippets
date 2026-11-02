@@ -62,6 +62,13 @@ public static class Owned019 {
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder b, int n);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int index);
+ public static IntPtr ForegroundRoot(IntPtr raw) {
+  if(raw == IntPtr.Zero || (GetWindowLongPtrW(raw,-16).ToInt64() & 0x40000000L)==0) return raw;
+  var root=GetAncestor(raw,2); uint cp,rp;
+  var ct=GetWindowThreadProcessId(raw,out cp); var rt=GetWindowThreadProcessId(root,out rp);
+  return root!=IntPtr.Zero && ct!=0 && cp!=0 && ct==rt && cp==rp ? root : IntPtr.Zero;
+ }
  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);
  [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
  [DllImport("user32.dll")] public static extern IntPtr OpenInputDesktop(uint f, bool i, uint a);
@@ -113,7 +120,7 @@ public static class Owned019 {
         $dialog = [Owned019]::GetWindow($h, 6)
         $fromForeground = $dialog -eq [IntPtr]::Zero -or $dialog -eq $h
         if ($fromForeground) {
-            $dialog = [Owned019]::GetForegroundWindow()
+            $dialog = [Owned019]::ForegroundRoot([Owned019]::GetForegroundWindow())
             if ($dialog -eq [IntPtr]::Zero -or $dialog -eq $h) { return [IntPtr]::Zero }
         }
         [uint32]$dialogPid = 0; [uint32]$mainPid = 0
@@ -138,6 +145,7 @@ public static class Owned019 {
         # foreground-failure.json. No titles, class strings, paths or HWND values.
         try {
             $f = [IntPtr]$fg
+            $fg = [Owned019]::ForegroundRoot($f).ToInt64()
             [uint32]$fgPid = 0; [uint32]$mainPid = 0
             $thread = 0
             if ($fg -ne 0) { $thread = [Owned019]::GetWindowThreadProcessId($f, [ref]$fgPid) }
@@ -205,7 +213,8 @@ public static class Owned019 {
             }
         }
         # Sample after authentication, then recheck once if picker activation raced it.
-        $fg = [Owned019]::GetForegroundWindow().ToInt64()
+        $rawForeground = [Owned019]::GetForegroundWindow()
+        $fg = [Owned019]::ForegroundRoot($rawForeground).ToInt64()
         $pickerForeground = $dialog -ne [IntPtr]::Zero -and $fg -eq $dialog.ToInt64()
         if (-not $pickerForeground -and $Scene -ceq 'file-picker' -and $null -ne $script:pickerPhase -and
             $dialog -eq [IntPtr]::Zero -and $script:pickerHwnd -ne [IntPtr]::Zero -and

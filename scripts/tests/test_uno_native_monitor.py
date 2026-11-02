@@ -45,6 +45,7 @@ class MonitorTests(unittest.TestCase):
                     raise AssertionError('no termination')
             process = Process()
             class User:
+                def GetWindowLongPtrW(self, h, i): return 0
                 def GetForegroundWindow(self):
                     sample = samples[process.index]
                     publish(private, sample)
@@ -64,7 +65,7 @@ class MonitorTests(unittest.TestCase):
                     self.assertIsNotNone(expected, 'every refusal must pin order, relation and phase')
                     order, relation, closed = expected
                     self.assertEqual(dict(predicate=token, exitCode=exit_code, sampleOrder=order,
-                                          relation=relation, closed=closed, windowFacts=native.empty_window_facts()), native.validate_monitor_failure(private))
+                                          relation=relation, closed=closed, foreground_was_child=False, windowFacts=native.empty_window_facts()), native.validate_monitor_failure(private))
                 else:
                     call()
                     self.assertFalse((private / 'native-monitor-failure.json').exists())
@@ -171,7 +172,7 @@ class MonitorTests(unittest.TestCase):
                 publish(state.private, samples[state.index])
                 return samples[state.index][0]
             class Desktop:
-                user = SimpleNamespace(GetForegroundWindow=foreground,
+                user = SimpleNamespace(GetWindowLongPtrW=lambda h, i: 0, GetForegroundWindow=foreground,
                                        GetClipboardSequenceNumber=lambda: 1 if state.index < 0 else 2)
                 def enable_dpi(self): pass
                 def validate_input_desktop(self): pass
@@ -209,7 +210,7 @@ class MonitorTests(unittest.TestCase):
                     verify.assert_not_called()
                     boundary.assert_not_called()
                     self.assertEqual(dict(predicate='foreground_unexpected_candidate', exitCode=0,
-                                          sampleOrder=2, relation='candidate', closed=False, windowFacts=native.empty_window_facts()),
+                                          sampleOrder=2, relation='candidate', closed=False, foreground_was_child=False, windowFacts=native.empty_window_facts()),
                                      native.validate_monitor_failure(state.private))
 
     def test_real_main_granted_success_reaches_real_receipt_and_boundary_verifiers_per_scene(self):

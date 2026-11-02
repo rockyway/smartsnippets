@@ -128,6 +128,22 @@ public sealed class OwnedFocusTests
         Assert.Equal(calls, os.FocusCalls);
     }
 
+    [Theory]
+    [InlineData(11, true)] [InlineData(30, true)] [InlineData(40, true)]
+    [InlineData(12, false)] [InlineData(99, false)]
+    public async Task ChildForegroundUsesExactPinnedSurfaceForAdmissionPopupAndRestore(int root, bool admitted)
+    {
+        var os = new FocusOs { Foreground = 101, Normalize = raw =>
+            SmartSnippets.TargetIdentity018.ForegroundIdentity.Normalize(raw,
+                h => h == 101 ? 0x40000000 : 0, _ => root, _ => (7u, 21u), out _) };
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true, 40, () => true);
+        Assert.Equal(admitted, focus.ReadyForAdmission());
+        Assert.Equal(admitted, await focus.ReadyForAdmissionAsync(default));
+        Assert.Equal(admitted, await focus.RestoreTargetAsync(default));
+        Assert.Equal(admitted, focus.TryFocusPopup());
+        Assert.Equal(admitted ? (root == 30 ? 2 : root == 11 ? 1 : 2) : 0, os.FocusCalls);
+    }
+
     private sealed class Probe(FocusOs os) : ITargetProbe
     {
         public TargetCheck Check(InsertionTarget target) => target == A ? TargetCheck.Ok : TargetCheck.Closed;
@@ -139,7 +155,9 @@ public sealed class OwnedFocusTests
         internal int FocusCalls;
         internal Action? AfterQuietCheck;
         public bool PopupPinned { get; set; } = true;
-        public nint Foreground { get; set; }
+        private nint rawForeground;
+        internal Func<nint, nint> Normalize = h => h;
+        public nint Foreground { get => Normalize(rawForeground); set => rawForeground = value; }
         public bool QuietDesktop() { AfterQuietCheck?.Invoke(); return Quiet; }
         public bool SetForeground(nint window) { FocusCalls++; if (FocusAccepted) Foreground = window; return FocusAccepted; }
     }

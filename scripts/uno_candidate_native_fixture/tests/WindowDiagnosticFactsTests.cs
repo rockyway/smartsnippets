@@ -55,7 +55,7 @@ public sealed class WindowDiagnosticFactsTests
         Assert.True(json.RootElement.GetProperty("sampled").GetBoolean());
         Assert.Equal(new[] { "class_token", "visible", "toolwindow", "noactivate", "has_owner", "owner_is_a", "owner_is_b",
                 "is_message_only", "same_thread_as_a", "cloaked", "cloaked_known", "class_sha8", "ws_popup", "ws_caption",
-                "ws_child", "ws_disabled", "ws_ex_topmost", "ws_ex_layered", "ws_ex_transparent", "ws_ex_appwindow",
+                "foreground_was_child", "ws_child", "ws_disabled", "ws_ex_topmost", "ws_ex_layered", "ws_ex_transparent", "ws_ex_appwindow",
                 "zero_area", "offscreen", "equals_a_rect", "on_bottom_left_work", "title_nonempty", "sampled" }.OrderBy(x => x),
             json.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(x => x));
         Assert.True(facts.Visible && facts.Toolwindow && facts.Noactivate && facts.HasOwner &&

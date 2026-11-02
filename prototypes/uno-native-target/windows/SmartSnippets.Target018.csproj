@@ -13,4 +13,5 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+  <ItemGroup><Compile Include="../identity/ForegroundIdentity.cs" Link="ForegroundIdentity.cs" /></ItemGroup>
 </Project>
