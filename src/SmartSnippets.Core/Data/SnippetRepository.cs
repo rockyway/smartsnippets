@@ -6,7 +6,7 @@ namespace SmartSnippets.Core.Data;
 public sealed class SnippetRepository
 {
     private const string SelectColumns =
-        "SELECT id, text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count FROM snippets";
+        "SELECT id, text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count, is_password FROM snippets";
 
     private readonly SqliteConnectionFactory _factory;
 
@@ -58,18 +58,24 @@ public sealed class SnippetRepository
         bool isLabelCustom,
         long? folderId,
         IReadOnlyList<string> tags,
-        DateTimeOffset now) => InsertImported(connection, transaction, text, label, isLabelCustom, folderId, tags, now, now, null, 0);
+        DateTimeOffset now, bool isPassword = false) => InsertRow(connection, transaction, text, label, isLabelCustom, folderId, tags, now, now, null, 0, isPassword);
 
     public Snippet InsertImported(
         SqliteConnection connection, SqliteTransaction transaction,
         string text, string label, bool isLabelCustom, long? folderId, IReadOnlyList<string> tags,
-        DateTimeOffset createdAt, DateTimeOffset updatedAt, DateTimeOffset? lastUsedAt, int usageCount)
+        DateTimeOffset createdAt, DateTimeOffset updatedAt, DateTimeOffset? lastUsedAt, int usageCount) =>
+        InsertRow(connection, transaction, text, label, isLabelCustom, folderId, tags, createdAt, updatedAt, lastUsedAt, usageCount, false);
+
+    private static Snippet InsertRow(
+        SqliteConnection connection, SqliteTransaction transaction,
+        string text, string label, bool isLabelCustom, long? folderId, IReadOnlyList<string> tags,
+        DateTimeOffset createdAt, DateTimeOffset updatedAt, DateTimeOffset? lastUsedAt, int usageCount, bool isPassword)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
-            "INSERT INTO snippets (text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count) " +
-            "VALUES ($text, $label, $custom, $folder, $tags, $created, $updated, $used, $usage); SELECT last_insert_rowid();";
+            "INSERT INTO snippets (text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count, is_password) " +
+            "VALUES ($text, $label, $custom, $folder, $tags, $created, $updated, $used, $usage, $password); SELECT last_insert_rowid();";
         command.Parameters.AddWithValue("$text", text);
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
@@ -79,10 +85,11 @@ public sealed class SnippetRepository
         command.Parameters.AddWithValue("$updated", DbTime.ToDb(updatedAt));
         command.Parameters.AddWithValue("$used", lastUsedAt is { } used ? DbTime.ToDb(used) : DBNull.Value);
         command.Parameters.AddWithValue("$usage", usageCount);
+        command.Parameters.AddWithValue("$password", isPassword ? 1 : 0);
         var id = (long)command.ExecuteScalar()!;
         return new Snippet(id, text, label, isLabelCustom, folderId, TagList.FromStorage(TagList.ToStorage(tags)),
             DbTime.FromDb(DbTime.ToDb(createdAt)), DbTime.FromDb(DbTime.ToDb(updatedAt)),
-            lastUsedAt is { } value ? DbTime.FromDb(DbTime.ToDb(value)) : null, usageCount);
+            lastUsedAt is { } value ? DbTime.FromDb(DbTime.ToDb(value)) : null, usageCount, isPassword);
     }
 
     /// <summary>
@@ -130,13 +137,14 @@ public sealed class SnippetRepository
         bool isLabelCustom,
         long? folderId,
         IReadOnlyList<string> tags,
-        DateTimeOffset now)
+        DateTimeOffset now, bool isPassword = false)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
             "UPDATE snippets SET text = $text, label = $label, label_is_custom = $custom, folder_id = $folder, " +
-            "tags = $tags, updated_at = $now WHERE id = $id;";
+            "tags = $tags, updated_at = $now, is_password = $password WHERE id = $id;";
+        command.Parameters.AddWithValue("$password", isPassword ? 1 : 0);
         command.Parameters.AddWithValue("$text", text);
         command.Parameters.AddWithValue("$label", label);
         command.Parameters.AddWithValue("$custom", isLabelCustom ? 1 : 0);
@@ -177,7 +185,8 @@ public sealed class SnippetRepository
         DbTime.FromDb(reader.GetInt64(6)),
         DbTime.FromDb(reader.GetInt64(7)),
         reader.IsDBNull(8) ? null : DbTime.FromDb(reader.GetInt64(8)),
-        (int)Math.Clamp(reader.GetInt64(9), 0, int.MaxValue));
+        (int)Math.Clamp(reader.GetInt64(9), 0, int.MaxValue),
+        reader.GetInt64(10) != 0);
 }
 
 public readonly record struct ImportedSnippetRow(

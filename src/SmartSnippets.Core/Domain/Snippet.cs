@@ -10,4 +10,5 @@ public sealed record Snippet(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset? LastUsedAt,
-    int UsageCount);
+    int UsageCount,
+    bool IsPassword = false);

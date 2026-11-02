@@ -28,5 +28,6 @@ public static class Migrations
             CREATE INDEX ix_snippets_folder ON snippets(folder_id);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """),
+        new Migration(3, "ALTER TABLE snippets ADD COLUMN is_password INTEGER NOT NULL DEFAULT 0 CHECK(is_password IN (0,1));"),
     ];
 }

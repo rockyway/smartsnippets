@@ -106,7 +106,7 @@ internal sealed class FakeSnippetStore : ISnippetStore
         var tags = TagList.Parse(draft.TagsInput);
         var (label, isCustom) = LabelSuggester.ResolveLabel(draft, tags);
         var now = Tick();
-        var created = new Snippet(_nextId++, draft.Text, label, isCustom, draft.FolderId, tags, now, now, null, 0);
+        var created = new Snippet(_nextId++, draft.Text, label, isCustom, draft.FolderId, tags, now, now, null, 0, draft.IsPassword);
         _snippets.Add(created);
         Publish();
         Raise(StoreChangeKind.SnippetCreated, created.Id, [created.Id]);
@@ -136,6 +136,7 @@ internal sealed class FakeSnippetStore : ISnippetStore
             Text = draft.Text,
             Label = label,
             IsLabelCustom = isCustom,
+            IsPassword = draft.IsPassword,
             FolderId = draft.FolderId,
             Tags = tags,
             UpdatedAt = Tick(),
@@ -247,6 +248,9 @@ internal sealed class FakeSnippetStore : ISnippetStore
 
     private ValidationError? Prepare(SnippetDraft draft)
     {
+        if (draft.IsPassword && (!draft.IsLabelCustom || string.IsNullOrWhiteSpace(draft.Label)))
+            return ValidationError.LabelRequired;
+
         var tags = TagList.Parse(draft.TagsInput);
         var (label, _) = LabelSuggester.ResolveLabel(draft, tags);
         var errors = SnippetValidator.Validate(draft.Text, label);

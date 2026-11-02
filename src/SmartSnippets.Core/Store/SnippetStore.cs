@@ -92,7 +92,7 @@ public sealed class SnippetStore : ISnippetStore
         var (label, isCustom, tags, _) = prepared;
         var now = _time.GetUtcNow();
         var created = Write("create_snippet", (c, tx) =>
-            _snippetRepository.Insert(c, tx, draft.Text, label, isCustom, draft.FolderId, tags, now));
+            _snippetRepository.Insert(c, tx, draft.Text, label, isCustom, draft.FolderId, tags, now, draft.IsPassword));
 
         Publish(_folders, [.. _snippets, created]);
         Raise(StoreChangeKind.SnippetCreated, created.Id, [created.Id]);
@@ -117,7 +117,7 @@ public sealed class SnippetStore : ISnippetStore
         var (label, isCustom, tags, _) = prepared;
         var now = Stored(_time.GetUtcNow());
         var found = Write("update_snippet", (c, tx) =>
-            _snippetRepository.Update(c, tx, id, draft.Text, label, isCustom, draft.FolderId, tags, now));
+            _snippetRepository.Update(c, tx, id, draft.Text, label, isCustom, draft.FolderId, tags, now, draft.IsPassword));
         if (!found)
         {
             return StoreResult<Snippet>.Fail(ValidationError.SnippetNotFound);
@@ -128,6 +128,7 @@ public sealed class SnippetStore : ISnippetStore
             Text = draft.Text,
             Label = label,
             IsLabelCustom = isCustom,
+            IsPassword = draft.IsPassword,
             FolderId = draft.FolderId,
             Tags = tags,
             UpdatedAt = now,
@@ -336,6 +337,9 @@ public sealed class SnippetStore : ISnippetStore
 
     private (string Label, bool IsCustom, IReadOnlyList<string> Tags, ValidationError? Error) Prepare(SnippetDraft draft)
     {
+        if (draft.IsPassword && (!draft.IsLabelCustom || string.IsNullOrWhiteSpace(draft.Label)))
+            return (draft.Label, true, [], ValidationError.LabelRequired);
+
         var tags = TagList.Parse(draft.TagsInput);
         var (label, isCustom) = LabelSuggester.ResolveLabel(draft, tags);
         var errors = SnippetValidator.Validate(draft.Text, label);
