@@ -97,4 +97,15 @@ public sealed class IdleMemoryTrimmerTests
         now = 10000; trimmer.Poll();
         Assert.Equal(0, calls);
     }
+
+    [Fact]
+    public void ReturningBeforeTheDelayCancelsTheSettleTrim()
+    {
+        long now = 0;
+        var calls = 0;
+        using var trimmer = new IdleMemoryTrimmer(() => false, () => { calls++; return true; }, () => now, settled: () => true);
+        trimmer.RequestSettleTrim(); now = 2000; trimmer.CancelSettleTrim();
+        now = 10000; trimmer.Poll(); Assert.Equal(0, calls);
+        trimmer.RequestSettleTrim(); now = 13000; trimmer.Poll(); Assert.Equal(1, calls);
+    }
 }

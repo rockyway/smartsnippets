@@ -53,7 +53,10 @@ public sealed partial class MainWindow : Window
         _monitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         AppWindow.Changed += (_, args) =>
         {
-            if (_closingForExit || _closed || (!args.DidPositionChange && !args.DidSizeChange)) return;
+            if (_closingForExit || _closed) return;
+            if (args.DidPresenterChange && presenter.State == OverlappedPresenterState.Minimized)
+                Backgrounded?.Invoke(this, EventArgs.Empty);
+            if (!args.DidPositionChange && !args.DidSizeChange) return;
             // Re-read after move or size/DPI processing, rather than using the
             // monitor on which the hidden window was originally constructed.
             DispatcherQueue.TryEnqueue(() =>
@@ -76,8 +79,13 @@ public sealed partial class MainWindow : Window
         AppWindow.Closing += OnClosing;
         Activated += (_, args) =>
         {
-            if (!_closingForExit && !_closed && args.WindowActivationState == WindowActivationState.Deactivated)
+            if (_closingForExit || _closed) return;
+            if (args.WindowActivationState == WindowActivationState.Deactivated)
+            {
                 Controls.HoverDetailsSurface.CancelActive(ContentXamlRoot);
+                Backgrounded?.Invoke(this, EventArgs.Empty);
+            }
+            else Foregrounded?.Invoke(this, EventArgs.Empty);
         };
         // Content is no longer readable during Closed. Hover cancellation happens before Close/hide.
         Closed += (_, _) => _closed = true;
@@ -93,6 +101,12 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Raised after each move or resize; the argument is true when the window is now on a different monitor.</summary>
     internal event EventHandler<bool>? Moved;
+
+    /// <summary>Raised when the window is minimized or stops being the active window.</summary>
+    internal event EventHandler? Backgrounded;
+
+    /// <summary>Raised when the window becomes the active window again.</summary>
+    internal event EventHandler? Foregrounded;
 
     internal void SetInteractionEnabled(bool enabled) => Navigation.IsEnabled = enabled;
     internal void SetHotkeyStatus(HotkeyStatus status) => NativeStatusText.Text = status.IsRegistered

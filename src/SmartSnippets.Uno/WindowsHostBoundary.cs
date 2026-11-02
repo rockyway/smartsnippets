@@ -30,14 +30,27 @@ internal sealed class WindowsHostBoundary : HostBoundary
         return null;
 #else
         bool PopupSettled() => _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle();
+        var backgroundRequest = false;
         var trimmer = new IdleMemoryTrimmer(() => _main is { IsHidden: true } && PopupSettled(), settled: PopupSettled);
         // Startup has just finished; the main window outlives the trimmer, which ignores requests once disposed.
         trimmer.RequestSettleTrim();
-        // A new monitor may mean another graphics adapter; keep postponing while the drag continues.
-        if (_main is not null) _main.Moved += (_, monitorChanged) =>
+        if (_main is { } main)
         {
-            if (monitorChanged) trimmer.RequestSettleTrim(); else trimmer.PostponeSettleTrim();
-        };
+            // A new monitor may mean another graphics adapter; keep postponing while the drag continues.
+            main.Moved += (_, monitorChanged) =>
+            {
+                if (!monitorChanged) { trimmer.PostponeSettleTrim(); return; }
+                backgroundRequest = false;
+                trimmer.RequestSettleTrim();
+            };
+            // Minimized or behind another app: trim, unless the user comes back before the delay ends.
+            main.Backgrounded += (_, _) => { backgroundRequest = true; trimmer.RequestSettleTrim(); };
+            main.Foregrounded += (_, _) =>
+            {
+                if (backgroundRequest) trimmer.CancelSettleTrim();
+                backgroundRequest = false;
+            };
+        }
         return trimmer;
 #endif
     }

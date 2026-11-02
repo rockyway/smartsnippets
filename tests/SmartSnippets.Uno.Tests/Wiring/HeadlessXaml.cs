@@ -300,7 +300,7 @@ namespace Microsoft.UI.Xaml.Media
 }
 namespace Microsoft.UI.Windowing
 {
-    public sealed class AppWindowChangedEventArgs : EventArgs { public bool DidPositionChange { get; set; } public bool DidSizeChange { get; set; } }
+    public sealed class AppWindowChangedEventArgs : EventArgs { public bool DidPositionChange { get; set; } public bool DidSizeChange { get; set; } public bool DidPresenterChange { get; set; } }
     public sealed class AppWindowClosingEventArgs : EventArgs { public bool Cancel { get; set; } }
     public sealed class AppWindow
     {
@@ -317,8 +317,10 @@ namespace Microsoft.UI.Windowing
         public void MoveAndResize(Windows.Graphics.RectInt32 rect) { Size = new(rect.Width,rect.Height); Changed?.Invoke(this,new()); }
         public void RequestClose() => Closing?.Invoke(this,new());
     }
+    public enum OverlappedPresenterState { Maximized, Minimized, Restored }
     public sealed class OverlappedPresenter
     {
+        public OverlappedPresenterState State { get; set; } = OverlappedPresenterState.Restored;
         public static OverlappedPresenter Create() => new();
         public int PreferredMinimumWidth { get; set; }
         public int PreferredMinimumHeight { get; set; }

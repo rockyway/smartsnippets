@@ -6,8 +6,8 @@ using SmartSnippets.Core.Logging;
 namespace SmartSnippets.Uno.Services;
 
 /// <summary>
-/// Best-effort resident-memory reclamation after continuous tray idle, and once after startup or a main-window
-/// monitor change settles. Never releases UI or popup state.
+/// Best-effort resident-memory reclamation after continuous tray idle, and once after startup, a main-window
+/// monitor change, minimizing or the main window going to the background. Never releases UI or popup state.
 /// </summary>
 internal sealed partial class IdleMemoryTrimmer : IDisposable
 {
@@ -33,8 +33,8 @@ internal sealed partial class IdleMemoryTrimmer : IDisposable
     }
     private void OnTick(object? sender, object args) => Poll();
     /// <summary>
-    /// Trim once more after the delay, even with the main window open: startup and a move to another monitor
-    /// (possibly another graphics adapter) leave resident pages the visible window no longer touches.
+    /// Trim once more after the delay, even with the main window open: startup, a move to another monitor
+    /// (possibly another graphics adapter) or going to the background leave resident pages the window no longer touches.
     /// Each request restarts the delay.
     /// </summary>
     internal void RequestSettleTrim()
@@ -46,6 +46,8 @@ internal sealed partial class IdleMemoryTrimmer : IDisposable
     {
         if (!_disposed && _settleSince is not null) _settleSince = _clock();
     }
+    /// <summary>Drop a pending settle trim, for example when the user returns to the window before the delay ends.</summary>
+    internal void CancelSettleTrim() => _settleSince = null;
     internal void Poll()
     {
         if (_disposed) return;
