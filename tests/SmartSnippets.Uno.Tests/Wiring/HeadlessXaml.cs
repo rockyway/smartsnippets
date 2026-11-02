@@ -261,7 +261,7 @@ namespace Microsoft.UI.Xaml.Controls
         public void Hide() { if (!IsOpen) return; IsOpen = false; Closed?.Invoke(this, new()); }
     }
     public enum InfoBarSeverity { Informational, Success, Warning, Error }
-    public class NavigationView : Control { public object? Content { get; set; } public object? SelectedItem { get; set; } }
+    public class NavigationView : Control { public object? Content { get; set; } public object? SelectedItem { get; set; } public bool AlwaysShowHeader { get; set; } = true; }
     public sealed class NavigationViewItem : Control { public object? Tag { get; set; } }
     public sealed class NavigationViewSelectionChangedEventArgs : EventArgs { public object? SelectedItem { get; set; } }
 }

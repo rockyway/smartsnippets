@@ -10,7 +10,7 @@
         <conv:NonEmptyToVisibilityConverter x:Key="HasTextVisible" />
     </Page.Resources>
 
-    <Grid Padding="24" RowSpacing="12">
+    <Grid Padding="24,8,24,24" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

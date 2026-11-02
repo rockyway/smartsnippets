@@ -7,7 +7,7 @@
     <ScrollViewer>
         <StackPanel
             MaxWidth="720"
-            Padding="24"
+            Padding="24,8,24,24"
             HorizontalAlignment="Left"
             Spacing="12">
             <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Settings" />
