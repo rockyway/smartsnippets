@@ -38,8 +38,16 @@ private void InitializeComponent() { }
 namespace SmartSnippets.Uno.Controls { public sealed partial class SnippetEditor {
 private SmartSnippets.Uno.Tests.Wiring.HeadlessBindings Bindings { get; } = new();
 internal TextBox SnippetTextBox { get; } = new();
+internal PasswordBox SnippetPasswordBox { get; } = new();
+internal CheckBox PasswordCheckBox { get; } = new();
+internal TextBox MultilinePasswordMask { get; } = new();
+internal TextBlock PasswordInputHint { get; } = new();
 internal TextBox NewFolderBox { get; } = new();
-private void InitializeComponent() { }
+private void InitializeComponent()
+{
+    SnippetTextBox.TextChanged += OnTextInput;
+    SnippetPasswordBox.PasswordChanged += OnPasswordTextInput;
+}
 } }
 namespace SmartSnippets.Uno.Controls { public sealed partial class SnippetRowDetails {
 private SmartSnippets.Uno.Tests.Wiring.HeadlessBindings Bindings { get; } = new();

@@ -1,22 +1,28 @@
 Controls/HoverDetailsSurface.xaml|1|PointerEntered|OnSurfaceEntered
 Controls/HoverDetailsSurface.xaml|1|PointerExited|OnSurfaceExited
+Controls/SnippetEditor.xaml|0|Loaded|OnEditorLoaded
+Controls/SnippetEditor.xaml|0|Unloaded|OnEditorUnloaded
 Controls/SnippetEditor.xaml|2|Invoked|OnSaveAccelerator
 Controls/SnippetEditor.xaml|3|Invoked|OnDiscardAccelerator
-Controls/SnippetEditor.xaml|11|TextChanged|OnTextInput
-Controls/SnippetEditor.xaml|18|TextChanged|OnLabelInput
-Controls/SnippetEditor.xaml|19|Toggled|OnCustomLabelInput
-Controls/SnippetEditor.xaml|27|SelectionChanged|OnFolderSelectionChanged
-Controls/SnippetEditor.xaml|31|Command|{x:Bind ViewModel.StartNewFolderCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|41|KeyDown|OnNewFolderKeyDown
-Controls/SnippetEditor.xaml|41|TextChanged|OnFolderNameInput
-Controls/SnippetEditor.xaml|42|Command|{x:Bind ViewModel.CreateFolderCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|43|Command|{x:Bind ViewModel.CancelNewFolderCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|47|TextChanged|OnTagsInput
-Controls/SnippetEditor.xaml|80|Command|{x:Bind ViewModel.RetrySaveCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|81|Command|{x:Bind CopyAfterAdmissionCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|87|Command|{x:Bind ViewModel.DeleteCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|90|Command|{x:Bind ViewModel.DiscardCommand, Mode=OneWay}
-Controls/SnippetEditor.xaml|91|Command|{x:Bind ViewModel.SaveCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|11|Checked|OnPasswordInput
+Controls/SnippetEditor.xaml|11|Unchecked|OnPasswordInput
+Controls/SnippetEditor.xaml|14|TextChanged|OnTextInput
+Controls/SnippetEditor.xaml|15|PasswordChanged|OnPasswordTextInput
+Controls/SnippetEditor.xaml|15|Paste|OnPasswordPaste
+Controls/SnippetEditor.xaml|26|TextChanged|OnLabelInput
+Controls/SnippetEditor.xaml|27|Toggled|OnCustomLabelInput
+Controls/SnippetEditor.xaml|35|SelectionChanged|OnFolderSelectionChanged
+Controls/SnippetEditor.xaml|39|Command|{x:Bind ViewModel.StartNewFolderCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|49|KeyDown|OnNewFolderKeyDown
+Controls/SnippetEditor.xaml|49|TextChanged|OnFolderNameInput
+Controls/SnippetEditor.xaml|50|Command|{x:Bind ViewModel.CreateFolderCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|51|Command|{x:Bind ViewModel.CancelNewFolderCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|55|TextChanged|OnTagsInput
+Controls/SnippetEditor.xaml|88|Command|{x:Bind ViewModel.RetrySaveCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|89|Command|{x:Bind CopyAfterAdmissionCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|95|Command|{x:Bind ViewModel.DeleteCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|98|Command|{x:Bind ViewModel.DiscardCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|99|Command|{x:Bind ViewModel.SaveCommand, Mode=OneWay}
 Controls/SnippetRowDetails.xaml|1|PointerEntered|OnRowEntered
 Controls/SnippetRowDetails.xaml|1|PointerExited|OnRowExited
 Controls/SnippetRowDetails.xaml|1|PointerMoved|OnRowPointerMoved
