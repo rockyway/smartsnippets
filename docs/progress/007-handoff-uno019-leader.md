@@ -2,6 +2,16 @@
 Supersedes 006. Goal: lead Plan 019 (`docs/plan/019-uno-shared-shell-and-platform-contracts.md`) to real completion.
 **User: time matters — parallelize, pre-stage, verify every agent prompt actually submitted (re-read the screen).**
 
+## NEW USER DIRECTIVE (21:07, overrides pacing)
+"Time matters here: do not spend time that can be avoided, and the earlier a correct result is obtained, the better.
+do not focus too much on a feature, make whole app works first, I need the app on windows functional asap"
+=> After nr-15 + t8 land, stop polishing the acceptance harness. Priority is an end-to-end functional Uno app on
+Windows (whole-app slices visible and usable). First step on wake: dispatch a scout (luna:medium) to list
+what blocks daily use of the Uno candidate on Windows (default-denied native capture/hotkey/clipboard/insertion,
+missing pages/flows, gates), rank by user impact, then dispatch broad slice implementers (no narrow sub-steps).
+Skip further native-acceptance reruns unless a slice needs one. Confirm with the user only for production-impacting
+choices (e.g. enabling default-denied native capabilities by default, AGENTS.md invariants).
+
 ## Standing rules (also in memory files)
 - **Tiers** (all via `pi --model …`):
   - XS/S: `openai-codex/gpt-6-luna:xhigh`
