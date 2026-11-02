@@ -7,11 +7,11 @@ using Windows.Win32.Foundation;
 namespace SmartSnippets.Uno.Services;
 
 /// <summary>D80 product composition. Never constructs or unlocks an acceptance session.</summary>
-internal sealed class WindowsDesktopServices : ICandidateDesktopServices
+internal sealed class WindowsDesktopServices : IDesktopServices
 {
     private readonly HotkeyService _registration;
     private readonly Action<long> _pressed;
-    public ICandidateDailyOperations Operations { get; }
+    public IDailyOperations Operations { get; }
     public IHotkeyManager Hotkeys { get; }
     public IStartupRegistration Startup { get; } = new StartupRegistration();
     public IElevation Elevation { get; }
@@ -37,7 +37,7 @@ internal sealed class WindowsDesktopServices : ICandidateDesktopServices
         _registration.Dispose();
     }
 
-    private sealed class DesktopOperations(HWND owner, Func<nint> popup) : ICandidateDailyOperations
+    private sealed class DesktopOperations(HWND owner, Func<nint> popup) : IDailyOperations
     {
         private readonly Win32TargetProbe _probe = new();
         private readonly ClipboardPasteDispatcher _paste = new(owner);

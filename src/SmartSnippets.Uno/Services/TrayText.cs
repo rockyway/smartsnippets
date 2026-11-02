@@ -1,6 +1,6 @@
 namespace SmartSnippets.Uno.Services;
 
-internal static class CandidateTrayText
+internal static class TrayText
 {
     internal static string Tooltip(bool unavailable) => unavailable
         ? "Smart Snippets — hotkey unavailable"

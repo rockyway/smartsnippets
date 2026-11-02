@@ -7,7 +7,7 @@ using SmartSnippets.Uno.Services;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 namespace SmartSnippets.Uno.Tests.Composition;
 
-public sealed class CandidateIsolationFlowTests
+public sealed class IsolationFlowTests
 {
     [Fact]
     public async Task DefaultComposition_UsesExplicitProfileAndSubstitutesEveryNativeBoundary()
@@ -39,7 +39,7 @@ public sealed class CandidateIsolationFlowTests
         Assert.Equal(1, f.Boundary.Exits);
         Assert.Equal(1, f.Boundary.MessageDisposals);
         Assert.Empty(f.Boundary.Popups);
-        using var reopened = CandidateProfile.OpenOwnedRoot(f.Root);
+        using var reopened = AppProfile.OpenOwnedRoot(f.Root);
     }
     [Fact]
     public async Task CorruptDatabase_ReportsWithoutConstructingNativeBoundaries()
@@ -95,7 +95,7 @@ public sealed class CandidateIsolationFlowTests
         picker.SetResult(null);
         Assert.False(await operation); await exit;
         Assert.False(f.Host.Snippets.Porting.IsBusy); Assert.Equal(1, f.Boundary.Exits);
-        using var reopened = CandidateProfile.OpenOwnedRoot(f.Root);
+        using var reopened = AppProfile.OpenOwnedRoot(f.Root);
     }
     [Fact]
     public async Task Exit_PopupEditorCancelRetainsDraftAndRecoversThroughDeferredHost()
@@ -136,30 +136,30 @@ public sealed class CandidateIsolationFlowTests
     }
 }
 
-public sealed class CandidateMessageWindowTests
+public sealed class MessageWindowTests
 {
     [Fact]
     public void RepeatedMessageWindow_CreateDisposeAndFailedCreateReleaseClass()
     {
         var native = new Native();
-        var first = new CandidateMessageWindowLifetime(native); first.Dispose(); first.Dispose();
-        using (var second = new CandidateMessageWindowLifetime(native)) Assert.Equal((nint)1, second.Handle);
+        var first = new MessageWindowLifetime(native); first.Dispose(); first.Dispose();
+        using (var second = new MessageWindowLifetime(native)) Assert.Equal((nint)1, second.Handle);
         Assert.Equal(2, native.Registers); Assert.Equal(2, native.Unregisters);
         native.FailCreate = true;
-        Assert.Throws<InvalidOperationException>(() => new CandidateMessageWindowLifetime(native));
+        Assert.Throws<InvalidOperationException>(() => new MessageWindowLifetime(native));
         Assert.Equal(3, native.Unregisters); Assert.Equal(2, native.Destroys);
         native.FailCreate = false;
-        using var third = new CandidateMessageWindowLifetime(native);
+        using var third = new MessageWindowLifetime(native);
         Assert.Equal((nint)1, third.Handle);
     }
     [Fact]
     public void ExistingClass_IsNeverAdoptedOrUnregistered()
     {
         var native = new Native { Registered = true };
-        Assert.Throws<InvalidOperationException>(() => new CandidateMessageWindowLifetime(native));
+        Assert.Throws<InvalidOperationException>(() => new MessageWindowLifetime(native));
         Assert.Equal(0, native.Unregisters); Assert.Equal(0, native.Creates);
     }
-    private sealed class Native : ICandidateMessageWindowNative
+    private sealed class Native : IMessageWindowNative
     {
         internal bool Registered, FailCreate;
         internal int Registers, Unregisters, Creates, Destroys;

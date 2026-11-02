@@ -8,7 +8,7 @@ internal interface IStartupMigrationRegistry
 {
     (object? Value, RegistryValueKind? Kind) Read();
     void Write(string command);
-    void RemoveCandidate() { }
+    void RemoveObsoleteRegistration() { }
 }
 
 internal enum StartupMigrationResult { Unchanged, Migrated, Failed }
@@ -21,7 +21,7 @@ internal static class StartupMigration
     {
         try
         {
-            registry.RemoveCandidate();
+            registry.RemoveObsoleteRegistration();
             var (value, kind) = registry.Read();
             if (value is null && kind is null) return StartupMigrationResult.Unchanged;
             if (string.IsNullOrEmpty(executable)) return StartupMigrationResult.Failed;
@@ -79,7 +79,7 @@ internal sealed class WindowsStartupMigrationRegistry : IStartupMigrationRegistr
         return (key.GetValue(ValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames), key.GetValueKind(ValueName));
     }
 
-    public void RemoveCandidate()
+    public void RemoveObsoleteRegistration()
     {
         using var key = Registry.CurrentUser.OpenSubKey(_keyPath, writable: true);
         key?.DeleteValue("SmartSnippets.UnoCandidate019", throwOnMissingValue: false);

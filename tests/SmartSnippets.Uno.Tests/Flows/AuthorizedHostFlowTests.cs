@@ -18,7 +18,7 @@ public sealed class DesktopHostFlowTests
     }
 
     [Fact]
-    public Task DesktopPopupAndMain_ShareSingleFlightCaptureBeforeShowAndExactTarget() => CandidateHostThread.RunAsync(async () =>
+    public Task DesktopPopupAndMain_ShareSingleFlightCaptureBeforeShowAndExactTarget() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Boundary.Popups[0].CapturedShown = target =>
@@ -54,7 +54,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task DesktopCopy_IsSeparateFromInsertionAndNeverCreditsUsage() => CandidateHostThread.RunAsync(async () =>
+    public Task DesktopCopy_IsSeparateFromInsertionAndNeverCreditsUsage() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.Snippets.CanCopyRow); f.Host.Snippets.CopyRow(id);
@@ -72,7 +72,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task Preview_IgnoresEvenDesktopServicesAcrossRowFooterEditorAndMain() => CandidateHostThread.RunAsync(async () =>
+    public Task Preview_IgnoresEvenDesktopServicesAcrossRowFooterEditorAndMain() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Host.ShowPreview();
@@ -102,7 +102,7 @@ public sealed class DesktopHostFlowTests
     [InlineData("modifiers")]
     [InlineData("swap")]
     [InlineData("foreground")]
-    public Task SuspensionAtEveryBoundary_StopsFollowingMutationButRestoresOwnedClipboard(string expireAt) => CandidateHostThread.RunAsync(async () =>
+    public Task SuspensionAtEveryBoundary_StopsFollowingMutationButRestoresOwnedClipboard(string expireAt) => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         native.After = name => { if (name == expireAt) clock.Advance(TimeSpan.FromMinutes(1)); };
@@ -116,7 +116,7 @@ public sealed class DesktopHostFlowTests
     [Theory]
     [InlineData(DispatchState.Uncertain)]
     [InlineData(DispatchState.NotDispatched)]
-    public Task UncertainOrFailedDispatch_NeverCreditsUsageAndDoesNotRetry(DispatchState state) => CandidateHostThread.RunAsync(async () =>
+    public Task UncertainOrFailedDispatch_NeverCreditsUsageAndDoesNotRetry(DispatchState state) => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
         native.Dispatch = state; Assert.True(f.Host.ShowCapturedPopup());
@@ -127,7 +127,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task SuspensionWhileSwapThrows_RestoresTransferredSnapshotWithoutSending() => CandidateHostThread.RunAsync(async () =>
+    public Task SuspensionWhileSwapThrows_RestoresTransferredSnapshotWithoutSending() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.ThrowAfterSwap = true;
@@ -138,7 +138,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task Shutdown_DrainsOwnedRecoveryAfterSuspensionAndVmContinuationBeforeDisposal() => CandidateHostThread.RunAsync(async () =>
+    public Task Shutdown_DrainsOwnedRecoveryAfterSuspensionAndVmContinuationBeforeDisposal() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.Restore = RestoreStatus.Busy;
@@ -161,7 +161,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task UnsettledRecovery_BlocksExitAndNewMutationsRetainsOwnedHostForRetry() => CandidateHostThread.RunAsync(async () =>
+    public Task UnsettledRecovery_BlocksExitAndNewMutationsRetainsOwnedHostForRetry() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.Restore = RestoreStatus.Failed;
@@ -177,7 +177,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task RecoveryBoundary_RefusesUnownedSnapshotsAndUnadmittedInputOrManualFallback() => CandidateHostThread.RunAsync(async () =>
+    public Task RecoveryBoundary_RefusesUnownedSnapshotsAndUnadmittedInputOrManualFallback() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
         var dispatcher = (IPasteDispatcher)f.Host.Gate;
@@ -192,7 +192,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task DirectDispose_DrainsActiveOwnedRecoveryAndVmBeforeReleasingProfile() => CandidateHostThread.RunAsync(async () =>
+    public Task DirectDispose_DrainsActiveOwnedRecoveryAndVmBeforeReleasingProfile() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.Restore = RestoreStatus.Failed; native.RecoveryPause = new();
@@ -209,11 +209,11 @@ public sealed class DesktopHostFlowTests
         SynchronizationContext.Current!.Post(_ => disposed.SetResult(), null);
         await disposed.Task;
         Assert.False(f.Host.Popup.IsInserting); Assert.Equal(1, f.Boundary.Main.Disposals);
-        using var reopened = SmartSnippets.Uno.CandidateProfile.OpenOwnedRoot(f.Root);
+        using var reopened = SmartSnippets.Uno.AppProfile.OpenOwnedRoot(f.Root);
     });
 
     [Fact]
-    public Task WarmupSuspension_DoesNotRevealCapturedTargetAfterAdmissionCloses() => CandidateHostThread.RunAsync(async () =>
+    public Task WarmupSuspension_DoesNotRevealCapturedTargetAfterAdmissionCloses() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var fixture = f;
         f.Boundary.Popups[0].Dispose(); f.Boundary.PopupAutoReady = false;
@@ -225,7 +225,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task AdmissionSuspensionAndShutdownReceipts_AreContentFreeFixedTokens() => CandidateHostThread.RunAsync(async () =>
+    public Task AdmissionSuspensionAndShutdownReceipts_AreContentFreeFixedTokens() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); f.Host.Snippets.CopyRow(id);
@@ -244,7 +244,7 @@ public sealed class DesktopHostFlowTests
     [InlineData(RestoreStatus.ClipboardChanged)]
     [InlineData(RestoreStatus.Partial)]
     [InlineData(RestoreStatus.Failed)]
-    public Task UnsettledSnapshot_BlocksAllAdmissionAndRefreshesCommandsUntilOwnedDrainSettles(RestoreStatus restore) => CandidateHostThread.RunAsync(async () =>
+    public Task UnsettledSnapshot_BlocksAllAdmissionAndRefreshesCommandsUntilOwnedDrainSettles(RestoreStatus restore) => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup());
@@ -278,7 +278,7 @@ public sealed class DesktopHostFlowTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task MissingTransferredSnapshot_FailsWithoutDispatchAndRetainsRecoveryAdmissionBlock(bool throws) => CandidateHostThread.RunAsync(async () =>
+    public Task MissingTransferredSnapshot_FailsWithoutDispatchAndRetainsRecoveryAdmissionBlock(bool throws) => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup());
@@ -297,7 +297,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task RefusedRecapture_CannotRearmPreviousTargetAfterSafetyRecovers() => CandidateHostThread.RunAsync(async () =>
+    public Task RefusedRecapture_CannotRearmPreviousTargetAfterSafetyRecovers() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.Safe = false;
@@ -310,7 +310,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task ForegroundExceptionBeforeNativeDispatch_IsFailedNotMaybePasted() => CandidateHostThread.RunAsync(async () =>
+    public Task ForegroundExceptionBeforeNativeDispatch_IsFailedNotMaybePasted() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
         native.ThrowForegroundAt = 2;
@@ -322,7 +322,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task ActivePreviewClose_EndsMutationLockButKeepsVmPreviewGuardsUntilNewCapture() => CandidateHostThread.RunAsync(async () =>
+    public Task ActivePreviewClose_EndsMutationLockButKeepsVmPreviewGuardsUntilNewCapture() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup());
@@ -346,7 +346,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task HiddenPreviewEditor_KeepsMutationLockUntilEditorClosesThenAllowsFreshCapture() => CandidateHostThread.RunAsync(async () =>
+    public Task HiddenPreviewEditor_KeepsMutationLockUntilEditorClosesThenAllowsFreshCapture() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Host.ShowPreview(); f.Host.Popup.EditRow(f.Host.Popup.Items.First(row => row.SnippetId == id));
@@ -359,7 +359,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task WarmupTransitions_RefreshActualCommandsAndCanceledOrRejectedCaptureCannotRearm() => CandidateHostThread.RunAsync(async () =>
+    public Task WarmupTransitions_RefreshActualCommandsAndCanceledOrRejectedCaptureCannotRearm() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Host.ShowPreview(); f.Host.Popup.Close();
@@ -381,7 +381,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task QueuedPreview_HideBeforeReadyRestoresMainCopyAndDoesNotOpenStalePreview() => CandidateHostThread.RunAsync(async () =>
+    public Task QueuedPreview_HideBeforeReadyRestoresMainCopyAndDoesNotOpenStalePreview() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Boundary.Popups[0].Dispose(); f.Boundary.PopupAutoReady = false;
@@ -398,7 +398,7 @@ public sealed class DesktopHostFlowTests
     [InlineData("cancel")]
     [InlineData("success")]
     [InlineData("throw")]
-    public Task DisposeSupersedesMainExitGuard_NoResumeOrExitAfterAwait(string result) => CandidateHostThread.RunAsync(async () =>
+    public Task DisposeSupersedesMainExitGuard_NoResumeOrExitAfterAwait(string result) => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
         var guard = new TaskCompletionSource<bool>(); f.Boundary.Main.ExitGuard = () => guard.Task;
@@ -414,7 +414,7 @@ public sealed class DesktopHostFlowTests
     [InlineData(SaveChoice.Save)]
     [InlineData(SaveChoice.Discard)]
     [InlineData(SaveChoice.Cancel)]
-    public Task DisposeSupersedesPopupExitDialog_NoLateSaveDiscardOrRecoveryShow(SaveChoice choice) => CandidateHostThread.RunAsync(async () =>
+    public Task DisposeSupersedesPopupExitDialog_NoLateSaveDiscardOrRecoveryShow(SaveChoice choice) => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); f.Host.Popup.EditRow(f.Host.Popup.Items.First(row => row.SnippetId == id));
@@ -431,7 +431,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task DisposeDuringFailedOwnedDrain_CannotCancelShutdownOrReenableAfterBothContinuations() => CandidateHostThread.RunAsync(async () =>
+    public Task DisposeDuringFailedOwnedDrain_CannotCancelShutdownOrReenableAfterBothContinuations() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
         Assert.True(f.Host.ShowCapturedPopup()); native.Restore = RestoreStatus.ClipboardChanged;
@@ -447,7 +447,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task DisposeSupersedesManagementDrain_NoLateExitOrInteractionResume() => CandidateHostThread.RunAsync(async () =>
+    public Task DisposeSupersedesManagementDrain_NoLateExitOrInteractionResume() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var fixture = f;
         var pause = new TaskCompletionSource(); var management = f.Host.RunOperationAsync(() => pause.Task);
@@ -459,7 +459,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task FailedWarmup_CancelsPendingPreviewAndRefreshesMainCommandsWithoutLateReveal() => CandidateHostThread.RunAsync(async () =>
+    public Task FailedWarmup_CancelsPendingPreviewAndRefreshesMainCommandsWithoutLateReveal() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var fixture = f;
         f.Boundary.Popups[0].Dispose(); f.Boundary.PopupAutoReady = false;
@@ -473,7 +473,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task ReadySurfaceFocus_RequiresCapturedLiveNonPreviewIdleServices() => CandidateHostThread.RunAsync(async () =>
+    public Task ReadySurfaceFocus_RequiresCapturedLiveNonPreviewIdleServices() => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, _) = await Start(); using var owner = f;
         Assert.False(f.Host.Gate.TryFocusOwnedPopup());
@@ -490,7 +490,7 @@ public sealed class DesktopHostFlowTests
 
     [Theory]
     [InlineData(true)]
-    public Task FailedCopy_RetainsUnknownRecoveryBlocksAdmissionAndAlwaysDrains(bool throws) => CandidateHostThread.RunAsync(async () =>
+    public Task FailedCopy_RetainsUnknownRecoveryBlocksAdmissionAndAlwaysDrains(bool throws) => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var owner = f;
         native.CopyResult = false; native.ThrowCopy = throws; native.RecoveryResult = false;
@@ -504,7 +504,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task AdapterRecoveryWithoutLocalSnapshot_StillBlocksShutdownUntilSettled() => CandidateHostThread.RunAsync(async () =>
+    public Task AdapterRecoveryWithoutLocalSnapshot_StillBlocksShutdownUntilSettled() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, _) = await Start(); using var owner = f;
         native.RecoveryResult = false;
@@ -515,7 +515,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task UiCopy_WaitsForQuietAdmissionThenUsesRealVmWithoutUsage() => CandidateHostThread.RunAsync(async () =>
+    public Task UiCopy_WaitsForQuietAdmissionThenUsesRealVmWithoutUsage() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var owner = f;
         native.CopyPause = new();
@@ -529,7 +529,7 @@ public sealed class DesktopHostFlowTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task UiCopy_RechecksSuspensionOrPreviewAfterQuietWait(bool preview) => CandidateHostThread.RunAsync(async () =>
+    public Task UiCopy_RechecksSuspensionOrPreviewAfterQuietWait(bool preview) => HostThread.RunAsync(async () =>
     {
         var (f, native, clock, id) = await Start(); using var owner = f;
         native.CopyPause = new();
@@ -541,7 +541,7 @@ public sealed class DesktopHostFlowTests
     });
 
     [Fact]
-    public Task UiCopy_ShutdownDrainsWaitAndRefusesLateMutation() => CandidateHostThread.RunAsync(async () =>
+    public Task UiCopy_ShutdownDrainsWaitAndRefusesLateMutation() => HostThread.RunAsync(async () =>
     {
         var (f, native, _, id) = await Start(); using var owner = f;
         native.CopyPause = new();
@@ -555,7 +555,7 @@ public sealed class DesktopHostFlowTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task QaLaunchPreview_NeverCallsNativeCaptureOrProbe(bool redirected) => CandidateHostThread.RunAsync(async () =>
+    public Task QaLaunchPreview_NeverCallsNativeCaptureOrProbe(bool redirected) => HostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); var native = new NativeOperations();
         f.Boundary.DesktopFactory = (_, _) => new TestDesktop(native);
@@ -564,7 +564,7 @@ public sealed class DesktopHostFlowTests
         else
         {
             await f.Start(background: true);
-            var queue = new CandidateActivationQueue();
+            var queue = new ActivationQueue();
             queue.Attach(f.Boundary.Dispatcher, o => f.Host.ApplyLaunchOptionsAsync(o));
             queue.Enqueue(options); f.Boundary.Drain();
         }
@@ -586,12 +586,12 @@ public sealed class DesktopHostFlowTests
         internal void Advance(TimeSpan _) => suspend();
     }
 
-    private sealed class TestDesktop(NativeOperations operations) : ICandidateDesktopServices
+    private sealed class TestDesktop(NativeOperations operations) : IDesktopServices
     {
-        public ICandidateDailyOperations Operations => operations;
-        public IHotkeyManager Hotkeys { get; } = new CandidateHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
-        public IStartupRegistration Startup { get; } = new CandidateStartupRegistration();
-        public IElevation Elevation { get; } = new CandidateElevation();
+        public IDailyOperations Operations => operations;
+        public IHotkeyManager Hotkeys { get; } = new UnavailableHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
+        public IStartupRegistration Startup { get; } = new UnavailableStartupRegistration();
+        public IElevation Elevation { get; } = new UnavailableElevation();
         public void Dispose() { }
     }
 
@@ -604,7 +604,7 @@ public sealed class DesktopHostFlowTests
         public long ByteCount => 8;
     }
 
-    private sealed class NativeOperations : ICandidateDailyOperations
+    private sealed class NativeOperations : IDailyOperations
     {
         internal InsertionTarget Target { get; } = new(123, 456, 789, "sensitive synthetic target");
         internal readonly List<string> Trace = [];

@@ -3,7 +3,7 @@ using SmartSnippets.Presentation.Services;
 namespace SmartSnippets.Uno.Popup;
 
 /// <summary>Stable forwarding endpoint beneath DeferredPopupHost's unchanged recovery gate.</summary>
-internal sealed class RecoverablePopupHost(Func<ICandidatePopupWindow> get, Action hide) : IPopupHost
+internal sealed class RecoverablePopupHost(Func<IPopupWindow> get, Action hide) : IPopupHost
 {
     public void Hide() => hide();
     public void ShowAgain() => get().ShowAgain();

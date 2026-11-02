@@ -8,9 +8,9 @@ namespace SmartSnippets.Uno.Platforms.Windows;
 internal sealed class DesktopInsertionCoordinator : IClipboardService, IInsertionService, ITargetProbe, IPasteDispatcher
 {
     internal const string Unavailable = "Insertion is unavailable. Focus the target application and press the global shortcut again.";
-    private ICandidateDailyOperations? _daily;
-    private ICandidateDailyOperations Operations => _daily ?? throw new InvalidOperationException("Desktop services are unavailable.");
-    internal void ComposeDesktop(ICandidateDailyOperations operations)
+    private IDailyOperations? _daily;
+    private IDailyOperations Operations => _daily ?? throw new InvalidOperationException("Desktop services are unavailable.");
+    internal void ComposeDesktop(IDailyOperations operations)
     {
         if (_daily is not null) throw new InvalidOperationException("Native services already composed.");
         _daily = operations;
@@ -27,7 +27,7 @@ internal sealed class DesktopInsertionCoordinator : IClipboardService, IInsertio
     private void NotifyAvailabilityChanged()
     {
         try { AvailabilityChanged?.Invoke(); }
-        catch { AppLog.Info("candidate_availability_notification_failed"); }
+        catch { AppLog.Info("app_availability_notification_failed"); }
     }
     internal void ClearCapturedTarget()
     {
@@ -74,14 +74,14 @@ internal sealed class DesktopInsertionCoordinator : IClipboardService, IInsertio
     internal bool TryFocusOwnedPopup()
     {
         if (!IsIdle || _captured is null || !Allows())
-        { AppLog.Info("candidate_popup_focus", "reason=denied"); return false; }
+        { AppLog.Info("app_popup_focus", "reason=denied"); return false; }
         try
         {
             var focused = Operations.TryFocusOwnedPopup();
-            AppLog.Info("candidate_popup_focus", focused ? "reason=accepted" : "reason=refused");
+            AppLog.Info("app_popup_focus", focused ? "reason=accepted" : "reason=refused");
             return focused;
         }
-        catch { AppLog.Info("candidate_popup_focus", "reason=failed"); return false; }
+        catch { AppLog.Info("app_popup_focus", "reason=failed"); return false; }
     }
 
     internal InsertionTarget? Capture(nint window = 0)

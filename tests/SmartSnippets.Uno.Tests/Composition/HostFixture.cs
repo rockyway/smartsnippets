@@ -11,7 +11,7 @@ internal sealed class HostFixture : IDisposable
     internal string Root { get; } = Path.Combine(Path.GetTempPath(), "SmartSnippets.Uno019.Tests", Guid.NewGuid().ToString("N"));
     internal TestBoundary Boundary { get; } = new();
     internal UnoAppHost Host { get; }
-    internal HostFixture() => Host = new(Boundary, () => CandidateProfile.OpenOwnedRoot(Root));
+    internal HostFixture() => Host = new(Boundary, () => AppProfile.OpenOwnedRoot(Root));
     internal Task Start(bool background = false, LaunchOptions? options = null) => Host.StartAsync(background, options ?? new(null, false, null));
     public void Dispose()
     {
@@ -20,10 +20,10 @@ internal sealed class HostFixture : IDisposable
         if (Directory.Exists(Root)) Directory.Delete(Root, true);
     }
 }
-internal sealed class TestBoundary : CandidateHostBoundary
+internal sealed class TestBoundary : HostBoundary
 {
-    internal Func<AppSettings, Action, Platforms.Windows.ICandidateDesktopServices>? DesktopFactory;
-    internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => DesktopFactory?.Invoke(settings, hotkey);
+    internal Func<AppSettings, Action, Platforms.Windows.IDesktopServices>? DesktopFactory;
+    internal override Platforms.Windows.IDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => DesktopFactory?.Invoke(settings, hotkey);
     internal TestDialogs Dialogs { get; } = new();
     internal TestFiles Files { get; } = new();
     internal MainSurface Main { get; private set; } = null!;
@@ -41,16 +41,16 @@ internal sealed class TestBoundary : CandidateHostBoundary
     internal override IDisposable CreateMessageWindow() { Messages++; return new Release(() => MessageDisposals++); }
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => Dialogs;
     internal override ISnippetFileService CreateFiles() => Files;
-    internal override ICandidateMainWindow CreateMain(UnoAppHost host)
+    internal override IMainWindow CreateMain(UnoAppHost host)
     {
         if (FailWindow) throw new IOException("synthetic startup failure");
         return Main = new MainSurface(host);
     }
-    internal override ICandidatePopupWindow CreatePopup(UnoAppHost host)
+    internal override IPopupWindow CreatePopup(UnoAppHost host)
     {
         var surface = new PopupSurface(host) { AutoReady = PopupAutoReady }; Popups.Add(surface); return surface;
     }
-    internal override ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
+    internal override ITray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
     {
         TrayOpen = open; TrayPreview = () => preview(0); TrayCaptured = preview; TraySettings = settings; TrayExit = exit;
         return new TestTray(() => TrayDisposals++, (registered, visible) => TrayState = TrayStatePolicy.Compute(registered, visible));
@@ -58,7 +58,7 @@ internal sealed class TestBoundary : CandidateHostBoundary
     internal override void ReportStartupFailure() => Reports++;
     internal override void Exit() => Exits++;
     private sealed class TestDispatcher(Queue<Action> queue) : IUiDispatcher { public void Post(Action action) => queue.Enqueue(action); }
-    private sealed class TestTray(Action dispose, Action<bool, bool> state) : ICandidateTray
+    private sealed class TestTray(Action dispose, Action<bool, bool> state) : ITray
     {
         public void Dispose() => dispose();
         public void Notify(string title, string message) { }
@@ -66,7 +66,7 @@ internal sealed class TestBoundary : CandidateHostBoundary
     }
     private sealed class Release(Action dispose) : IDisposable { public void Dispose() => dispose(); }
 }
-internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
+internal sealed class MainSurface(UnoAppHost host) : IMainWindow
 {
     internal PageKind Current = PageKind.Snippets;
     internal int Navigations, Disposals;
@@ -79,7 +79,7 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
     public event EventHandler? HiddenByClose;
     public async Task NavigateAsync(PageKind page, bool show)
     {
-        await CandidateUiPolicy.NavigateAsync(() => Current != page ? CanExitAsync() : Task.FromResult(true),
+        await UiPolicy.NavigateAsync(() => Current != page ? CanExitAsync() : Task.FromResult(true),
             () => { Current = page; Navigations++; }, show, () => Visible = true);
     }
     public Task<bool> CanExitAsync() => ExitGuard?.Invoke() ?? Current switch
@@ -88,10 +88,10 @@ internal sealed class MainSurface(UnoAppHost host) : ICandidateMainWindow
     { if (await CanExitAsync()) { Visible = false; HiddenByClose?.Invoke(this, EventArgs.Empty); } }
     public void Dispose() => Disposals++;
 }
-internal sealed class PopupSurface : ICandidatePopupWindow
+internal sealed class PopupSurface : IPopupWindow
 {
     private readonly UnoAppHost host;
-    internal CandidatePopupLifecycle Lifecycle { get; }
+    internal PopupLifecycle Lifecycle { get; }
     internal bool AutoReady = true;
     internal PopupSurface(UnoAppHost host)
     {

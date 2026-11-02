@@ -8,11 +8,11 @@ namespace SmartSnippets.Uno.Platforms.Windows;
 /// <summary>Owns the global hotkey. Changes register the new gesture under a spare id before releasing the old one.</summary>
 internal sealed class HotkeyManager : IHotkeyManager
 {
-    private readonly ICandidateHotkeyRegistration _service;
+    private readonly IHotkeyRegistration _service;
     private int _activeId = 1;
     private HotkeyStatus _status;
 
-    public HotkeyManager(ICandidateHotkeyRegistration service)
+    public HotkeyManager(IHotkeyRegistration service)
     {
         _service = service;
         _status = new HotkeyStatus(false, HotkeyGesture.Default, "Hotkey not registered yet.");
@@ -105,7 +105,7 @@ internal readonly record struct HotkeyRegistration(bool Success, int Win32Error)
 {
     internal const int ErrorHotkeyAlreadyRegistered = 1409;
 }
-internal interface ICandidateHotkeyRegistration
+internal interface IHotkeyRegistration
 {
     HotkeyRegistration Register(int id, uint modifiers, uint virtualKey);
     void Unregister(int id);

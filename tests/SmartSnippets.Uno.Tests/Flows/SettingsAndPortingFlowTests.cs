@@ -12,7 +12,7 @@ public sealed class SettingsAndPortingFlowTests
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
-    public async Task OfflineV1V2Fixture_PreservesSharedDataSettingsAndCandidateLocalBackup(int version)
+    public async Task OfflineV1V2Fixture_PreservesSharedDataSettingsAndLocalBackup(int version)
     {
         using var f = new HostFixture();
         var source = Path.Combine(f.Root, "offline-source"); Directory.CreateDirectory(source);

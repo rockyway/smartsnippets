@@ -20,7 +20,7 @@ internal static unsafe partial class WindowPlacement
         internal int Found, Failed;
     }
     internal static bool PlaceManagement(AppWindow window, int logicalWidth, int logicalHeight, bool qa) =>
-        CandidateUiPolicy.PlaceManagement(qa,
+        UiPolicy.PlaceManagement(qa,
             () => ParkBottomLeft(window, logicalWidth, logicalHeight),
             () => CenterOn(window, PInvoke.MonitorFromWindow(default, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), logicalWidth, logicalHeight));
 
@@ -44,7 +44,7 @@ internal static unsafe partial class WindowPlacement
         { selected->Failed = 1; return 0; }
         var bounds = info.rcMonitor;
         var previous = selected->Bounds;
-        if (selected->Found == 0 || CandidateUiPolicy.IsBetterBottomLeft(
+        if (selected->Found == 0 || UiPolicy.IsBetterBottomLeft(
                 new(bounds.left, bounds.top, bounds.right, bounds.bottom),
                 new(previous.left, previous.top, previous.right, previous.bottom)))
         { selected->Handle = monitor; selected->Bounds = bounds; selected->Found = 1; }

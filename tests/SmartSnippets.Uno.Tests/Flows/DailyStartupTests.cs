@@ -5,7 +5,7 @@ namespace SmartSnippets.Uno.Tests.Flows;
 public sealed class DailyStartupTests
 {
     [Fact]
-    public void EnableReadDisable_UsesQuotedCurrentPathAndCandidateValueOnly()
+    public void EnableReadDisable_UsesQuotedCurrentPathAndAppValueOnly()
     {
         var values = new Dictionary<string, object?> { ["UnrelatedApp"] = "unrelated sentinel" };
         const string exe = @"C:\synthetic folder\SmartSnippets.exe";

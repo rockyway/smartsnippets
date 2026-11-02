@@ -155,7 +155,7 @@ internal sealed partial class ClipboardPasteDispatcher(HWND clipboardOwner) : IP
         try
         {
             // If sealing was contended before paste, recovery may finish it under this lock.
-            // A confirmed publication is NEVER rebased: later foreign writes retain legacy refusal.
+            // A confirmed publication is NEVER rebased: later foreign writes retain ownership refusal.
             snapshot.Sequence ??= ClipboardPublication.CaptureLocked(
                 () => RecognizesPublication(snapshot), MaterializeTextFormats, GetClipboardSequenceNumber);
             var currentSequence = GetClipboardSequenceNumber();

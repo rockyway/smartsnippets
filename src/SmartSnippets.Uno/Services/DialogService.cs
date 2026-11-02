@@ -89,7 +89,7 @@ internal sealed class DialogService : IDialogService
         await _gate.WaitAsync();
         try
         {
-            var root = CandidateUiPolicy.DialogRoot(_getXamlRoot, _isHostVisible, _showMainWindow);
+            var root = UiPolicy.DialogRoot(_getXamlRoot, _isHostVisible, _showMainWindow);
 
             if (root is null)
             {

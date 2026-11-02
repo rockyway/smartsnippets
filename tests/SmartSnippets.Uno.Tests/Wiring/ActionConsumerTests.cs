@@ -12,20 +12,20 @@ using SmartSnippets.Uno.Tests.Composition;
 
 namespace SmartSnippets.Uno.Tests.Wiring;
 
-[CollectionDefinition("Candidate XAML actions", DisableParallelization = true)]
-public sealed class CandidateActionCollection;
+[CollectionDefinition("App XAML actions", DisableParallelization = true)]
+public sealed class ActionCollection;
 
 /// <summary>
-/// Executes the linked, unmodified candidate code-behind against UnoAppHost's actual store/VMs/gate.
+/// Executes the linked, unmodified app code-behind against UnoAppHost's actual store/VMs/gate.
 /// HeadlessXaml supplies only rendering, scheduling, window, pointer/keyboard state and native primitives.
 /// The reviewed manifest is deliberately NOT generated during builds: new/changed/deleted actions fail.
 /// No reflection, source Contains checks, desktop execution or native-acceptance claims.
 /// </summary>
-[Collection("Candidate XAML actions")]
-public sealed class CandidateActionConsumerTests
+[Collection("App XAML actions")]
+public sealed class ActionConsumerTests
 {
-    private static string Candidate => Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.Uno");
-    private static string Manifest => Path.Combine(CandidateBuildGraphTests.RepoRoot, "tests/SmartSnippets.Uno.Tests/Wiring/CandidateActions.txt");
+    private static string App => Path.Combine(BuildGraphTests.RepoRoot, "src/SmartSnippets.Uno");
+    private static string Manifest => Path.Combine(BuildGraphTests.RepoRoot, "tests/SmartSnippets.Uno.Tests/Wiring/Actions.txt");
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
     // Known property bindings are not actions. Any new x:Bind attribute outside this
     // reviewed property vocabulary is treated as an action until explicitly classified.
@@ -89,9 +89,9 @@ public sealed class CandidateActionConsumerTests
     }
 
     [Fact]
-    public Task EveryCandidateAction_ReachesRegisteredConsumerOrTruthfulRefusal() => CandidateHostThread.RunAsync(async () =>
+    public Task EveryAppAction_ReachesRegisteredConsumerOrTruthfulRefusal() => HostThread.RunAsync(async () =>
     {
-        var actions = Inventory(Candidate).ToArray();
+        var actions = Inventory(App).ToArray();
         Assert.Equal(File.ReadAllLines(Manifest).Where(line => line.Length > 0).Order(StringComparer.Ordinal), actions.Select(a => a.Key).Order(StringComparer.Ordinal));
         Assert.NotEmpty(actions);
         foreach (var entry in actions)
@@ -108,7 +108,7 @@ public sealed class CandidateActionConsumerTests
             if (file == "Popup/PopupWindow.xaml" || action == "CopyAfterAdmissionCommand")
                 f.Boundary.DesktopFactory = (_, _) => new ActionAuditSupport.Desktop(native);
             await f.Start();
-            var views = new WindowsCandidateBoundary();
+            var views = new WindowsHostBoundary();
             views.CreateTheme(f.Host.Settings);
             using var mainSurface = views.CreateMain(f.Host);
             var main = MainWindow.LastCreated;
@@ -135,7 +135,7 @@ public sealed class CandidateActionConsumerTests
                         Assert.Empty(f.Host.Store.Snippets); Assert.Equal(0, native.Copies + native.Sends); break;
                     case "MainWindow.xaml":
                         await main.Audit(f); break;
-                    default: Assert.Fail("Unmapped candidate action surface: " + file); break;
+                    default: Assert.Fail("Unmapped app action surface: " + file); break;
                 }
             }
             catch (Exception ex)

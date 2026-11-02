@@ -1,4 +1,4 @@
-// External platform services used by the linked WindowsCandidateBoundary. The action
+// External platform services used by the linked WindowsHostBoundary. The action
 // audit uses its real CreateMain/CreatePopup factories; no OS registrations are made.
 using SmartSnippets.Core.Settings;
 using SmartSnippets.Presentation.Navigation;
@@ -20,10 +20,10 @@ namespace SmartSnippets.Uno.Services
     internal sealed class UiDispatcher(DispatcherQueue queue) : IUiDispatcher { public void Post(Action action) => queue.TryEnqueue(action); }
     internal sealed class MessageWindow : IDisposable { public void Dispose() { } }
     // The real factory is linked, but no desktop registration/input is allowed in headless tests.
-    internal sealed class WindowsDesktopServices : SmartSnippets.Uno.Platforms.Windows.ICandidateDesktopServices
+    internal sealed class WindowsDesktopServices : SmartSnippets.Uno.Platforms.Windows.IDesktopServices
     {
         internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey, Func<bool> mainHidden) => throw new NotSupportedException();
-        public SmartSnippets.Uno.Platforms.Windows.ICandidateDailyOperations Operations => throw new NotSupportedException();
+        public SmartSnippets.Uno.Platforms.Windows.IDailyOperations Operations => throw new NotSupportedException();
         public IHotkeyManager Hotkeys => throw new NotSupportedException();
         public IStartupRegistration Startup => throw new NotSupportedException();
         public IElevation Elevation => throw new NotSupportedException();

@@ -1,5 +1,6 @@
 # 002 — Candidate / legacy native coexistence (D49)
 
+**Status: Obsolete / closed** — the candidate/harness was removed at the Uno cutover; see [progress 008](../progress/008-uno-official-cutover.md).
 **Status:** Backlog — fixed refusal for Plan 019; not native-closable in 019
 **Owner:** Plan 021 cutover/release owner, with Plan 018 Windows acceptance owner
 **Source:** Plan 019 AC1, T7 row 2; leader decision D49; research 059

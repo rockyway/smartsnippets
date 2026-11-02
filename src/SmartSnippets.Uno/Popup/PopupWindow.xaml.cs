@@ -44,7 +44,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     private bool _awaitingLayout;
     private bool _awaitingFrame;
     private MenuFlyout? _contextFlyout;
-    private readonly CandidatePopupLifecycle _lifecycle;
+    private readonly PopupLifecycle _lifecycle;
     private PopupShowCoordinator _shows => _lifecycle.Shows;
     private DispatcherQueueTimer? _prewarmTimer;
     private readonly UISettings _uiSettings = new();
@@ -127,7 +127,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         {
             if (_hoverRoot is { } root) Controls.HoverDetailsSurface.TrackExternalPointer(root, null);
         };
-        _lifecycle = new CandidatePopupLifecycle(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
+        _lifecycle = new PopupLifecycle(action => DispatcherQueue.TryEnqueue(() => action()), ApplyFocus,
             StartWindowWarmup, StopWindowWarmup, () => AppLog.Info("popup_prewarm_failed", "retry=next_show"));
         // The default presenter is not guaranteed to be an OverlappedPresenter before first show.
         // Keep a native border so DWM owns both the perimeter and the rounded clip.
@@ -188,7 +188,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         add => _lifecycle.PresentationChanged += value;
         remove => _lifecycle.PresentationChanged -= value;
     }
-    private string HintLine(string hint, string status, bool isPreview) => CandidateUiPolicy.HintLine(hint, status, isPreview);
+    private string HintLine(string hint, string status, bool isPreview) => UiPolicy.HintLine(hint, status, isPreview);
     private string SearchPlaceholder => UiText.PopupSearchPlaceholder;
     private string SearchName => UiText.PopupSearchName;
     private string ToggleLayoutName => UiText.ToggleLayout;
@@ -356,7 +356,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         if (CanShow?.Invoke() == false) return default;
         Center();
         // The QA menu seam is always non-activating, even if a caller uses the default activate value.
-        const bool activate = false; // All candidate previews are nonactivating.
+        const bool activate = false; // All app previews are nonactivating.
         _previewSortMenuPending = openSortMenu;
         ShowSurface(activate); SetVisible(true);
         QueuePreviewSortMenu();
@@ -373,7 +373,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
             return;
         }
         if (!WindowPlacement.CenterAtCursor(AppWindow, ViewModel.Target?.MonitorHandle ?? 0, LogicalWidth, LogicalHeight))
-            throw new InvalidOperationException("Candidate popup monitor placement could not be verified.");
+            throw new InvalidOperationException("App popup monitor placement could not be verified.");
     }
     public void Hide()
     {
@@ -399,7 +399,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
         ViewModel.EnsureCurrent();
         Center(); ShowSurface(false); SetVisible(true);
         const bool focused = false;
-        const string path = "candidate_no_activation";
+        const string path = "app_no_activation";
         AppLog.Info("popup_reopened", $"outcome={ViewModel.LastInsertionOutcome} focus={path}");
         if (!focused) NotifyReopenFailure?.Invoke(ViewModel.FooterMessage);
         return new(true, focused ? PopupFocusTarget.Search : null);

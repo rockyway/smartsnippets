@@ -6,12 +6,12 @@ namespace SmartSnippets.Uno.Tests.Wiring;
 
 internal static class ActionAuditSupport
 {
-    internal sealed class Desktop(ActionAuditNative native) : ICandidateDesktopServices
+    internal sealed class Desktop(ActionAuditNative native) : IDesktopServices
     {
-        public ICandidateDailyOperations Operations => native;
-        public IHotkeyManager Hotkeys { get; } = new CandidateHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
-        public IStartupRegistration Startup { get; } = new CandidateStartupRegistration();
-        public IElevation Elevation { get; } = new CandidateElevation();
+        public IDailyOperations Operations => native;
+        public IHotkeyManager Hotkeys { get; } = new UnavailableHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
+        public IStartupRegistration Startup { get; } = new UnavailableStartupRegistration();
+        public IElevation Elevation { get; } = new UnavailableElevation();
         public void Dispose() { }
     }
     internal static async Task Execute(System.Windows.Input.ICommand command)
@@ -22,8 +22,8 @@ internal static class ActionAuditSupport
     }
 }
 
-// Replaces only the explicitly owned OS boundary. The candidate gate and InsertionService stay real.
-internal sealed class ActionAuditNative : ICandidateDailyOperations
+// Replaces only the explicitly owned OS boundary. The desktop gate and InsertionService stay real.
+internal sealed class ActionAuditNative : IDailyOperations
 {
     internal InsertionTarget Target { get; } = new(123, 456, 789, "synthetic");
     internal int Copies, Sends;

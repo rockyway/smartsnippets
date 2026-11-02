@@ -8,7 +8,7 @@ namespace SmartSnippets.Uno.Tests.Flows;
 public sealed class AdministratorRestartFlowTests
 {
     [Fact]
-    public Task DirtyMainCancelPrecedesUacAndKeepsHostUsable() => CandidateHostThread.RunAsync(async () =>
+    public Task DirtyMainCancelPrecedesUacAndKeepsHostUsable() => HostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); var native = new ActionAuditNative(); var elevation = new Elevation(native.Trace);
         f.Boundary.DesktopFactory = (_, _) => new Desktop(native, elevation);
@@ -23,7 +23,7 @@ public sealed class AdministratorRestartFlowTests
     });
 
     [Fact]
-    public Task PopupCancelRecoversEditorBeforeAnyUacAndCanRetryWithSave() => CandidateHostThread.RunAsync(async () =>
+    public Task PopupCancelRecoversEditorBeforeAnyUacAndCanRetryWithSave() => HostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); var native = new ActionAuditNative(); var elevation = new Elevation(native.Trace);
         f.Boundary.DesktopFactory = (_, _) => new Desktop(native, elevation);
@@ -45,7 +45,7 @@ public sealed class AdministratorRestartFlowTests
     [Theory]
     [InlineData(ElevationOutcome.Cancelled)]
     [InlineData(ElevationOutcome.Failed)]
-    public Task UacCancelOrFailureResumesAdmissionWithoutExit(ElevationOutcome outcome) => CandidateHostThread.RunAsync(async () =>
+    public Task UacCancelOrFailureResumesAdmissionWithoutExit(ElevationOutcome outcome) => HostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); var native = new ActionAuditNative(); var elevation = new Elevation(native.Trace) { Outcome = outcome };
         f.Boundary.DesktopFactory = (_, _) => new Desktop(native, elevation);
@@ -62,7 +62,7 @@ public sealed class AdministratorRestartFlowTests
     });
 
     [Fact]
-    public Task PendingRecoveryPreventsUacAndProfileReleaseUntilRetrySettles() => CandidateHostThread.RunAsync(async () =>
+    public Task PendingRecoveryPreventsUacAndProfileReleaseUntilRetrySettles() => HostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); var native = new ActionAuditNative { RecoveryResult = false };
         var elevation = new Elevation(native.Trace);
@@ -92,11 +92,11 @@ public sealed class AdministratorRestartFlowTests
         public ElevationResult RestartAsAdministrator() { Calls++; trace.Add("uac"); return new(Outcome, "synthetic outcome"); }
     }
 
-    private sealed class Desktop(ActionAuditNative native, IElevation elevation) : ICandidateDesktopServices
+    private sealed class Desktop(ActionAuditNative native, IElevation elevation) : IDesktopServices
     {
-        public ICandidateDailyOperations Operations => native;
-        public IHotkeyManager Hotkeys { get; } = new CandidateHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
-        public IStartupRegistration Startup { get; } = new CandidateStartupRegistration();
+        public IDailyOperations Operations => native;
+        public IHotkeyManager Hotkeys { get; } = new UnavailableHotkeyManager(SmartSnippets.Core.Settings.HotkeyGesture.Default);
+        public IStartupRegistration Startup { get; } = new UnavailableStartupRegistration();
         public IElevation Elevation => elevation;
         public void Dispose() { }
     }

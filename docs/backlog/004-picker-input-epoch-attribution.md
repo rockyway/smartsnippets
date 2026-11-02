@@ -1,5 +1,6 @@
 # 004 — Picker input epoch attribution (D75)
 
+**Status: Obsolete / closed** — the candidate/harness was removed at the Uno cutover; see [progress 008](../progress/008-uno-official-cutover.md).
 **Status:** Backlog — Import Cancel closed as a limitation for this slice, not PASS
 **Owner:** Plan 021 Windows picker/acceptance owner, with Plan 018 input/security owner
 **Source:** User decision D75; research 053–057, especially nr-14 at `86f9cb6`

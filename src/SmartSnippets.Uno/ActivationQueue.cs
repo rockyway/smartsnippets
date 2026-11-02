@@ -5,7 +5,7 @@ using SmartSnippets.Presentation.Services;
 namespace SmartSnippets.Uno;
 
 /// <summary>Serializes redirects on the UI thread, including those arriving before composition finishes.</summary>
-internal sealed class CandidateActivationQueue
+internal sealed class ActivationQueue
 {
     private readonly object _sync = new();
     private readonly Queue<LaunchOptions> _pending = new();
@@ -38,7 +38,7 @@ internal sealed class CandidateActivationQueue
                 apply = _apply;
             }
             try { if (apply is not null) await apply(options); }
-            catch (Exception ex) { AppLog.Error("candidate_activation_failed", ex); }
+            catch (Exception ex) { AppLog.Error("app_activation_failed", ex); }
         }
     }
     internal void Close()

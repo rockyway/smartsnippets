@@ -101,7 +101,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     }
 
     private static string TooltipFor(TrayState state) =>
-        CandidateTrayText.Tooltip(state == TrayState.HotkeyUnavailable);
+        TrayText.Tooltip(state == TrayState.HotkeyUnavailable);
 
     private HICON GetIcon()
     {
@@ -175,7 +175,7 @@ internal sealed unsafe class TrayIcon : IDisposable
         if (_added)
         {
             var data = CreateData();
-            if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_DELETE, in data)) AppLog.Info("candidate_tray_cleanup_failed");
+            if (!PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_DELETE, in data)) AppLog.Info("app_tray_cleanup_failed");
             _added = false;
         }
         DestroyCachedIcons();
@@ -189,7 +189,7 @@ internal sealed unsafe class TrayIcon : IDisposable
         data.cbSize = (uint)sizeof(NOTIFYICONDATAW);
         data.hWnd = _window.Handle;
         data.uID = IconId;
-        // HWND + candidate-local ID is stable for this owned window. A fixed
+        // HWND + window-local ID is stable for this owned window. A fixed
         // Explorer GUID would bind to the first tokenized executable path.
         return data;
     }

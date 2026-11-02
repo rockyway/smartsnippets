@@ -1,5 +1,6 @@
 # 003 — Posted Enter input boundary (D50)
 
+**Status: Obsolete / closed** — the candidate/harness was removed at the Uno cutover; see [progress 008](../progress/008-uno-official-cutover.md).
 **Status:** Backlog — excluded from Plan 019 native runs
 **Owner:** Plan 018 Windows input/security owner; Plan 021 acceptance owner
 **Source:** Plan 019 AC4, T7 row 7; leader decision D50; research 039–041/057/059

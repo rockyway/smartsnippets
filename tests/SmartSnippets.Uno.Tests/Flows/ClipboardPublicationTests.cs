@@ -86,7 +86,7 @@ public sealed class ClipboardPublicationTests
     [Fact]
     public void RealDispatcher_UsesSealedTransactionAndStrictRestoreGuard_NotPrecloseBaseline()
     {
-        var root = SmartSnippets.Uno.Tests.Build.CandidateBuildGraphTests.RepoRoot;
+        var root = SmartSnippets.Uno.Tests.Build.BuildGraphTests.RepoRoot;
         var source = File.ReadAllText(Path.Combine(root, "src/SmartSnippets.Uno/Platforms/Windows/DailyNative/ClipboardPasteDispatcher.cs"));
         Assert.Contains("ClipboardPublication.CloseAndCapture(", source);
         Assert.Contains("ClipboardPublication.CanRestore(snapshot.Sequence, currentSequence, sameOwner)", source);

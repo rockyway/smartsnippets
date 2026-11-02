@@ -10,15 +10,15 @@ using SmartSnippets.Uno.Platforms.Windows;
 namespace SmartSnippets.Uno;
 
 /// <summary>Single UI-thread composition root, used unchanged by the native head and headless flow tests.</summary>
-internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateProfile> openProfile) : IDisposable
+internal sealed class UnoAppHost(HostBoundary boundary, Func<AppProfile> openProfile) : IDisposable
 {
     private readonly HashSet<Task> _operations = [];
-    private CandidateProfile? _profile;
+    private AppProfile? _profile;
     private IDisposable? _message;
-    private ICandidateDesktopServices? _desktop;
-    private ICandidateMainWindow? _main;
-    private ICandidatePopupWindow? _popup;
-    private ICandidateTray? _tray;
+    private IDesktopServices? _desktop;
+    private IMainWindow? _main;
+    private IPopupWindow? _popup;
+    private ITray? _tray;
     private DeferredPopupHost? _popupHost;
     private IThemeService? _theme;
     private bool _exiting, _disposed, _started, _ownsLog, _disposing, _disposeRequested;
@@ -77,7 +77,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             if (_desktop is not null) Gate.ComposeDesktop(_desktop.Operations);
             Gate.Compose(Store);
             Dialogs = boundary.CreateDialogs(false, TextSize);
-            _elevation = _desktop?.Elevation ?? new CandidateElevation();
+            _elevation = _desktop?.Elevation ?? new UnavailableElevation();
             var elevation = new CoordinatedElevation(this);
             var sort = new SortPreference(SettingsStore, Settings.PopupSort);
             _popupHost = new DeferredPopupHost(new Popup.RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
@@ -89,7 +89,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
                 canInsertRow: () => !_exiting && Gate.CanInsert && Popup.CanInsertFromMain, sortPreference: sort);
             Folders = new FoldersPageViewModel(Store, Dialogs);
             SettingsPage = new SettingsViewModel(Settings, SettingsStore, _theme, TextSize,
-                _desktop?.Startup ?? new CandidateStartupRegistration(), _desktop?.Hotkeys ?? new CandidateHotkeyManager(Settings.Hotkey), elevation,
+                _desktop?.Startup ?? new UnavailableStartupRegistration(), _desktop?.Hotkeys ?? new UnavailableHotkeyManager(Settings.Hotkey), elevation,
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()), () => ShowPreview());
             Gate.AvailabilityChanged += RefreshClipboardAvailability;
             Popup.PropertyChanged += OnPopupPropertyChanged;
@@ -114,7 +114,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         catch (Exception ex)
         {
             if (ExitSuperseded) return;
-            if (_ownsLog) AppLog.Error("candidate_startup_failed", ex);
+            if (_ownsLog) AppLog.Error("app_startup_failed", ex);
             Dispose();
             boundary.ReportStartupFailure();
             boundary.Exit();
@@ -125,7 +125,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private void RefreshHotkeyUi()
     {
         if (_disposed) return;
-        var status = _desktop?.Hotkeys.Status ?? new CandidateHotkeyManager(Settings.Hotkey).Status;
+        var status = _desktop?.Hotkeys.Status ?? new UnavailableHotkeyManager(Settings.Hotkey).Status;
         _main?.SetHotkeyStatus(status);
         _tray?.SetHotkeyState(status.IsRegistered, _popupVisible);
     }
@@ -191,7 +191,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         {
             _pendingCaptured = false;
             Gate.ClearCapturedTarget();
-            AppLog.Info("candidate_popup_show_failed");
+            AppLog.Info("app_popup_show_failed");
             return false;
         }
         RefreshClipboardAvailability();
@@ -227,9 +227,9 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         _pendingCaptured = false;
         RefreshClipboardAvailability();
     }
-    private ICandidatePopupWindow EnsurePopup()
+    private IPopupWindow EnsurePopup()
     {
-        if (_disposed || _exiting) throw new InvalidOperationException("Candidate is shutting down.");
+        if (_disposed || _exiting) throw new InvalidOperationException("App is shutting down.");
         if (_popup is not null) return _popup;
         var popup = boundary.CreatePopup(this);
         _popup = popup;
@@ -263,7 +263,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             if (!recovered)
             {
                 CancelExit();
-                AppLog.Info("candidate_shutdown_blocked", "reason=recovery");
+                AppLog.Info("app_shutdown_blocked", "reason=recovery");
                 _tray?.Notify("Clipboard recovery pending", "Owned clipboard recovery must settle before the app can exit.");
                 return;
             }
@@ -286,7 +286,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         catch (Exception ex)
         {
             if (ExitSuperseded) return;
-            CancelExit(); AppLog.Error("candidate_exit_failed", ex);
+            CancelExit(); AppLog.Error("app_exit_failed", ex);
         }
     }
     private void CancelExit()
@@ -335,7 +335,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             task = operation(); _operations.Add(task);
             await task;
         }
-        catch (Exception ex) { AppLog.Error("candidate_operation_failed", ex); }
+        catch (Exception ex) { AppLog.Error("app_operation_failed", ex); }
         finally { if (task is not null) _operations.Remove(task); }
     }
     private Task[] ManagementTasks() => new Task?[] { Snippets.PendingSelection, Snippets.PendingDelete,
@@ -353,7 +353,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             var tasks = ManagementTasks().Where(task => !task.IsCompleted)
                 .Append(WaitForPortingIdleAsync()).Append(WaitForPopupIdleAsync());
             try { await Task.WhenAll(tasks); }
-            catch (Exception ex) { if (_ownsLog) AppLog.Error("candidate_operation_failed", ex); }
+            catch (Exception ex) { if (_ownsLog) AppLog.Error("app_operation_failed", ex); }
             if (_disposed) return;
             if (!Snippets.Porting.IsBusy && !Popup.IsInserting && ManagementTasks().All(task => task.IsCompleted)) return;
         }
@@ -404,19 +404,19 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         {
             var recovered = await drain;
             if (_disposed) return;
-            if (!recovered) { AppLog.Info("candidate_shutdown_blocked", "reason=recovery"); return; }
+            if (!recovered) { AppLog.Info("app_shutdown_blocked", "reason=recovery"); return; }
             await DrainManagementAsync();
             if (_disposed) return;
             ReleaseResources();
         }
-        catch (Exception ex) { if (_ownsLog) AppLog.Error("candidate_cleanup_failed", ex); }
+        catch (Exception ex) { if (_ownsLog) AppLog.Error("app_cleanup_failed", ex); }
         finally { _disposing = false; }
     }
     private void ReleaseResources()
     {
         if (_disposed) return;
         _disposed = true;
-        if (_ownsLog) AppLog.Info("candidate_cleanup_stage", "stage=begin");
+        if (_ownsLog) AppLog.Info("app_cleanup_stage", "stage=begin");
         if (_desktop is not null) _desktop.Hotkeys.StatusChanged -= OnHotkeyStatusChanged;
         Gate.AvailabilityChanged -= RefreshClipboardAvailability;
         if (Popup is not null) Popup.PropertyChanged -= OnPopupPropertyChanged;
@@ -433,13 +433,13 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     }
     private void ReleaseResource(string stage, Action release)
     {
-        if (_ownsLog) AppLog.Info("candidate_cleanup_stage", $"stage={stage}");
+        if (_ownsLog) AppLog.Info("app_cleanup_stage", $"stage={stage}");
         Release(release);
     }
     private void Release(Action release)
     {
         try { release(); }
-        catch (Exception ex) { if (_ownsLog) AppLog.Error("candidate_cleanup_failed", ex); }
+        catch (Exception ex) { if (_ownsLog) AppLog.Error("app_cleanup_failed", ex); }
     }
     private sealed class CoordinatedElevation(UnoAppHost host) : IElevation
     {

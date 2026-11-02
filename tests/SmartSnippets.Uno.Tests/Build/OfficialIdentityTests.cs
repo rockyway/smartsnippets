@@ -4,17 +4,17 @@ namespace SmartSnippets.Uno.Tests.Build;
 
 public sealed class OfficialIdentityTests
 {
-    private static string Read(string relative) => File.ReadAllText(Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.Uno", relative));
+    private static string Read(string relative) => File.ReadAllText(Path.Combine(BuildGraphTests.RepoRoot, "src/SmartSnippets.Uno", relative));
 
     [Fact]
     public void RuntimeIdentityMatchesLegacyWithoutOpeningAnyProfile()
     {
-        Assert.Equal("SmartSnippets.Main", CandidateProfile.Identity);
-        var profile = Read("CandidateProfile.cs");
+        Assert.Equal("SmartSnippets.Main", AppProfile.Identity);
+        var profile = Read("AppProfile.cs");
         Assert.Contains("OpenOwnedRoot(new AppPaths().Root)", profile);
         Assert.DoesNotContain(".candidate-owner", profile);
         Assert.DoesNotContain("RefuseOverlap", profile);
-        Assert.Equal("SmartSnippets.MessageWindow", Services.CandidateMessageWindowLifetime.ClassName);
+        Assert.Equal("SmartSnippets.MessageWindow", Services.MessageWindowLifetime.ClassName);
         Assert.Contains("private const uint IconId = 1;", Read("Services/TrayIcon.cs"));
         var manifest = XDocument.Parse(Read("app.manifest"));
         Assert.Equal("SmartSnippets.App.app", (string?)manifest.Descendants().Single(e => e.Name.LocalName == "assemblyIdentity").Attribute("name"));
@@ -30,7 +30,7 @@ public sealed class OfficialIdentityTests
         var app = program.IndexOf("new App()", StringComparison.Ordinal);
         Assert.True(wait >= 0 && claim > wait && app > claim);
         Assert.Contains("previous.WaitForExit(TimeSpan.FromSeconds(5))", program);
-        Assert.Contains("InstanceKey = CandidateProfile.Identity", program);
+        Assert.Contains("InstanceKey = AppProfile.Identity", program);
         var elevation = Read("Services/ElevationService.cs");
         Assert.Contains("AdministratorRestart.Arguments(Environment.ProcessId, _isMainWindowHidden())", elevation);
         Assert.Contains("PInvoke.ShellExecuteEx(&info)", elevation);
