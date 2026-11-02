@@ -1,7 +1,7 @@
 # 016 — Password-type snippets
 
 **Date:** 2026-10-30
-**Status:** Draft — awaiting approval
+**Status:** Approved — in implementation (2026-11-02)
 **Size:** L
 **Area:** Core domain/persistence/query/export; Presentation editor/projections; App encryption/editor/composition
 **Requirement brief confirmed:** 2026-10-30 (G1, in chat)
@@ -43,7 +43,7 @@ The confirmed chat brief:
 
 ## 3. Current state (as-built)
 
-Paths below abbreviated as Core, Presentation and App refer to `src/SmartSnippets.*`.
+Paths below abbreviated as Core, Presentation and App refer to `src/SmartSnippets.*`. **2026-11-02 path update:** the legacy WinUI `SmartSnippets.App` was removed on 2026-11-01; "App" now means the official Uno head `src/SmartSnippets.Uno` (`AppHost.cs` → `UnoAppHost.cs`; `Controls/`, `Popup/`, `Services/`, `NativeMethods.txt` keep the same relative names). Line numbers cited for App files are from the legacy app and are indicative only. App tests live in `tests/SmartSnippets.Uno.Tests`.
 
 - `Core/Domain/Snippet.cs:3–14` and `SnippetDraft.cs:4` contain text and label state but no password flag. `Core/Domain/LabelSuggester.cs:18–21` falls back to tags/text even for blank custom labels. `Core/Store/SnippetStore.cs:343–350` resolves the label before validation, so UI-only validation cannot enforce the new invariant.
 - `Core/Data/Migrations.cs:5–33` currently ends at migration 2. `Migrator.cs:45–48,78–99` creates a pre-upgrade `VACUUM INTO` backup; `:118–152` applies each migration transactionally and refuses newer schemas. That backup may contain formerly ordinary plaintext.
@@ -224,10 +224,12 @@ Implementation must stop and report contradictions or platform-test failures rat
 Run test projects sequentially to avoid shared Core output collisions:
 
 ```bash
-dotnet test tests/SmartSnippets.Core.Tests
-dotnet test tests/SmartSnippets.Presentation.Tests
-dotnet build
-dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish
+dotnet test tests/SmartSnippets.Core.Tests -c Release
+dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+# From src/SmartSnippets.Uno:
+dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
+# From repository root:
+pwsh -NoProfile -File scripts/publish-uno-aot.ps1
 ```
 
 Use new tests first against the missing behavior where feasible, then implementation; record actual tests run, no unmatched/skipped test as evidence. Run native verification only on Windows. Use fake encryption solely to pin repository/composition behavior; the headless Windows probe must exercise the production adapter. A different-user test is optional evidence requiring an operator-provided test account, not a reason to create or modify accounts automatically.
@@ -263,3 +265,4 @@ No unresolved requirement questions. Plan approval must explicitly accept the na
 |---|---|---|
 | 2026-10-30 | Requirement brief confirmed (G1) | User confirmed account-protected database content, checkbox-as-reveal, export omission and mandatory manual label. |
 | 2026-10-30 | Draft/self-review | ACs mapped to tasks; parallel editor/preview/export/copy paths enumerated; native-control limitation and historical-plaintext limits explicit. No implementation changes or runtime verification performed. |
+| 2026-11-02 | Approved and kicked off | User: "kick off the plan". Taken as approval including the §4.3 native multiline fallback. App paths remapped to the Uno head. Branch `feature/016-password-snippets`. |
