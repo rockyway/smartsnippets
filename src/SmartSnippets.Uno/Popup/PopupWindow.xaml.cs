@@ -479,6 +479,7 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void ShowKeyboardPreview()
     {
+        ViewModel.EnsureCurrent();
         if (!_visible || _closed || ViewModel.IsEditorOpen || SelectedSnippet is not { } selected)
         { ResetKeyboardNavigation(); return; }
         if (_keyboardSurface is null)
@@ -696,7 +697,8 @@ public sealed partial class PopupWindow : Window, IPopupHost
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor))
+        if (e.PropertyName is nameof(PopupViewModel.Items) or nameof(PopupViewModel.Editor)
+            || (_visible && e.PropertyName == nameof(PopupViewModel.IsCacheDirty)))
         {
             ResetKeyboardNavigation();
             Controls.HoverDetailsSurface.CancelActive(RootGrid.XamlRoot);

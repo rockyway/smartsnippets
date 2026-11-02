@@ -13,7 +13,8 @@ public sealed class SnippetSearch
         for (var i = 0; i < _items.Length; i++)
         {
             var s = _items[i].Snippet;
-            var fields = new List<string>(3 + s.Tags.Count) { s.Label, s.Text };
+            var fields = new List<string>(3 + s.Tags.Count) { s.Label };
+            if (!s.IsPassword) fields.Add(s.Text);
             if (_items[i].FolderName is { } folder)
             {
                 fields.Add(folder);
