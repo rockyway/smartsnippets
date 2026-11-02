@@ -292,6 +292,41 @@ def quiet_input(desktop, expected=None, phase='unspecified'):
     return state.time
 
 
+def sample_picker_input(desktop, hwnd, pid, epoch, started_at):
+    """Read-only diagnostic, independent of phase markers and immutable guard baseline."""
+    class LastInput(startup.C.Structure):
+        _fields_ = [('size', startup.W.UINT), ('time', startup.W.DWORD)]
+    user = desktop.user
+    user.GetLastInputInfo.argtypes = [startup.C.POINTER(LastInput)]
+    user.GetLastInputInfo.restype = startup.W.BOOL
+    state = LastInput(startup.C.sizeof(LastInput), 0)
+    if not user.GetLastInputInfo(startup.C.byref(state)):
+        raise ValueError('input_query_failed')
+    kernel = startup.C.WinDLL('kernel32')
+    kernel.GetTickCount.restype = startup.W.DWORD
+    idle = (kernel.GetTickCount() - state.time) & 0xffffffff
+    user.GetAsyncKeyState.argtypes = [startup.C.c_int]
+    user.GetAsyncKeyState.restype = startup.C.c_short
+    down = any(user.GetAsyncKeyState(key) & 0x8000 for key in range(1, 256))
+    fg = user.GetForegroundWindow()
+    popup = owned_picker(desktop, hwnd, pid, foreground=fg)
+    row = {'elapsed_ms': max(0, int((time.monotonic() - started_at) * 1000)),
+           'epoch_changed': state.time != epoch, 'idle_ms': idle,
+           'owned_dialog_present': popup is not None,
+           'dialog_foreground': bool(popup is not None and picker_foreground(desktop, fg, popup, None)),
+           'any_input_down': bool(down)}
+    return row
+
+
+def append_picker_input_sample(rows, sample):
+    # Retain the latest 64, including the refusal sample; timestamps remain helper-relative.
+    candidate = (rows + [sample])[-64:]
+    validated = base.validate_picker_input_samples(candidate)
+    if validated is None:
+        raise ValueError('input_query_failed')
+    rows[:] = validated
+
+
 def retain_window(process, private, desktop, work, visible_windows, initial, epoch=None):
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
@@ -587,6 +622,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
     process = helper = None
     helper_started_at = None
     samples = 0
+    input_samples = []
+    input_samples_valid = True
     helper_diagnostics_saved = False
     helper_stderr = None
     try:
@@ -627,6 +664,14 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
                 if process.poll() is not None:
                     raise ValueError('early_exit')
                 if scene == 'file-picker':
+                    # Diagnostics never replace, reset or bypass the existing refusal checks.
+                    if input_samples_valid:
+                        try:
+                            append_picker_input_sample(input_samples, sample_picker_input(
+                                desktop, hwnd, process.pid, epoch, helper_started_at))
+                        except Exception:
+                            input_samples_valid = False
+                            input_samples.clear()
                     # Refuse known input changes before trusting the poll-time phase marker.
                     quiet_input(desktop, epoch)
                     phase = picker_phase(private)
@@ -755,6 +800,8 @@ def worker(entry, digest, private, work, stream=sys.stdin.buffer, scene='snippet
             validate_helper_foreground_failure(private, helper.returncode if helper is not None else None, helper_stderr)
         except ValueError as schema_error:
             error = schema_error
+        if input_samples_valid and input_samples:
+            error.picker_input_samples = input_samples
         timeline = parse_picker_epoch_timeline(private)
         if timeline is not None:
             error.picker_epoch_timeline = timeline

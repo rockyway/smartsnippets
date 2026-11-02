@@ -306,6 +306,26 @@ def supervise(command, job_factory, popen=subprocess.Popen):
             startup.stop_app(process)
 
 
+def validate_picker_input_samples(rows):
+    """Unknown diagnostics collapse as a whole; never serialize arbitrary payloads."""
+    fields = {'elapsed_ms', 'epoch_changed', 'idle_ms', 'owned_dialog_present',
+              'dialog_foreground', 'any_input_down'}
+    if type(rows) is not list or not 1 <= len(rows) <= 64:
+        return None
+    previous = -1
+    for row in rows:
+        if type(row) is not dict or set(row) != fields:
+            return None
+        if any(type(row[key]) is not bool for key in fields - {'elapsed_ms', 'idle_ms'}):
+            return None
+        if (type(row['elapsed_ms']) is not int or not max(0, previous) <= row['elapsed_ms'] <= 0xffffffff
+                or type(row['idle_ms']) is not int or not 0 <= row['idle_ms'] <= 0xffffffff
+                or (row['dialog_foreground'] and not row['owned_dialog_present'])):
+            return None
+        previous = row['elapsed_ms']
+    return [dict(row) for row in rows]
+
+
 def record_failure(private, error, *, helper_failure=None):
     # Fixed tokens only. Never echo an exception message, path, title or payload.
     allowed = {'desktop_changed', 'early_exit', 'geometry', 'missing_ready', 'missing_management',
@@ -363,6 +383,9 @@ def record_failure(private, error, *, helper_failure=None):
                 if (type(elapsed) is int and 0 <= elapsed <= 0xffffffff
                         and type(sample_count) is int and 0 <= sample_count <= 0xffffffff):
                     record.update(inputRefusalElapsedMs=elapsed, inputSampleCount=sample_count)
+            input_samples = validate_picker_input_samples(getattr(error, 'picker_input_samples', None))
+            if input_samples is not None:
+                record['pickerInputSamples'] = input_samples
             timeline = getattr(error, 'picker_epoch_timeline', None)
             if type(timeline) is dict:
                 record['pickerEpochTimeline'] = timeline
