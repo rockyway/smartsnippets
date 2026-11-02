@@ -48,6 +48,8 @@ public partial class App : Application
             NativeStage.Reach("fixture_start");
             startupSamples.Add(diagnostics.Sample("target_launch"));
             fixture = await AcceptanceFixture.StartAsync(TargetNativeRoot(config[1]), config[1], config[2], ct);
+            // Readiness inventory precedes all UIA focus preparation and host startup.
+            WindowDiagnosticNative.WriteReadyInventory(fixture.Lease.Readiness.WindowA, fixture.Lease.Readiness.WindowB, Program.PrivateRoot);
             var targetHandle = NativeFixtureOs.DuplicateForJob(fixture.Child.SafeHandle, Program.CoordinatorHandle);
             await BootstrapProtocol.WriteAsync(Program.Responses, $"fixture_owned {targetHandle}", ct);
             NativeStage.Reach("fixture_owned");

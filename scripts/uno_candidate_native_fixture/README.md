@@ -157,6 +157,50 @@ describes deactivation/removal of focus, not a guarantee to restore our initial 
 A shell/desktop/other replacement is not ruled out. Keep it rejected, not allowlisted;
 the failure record's `closed` boolean distinguishes post-closure observations.
 The historical predicate remains unknown.
+nd-07 diagnostic extension (no acceptance/admission change): the fixture writes
+`target-thread-windows-ready.json` immediately after the authenticated Target018
+readiness receipt, before host startup or any UIA SetFocus. The Python observer
+writes `target-thread-windows-refusal.json` at the first foreground refusal, not
+during teardown. Startup/owned-thread traces and the latched foreground facts use
+the same class fingerprints and style/rectangle booleans. Research 053's
+`a_other_window` / `same_pid_other` remain observations, never foreground authority.
+
+Exact inventory schema (both files, no additional keys):
+`{"phase":"ready"|"refusal","complete":bool,"windows":[entry]}`.
+There are at most 32 entries; incomplete observations collapse to an empty list.
+Each entry is exactly
+`{"window_id":hex8,"is_a":bool,"is_b":bool,"new_at_refusal":bool,"facts":facts}`.
+IDs are SHA-256/UTF-16LE of the invariant decimal HWND, truncated to eight
+lowercase hex characters (no HWND emitted). They are only within-session
+correlation, not identity authority; handle reuse/hash collisions limit inference.
+Ready entries have new=false; refusal entries compare IDs with the ready snapshot.
+Duplicate IDs or malformed/missing ready records refuse/collapse rather than
+invent a baseline.
+
+Facts are exactly `class_token` (fixed allowlist/prefix token or other/target018_class),
+`class_sha8` (SHA-256 of the unmodified UTF-16LE class name, first 8 lowercase hex;
+Edit = fd2fa13c), and these boolean keys:
+`sampled visible toolwindow noactivate has_owner owner_is_a owner_is_b
+is_message_only same_thread_as_a cloaked cloaked_known ws_popup ws_caption
+ws_child ws_disabled ws_ex_topmost ws_ex_layered ws_ex_transparent ws_ex_appwindow
+zero_area offscreen equals_a_rect on_bottom_left_work title_nonempty`.
+offscreen means no positive-area intersection with any monitor; equals_a_rect
+compares full rectangles; zero_area includes inverted rectangles.
+The legacy on_bottom_left_work name now means intersection with the selected
+**primary landscape** work area (operator choice, primary monitor flag), not
+permission to run on another screen. title_nonempty uses only GetWindowTextLengthW.
+Unsampled/unavailable facts collapse to other, the empty-class hash, and false
+booleans. Unknown classes remain other but retain their fingerprint.
+
+The expanded exact/prefix class table is cross-checked between C# and Python.
+The UI Automation-related Message class is sourced from Wine's UIAutomationCore
+event helper implementation:
+https://github.com/wine-mirror/wine/blob/master/dlls/uiautomationcore/uia_event.c
+(`CreateWindowW(L"Message", ..., HWND_MESSAGE, ...)`). A class token is a lead,
+not proof of origin: Message is not exclusive to UIA, and a fingerprint alone
+cannot identify an arbitrary unlisted class. No raw names, titles, coordinates,
+or HWNDs enter these diagnostic files. Closed review flags remain false.
+
 A latched failure is retained after process exit in `native-monitor-failure.json`:
 `predicate` (`foreground_foreign`, `foreground_unexpected_candidate`,
 `output_oversized`, `observation_exception`, `process_exit`), integer `exitCode`,

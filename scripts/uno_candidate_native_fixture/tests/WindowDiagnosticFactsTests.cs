@@ -4,6 +4,23 @@ namespace SmartSnippets.Uno;
 
 public sealed class WindowDiagnosticFactsTests
 {
+    [Fact]
+    public void Utf16ClassFingerprintAndSharedTableArePinned()
+    {
+        Assert.Equal("fd2fa13c", WindowDiagnosticFacts.ClassSha8("Edit"));
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "scripts", "run_uno_candidate_native.py")))
+            directory = directory.Parent;
+        Assert.NotNull(directory);
+        var source = File.ReadAllText(Path.Combine(directory.FullName, "scripts", "run_uno_candidate_native.py"));
+        var table = source.Split("WINDOW_CLASSES = {")[1].Split("}")[0];
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(table, "'([^']+)': '([^']+)'"))
+            Assert.Equal(m.Groups[2].Value, WindowDiagnosticFacts.Classify(m.Groups[1].Value));
+        Assert.Equal("dotnet_broadcast", WindowDiagnosticFacts.Classify(".NET-BroadcastEventWindow.synthetic"));
+        Assert.Equal("microsoft_content", WindowDiagnosticFacts.Classify("Microsoft.UI.Content.synthetic"));
+        Assert.Equal("soft_keyboard", WindowDiagnosticFacts.Classify("SoftKeyboardSynthetic"));
+    }
+
     [Theory]
     [InlineData("IME", "ime_default")]
     [InlineData("MSCTFIME UI", "msctfime_ui")]
@@ -21,6 +38,11 @@ public sealed class WindowDiagnosticFactsTests
         var facts = WindowDiagnosticFacts.Capture(3, 1, 2, _ => name, _ => true,
             _ => 0x08000080, _ => 2, _ => true, _ => 5, _ => 2);
         Assert.Equal(token, facts.ClassToken);
+        Assert.Equal(WindowDiagnosticFacts.ClassSha8(name), facts.ClassSha);
+        using var json = System.Text.Json.JsonDocument.Parse(facts.Json());
+        Assert.Equal(facts.ClassSha, json.RootElement.GetProperty("class_sha8").GetString());
+        Assert.True(json.RootElement.GetProperty("sampled").GetBoolean());
+        Assert.Equal(26, json.RootElement.EnumerateObject().Count());
         Assert.True(facts.Visible && facts.Toolwindow && facts.Noactivate && facts.HasOwner &&
             facts.OwnerIsB && facts.IsMessageOnly && facts.SameThreadAsA && facts.Cloaked && facts.CloakedKnown);
         Assert.False(facts.OwnerIsA);

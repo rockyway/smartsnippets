@@ -240,24 +240,67 @@ def validate_monitor_failure(private):
             or (record['predicate'] == 'process_exit' and record['exitCode'] == 0)):
         raise ValueError('native_monitor_record')
     facts = record['windowFacts']
-    if (type(facts) is not dict or set(facts) != {'class_token', *WINDOW_BOOLS}
+    if (type(facts) is not dict or set(facts) != {'class_token', 'class_sha8', *WINDOW_BOOLS}
             or type(facts['class_token']) is not str
-            or facts['class_token'] not in {*WINDOW_CLASSES.values(), 'target018_class', 'other'}
+            or facts['class_token'] not in {*WINDOW_CLASSES.values(), *WINDOW_PREFIXES.values(), 'target018_class', 'other'}
+            or type(facts['class_sha8']) is not str or not re.fullmatch('[0-9a-f]{8}', facts['class_sha8'])
             or any(type(facts[key]) is not bool for key in WINDOW_BOOLS)):
         raise ValueError('native_monitor_record')
     return record
 
 
-WINDOW_CLASSES = {'IME': 'ime_default', 'MSCTFIME UI': 'msctfime_ui',
-                  'OleMainThreadWndClass': 'ole_main_thread', 'CicMarshalWndClass': 'cicmarshal',
-                  'UserAdapterWindowClass': 'user_adapter', 'tooltips_class32': 'tooltip',
-                  '#32770': 'dialog_32770', '#32768': 'menu_32768'}
+WINDOW_CLASSES = {
+    'IME': 'ime_default',
+    'MSCTFIME UI': 'msctfime_ui',
+    'OleMainThreadWndClass': 'ole_main_thread',
+    'CicMarshalWndClass': 'cicmarshal',
+    'UserAdapterWindowClass': 'user_adapter',
+    'tooltips_class32': 'tooltip',
+    '#32770': 'dialog_32770',
+    '#32768': 'menu_32768',
+    'Edit': 'system_0',
+    'Static': 'system_1',
+    'Button': 'system_2',
+    'ComboBox': 'system_3',
+    'ComboLBox': 'system_4',
+    'ListBox': 'system_5',
+    'ScrollBar': 'system_6',
+    'ConsoleWindowClass': 'system_7',
+    'PseudoConsoleWindow': 'system_8',
+    'Ghost': 'system_9',
+    'SysShadow': 'system_10',
+    '#32769': 'system_11',
+    '#32771': 'system_12',
+    'DDEMLEvent': 'system_13',
+    'DDEMLMom': 'system_14',
+    'GDI+ Hook Window Class': 'system_15',
+    'GDI+ Window': 'system_16',
+    'Windows.UI.Core.CoreWindow': 'system_17',
+    'ApplicationFrameWindow': 'system_18',
+    'Xaml_WindowedPopupClass': 'system_19',
+    'ThumbnailDeviceHelperWnd': 'system_20',
+    'MSCTFIME Composition': 'system_21',
+    'TaskManagerWindow': 'system_22',
+    'CicLoaderWndClass': 'system_23',
+    'IPTip_Main_Window': 'system_24',
+    'Shell_TrayWnd': 'system_25',
+    'WorkerW': 'system_26',
+    'Progman': 'system_27',
+    'Message': 'uia_message',
+}
+WINDOW_PREFIXES = {'.NET-BroadcastEventWindow': 'dotnet_broadcast', 'Microsoft.UI.Content.': 'microsoft_content', 'SoftKeyboard': 'soft_keyboard'}
 WINDOW_BOOLS = ('sampled', 'visible', 'toolwindow', 'noactivate', 'has_owner', 'owner_is_a',
-                'owner_is_b', 'is_message_only', 'same_thread_as_a', 'cloaked', 'cloaked_known')
+                'owner_is_b', 'is_message_only', 'same_thread_as_a', 'cloaked', 'cloaked_known',
+                'ws_popup', 'ws_caption', 'ws_child', 'ws_disabled', 'ws_ex_topmost', 'ws_ex_layered', 'ws_ex_transparent', 'ws_ex_appwindow', 'zero_area', 'offscreen', 'equals_a_rect', 'on_bottom_left_work', 'title_nonempty')
+
+
+def class_sha8(name):
+    import hashlib
+    return hashlib.sha256(name.encode('utf-16le', errors='surrogatepass')).hexdigest()[:8]
 
 
 def empty_window_facts():
-    return dict(class_token='other', **dict.fromkeys(WINDOW_BOOLS, False))
+    return dict(class_token='other', class_sha8=class_sha8(''), **dict.fromkeys(WINDOW_BOOLS, False))
 
 
 def window_facts(desktop, window, a=0, b=0):
@@ -276,8 +319,9 @@ def window_facts(desktop, window, a=0, b=0):
             fn = getattr(user, name)
             fn.argtypes, fn.restype = args, restype
         name = C.create_unicode_buffer(256)
-        user.GetClassNameW(window, name, len(name))
-        token = WINDOW_CLASSES.get(name.value, 'other')
+        if user.GetClassNameW(window, name, len(name)) <= 0:
+            raise ValueError('diagnostic_class')
+        token = WINDOW_CLASSES.get(name.value, next((v for k, v in WINDOW_PREFIXES.items() if name.value.startswith(k)), 'other'))
         if re.fullmatch(r'SS_Target018_[0-9a-fA-F]{32}', name.value):
             token = 'target018_class'
         style = user.GetWindowLongPtrW(window, -20)
@@ -302,9 +346,129 @@ def window_facts(desktop, window, a=0, b=0):
                       has_owner=bool(owner), owner_is_a=bool(a and owner == a), owner_is_b=bool(b and owner == b),
                       is_message_only=message_only,
                       same_thread_as_a=bool(tid and a_tid == tid), cloaked=bool(known and cloak.value),
-                      cloaked_known=known)
+                      cloaked_known=known, class_sha8=class_sha8(name.value))
+        result.update(extra_window_facts(user, window, a))
     except Exception:
-        pass  # Explicit unavailability, never raw exception/class output.
+        result = empty_window_facts()  # Collapse partial/unknown observations; no raw data.
+    return result
+
+
+def extra_window_facts(user, window, a):
+    import ctypes as C
+    from ctypes import wintypes as W
+    class Rect(C.Structure):
+        _fields_ = [(n, C.c_long) for n in ('left', 'top', 'right', 'bottom')]
+    class Info(C.Structure):
+        _fields_ = [('size', W.DWORD), ('monitor', Rect), ('work', Rect), ('flags', W.DWORD)]
+    callback_type = getattr(C, 'WINFUNCTYPE', C.CFUNCTYPE)(W.BOOL, W.HMONITOR, W.HDC, C.POINTER(Rect), W.LPARAM)
+    for name, args, result in (
+            ('GetWindowRect', [W.HWND, C.POINTER(Rect)], W.BOOL),
+            ('GetWindowTextLengthW', [W.HWND], C.c_int),
+            ('EnumDisplayMonitors', [W.HDC, C.POINTER(Rect), callback_type, W.LPARAM], W.BOOL),
+            ('GetMonitorInfoW', [W.HMONITOR, C.POINTER(Info)], W.BOOL)):
+        fn = getattr(user, name)
+        fn.argtypes, fn.restype = args, result
+    rect, ar = Rect(), Rect()
+    if not user.GetWindowRect(window, C.byref(rect)) or not user.GetWindowRect(a, C.byref(ar)):
+        raise ValueError('diagnostic_rect')
+    def intersects(x, y):
+        return max(x.left, y.left) < min(x.right, y.right) and max(x.top, y.top) < min(x.bottom, y.bottom)
+    monitors, selected = [], []
+    def visit(h, dc, r, param):
+        info = Info()
+        info.size = C.sizeof(info)
+        if not user.GetMonitorInfoW(h, C.byref(info)):
+            return False
+        monitors.append(intersects(rect, info.monitor))
+        if info.flags & 1:  # Operator-selected primary landscape; legacy field name retained.
+            selected.append(intersects(rect, info.work))
+        return True
+    cb = callback_type(visit)
+    if not user.EnumDisplayMonitors(None, None, cb, 0) or len(selected) != 1:
+        raise ValueError('diagnostic_monitors')
+    style, ex = user.GetWindowLongPtrW(window, -16), user.GetWindowLongPtrW(window, -20)
+    return dict(ws_popup=bool(style & 0x80000000), ws_caption=bool(style & 0x00c00000),
+                ws_child=bool(style & 0x40000000), ws_disabled=bool(style & 0x08000000),
+                ws_ex_topmost=bool(ex & 8), ws_ex_layered=bool(ex & 0x80000),
+                ws_ex_transparent=bool(ex & 0x20), ws_ex_appwindow=bool(ex & 0x40000),
+                zero_area=rect.right <= rect.left or rect.bottom <= rect.top,
+                offscreen=not any(monitors), equals_a_rect=bytes(rect) == bytes(ar),
+                on_bottom_left_work=selected[0], title_nonempty=user.GetWindowTextLengthW(window) > 0)
+
+
+def validate_inventory(record):
+    if (type(record) is not dict or set(record) != {'phase', 'complete', 'windows'}
+            or record['phase'] not in ('ready', 'refusal') or type(record['complete']) is not bool
+            or type(record['windows']) is not list or len(record['windows']) > 32):
+        raise ValueError('native_thread_inventory')
+    ids = set()
+    for entry in record['windows']:
+        if (type(entry) is not dict or set(entry) != {'window_id', 'is_a', 'is_b', 'new_at_refusal', 'facts'}
+                or type(entry['window_id']) is not str or not re.fullmatch('[0-9a-f]{8}', entry['window_id'])
+                or entry['window_id'] in ids
+                or any(type(entry[k]) is not bool for k in ('is_a', 'is_b', 'new_at_refusal'))
+                or (record['phase'] == 'ready' and entry['new_at_refusal'])):
+            raise ValueError('native_thread_inventory')
+        if not record['complete'] or (entry['is_a'] and entry['is_b']):
+            raise ValueError('native_thread_inventory')
+        ids.add(entry['window_id'])
+        validate_window_facts(entry['facts'])
+    return record
+
+
+def validate_window_facts(facts):
+    if (type(facts) is not dict or set(facts) != {'class_token', 'class_sha8', *WINDOW_BOOLS}
+            or type(facts['class_token']) is not str
+            or facts['class_token'] not in {*WINDOW_CLASSES.values(), *WINDOW_PREFIXES.values(), 'target018_class', 'other'}
+            or type(facts['class_sha8']) is not str or not re.fullmatch('[0-9a-f]{8}', facts['class_sha8'])
+            or any(type(facts[k]) is not bool for k in WINDOW_BOOLS)):
+        raise ValueError('native_monitor_record')
+
+
+def read_inventory(private, phase):
+    def unique(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError('native_thread_inventory')
+        return value
+    value = validate_inventory(json.loads(helpers.owned_bytes(
+        private / ('target-thread-windows-' + phase + '.json'), private, 65536).decode('ascii'), object_pairs_hook=unique))
+    if value['phase'] != phase:
+        raise ValueError('native_thread_inventory')
+    return value
+
+
+def thread_inventory(desktop, a, b, ready):
+    import ctypes as C
+    from ctypes import wintypes as W
+    result = dict(phase='refusal', complete=False, windows=[])
+    try:
+        if not ready['complete']:
+            return result
+        callback_type = getattr(C, 'WINFUNCTYPE', C.CFUNCTYPE)(W.BOOL, W.HWND, W.LPARAM)
+        fn = desktop.user.EnumThreadWindows
+        fn.argtypes, fn.restype = [W.DWORD, callback_type, W.LPARAM], W.BOOL
+        pid = W.DWORD()
+        tid = desktop.user.GetWindowThreadProcessId(a, C.byref(pid))
+        if not tid:
+            return result
+        previous = {e['window_id'] for e in ready['windows']}
+        def visit(h, param):
+            if len(result['windows']) == 32:
+                return False
+            facts = window_facts(desktop, h, a, b)
+            if not facts['sampled']:
+                return False
+            identity = class_sha8(str(h))
+            result['windows'].append(dict(window_id=identity, is_a=h == a, is_b=h == b,
+                                          new_at_refusal=identity not in previous, facts=facts))
+            return True
+        result['complete'] = bool(fn(tid, callback_type(visit), 0))
+        validate_inventory(result)
+        if not result['complete']:
+            result['windows'] = []
+    except Exception:
+        result = dict(phase='refusal', complete=False, windows=[])
     return result
 
 
@@ -415,7 +579,18 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
             if predicate and failure is None:
                 failure = (predicate, order, relation, bool(policy and policy.closed))
                 surfaces = policy.surfaces if policy is not None else None
+                if surfaces is None and positive_private is not None and (positive_private / 'positive-surfaces.txt').exists():
+                    positive_foregrounds(positive_private, foreground)
+                    surfaces = tuple(map(int, helpers.owned_bytes(positive_private / 'positive-surfaces.txt', positive_private, 256).split()))
                 failure_facts = window_facts(desktop, window, *(surfaces[:2] if surfaces else (0, 0)))
+                if surfaces:
+                    try:
+                        ready = read_inventory(positive_private, 'ready')
+                        inventory = thread_inventory(desktop, *surfaces[:2], ready)
+                    except Exception:
+                        inventory = dict(phase='refusal', complete=False, windows=[])
+                    with (positive_private / 'target-thread-windows-refusal.json').open('x', encoding='ascii') as stream:
+                        json.dump(validate_inventory(inventory), stream)
             if any(p.stat().st_size > 65536 for p in output) and failure is None:
                 failure = ('output_oversized', order, relation, bool(policy and policy.closed))
         except Exception:

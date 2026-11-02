@@ -6,6 +6,19 @@ scene execution, clipboard access or input synthesis. All review gates stay fals
 Plans 018/019 remain incomplete. **Diagnostics only: no defensible exact Target018
 activation fix or picker epoch exception is established.**
 
+## nd-07 diagnostic extension (build-only; no new native evidence)
+
+The fixture now snapshots A's EnumThreadWindows inventory at target readiness,
+before host startup or UIA SetFocus. The observer snapshots it again at the first
+latched foreground refusal, alongside native-monitor-failure.json. See the fixture
+README for exact fixed schemas, class_sha8, allowlist provenance and new-at-refusal
+correlation limits. Extended class/style/rectangle facts also accompany startup
+and high-rate trace samples. These independent observers still do not establish
+continuous HWND identity or causality. A new-window marker is a diagnostic lead,
+not proof of creation origin, activation acceptance, or an allowed surface.
+No review gate or product behavior changed; the unknown window has not yet been
+identified by a new native run.
+
 ## What nr-10 establishes (and does not)
 
 Research 052's posted-row trace sees target-PID `a_other_window/toplevel_other`

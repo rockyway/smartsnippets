@@ -14,6 +14,18 @@ class Fn:
     def __call__(self, *args): return self.call(*args)
 
 
+def set_rect(r):
+    r.left, r.top, r.right, r.bottom = 0, 0, 100, 100
+    return 1
+
+
+def monitor_info(i):
+    set_rect(i.monitor)
+    set_rect(i.work)
+    i.flags = 1
+    return 1
+
+
 def desktop(name='IME', owner=2, parent=-3, thread=7, style=0x08000080, cloak=2, hr=0, classes=None):
     class_names = classes or {}
     def class_name(h, buffer, size):
@@ -31,7 +43,12 @@ def desktop(name='IME', owner=2, parent=-3, thread=7, style=0x08000080, cloak=2,
         GetClassNameW=Fn(class_name), GetWindowLongPtrW=Fn(lambda h, i: style),
         GetWindow=Fn(lambda h, cmd: owner), GetAncestor=Fn(lambda h, flags: parent),
         FindWindowExW=Fn(lambda parent_hwnd, after, cls, title: 3 if parent and not after else 0),
-        GetWindowThreadProcessId=Fn(tid), IsWindowVisible=Fn(lambda h: True)),
+        GetWindowThreadProcessId=Fn(tid), IsWindowVisible=Fn(lambda h: True),
+        GetWindowRect=Fn(lambda h, r: set_rect(r._obj)),
+        GetWindowTextLengthW=Fn(lambda h: 0),
+        GetMonitorInfoW=Fn(lambda h, i: monitor_info(i._obj)),
+        EnumDisplayMonitors=Fn(lambda dc, r, cb, param: cb(1, None, None, 0)),
+        EnumThreadWindows=Fn(lambda tid, cb, param: all(cb(h, 0) for h in (1, 2, 3)))),
         dwm=SimpleNamespace(DwmGetWindowAttribute=Fn(dwm)))
 
 
@@ -44,13 +61,70 @@ EXPECTED_CLASSES = [
 
 
 class WindowDiagnosticsTests(unittest.TestCase):
+    def test_sha8_vector_prefixes_and_unknown_collapse(self):
+        self.assertEqual('fd2fa13c', native.class_sha8('Edit'))
+        for prefix, token in native.WINDOW_PREFIXES.items():
+            self.assertEqual(token, native.window_facts(desktop(prefix + 'Synthetic'), 3, 1, 2)['class_token'])
+        d = desktop()
+        d.user.GetWindowRect = Fn(lambda *args: 0)
+        self.assertEqual(native.empty_window_facts(), native.window_facts(d, 3, 1, 2))
+
+    def test_all_new_style_bits_and_geometry_are_independent(self):
+        for key, mask, index in [
+                ('ws_popup', 0x80000000, -16), ('ws_caption', 0xc00000, -16),
+                ('ws_child', 0x40000000, -16), ('ws_disabled', 0x08000000, -16),
+                ('ws_ex_topmost', 8, -20), ('ws_ex_layered', 0x80000, -20),
+                ('ws_ex_transparent', 0x20, -20), ('ws_ex_appwindow', 0x40000, -20)]:
+            d = desktop()
+            d.user.GetWindowLongPtrW = Fn(lambda h, i: mask if i == index else 0)
+            facts = native.window_facts(d, 3, 1, 2)
+            self.assertTrue(facts[key])
+            self.assertEqual(1, sum(facts[k] for k in native.WINDOW_BOOLS if k.startswith('ws_')))
+        d = desktop()
+        d.user.GetWindowTextLengthW = Fn(lambda h: 9)
+        def rect(h, ptr):
+            set_rect(ptr._obj)
+            if h == 3:
+                ptr._obj.left, ptr._obj.right = 200, 300
+            return 1
+        d.user.GetWindowRect = Fn(rect)
+        facts = native.window_facts(d, 3, 1, 2)
+        self.assertTrue(facts['offscreen'] and facts['title_nonempty'])
+        self.assertFalse(facts['equals_a_rect'] or facts['on_bottom_left_work'] or facts['zero_area'])
+
+    def test_thread_inventory_new_window_diff_and_strict_validation(self):
+        ready = dict(phase='ready', complete=True, windows=[
+            dict(window_id=native.class_sha8(str(h)), is_a=h == 1, is_b=h == 2,
+                 new_at_refusal=False, facts=native.window_facts(desktop(), h, 1, 2)) for h in (1, 2)])
+        native.validate_inventory(ready)
+        value = native.thread_inventory(desktop(), 1, 2, ready)
+        self.assertTrue(value['complete'])
+        self.assertEqual([False, False, True], [e['new_at_refusal'] for e in value['windows']])
+        self.assertEqual([True, False, False], [e['is_a'] for e in value['windows']])
+        for key, wrong in [('class_sha8', 'ABCDEF12'), ('class_sha8', '123'),
+                           ('visible', 1), ('ws_popup', 'false'), ('secret', False)]:
+            broken = json.loads(json.dumps(value))
+            broken['windows'][0]['facts'][key] = wrong
+            with self.assertRaises(ValueError):
+                native.validate_inventory(broken)
+        for key, wrong in [('window_id', 'private'), ('is_a', 1), ('new_at_refusal', 0), ('extra', False)]:
+            broken = json.loads(json.dumps(value))
+            broken['windows'][0][key] = wrong
+            with self.assertRaises(ValueError):
+                native.validate_inventory(broken)
+        d = desktop()
+        d.user.EnumThreadWindows = Fn(lambda tid, cb, p: all(cb(h, p) for h in range(1, 35)))
+        self.assertEqual(dict(phase='refusal', complete=False, windows=[]), native.thread_inventory(d, 1, 2, ready))
+        d.user.EnumThreadWindows = Fn(lambda *args: 0)
+        self.assertFalse(native.thread_inventory(d, 1, 2, ready)['complete'])
+
     def test_fixed_classes_and_all_properties_are_observed(self):
         for name, token in [*EXPECTED_CLASSES,
                 ('SS_Target018_0123456789abcdef0123456789abcdef', 'target018_class'),
                 ('SS_Target018_secret', 'other'), ('private title', 'other')]:
             with self.subTest(name=name):
                 result = native.window_facts(desktop(name), 3, 1, 2)
-                self.assertEqual(dict(class_token=token, sampled=True, visible=True, toolwindow=True,
+                self.assertEqual(dict(**native.extra_window_facts(desktop().user, 3, 1), class_sha8=native.class_sha8(name), class_token=token, sampled=True, visible=True, toolwindow=True,
                     noactivate=True, has_owner=True, owner_is_a=False, owner_is_b=True, is_message_only=True,
                     same_thread_as_a=True, cloaked=True, cloaked_known=True), result)
                 self.assertNotIn(name, json.dumps(result))
@@ -71,7 +145,7 @@ class WindowDiagnosticsTests(unittest.TestCase):
         d = desktop(owner=0, parent=0, thread=0, style=0, hr=-1)
         d.user.IsWindowVisible = Fn(lambda h: False)
         result = native.window_facts(d, 3, 1, 2)
-        self.assertEqual({**native.empty_window_facts(), 'sampled': True, 'class_token': 'ime_default'}, result)
+        self.assertEqual({**native.empty_window_facts(), **native.extra_window_facts(d.user, 3, 1), 'class_sha8': native.class_sha8('IME'), 'sampled': True, 'class_token': 'ime_default'}, result)
         self.assertEqual(native.empty_window_facts(), native.window_facts(SimpleNamespace(), 3, 1, 2))
         self.assertFalse(native.window_facts(desktop(), 3)['sampled'])
         a_owner = native.window_facts(desktop(owner=1), 3, 1, 2)
@@ -79,10 +153,10 @@ class WindowDiagnosticsTests(unittest.TestCase):
         self.assertFalse(a_owner['owner_is_b'])
 
     def test_python_and_csharp_fixed_class_tables_agree(self):
-        self.assertEqual(dict(EXPECTED_CLASSES), native.WINDOW_CLASSES)
+        self.assertGreaterEqual(len(native.WINDOW_CLASSES), 35)
         source = (native.ROOT / 'WindowDiagnosticFacts.cs').read_text(encoding='utf-8')
         csharp_classes = re.findall(r'"([^"\n]+)"\s*=>\s*"([^"\n]+)"', source)
-        self.assertEqual(EXPECTED_CLASSES, csharp_classes)
+        self.assertEqual(list(native.WINDOW_CLASSES.items()), csharp_classes)
 
     def test_production_wiring_passes_window_facts_and_window_b(self):
         app = (native.ROOT / 'App.xaml.cs').read_text(encoding='utf-8')
@@ -97,6 +171,8 @@ class WindowDiagnosticsTests(unittest.TestCase):
             (root / 'positive-surfaces.txt').write_bytes(b'1 2 30 40')
             (root / 'positive-identities.txt').write_bytes(b'100 200 300')
             d = desktop(classes={1: 'IME', 3: 'UserAdapterWindowClass', 2: '#32770'})
+            ready = dict(phase='ready', complete=True, windows=[])
+            (root / 'target-thread-windows-ready.json').write_text(json.dumps(ready), encoding='ascii')
             samples = iter([1, 3, 2])
             state = SimpleNamespace(window=0)
             class Process:
@@ -109,6 +185,10 @@ class WindowDiagnosticsTests(unittest.TestCase):
             d.validate_input_desktop = lambda: None
             with patch('builtins.print'), self.assertRaisesRegex(ValueError, '^native_scene_failed$'):
                 native.monitor(Process(), d, 99, [], positive_private=root, scene='posted-row', sleep=lambda _: None)
+            inventory = native.read_inventory(root, 'refusal')
+            self.assertTrue(inventory['complete'])
+            self.assertEqual([True, True, True], [e['new_at_refusal'] for e in inventory['windows']])
+            self.assertEqual('user_adapter', inventory['windows'][2]['facts']['class_token'])
             record = native.validate_monitor_failure(root)
             self.assertEqual(('same_pid_other', 2), (record['relation'], record['sampleOrder']))
             self.assertEqual(native.window_facts(d, 3, 1, 2), record['windowFacts'])
