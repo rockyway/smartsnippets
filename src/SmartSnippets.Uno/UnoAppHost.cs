@@ -15,6 +15,7 @@ internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile>
     private readonly HashSet<Task> _operations = [];
     private AppProfile? _profile;
     private IDisposable? _message;
+    private IDisposable? _idleMemoryTrimmer;
     private IDesktopServices? _desktop;
     private IMainWindow? _main;
     private IPopupWindow? _popup;
@@ -24,6 +25,9 @@ internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile>
     private bool _exiting, _disposed, _started, _ownsLog, _disposing, _disposeRequested;
     private bool _previewActive, _previewHidden, _pendingCaptured, _popupVisible;
     internal bool CanPresentPopup => !_exiting && !ExitSuperseded;
+    internal bool CanTrimIdleMemory => CanPresentPopup && Gate.IsIdle && !_popupVisible && !_previewActive
+        && !_pendingCaptured && !Popup.IsEditorOpen && Snippets.Editor?.IsDirty != true
+        && !ManagementTasks().Any(task => !task.IsCompleted);
     private bool ExitSuperseded => _disposed || _disposeRequested;
     internal ISnippetStore Store { get; private set; } = null!;
     internal AppSettings Settings { get; private set; } = null!;
@@ -112,6 +116,7 @@ internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile>
                 _tray.Notify("Shortcut not registered", _desktop.Hotkeys.Status.Message);
             await ApplyLaunchOptionsAsync(options, !background);
             if (ExitSuperseded) return;
+            _idleMemoryTrimmer = boundary.CreateIdleMemoryTrimmer(() => CanTrimIdleMemory);
             AppLog.Info("candidate_started");
         }
         catch (Exception ex)
@@ -425,6 +430,7 @@ internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile>
         if (Popup is not null) Popup.PropertyChanged -= OnPopupPropertyChanged;
         _popupHost?.Commit();
         if (_main is not null) _main.HiddenByClose -= OnHiddenByClose;
+        ReleaseResource("idle_memory", () => _idleMemoryTrimmer?.Dispose()); _idleMemoryTrimmer = null;
         ReleaseResource("tray", () => _tray?.Dispose()); ReleaseResource("popup_vm", () => Popup?.Dispose());
         ReleaseResource("popup_window", () => _popup?.Dispose()); _popup = null;
         ReleaseResource("snippets", () => Snippets?.Dispose()); ReleaseResource("folders", () => Folders?.Dispose());

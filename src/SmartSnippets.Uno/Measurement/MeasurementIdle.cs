@@ -1,5 +1,4 @@
-using System.Runtime;
-using System.Runtime.InteropServices;
+using SmartSnippets.Uno.Services;
 using SmartSnippets.Uno.Measurement;
 
 namespace SmartSnippets.Uno;
@@ -18,13 +17,9 @@ internal sealed partial class UnoAppHost
             && !ManagementTasks().Any(task => !task.IsCompleted);
         if (idle && MeasurementOptions.Release) main!.ReleaseMeasurementPages();
         if (!MeasurementOptions.Trim || !_idleTrimSchedule.Poll(Environment.TickCount64, idle)) return;
-        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-        var success = TrimWorkingSet(new nint(-1), nuint.MaxValue, nuint.MaxValue, 0) != 0;
+        var success = IdleMemoryTrimmer.TrimNative();
         // Fixed, content-free receipt: failed native trim must not be mistaken for a measured success.
         File.WriteAllText(Path.Combine(MeasurementProfile.Root, "trim-result"), success ? "ok" : "failed");
     }
 
-    [LibraryImport("kernel32.dll", EntryPoint = "SetProcessWorkingSetSizeEx", SetLastError = true)]
-    private static partial int TrimWorkingSet(nint process, nuint minimum, nuint maximum, uint flags);
 }

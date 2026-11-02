@@ -1,4 +1,4 @@
-namespace SmartSnippets.Uno.Measurement;
+namespace SmartSnippets.Uno.Services;
 
 /// <summary>One trim per continuous idle epoch; showing or busy work cancels the delay.</summary>
 internal sealed class IdleTrimSchedule

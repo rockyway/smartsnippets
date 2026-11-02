@@ -1,4 +1,4 @@
-using SmartSnippets.Uno.Measurement;
+using SmartSnippets.Uno.Services;
 
 namespace SmartSnippets.Uno.Tests.Build;
 
