@@ -1,0 +1,94 @@
+Controls/HoverDetailsSurface.xaml|1|PointerEntered|OnSurfaceEntered
+Controls/HoverDetailsSurface.xaml|1|PointerExited|OnSurfaceExited
+Controls/SnippetEditor.xaml|2|Invoked|OnSaveAccelerator
+Controls/SnippetEditor.xaml|3|Invoked|OnDiscardAccelerator
+Controls/SnippetEditor.xaml|11|TextChanged|OnTextInput
+Controls/SnippetEditor.xaml|18|TextChanged|OnLabelInput
+Controls/SnippetEditor.xaml|19|Toggled|OnCustomLabelInput
+Controls/SnippetEditor.xaml|27|SelectionChanged|OnFolderSelectionChanged
+Controls/SnippetEditor.xaml|31|Command|{x:Bind ViewModel.StartNewFolderCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|41|KeyDown|OnNewFolderKeyDown
+Controls/SnippetEditor.xaml|41|TextChanged|OnFolderNameInput
+Controls/SnippetEditor.xaml|42|Command|{x:Bind ViewModel.CreateFolderCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|43|Command|{x:Bind ViewModel.CancelNewFolderCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|47|TextChanged|OnTagsInput
+Controls/SnippetEditor.xaml|80|Command|{x:Bind ViewModel.RetrySaveCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|81|Command|{x:Bind CopyAfterAdmissionCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|87|Command|{x:Bind ViewModel.DeleteCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|90|Command|{x:Bind ViewModel.DiscardCommand, Mode=OneWay}
+Controls/SnippetEditor.xaml|91|Command|{x:Bind ViewModel.SaveCommand, Mode=OneWay}
+Controls/SnippetRowDetails.xaml|1|PointerEntered|OnRowEntered
+Controls/SnippetRowDetails.xaml|1|PointerExited|OnRowExited
+Controls/SnippetRowDetails.xaml|1|PointerMoved|OnRowPointerMoved
+Controls/SnippetRowDetails.xaml|5|PointerEntered|OnTargetEntered
+Controls/SnippetRowDetails.xaml|5|PointerExited|OnTargetExited
+Controls/SnippetRowDetails.xaml|12|PointerEntered|OnTargetEntered
+Controls/SnippetRowDetails.xaml|12|PointerExited|OnTargetExited
+Controls/SnippetRowDetails.xaml|13|PointerEntered|OnTargetEntered
+Controls/SnippetRowDetails.xaml|13|PointerExited|OnTargetExited
+MainWindow.xaml|9|SelectionChanged|OnSelectionChanged
+Pages/FoldersPage.xaml|15|KeyDown|OnNewFolderKeyDown
+Pages/FoldersPage.xaml|16|Command|{x:Bind ViewModel.CreateCommand, Mode=OneWay}
+Pages/FoldersPage.xaml|35|Click|OnRenameClick
+Pages/FoldersPage.xaml|36|Click|OnDeleteClick
+Pages/FoldersPage.xaml|43|KeyDown|OnRenameKeyDown
+Pages/FoldersPage.xaml|44|Click|OnCommitRenameClick
+Pages/FoldersPage.xaml|45|Click|OnCancelRenameClick
+Pages/SettingsPage.xaml|17|Canceled|OnRecorderCanceled
+Pages/SettingsPage.xaml|17|Cleared|OnRecorderCleared
+Pages/SettingsPage.xaml|17|GestureCaptured|OnGestureCaptured
+Pages/SettingsPage.xaml|17|LostFocus|OnRecorderLostFocus
+Pages/SettingsPage.xaml|18|Click|OnChangeClick
+Pages/SettingsPage.xaml|19|Command|{x:Bind ViewModel.RestoreDefaultHotkeyCommand}
+Pages/SettingsPage.xaml|23|SelectionChanged|OnTextSizeSelectionChanged
+Pages/SettingsPage.xaml|28|ValueChanged|OnCustomSizeChanged
+Pages/SettingsPage.xaml|28|GotFocus|OnCustomSizeGotFocus
+Pages/SettingsPage.xaml|28|LostFocus|OnCustomSizeLostFocus
+Pages/SettingsPage.xaml|32|SelectionChanged|OnThemeSelectionChanged
+Pages/SettingsPage.xaml|37|SelectionChanged|OnPaletteSelectionChanged
+Pages/SettingsPage.xaml|43|Toggled|OnStartupToggled
+Pages/SettingsPage.xaml|46|Command|{x:Bind ViewModel.PreviewGlobalDialogCommand}
+Pages/SettingsPage.xaml|47|Command|{x:Bind ViewModel.RestartAsAdministratorCommand}
+Pages/SnippetsPage.xaml|0|Loaded|OnLoaded
+Pages/SnippetsPage.xaml|15|Invoked|OnNewAccelerator
+Pages/SnippetsPage.xaml|16|Invoked|OnFindAccelerator
+Pages/SnippetsPage.xaml|17|SizeChanged|OnRootSizeChanged
+Pages/SnippetsPage.xaml|32|Click|OnBrowseNewFolderClick
+Pages/SnippetsPage.xaml|35|KeyDown|OnBrowseNewFolderKeyDown
+Pages/SnippetsPage.xaml|38|Command|{x:Bind ViewModel.List.CancelNewFolderCommand, Mode=OneWay}
+Pages/SnippetsPage.xaml|39|Command|{x:Bind ViewModel.List.CreateFolderCommand, Mode=OneWay}
+Pages/SnippetsPage.xaml|54|TextChanged|OnSearchChanged
+Pages/SnippetsPage.xaml|54|KeyDown|OnSearchKeyDown
+Pages/SnippetsPage.xaml|55|Click|OnSortClick
+Pages/SnippetsPage.xaml|59|Click|OnSortLast
+Pages/SnippetsPage.xaml|60|Click|OnSortUsage
+Pages/SnippetsPage.xaml|61|Click|OnSortCreated
+Pages/SnippetsPage.xaml|62|Click|OnSortUpdated
+Pages/SnippetsPage.xaml|63|Command|{x:Bind ViewModel.NewCommand, Mode=OneWay}
+Pages/SnippetsPage.xaml|65|Command|{x:Bind ViewModel.Porting.ImportCommand, Mode=OneWay}
+Pages/SnippetsPage.xaml|67|Command|{x:Bind ViewModel.Porting.ExportCommand, Mode=OneWay}
+Pages/SnippetsPage.xaml|70|ContainerContentChanging|OnSnippetContainerContentChanging
+Pages/SnippetsPage.xaml|70|ItemClick|OnItemClick
+Pages/SnippetsPage.xaml|70|KeyDown|OnListKeyDown
+Pages/SnippetsPage.xaml|79|Click|OnBackClick
+Popup/PopupWindow.xaml|1|KeyDown|OnKeyDown
+Popup/PopupWindow.xaml|15|TextChanged|OnSearchChanged
+Popup/PopupWindow.xaml|16|Command|{x:Bind ViewModel.ToggleLayoutCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|18|Click|OnSortClick
+Popup/PopupWindow.xaml|22|Click|OnSortLast
+Popup/PopupWindow.xaml|23|Click|OnSortUsage
+Popup/PopupWindow.xaml|24|Click|OnSortCreated
+Popup/PopupWindow.xaml|25|Click|OnSortUpdated
+Popup/PopupWindow.xaml|26|Command|{x:Bind ViewModel.AddSnippetCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|28|Command|{x:Bind ViewModel.OpenMainWindowCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|31|ItemClick|OnItemClick
+Popup/PopupWindow.xaml|31|ContainerContentChanging|OnContainerContentChanging
+Popup/PopupWindow.xaml|50|Click|OnCopyFailedText
+Popup/PopupWindow.xaml|51|Command|{x:Bind ViewModel.RestartAsAdminCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|52|Command|{x:Bind ViewModel.PasteAnywayCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|53|Command|{x:Bind ViewModel.CancelPasteAnywayCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|54|Command|{x:Bind ViewModel.DismissFooterCommand, Mode=OneWay}
+Popup/PopupWindow.xaml|55|PreviewKeyDown|OnEditorPreviewKeyDown
+Popup/PopupWindow.xaml|63|EscapePressed|OnEditorEscape
+Popup/PopupWindow.xaml|70|Click|OnEditorCancel
+Popup/PopupWindow.xaml|71|Click|OnEditorSave

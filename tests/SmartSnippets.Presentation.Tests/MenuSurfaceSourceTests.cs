@@ -11,7 +11,7 @@ public sealed class MenuSurfaceSourceTests
     {
         var source = Source("PopupWindow.xaml.cs");
         var start = source.IndexOf("private void QueuePreviewSortMenu()", StringComparison.Ordinal);
-        var end = source.IndexOf("private void ReportReady()", start, StringComparison.Ordinal);
+        var end = source.IndexOf("\n    private ", start + 10, StringComparison.Ordinal);
         var seam = source[start..end];
         Assert.Contains("SortFlyout.ShowAt(SortButton", seam);
         Assert.Contains("Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom", seam);

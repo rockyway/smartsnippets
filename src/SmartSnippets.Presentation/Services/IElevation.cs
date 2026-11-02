@@ -15,4 +15,7 @@ public interface IElevation
 
     /// <summary>Starts an elevated copy; on <see cref="ElevationOutcome.Started"/> the caller exits this instance.</summary>
     ElevationResult RestartAsAdministrator();
+
+    /// <summary>Allows the desktop host to settle recovery and unsaved editors before requesting UAC.</summary>
+    Task<ElevationResult> RestartAsAdministratorAsync() => Task.FromResult(RestartAsAdministrator());
 }

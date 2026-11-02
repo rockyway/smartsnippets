@@ -139,11 +139,24 @@ public sealed partial class SnippetsPageViewModel : ObservableObject, IGuardedPa
 
     public bool CanInsertRow => _insertRow is not null && _canInsertRow?.Invoke() == true;
 
+    public bool CanCopyRow => _clipboard?.IsAvailable == true;
+
+    public void RefreshClipboardAvailability()
+    {
+        OnPropertyChanged(nameof(CanCopyRow));
+        OnPropertyChanged(nameof(CanInsertRow));
+        Editor?.RefreshClipboardAvailability();
+    }
+
     public void CopyRow(long id)
     {
         var snippet = _store.Snippets.FirstOrDefault(v => v.Snippet.Id == id)?.Snippet;
         if (snippet is null || _clipboard is null) return;
-        _clipboard.SetText(snippet.Text);
+        if (!CanCopyRow || !_clipboard.TrySetText(snippet.Text))
+        {
+            _ = _dialogs.ShowErrorAsync("Copy failed", UiText.CopyFailed);
+            return;
+        }
         AppLog.Info("snippet_row_copied", $"id={id}");
     }
 

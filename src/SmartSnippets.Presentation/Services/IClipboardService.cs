@@ -4,4 +4,6 @@ namespace SmartSnippets.Presentation.Services;
 public interface IClipboardService
 {
     void SetText(string text);
+    bool IsAvailable => true;
+    bool TrySetText(string text) { SetText(text); return true; }
 }

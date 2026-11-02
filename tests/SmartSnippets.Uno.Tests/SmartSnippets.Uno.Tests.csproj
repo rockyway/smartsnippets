@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />
+    <Using Include="Xunit" />
+    <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
+    <!-- Compile the actual composition root. Only external native/window implementations are omitted. -->
+    <Compile Include="../../src/SmartSnippets.Uno/CandidateUiPolicy.cs;../../src/SmartSnippets.Uno/UnoAppHost.cs;../../src/SmartSnippets.Uno/CandidateActivationQueue.cs;../../src/SmartSnippets.Uno/CandidateProfile.cs;../../src/SmartSnippets.Uno/CandidateHostBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/*.cs;../../src/SmartSnippets.Uno/Popup/RecoverablePopupHost.cs;../../src/SmartSnippets.Uno/Popup/PopupContextInsert.cs;../../src/SmartSnippets.Uno/Services/CandidateTrayText.cs;../../src/SmartSnippets.Uno/Services/CandidateMessageWindowLifetime.cs" LinkBase="Candidate" />
+    <Compile Include="../../src/SmartSnippets.Uno/AdministratorRestart.cs" Link="AdministratorRestart.cs" />
+    <Compile Include="../../src/SmartSnippets.Uno/Platforms/Windows/DailyNative/StartupRegistration.cs" Link="Candidate/StartupRegistration.cs" />
+    <!-- Actual candidate handlers; only XAML/native rendering primitives are substituted. -->
+    <Compile Include="../../src/SmartSnippets.Uno/Pages/*.xaml.cs;../../src/SmartSnippets.Uno/Controls/*.xaml.cs;../../src/SmartSnippets.Uno/Popup/PopupWindow.xaml.cs;../../src/SmartSnippets.Uno/MainWindow.xaml.cs;../../src/SmartSnippets.Uno/WindowsCandidateBoundary.cs" Exclude="../../src/SmartSnippets.Uno/Controls/PaletteBaseline.xaml.cs" LinkBase="Views" />
+  </ItemGroup>
+</Project>

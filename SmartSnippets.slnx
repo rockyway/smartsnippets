@@ -2,9 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/SmartSnippets.Core/SmartSnippets.Core.csproj" />
     <Project Path="src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
-    <Project Path="src/SmartSnippets.App/SmartSnippets.App.csproj" />
+    <Project Path="src/SmartSnippets.Uno/SmartSnippets.Uno.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SmartSnippets.Uno.Tests/SmartSnippets.Uno.Tests.csproj" />
     <Project Path="tests/SmartSnippets.Core.Tests/SmartSnippets.Core.Tests.csproj" />
     <Project Path="tests/SmartSnippets.Presentation.Tests/SmartSnippets.Presentation.Tests.csproj" />
   </Folder>

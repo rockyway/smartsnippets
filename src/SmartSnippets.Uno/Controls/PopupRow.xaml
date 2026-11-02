@@ -1,0 +1,12 @@
+<UserControl x:Class="SmartSnippets.Uno.Controls.PopupRow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:controls="using:SmartSnippets.Uno.Controls">
+ <Grid>
+  <TextBlock Padding="0,4" Text="{x:Bind Item.HeadingText}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+   FontSize="{x:Bind Item.TextSize.FontSize, Mode=OneWay, FallbackValue=14}" Visibility="{x:Bind HasText(Item.HeadingText)}"/>
+  <controls:SnippetRowDetails Label="{x:Bind Item.Label}" FolderName="{x:Bind Item.FolderChip}"
+   TagsDisplay="{x:Bind Item.TagsDisplay}" ContentText="{x:Bind Item.ContentText}" TextSize="{x:Bind Item.TextSize}"
+   Visibility="{x:Bind HasText(Item.Label)}"/>
+ </Grid>
+</UserControl>

@@ -326,7 +326,13 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
     private void Delete() => DeleteRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand(CanExecute = nameof(CanCopyText))]
-    private void CopyText() => _clipboard?.SetText(Text);
+    private void CopyText()
+    {
+        if (!CanCopyText() || !_clipboard!.TrySetText(Text)) GeneralError = UiText.CopyFailed;
+        else if (GeneralError == UiText.CopyFailed) GeneralError = string.Empty;
+    }
+
+    public void RefreshClipboardAvailability() => CopyTextCommand.NotifyCanExecuteChanged();
 
     [RelayCommand]
     private Task CreateFolder() => CreateFolderAsync();
@@ -351,7 +357,7 @@ public sealed partial class SnippetEditorViewModel : ObservableObject, IDisposab
 
     private bool CanDelete() => !IsNew && !IsDeleted;
 
-    private bool CanCopyText() => _clipboard is not null;
+    private bool CanCopyText() => _clipboard?.IsAvailable == true;
 
     private void ClearSaveFailure()
     {

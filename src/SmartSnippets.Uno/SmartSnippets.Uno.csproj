@@ -1,0 +1,55 @@
+<Project>
+  <Import Project="Sdk.props" Sdk="Uno.Sdk" Version="6.7.30" />
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <ApplicationTitle>Smart Snippets</ApplicationTitle>
+    <ApplicationId>SmartSnippets</ApplicationId>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <AssemblyName>SmartSnippets</AssemblyName>
+    <RootNamespace>SmartSnippets.Uno</RootNamespace>
+    <DisableImplicitUnoPackages>true</DisableImplicitUnoPackages>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UnoDisableHotDesign>true</UnoDisableHotDesign>
+    <UnoDisableMCPSupport>true</UnoDisableMCPSupport>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Platform>x64</Platform><Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/SmartSnippets.ico</ApplicationIcon>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <StartupObject>SmartSnippets.Uno.Program</StartupObject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot><PublishTrimmed>true</PublishTrimmed>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer><EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
+    <ProjectReference Include="../SmartSnippets.Core/SmartSnippets.Core.csproj" />
+    <ProjectReference Include="../SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
+    <Content Update="Assets/*.ico;Assets/TitleIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Uno.Sdk" Version="6.7.30" />
+  <PropertyGroup>
+    <!-- Restrict the SDK's default multi-architecture restore to this x64-only head. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- Remove the inherited ILLink IL2121 suppression after all SDK imports. -->
+    <NoWarn></NoWarn>
+  </PropertyGroup>
+</Project>

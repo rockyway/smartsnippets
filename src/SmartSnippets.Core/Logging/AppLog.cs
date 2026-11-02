@@ -43,14 +43,45 @@ public static class AppLog
 
     public static void Error(string eventName, Exception? exception = null, string? detail = null)
     {
-        var text = detail;
+        var text = SafeErrorDetail(detail);
         if (exception is not null)
         {
-            var ex = $"{exception.GetType().Name}: {exception.Message} (HResult=0x{exception.HResult:X8})";
-            text = string.IsNullOrEmpty(detail) ? ex : $"{detail} | {ex}";
+            var diagnostic = $"{exception.GetType().Name} (HResult=0x{exception.HResult:X8})";
+            text = string.IsNullOrEmpty(text) ? diagnostic : $"{text} | {diagnostic}";
         }
 
         Write("ERROR", eventName, text);
+    }
+
+    // Error callers include startup stack frames. Admit only known diagnostic fields, never free text.
+    private static string SafeErrorDetail(string? detail)
+    {
+        return string.Join(" ", (detail ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(field =>
+            {
+                var parts = field.Split('=');
+                if (parts.Length != 2) return false;
+                var key = parts[0];
+                var value = parts[1];
+                if (key is "code" or "stored" or "known" or "version" or "sqlite" or "index" or "of" or "hresult"
+                    or "entries" or "imported" or "duplicates" or "unsupported" or "rejected" or "folders_created" or "bytes" or "parse_ms" or "commit_ms")
+                    return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                        || (value.StartsWith("0x", StringComparison.Ordinal) && value.Length <= 18
+                            && ulong.TryParse(value.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _));
+                if (key == "error" && value.EndsWith("Exception", StringComparison.Ordinal)
+                    && value.Length <= 128 && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '`'))
+                    return true;
+                return (key, value) switch
+                {
+                    ("reason", "backup" or "newer") => true,
+                    ("stage", "before_commit" or "in_commit" or "after_commit" or "before_write" or "in_write" or "after_write") => true,
+                    ("format", "Native" or "TermFlow" or "Rephlo" or "InkSpoke") => true,
+                    ("kind", "SnippetCreated" or "SnippetUpdated" or "SnippetDeleted" or "FolderCreated" or "FolderRenamed" or "FolderDeleted" or "UsageRecorded" or "Reloaded" or "Imported") => true,
+                    ("op", "load" or "import_snippets" or "create_snippet" or "update_snippet" or "delete_snippet"
+                        or "create_folder" or "rename_folder" or "delete_folder" or "record_usage") => true,
+                    _ => false,
+                };
+            }));
     }
 
     private static void Write(string level, string eventName, string? detail)

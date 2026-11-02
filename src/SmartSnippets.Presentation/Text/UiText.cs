@@ -10,6 +10,7 @@ namespace SmartSnippets.Presentation.Text;
 /// </summary>
 public static class UiText
 {
+    public const string CopyFailed = "Could not copy text. Keep your edits and try again when clipboard access is available.";
     public const string ColorPaletteTitle = "Color palette";
     public const string PaletteDefault = "Default";
     public const string PaletteOcean = "Ocean";

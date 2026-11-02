@@ -1,0 +1,62 @@
+<Window
+    x:Class="SmartSnippets.Uno.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Smart Snippets">
+    <!--
+        Content extends into the title bar so the caption buttons sit on the themed background
+        (a transparent button background on the system title bar drew a white block in dark theme).
+    -->
+    <Grid x:Name="RootGrid" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
+            <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="8">
+                <Image Source="ms-appx:///Assets/TitleIcon.png" Width="16" Height="16" AutomationProperties.AccessibilityView="Raw" />
+                <TextBlock VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" Text="Smart Snippets" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Starts collapsed to icons; the hamburger opens a narrow pane. -->
+        <NavigationView
+            x:Name="Navigation"
+            Grid.Row="1"
+            IsBackButtonVisible="Collapsed"
+            IsPaneOpen="False"
+            IsSettingsVisible="False"
+            IsTitleBarAutoPaddingEnabled="False"
+            OpenPaneLength="180"
+            PaneDisplayMode="Left"
+            SelectionChanged="OnSelectionChanged">
+            <NavigationView.Resources>
+                <!-- Shortcut status sits at the top-left edge of the page panel (WinUI default is 56,44,0,0). -->
+                <Thickness x:Key="NavigationViewHeaderMargin">10,8,0,0</Thickness>
+            </NavigationView.Resources>
+            <NavigationView.Header>
+                <TextBlock x:Name="NativeStatusText" Text="Global shortcut status is loading." TextWrapping="Wrap" FontSize="14" />
+            </NavigationView.Header>
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="SnippetsItem" Content="Snippets" Tag="Snippets">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8A5;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="FoldersItem" Content="Folders" Tag="Folders">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Name="SettingsItem" Content="Settings" Tag="Settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+        </NavigationView>
+    </Grid>
+</Window>

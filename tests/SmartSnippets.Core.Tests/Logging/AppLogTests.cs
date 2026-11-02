@@ -45,7 +45,8 @@ public class AppLogTests : IDisposable
             .ToArray();
         Assert.Equal(2, lines.Length);
         Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z INFO hotkey_registered ok$", lines[0]);
-        Assert.Contains(" ERROR insert_result code=5 | InvalidOperationException: boom (HResult=0x", lines[1], StringComparison.Ordinal);
+        Assert.Contains(" ERROR insert_result code=5 | InvalidOperationException (HResult=0x80131509)", lines[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("boom", lines[1], StringComparison.Ordinal);
     }
 
     [Fact]

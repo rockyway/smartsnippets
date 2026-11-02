@@ -11,13 +11,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\SmartSnippets.Core.Tests\Porting\Fixtures\*.json" Link="Porting\Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/SmartSnippets.Uno/WindowsCandidateBoundary.cs;../../src/SmartSnippets.Uno/Platforms/Windows/DailyNative/WindowsDesktopServices.cs;../../src/SmartSnippets.Uno/Services/CandidateTrayText.cs" Link="UiContracts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Source contracts only: inspect layout without referencing WinUI or compiling App on Linux. -->
-    <None Include="..\..\src\SmartSnippets.App\Popup\PopupWindow.xaml.cs;..\..\src\SmartSnippets.App\Pages\SnippetsPage.xaml.cs;..\..\src\SmartSnippets.App\Services\FlyoutSurface.cs;..\..\src\SmartSnippets.App\Services\PaletteResources.cs;..\..\src\SmartSnippets.App\Services\ThemeService.cs;..\..\src\SmartSnippets.App\Services\DialogService.cs;..\..\src\SmartSnippets.App\Controls\PaletteBaseline.xaml.cs;..\..\src\SmartSnippets.App\Controls\PopupRow.xaml.cs;..\..\src\SmartSnippets.App\Controls\SnippetRowDetails.xaml.cs;..\..\src\SmartSnippets.App\Controls\HoverDetailsSurface.xaml.cs;..\..\src\SmartSnippets.App\AppHost.cs" Link="UiContracts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\src\SmartSnippets.App\**\*.xaml" Exclude="..\..\src\SmartSnippets.App\obj\**;..\..\src\SmartSnippets.App\bin\**" Link="UiContracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\SmartSnippets.Uno\Popup\PopupWindow.xaml.cs;..\..\src\SmartSnippets.Uno\Pages\SnippetsPage.xaml.cs;..\..\src\SmartSnippets.Uno\Services\FlyoutSurface.cs;..\..\src\SmartSnippets.Uno\Services\PaletteResources.cs;..\..\src\SmartSnippets.Uno\Services\ThemeService.cs;..\..\src\SmartSnippets.Uno\Services\DialogService.cs;..\..\src\SmartSnippets.Uno\Controls\PaletteBaseline.xaml.cs;..\..\src\SmartSnippets.Uno\Controls\PopupRow.xaml.cs;..\..\src\SmartSnippets.Uno\Controls\SnippetRowDetails.xaml.cs;..\..\src\SmartSnippets.Uno\Controls\HoverDetailsSurface.xaml.cs;..\..\src\SmartSnippets.Uno\UnoAppHost.cs" Link="UiContracts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\SmartSnippets.Uno\**\*.xaml" Exclude="..\..\src\SmartSnippets.Uno\obj\**;..\..\src\SmartSnippets.Uno\bin\**" Link="UiContracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\src\SmartSnippets.App\Services\StartupMigration.cs" Link="StartupMigration.cs" />
-    <None Include="..\..\src\SmartSnippets.App\Services\TrayIcon.cs;..\..\src\SmartSnippets.App\MainWindow.xaml.cs;..\..\src\SmartSnippets.App\SmartSnippets.App.csproj;..\..\src\SmartSnippets.App\Assets\TitleIcon.png" Link="UiContracts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="..\..\src\SmartSnippets.Uno\Services\StartupMigration.cs" Link="StartupMigration.cs" />
+    <Compile Include="..\..\src\SmartSnippets.Uno\Platforms\Windows\DailyNative\ClipboardService.cs" Link="ClipboardService.cs" />
+    <None Include="..\..\src\SmartSnippets.Uno\Services\TrayIcon.cs;..\..\src\SmartSnippets.Uno\MainWindow.xaml.cs;..\..\src\SmartSnippets.Uno\SmartSnippets.Uno.csproj;..\..\src\SmartSnippets.Uno\Assets\TitleIcon.png" Link="UiContracts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

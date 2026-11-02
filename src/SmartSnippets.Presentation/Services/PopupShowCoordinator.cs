@@ -17,6 +17,7 @@ public sealed class PopupShowCoordinator(Action<Action> schedule, Action<PopupFo
     private int _warmupRestarts;
     public int WarmupGeneration { get; private set; }
     public bool IsWarming => _warming;
+    public bool IsReady => _ready && !_closed;
 
     public void BeginWarmup()
     {
