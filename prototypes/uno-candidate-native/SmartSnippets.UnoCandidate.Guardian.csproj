@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/SmartSnippets.Presentation/SmartSnippets.Presentation.csproj" />
     <Compile Include="../../src/SmartSnippets.Uno/Platforms/Windows/CandidateNativeCapability.cs" Link="CandidateContract/CandidateNativeCapability.cs" />
+    <Compile Include="../../src/SmartSnippets.Uno/Platforms/Windows/ForegroundNullGap.cs" Link="CandidateContract/ForegroundNullGap.cs" />
     <Compile Include="../../src/SmartSnippets.Uno/Platforms/Windows/AcceptanceNative/*.cs" Link="AcceptanceNative/%(Filename)%(Extension)" />
     <Compile Include="../uno-native-target/windows-insertion/GuardianWindow.cs" Link="AcceptancePrerequisites/GuardianWindow.cs" />
   </ItemGroup>
