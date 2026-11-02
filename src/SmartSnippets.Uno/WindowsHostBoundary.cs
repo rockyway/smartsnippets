@@ -30,8 +30,7 @@ internal sealed class WindowsHostBoundary : HostBoundary
         return null;
 #else
         bool PopupSettled() => _popup is not null && !_popup.AppWindow.IsVisible && _popup.IsCaptureSurfaceReady && idle();
-        var backgroundRequest = false;
-        var trimmer = new IdleMemoryTrimmer(() => _main is { IsHidden: true } && PopupSettled(), settled: PopupSettled);
+        var trimmer = _trimmer = new IdleMemoryTrimmer(() => _main is { IsHidden: true } && PopupSettled(), settled: PopupSettled);
         // Startup has just finished; the main window outlives the trimmer, which ignores requests once disposed.
         trimmer.RequestSettleTrim();
         if (_main is { } main)
@@ -40,20 +39,30 @@ internal sealed class WindowsHostBoundary : HostBoundary
             main.Moved += (_, monitorChanged) =>
             {
                 if (!monitorChanged) { trimmer.PostponeSettleTrim(); return; }
-                backgroundRequest = false;
+                _backgroundTrimRequested = false;
                 trimmer.RequestSettleTrim();
             };
-            // Minimized or behind another app: trim, unless the user comes back before the delay ends.
-            main.Backgrounded += (_, _) => { backgroundRequest = true; trimmer.RequestSettleTrim(); };
+            main.Backgrounded += (_, _) => RequestBackgroundTrim();
             main.Foregrounded += (_, _) =>
             {
-                if (backgroundRequest) trimmer.CancelSettleTrim();
-                backgroundRequest = false;
+                if (_backgroundTrimRequested) trimmer.CancelSettleTrim();
+                _backgroundTrimRequested = false;
             };
         }
         return trimmer;
 #endif
     }
+#if !SMARTSNIPPETS_MEASURE
+    private IdleMemoryTrimmer? _trimmer;
+    private bool _backgroundTrimRequested;
+    /// <summary>Minimized, behind another app or the hotkey popup closed: trim, unless the user returns to the main window first.</summary>
+    private void RequestBackgroundTrim()
+    {
+        if (_trimmer is null) return;
+        _backgroundTrimRequested = true;
+        _trimmer.RequestSettleTrim();
+    }
+#endif
     internal override IThemeService CreateTheme(AppSettings settings) => _theme = new ThemeService(settings.Theme, settings.ColorPalette);
     internal override IDisposable CreateMessageWindow()
     {
@@ -100,6 +109,9 @@ internal sealed class WindowsHostBoundary : HostBoundary
         window.UseQaPlacement = Program.InitialOptions.HasRequest;
         _theme!.Register(window);
         window.Closed += (_, _) => { if (ReferenceEquals(_popup, window)) _popup = null; };
+#if !SMARTSNIPPETS_MEASURE
+        window.VisibleChanged += (_, visible) => { if (!visible) RequestBackgroundTrim(); };
+#endif
         var surface = new PopupSurface(window,
             () => _main is null ? default : new HWND(WinRT.Interop.WindowNative.GetWindowHandle(_main)),
             () => ReferenceEquals(_popup, window) && host.Gate.CanInsert);
