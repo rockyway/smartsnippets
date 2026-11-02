@@ -20,7 +20,7 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet test tests/SmartSnippets.Core.Tests -c Release
-      - run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+      - run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category!=Budget"
 
   windows:
     runs-on: windows-latest
@@ -32,7 +32,7 @@ jobs:
       - name: Core tests
         run: dotnet test tests/SmartSnippets.Core.Tests -c Release
       - name: Presentation tests
-        run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+        run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category!=Budget"
       - name: Import budget (Release)
         run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Budget"
       - uses: actions/setup-dotnet@v6
