@@ -232,7 +232,7 @@ def validate_monitor_failure(private):
         return result
     record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 32768).decode('ascii'),
                         object_pairs_hook=unique)
-    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'foreground_was_child', 'windowFacts', 'transitions', 'nullGap'}
+    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'foreground_was_child', 'windowFacts', 'transitions', 'transitionsTruncated', 'nullGap'}
             or type(record['predicate']) is not str or record['predicate'] not in MONITOR_PREDICATES
             or type(record['relation']) is not str or record['relation'] not in MONITOR_RELATIONS
             or type(record['exitCode']) is not int or not -2**31 <= record['exitCode'] <= 2**32-1
@@ -249,15 +249,15 @@ def validate_monitor_failure(private):
         raise ValueError('native_monitor_record')
     transitions = record['transitions']
     classes = {*WINDOW_CLASSES.values(), *WINDOW_PREFIXES.values(), 'target018_class', 'other'}
-    if type(transitions) is not list or len(transitions) > 64:
+    if type(record['transitionsTruncated']) is not bool or type(transitions) is not list or len(transitions) > 64:
         raise ValueError('native_monitor_record')
     previous_order, previous_ms, previous_relation = 0, -1, None
-    for item in transitions:
+    for index, item in enumerate(transitions):
         if (type(item) is not dict or set(item) != {'sample_order', 'elapsed_ms', 'relation', 'class_token', 'null'}
                 or type(item['sample_order']) is not int or not previous_order < item['sample_order'] <= 2**63-1
                 or type(item['elapsed_ms']) is not int or not 0 <= item['elapsed_ms'] <= 2**63-1 or item['elapsed_ms'] < previous_ms
                 or type(item['relation']) is not str or item['relation'] not in MONITOR_RELATIONS
-                or item['relation'] == previous_relation
+                or (item['relation'] == previous_relation and not (record['transitionsTruncated'] and index == 16))
                 or type(item['class_token']) is not str or item['class_token'] not in classes
                 or type(item['null']) is not bool or item['null'] != (item['relation'] == 'none')):
             raise ValueError('native_monitor_record')
@@ -620,7 +620,10 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
     announced = False
     operator_announced = False
     transitions = []
+    transitions_truncated = False
     started_at = clock()
+    last_non_null = started_at
+    last_non_null_order = 1
     gap_start = None
     gap_record = None
     last_sample = 0
@@ -644,14 +647,20 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
                 predicate, relation = 'foreground_foreign', 'foreign'
             elapsed_ms = max(0, int(round((clock() - started_at) * 1000)))
             last_sample = order
-            if len(transitions) < 64 and (not transitions or transitions[-1]['relation'] != relation):
+            sample_time = clock()
+            if failure is None and (not transitions or transitions[-1]['relation'] != relation):
                 facts = window_facts(desktop, raw_window, *(policy.surfaces[:2] if policy and policy.surfaces else (0, 0)))
                 transitions.append(dict(sample_order=order, elapsed_ms=elapsed_ms, relation=relation,
                                         class_token=facts['class_token'], null=not bool(raw_window)))
+                if len(transitions) > 64:
+                    del transitions[16]
+                    transitions_truncated = True
             if not raw_window:
                 if gap_start is None:
-                    gap_start = clock()
-                    gap_record = dict(sample_order=order, elapsed_ms=elapsed_ms, duration_ms=0, end_relation='none')
+                    gap_start = last_non_null
+                    gap_record = dict(sample_order=last_non_null_order,
+                                      elapsed_ms=max(0, int(round((gap_start - started_at) * 1000))),
+                                      duration_ms=0, end_relation='none')
                 gap_record['duration_ms'] = max(0, int(round((clock() - gap_start) * 1000)))
                 predicate = None if gap_record['duration_ms'] <= 500 else 'foreground_foreign'
             elif gap_start is not None:
@@ -662,6 +671,10 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
                 if gap_record['duration_ms'] > 500 or not allowed_end or predicate:
                     predicate = predicate or 'foreground_foreign'
                 gap_start = None
+                if not predicate:
+                    gap_record = None
+            if raw_window:
+                last_non_null, last_non_null_order = sample_time, order
             if predicate and failure is None:
                 failure = (predicate, order, relation, bool(policy and policy.closed))
                 failure_gap = dict(gap_record) if gap_record else None
@@ -706,7 +719,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         private = evidence_private or positive_private
         if private is not None:
             record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation, closed=closed,
-                          foreground_was_child=failure_was_child, windowFacts=failure_facts, transitions=transitions, nullGap=failure_gap)
+                          foreground_was_child=failure_was_child, windowFacts=failure_facts, transitions=transitions, transitionsTruncated=transitions_truncated, nullGap=failure_gap)
             with (private / 'native-monitor-failure.json').open('x', encoding='ascii') as stream:
                 json.dump(record, stream)
             validate_monitor_failure(private)

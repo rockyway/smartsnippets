@@ -31,6 +31,26 @@ namespace SmartSnippets.Uno.Tests.Wiring
             Assert.False(surface.IsCaptureSurfaceReady);
         });
 
+        [Fact]
+        public Task SupersedingPreviewDuringRevealNeverFocusesCapturedGeneration() => CandidateHostThread.RunAsync(async () =>
+        {
+            using var f = new HostFixture();
+            await f.Start();
+            var window = new Popup.PopupWindow(f.Host.TextSize, () => { }) { ViewModel = f.Host.Popup };
+            var calls = 0;
+            window.TryFocusCapturedPopup = () => { calls++; return true; };
+            try
+            {
+                window.ShowCaptured(new InsertionTarget(11, 21, 0, ""), () => true);
+                window.CompleteAuditWarmup();
+                window.ShowPreview(new Windows.Win32.Foundation.HWND(0));
+                CompositionTarget.Render();
+                CompositionTarget.Render();
+                Assert.Equal(0, calls);
+            }
+            finally { window.Hide(); window.Close(); }
+        });
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
@@ -40,7 +60,11 @@ namespace SmartSnippets.Uno.Tests.Wiring
             await f.Start();
             var window = new Popup.PopupWindow(f.Host.TextSize, () => { }) { ViewModel = f.Host.Popup };
             var calls = 0;
-            window.TryFocusCapturedPopup = () => { calls++; return true; };
+            window.TryFocusCapturedPopup = () =>
+            {
+                Assert.False(SmartSnippets.Uno.Services.WindowSurface.Cloaked[window]);
+                calls++; return true;
+            };
             try
             {
                 window.ShowCaptured(new InsertionTarget(11, 21, 0, ""), () => true);

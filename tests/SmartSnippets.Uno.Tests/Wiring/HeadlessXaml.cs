@@ -366,6 +366,7 @@ namespace SmartSnippets.Uno.Services
         internal static (byte R,byte G,byte B) WindowTextColor() => (0,0,0);
         internal static bool IsHighContrast() => false;
         internal static (int Corner,int Border) RoundPopup(Microsoft.UI.Xaml.Window window,int color) => (0,0);
-        internal static void Cloak(Microsoft.UI.Xaml.Window window,bool cloak) { }
+        internal static readonly System.Collections.Generic.Dictionary<Microsoft.UI.Xaml.Window, bool> Cloaked = new();
+        internal static void Cloak(Microsoft.UI.Xaml.Window window,bool cloak) { Cloaked[window] = cloak; }
     }
 }

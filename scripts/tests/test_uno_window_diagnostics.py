@@ -197,6 +197,14 @@ class WindowDiagnosticsTests(unittest.TestCase):
         preparation = (native.ROOT / 'OwnedTargetPreparationNative.cs').read_text(encoding='utf-8')
         self.assertIn('fixture.Lease.Readiness.WindowB,\n            window => WindowDiagnosticNative.Sample(window, fixture.Lease.Readiness.WindowA, fixture.Lease.Readiness.WindowB), SmartSnippets.TargetIdentity018.ForegroundIdentity.Root);', preparation)
 
+    def test_positive_scene_check_call_sites_are_pinned(self):
+        source = (native.ROOT / 'PositiveHostScene.cs').read_text(encoding='utf-8')
+        self.assertIn('await PositiveSceneChecks.WaitForWarmupAsync(() => boundary.Popup!.IsCaptureSurfaceReady,', source)
+        self.assertLess(source.index('await PositiveSceneChecks.WaitForWarmupAsync'), source.index('OwnedTargetPreparation.ShouldPrepare(scene)'))
+        self.assertIn('if (PositiveProtocol.CapturedCopy(scene))\n        {\n            await PositiveSceneChecks.RestoreBeforeHideAsync(() => session.RestoreCapturedTargetAsync(ct), boundary.Popup!.Hide);', source)
+        self.assertIn('await PositiveSceneChecks.PopupReadyAsync(NativeFixtureOs.Foreground, session.Target.WindowHandle,\n                    popupWindow.NativeHandle,', source)
+        self.assertIn('await PositiveSceneChecks.ShortcutAsync(shortcut.AcceptCallback,\n                () => session.ReadyForAdmissionAsync(ct), host.ShowCapturedPopup);', source)
+
     def test_real_monitor_latches_facts_at_first_refusal_not_teardown(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

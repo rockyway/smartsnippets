@@ -13,6 +13,34 @@ public sealed class OwnedFocusTests
     private const int Popup = 30;
 
     [Fact]
+    public void NullGapBoundsStartAtLastNonNullObservation()
+    {
+        var gap = new SmartSnippets.Uno.Platforms.Windows.ForegroundNullGap();
+        Assert.True(gap.Observe(false, true, 100));
+        Assert.True(gap.Observe(true, false, 200));
+        Assert.False(gap.Observe(false, true, 601)); // 401 since NULL, but 501 upper bound.
+        gap = new();
+        Assert.True(gap.Observe(false, true, 100));
+        Assert.True(gap.Observe(true, false, 200));
+        Assert.True(gap.Observe(false, true, 600));
+        Assert.False(gap.Pending);
+    }
+
+    [Theory]
+    [InlineData(30, 1)]
+    [InlineData(11, 2)]
+    public async Task PopupAdmissionAndFocusDecisionUseOneForegroundSnapshot(int initial, int focusReads)
+    {
+        var os = new FocusOs { Foreground = initial };
+        var focus = new OwnedFocus(new Probe(os), A, Popup, os, () => true, () => true);
+        Assert.True(await focus.ReadyForAdmissionAsync(default));
+        Assert.Equal(1, os.ForegroundReads);
+        os.ForegroundReads = 0;
+        Assert.True(focus.TryFocusPopup());
+        Assert.Equal(focusReads, os.ForegroundReads); // One admission snapshot, plus post-transfer confirmation.
+    }
+
+    [Fact]
     public async Task ForeignForeground_RefusesWithoutAnyFocusTransfer()
     {
         var os = new FocusOs { Foreground = 999 }; var probe = new Probe(os);
@@ -186,13 +214,13 @@ public sealed class OwnedFocusTests
     private sealed class FocusOs : IOwnedFocusOs
     {
         internal bool Quiet = true, FocusAccepted = true;
-        internal int FocusCalls;
+        internal int FocusCalls, ForegroundReads;
         internal nint? PartialForeground;
         internal Action? AfterQuietCheck;
         public bool PopupPinned { get; set; } = true;
         private nint rawForeground;
         internal Func<nint, nint> Normalize = h => h;
-        public nint Foreground { get => Normalize(rawForeground); set => rawForeground = value; }
+        public nint Foreground { get { ForegroundReads++; return Normalize(rawForeground); } set => rawForeground = value; }
         public bool QuietDesktop() { AfterQuietCheck?.Invoke(); return Quiet; }
         public bool SetForeground(nint window) { FocusCalls++; if (FocusAccepted) Foreground = PartialForeground ?? window; return FocusAccepted; }
     }

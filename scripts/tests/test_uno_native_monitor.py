@@ -68,7 +68,7 @@ class MonitorTests(unittest.TestCase):
                     record = native.validate_monitor_failure(private)
                     self.assertEqual(dict(predicate=token, exitCode=exit_code, sampleOrder=order,
                                           relation=relation, closed=closed, foreground_was_child=False, windowFacts=native.empty_window_facts()),
-                                     {k: v for k, v in record.items() if k not in ('transitions', 'nullGap')})
+                                     {k: v for k, v in record.items() if k not in ('transitions', 'transitionsTruncated', 'nullGap')})
                     self.assertLessEqual(len(record['transitions']), 64)
                 else:
                     call()
@@ -141,8 +141,8 @@ class MonitorTests(unittest.TestCase):
                          (1, 'foreign', False), exit_code=7)
 
     def test_null_gap_requires_owned_endpoint_within_500ms_and_never_terminal_null(self):
-        self.run_monitor('posted-row', [A, (0, True, False, 0), BACK], times=[0, .1, .6])
-        self.run_monitor('posted-row', [A, (0, True, False, 0), POPUP, BACK], times=[0, .1, .6, .7])
+        self.run_monitor('posted-row', [A, (0, True, False, 0), BACK], times=[0, .1, .5])
+        self.run_monitor('posted-row', [A, (0, True, False, 0), POPUP, BACK], times=[0, .1, .5, .6])
         for samples, times, expected in [
                 ([A, (0, True, False, 0), (99, True, False, 999)], [0, .1, .2], (3, 'foreign', False)),
                 ([A, (0, True, False, 0), BACK], [0, .1, .601], (3, 'owned_a', False)),
@@ -150,16 +150,29 @@ class MonitorTests(unittest.TestCase):
                 ([A, (0, True, False, 0)], [0, .1], (2, 'none', False)),
                 ([A, CLOSED_A, ZERO_END, INITIAL], [0, .1, .2, .3], (4, 'foreign', True))]:
             record = self.run_monitor('posted-row', samples, 'foreground_foreign', expected, times=times)
-            self.assertEqual(2 if samples[1][0] == 0 else 3, record['nullGap']['sample_order'])
+            self.assertEqual(1 if samples[1][0] == 0 else 2, record['nullGap']['sample_order'])
             self.assertEqual(expected[1], record['nullGap']['end_relation'])
             relations = [entry['relation'] for entry in record['transitions']]
             self.assertTrue(all(a != b for a, b in zip(relations, relations[1:])))
+
+    def test_resolved_gap_is_not_attached_to_later_failure_and_failure_transition_is_retained(self):
+        samples = [A, (0, True, False, 0), BACK, (99, True, False, 999)]
+        samples += [item for _ in range(50) for item in [(0, True, False, 0), BACK]]
+        record = self.run_monitor('posted-row', samples, 'foreground_foreign', (4, 'foreign', False))
+        self.assertIsNone(record['nullGap'])
+        self.assertEqual(4, record['transitions'][-1]['sample_order'])
+        self.assertEqual('foreign', record['transitions'][-1]['relation'])
+        self.assertFalse(record['transitionsTruncated'])
 
     def test_transition_schema_is_strict_and_timeline_is_capped(self):
         samples = [A] + [item for _ in range(40) for item in [(0, True, False, 0), BACK]]
         record = self.run_monitor('posted-row', samples + [(99, True, False, 999)],
                                   'foreground_foreign', (82, 'foreign', False))
         self.assertEqual(64, len(record['transitions']))
+        self.assertTrue(record['transitionsTruncated'])
+        self.assertEqual(82, record['transitions'][-1]['sample_order'])
+        self.assertEqual(list(range(1, 17)), [t['sample_order'] for t in record['transitions'][:16]])
+        self.assertIsNone(record['nullGap'])
         first = record['transitions'][0]
         self.assertEqual(dict(sample_order=1, elapsed_ms=0, relation='owned_a', class_token='other', null=False), first)
         with tempfile.TemporaryDirectory() as directory:
@@ -172,7 +185,7 @@ class MonitorTests(unittest.TestCase):
             for transitions in invalid:
                 path.write_text(json.dumps({**record, 'transitions': transitions}), encoding='ascii')
                 with self.assertRaises(ValueError): native.validate_monitor_failure(root)
-            for gap in ({}, {**record['nullGap'], 'duration_ms': True}, {**record['nullGap'], 'end_relation': 'title'}):
+            for gap in ({}, dict(sample_order=1, elapsed_ms=0, duration_ms=True, end_relation='none'), dict(sample_order=1, elapsed_ms=0, duration_ms=1, end_relation='title')):
                 path.write_text(json.dumps({**record, 'nullGap': gap}), encoding='ascii')
                 with self.assertRaises(ValueError): native.validate_monitor_failure(root)
 
@@ -253,7 +266,7 @@ class MonitorTests(unittest.TestCase):
                     self.assertEqual(dict(predicate='foreground_unexpected_candidate', exitCode=0,
                                           sampleOrder=2, relation='candidate', closed=False, foreground_was_child=False, windowFacts=native.empty_window_facts()),
                                      {k: v for k, v in native.validate_monitor_failure(state.private).items()
-                                      if k not in ('transitions', 'nullGap')})
+                                      if k not in ('transitions', 'transitionsTruncated', 'nullGap')})
 
     def test_real_main_granted_success_reaches_real_receipt_and_boundary_verifiers_per_scene(self):
         for scene in (*native.POSTED_SCENES, 'copy'):
@@ -274,7 +287,7 @@ class MonitorTests(unittest.TestCase):
 
     def test_failure_record_rejects_schema_types_duplicates_and_payloads(self):
         good = dict(predicate='foreground_foreign', exitCode=0, sampleOrder=1, relation='foreign', closed=False,
-                    foreground_was_child=False, windowFacts=native.empty_window_facts(), transitions=[], nullGap=None)
+                    foreground_was_child=False, windowFacts=native.empty_window_facts(), transitions=[], transitionsTruncated=False, nullGap=None)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = root / 'native-monitor-failure.json'

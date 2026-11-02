@@ -236,12 +236,18 @@ boolean `foreground_was_child` (raw WS_CHILD at the failed foreground sample),
 and boolean `closed` (validated closure observed at the failed sample, false for
 legacy scene policies). The first predicate, relation, order and closure phase win;
 final output size is checked even on immediate exit.
-The record also requires `transitions` (first 64 relation changes, including the
-first sample): strictly increasing `sample_order`, nonnegative monotonic
+The record also requires `transitions` (first 16 and last 48 relation changes,
+including the first sample and failing transition), with fixed boolean
+`transitionsTruncated` marking omitted middle entries: strictly increasing
+`sample_order`, nonnegative monotonic
 `elapsed_ms`, allowlisted `relation` and `class_token`, and boolean `null` matching
 relation `none`. `nullGap` is null or a fixed record of `sample_order`, `elapsed_ms`,
 `duration_ms` and allowlisted `end_relation` (`none` means unresolved). The first
-foreground failure retains its gap even while recovery observation continues.
+foreground failure retains its own gap even while recovery observation continues;
+resolved tolerated gaps are cleared, never attached to unrelated failures.
+Gap bounds start at the last non-NULL sample (or observation start if none) and
+end at the first non-NULL sample, making duration an upper bound. The 500 ms
+limit applies to that upper bound in both Python and C#.
 No HWND/PID, raw class, content or exception payload enters this timeline.
 Python validates the exact schema before reporting failure. This is diagnostics,
 not review approval or permission to rerun.

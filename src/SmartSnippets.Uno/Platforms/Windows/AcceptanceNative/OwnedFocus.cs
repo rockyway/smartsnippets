@@ -32,8 +32,9 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
 {
     public bool AdmissionIdentityReady() => popup != 0 && permitted() && os.PopupPinned &&
         (main == 0 || mainPinned?.Invoke() == true) && probe.Check(target) == TargetCheck.Ok;
-    private bool OwnedForeground() => AdmissionIdentityReady() &&
-        (os.Foreground == popup || (main != 0 && os.Foreground == main) || probe.IsTargetForeground(target));
+    private bool OwnedForeground(nint foreground) => AdmissionIdentityReady() &&
+        (foreground == popup || (main != 0 && foreground == main) || foreground == target.WindowHandle);
+    private bool OwnedForeground() => OwnedForeground(os.Foreground);
     public bool ReadyForAdmission() => OwnedForeground() && os.QuietDesktop() && OwnedForeground();
     public async Task<bool> ReadyForAdmissionAsync(CancellationToken ct)
     {
@@ -44,10 +45,13 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
             while (watch.ElapsedMilliseconds < 3000 && !ct.IsCancellationRequested && AdmissionIdentityReady())
             {
                 var foreground = os.Foreground;
-                var allowed = foreground == popup || (foreground == target.WindowHandle && probe.IsTargetForeground(target));
+                var allowed = foreground == popup || foreground == target.WindowHandle;
                 if (!gap.Observe(foreground == 0, allowed, watch.ElapsedMilliseconds)) return false;
-                if (foreground != 0 && ReadyForAdmission()) return true;
-                if (foreground != 0 && !OwnedForeground()) return false;
+                if (foreground != 0)
+                {
+                    if (!OwnedForeground(foreground)) return false;
+                    if (os.QuietDesktop() && AdmissionIdentityReady()) return true;
+                }
                 await Task.Delay(50, ct);
             }
         }
@@ -78,9 +82,10 @@ internal sealed class OwnedFocus(ITargetProbe probe, InsertionTarget target, nin
     {
         bool Result(bool value, string reason) { focusReceipt?.Invoke(reason); return value; }
         if (!focusPermitted()) return Result(false, "permission");
-        if (!ReadyForAdmission()) return Result(false, "admission");
-        if (os.Foreground == popup) return Result(true, "already_popup");
-        if (!probe.IsTargetForeground(target)) return Result(false, "target");
+        var foreground = os.Foreground;
+        if (!OwnedForeground(foreground) || !os.QuietDesktop() || !AdmissionIdentityReady()) return Result(false, "admission");
+        if (foreground == popup) return Result(true, "already_popup");
+        if (foreground != target.WindowHandle) return Result(false, "target");
         if (!os.PopupPinned) return Result(false, "popup");
         var focused = os.SetForeground(popup); // Same single attempt and short-circuit order.
         // The API return alone is not positive foreground evidence (including a partial/NULL transition).
