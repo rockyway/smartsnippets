@@ -1,51 +1,57 @@
-# AGENTS.md
+# Agent guidance
 
-This file provides guidance to Claude Code (claude.ai/code) and other coding agents when working with code in this repository.
+Smart Snippets: .NET 10, Windows x64, unpackaged Native AOT, SQLite.
+`SmartSnippets.Uno` is the official Windows app (`SmartSnippets.exe`, profile
+`%LOCALAPPDATA%\SmartSnippets`). The legacy WinUI 3 app was removed on 2026-11-01;
+git tag `legacy-winui-final` keeps it for reference (see `docs/progress/008`).
 
-Smart Snippets: a Windows utility (.NET 10, WinUI 3, unpackaged, x64 only, Native AOT, SQLite). A global hotkey opens a popup to find a snippet and paste it into the app that had focus; a main window manages snippets, folders and settings. Requirement: `docs/requirements/001-prd.md`; master plan: `docs/plan/001-master-smart-snippets-v1.md`.
+## Workflow
+
+- Read the relevant plan and latest `docs/progress/` or `docs/handoff/`.
+  References: requirements `001`, Uno plans `017`/`019`.
+- Numbered documents use the next free number; never renumber.
+- Use feature branches/PRs, not direct `main` commits. Worktrees go under
+  `.claude/worktrees/`; carry local instruction files into new worktrees.
+- Delegate only when authorized. Match reviewer effort to risk and batch related fixes.
 
 ## Commands
 
-SDK is pinned by `global.json` (10.0.100, roll forward to latest feature).
+Run projects **sequentially**: parallel builds sharing Core can fail with CS2012.
+Windows is required for UI builds. Root SDK follows `global.json`; Uno commands
+must run from `src/SmartSnippets.Uno` to select its pinned SDK.
 
 ```bash
-dotnet build                                   # whole solution (SmartSnippets.slnx); needs Windows for the App project
-dotnet test tests/SmartSnippets.Core.Tests
-dotnet test tests/SmartSnippets.Presentation.Tests
-dotnet test tests/SmartSnippets.Core.Tests --filter "FullyQualifiedName~LineEndings"   # single test/class
-dotnet publish src/SmartSnippets.App -c Release -r win-x64 -o publish                  # Native AOT publish
+dotnet test tests/SmartSnippets.Core.Tests -c Release
+dotnet test tests/SmartSnippets.Presentation.Tests -c Release
+# From src/SmartSnippets.Uno:
+dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
+# From repository root; build/publish only:
+pwsh -NoProfile -File scripts/publish-uno-aot.ps1
 ```
 
-- Run test projects sequentially; parallel builds collide on the shared Core output (CS2012).
-- CI (`.github/workflows/ci.yml`, runs on `main` pushes and manually): Core + Presentation tests on Linux and Windows, then the AOT publish gate on Windows. The gate fails on any `warning IL2xxx/IL3xxx`, on `publish/SmartSnippets.dll` existing (means non-AOT), a stale `SmartSnippets.App.exe`, or a missing `SmartSnippets.exe` / `e_sqlite3.dll`.
-- `scripts/verify-plans-003-009.ps1` (and `verify-plan002.ps1`) are interactive acceptance scripts: they drive the published exe with real key presses and UI Automation, move the real `%LOCALAPPDATA%\SmartSnippets` profile aside, and need `sqlite3.exe` on PATH. Do not run them while using the machine; steps needing a human are reported as SKIP.
+Require fresh native x64 artifacts, SQLite and zero warnings. Never suppress IL
+warnings or weaken AOT/trim gates.
 
-## Architecture
+## Invariants
 
-Three projects with a strict dependency direction, `App → Presentation → Core`:
+- **Uno → Presentation → Core**. Keep WinUI/Win32 in the Uno head; reuse real
+  Core/store/VM services through explicit host composition.
+- Store/cache work stays on the UI thread. Flush dirty popup data before showing.
+  Preserve deferred/recoverable hosts and shared `PopupShowCoordinator` readiness,
+  generations and focus ordering; never reveal unfinished surfaces.
+- Capture before popup show, revalidate before paste, preserve clipboard and credit
+  usage only for `Inserted`. Copy never credits usage; preview never copies/pastes.
+- The hotkey popup centres on the monitor under the cursor; the main window centres
+  on the primary monitor.
+- No reflection: use source-generated JSON, `LibraryImport`/CsWin32 and compiled
+  `x:Bind`; verify bindings and compile UI changes on Windows.
+- Never log content, titles, labels/tags, queries, document paths or raw exceptions.
+  `InsertionTarget.DisplayName` can contain a window title.
 
-- **`SmartSnippets.Core`** (`net10.0`, cross-platform): domain, SQLite store (`Microsoft.Data.Sqlite` with hand-written SQL, no EF Core), schema migrations, in-memory search/query, popup layout, settings (stored in the same database), logging, `AppPaths`. Unit-tested on Linux and Windows.
-- **`SmartSnippets.Presentation`**: view-models (CommunityToolkit.Mvvm), UI text (`Text/UiText.cs`), navigation, and the service *interfaces* the UI depends on (`IClipboardService`, `IHotkeyManager`, `IElevation`, `INotifier`, `IInsertionService`, ...). No WinUI types, so it is testable on Linux; tests use hand-written fakes.
-- **`SmartSnippets.App`** (WinUI 3): windows, pages, XAML, and the Win32 implementations of the Presentation interfaces. `AppHost.cs` is the composition root: it builds the store, services, windows and tray, and owns startup/shutdown. `Program.cs` handles single-instance (`AppInstance.FindOrRegisterForKey` with activation redirect).
+## Verification and desktop QA
 
-Insertion flow (plans 006/007): the foreground window is captured as an `InsertionTarget` before the popup shows; on Enter the popup hides, `IInsertionService.InsertAsync` revalidates the target, swaps the clipboard, sends Ctrl+V, restores the clipboard, and records usage only when the outcome is `Inserted`. The shared contract is `Presentation/Services/InsertionContracts.cs`; plans 006 and 007 both depend on it, so change it only by updating both plans.
-
-Popup caching: `PopupViewModel` builds its compact projection/search index at startup; store changes mark dirty and coalesce through an injected UI-dispatcher scheduler. Open/preview/re-show flush dirty data before showing. `RecoverablePopupHost` lazily replaces closed windows beneath the unchanged `DeferredPopupHost` recovery gate. Keep all store/cache work on the UI thread; no background access to the single-threaded store. `PopupShowCoordinator` (Presentation, shared policy tests) sequences native warmup, pending shows and focus; hiding an unfinished warmup returns it to cold, next show restarts, and generation-tagged timeout retries are bounded. Do not route focus around this coordinator or reveal an unfinished surface.
-
-## Constraints that shape the code
-
-- Native AOT: no reflection. JSON only via source-generated contexts; Win32 via `LibraryImport`/CsWin32 (`NativeMethods.txt`); XAML uses compiled `x:Bind`. `IsAotCompatible` is on for every non-test project, so trim/AOT warnings are real defects.
-- Warnings are treated seriously: builds are expected to be 0 warnings.
-- Logs must never contain snippet text or window titles (`InsertionTarget.DisplayName` can hold a title).
-- WinUI/XAML only compiles on Windows, so Linux CI cannot catch App compile errors; verify `x:Bind` paths against the view-model surface.
-- Unelevated app cannot paste into elevated windows; the tray offers "Restart as administrator". Start-at-login (HKCU `Run`) is always unelevated.
-
-## Planning workflow
-
-Work is driven by numbered documents: requirements in `docs/requirements/`, plans in `docs/plan/NNN-*.md` (status, tasks T0..Tn, approval log), reviews in `docs/review/`, handoffs in `docs/handoff/`. Read the relevant plan before changing an area; plans cite files and line numbers and record user decisions. Numbered docs use the next free `NNN`; never renumber existing ones.
-
-`main` is the production branch: land work through feature branches and PRs, not direct commits. Agent worktrees go under `.claude/worktrees/` (git-ignored).
-
-## Non-inserting UI QA launch options
-
-`--page snippets|folders|settings` requests guarded navigation without foreground activation; `--preview-popup` opens the real popup in target-free preview mode. `--preview-popup-query <text>` optionally initializes its search. `--preview-popup-sort-menu` requires `--preview-popup` and opens the sort menu after preview layout via programmatic `ShowAt` with explicit `Bottom` placement over the fixture rows and non-focus-taking `Transient` mode, without input synthesis or activation/focus calls; it stays open for capture until dismissed/hidden. Initial and redirected launches share this parsing. Foreground HWND preservation must still be verified by the authorized screen harness; do not substitute UIA button invocation (it took foreground in menu-01). Each menu opening emits one content-free `menu_surface` receipt with presenter presence, allowlisted brush/backdrop type tokens, ARGB, opacity and numeric theme. These options work on initial launch and redirected single-instance launches; preview selection closes without insertion, clipboard use or usage recording. Unknown options are ignored. The command-line query is not logged by the app; nevertheless use synthetic, non-sensitive text for QA. The UI harness requires an isolated profile, owned processes, watchdog, registry recovery, and an explicitly authorized screen slot; see `docs/guides/002-acceptance-harness-safety.md` and `scripts/verify-ui-qa.ps1`.
+Verify with targeted tests for the changed code, one strict AOT publish and a short
+live check of the feature; run the full suites once before merging. Live checks
+need a screen slot from pc-manager, run on the bottom-left monitor when it exists,
+never touch the user's real `%LOCALAPPDATA%\SmartSnippets` profile, and leave no
+processes behind.
