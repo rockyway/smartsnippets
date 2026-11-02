@@ -85,6 +85,41 @@ public sealed class SnippetRepository
             lastUsedAt is { } value ? DbTime.FromDb(DbTime.ToDb(value)) : null, usageCount);
     }
 
+    /// <summary>
+    /// Inserts imported rows in order. Ids are max(id)+1.. inside the caller's write transaction, which is exactly
+    /// what SQLite assigns to INTEGER PRIMARY KEY rows (no AUTOINCREMENT), so rows match repeated <see cref="InsertImported"/>.
+    /// </summary>
+    public List<Snippet> InsertImportedMany(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<ImportedSnippetRow> rows)
+    {
+        var result = new List<Snippet>(rows.Count);
+        if (rows.Count == 0) return result;
+        var nextId = BulkInsert.NextId(connection, transaction, "snippets");
+        BulkInsert.Run(connection, transaction,
+            "INSERT INTO snippets (id, text, label, label_is_custom, folder_id, tags, created_at, updated_at, last_used_at, usage_count) VALUES ",
+            "($id{0}, $text{0}, $label{0}, $custom{0}, $folder{0}, $tags{0}, $created{0}, $updated{0}, $used{0}, $usage{0})",
+            ["$id", "$text", "$label", "$custom", "$folder", "$tags", "$created", "$updated", "$used", "$usage"], rows.Count, null,
+            (parameters, i) =>
+            {
+                var row = rows[i];
+                var id = checked(nextId + i);
+                var storedTags = TagList.ToStorage(row.Tags);
+                parameters[0].Value = id;
+                parameters[1].Value = row.Text;
+                parameters[2].Value = row.Label;
+                parameters[3].Value = row.IsLabelCustom ? 1 : 0;
+                parameters[4].Value = row.FolderId is { } folderId ? folderId : DBNull.Value;
+                parameters[5].Value = storedTags;
+                parameters[6].Value = DbTime.ToDb(row.CreatedAt);
+                parameters[7].Value = DbTime.ToDb(row.UpdatedAt);
+                parameters[8].Value = row.LastUsedAt is { } lastUsed ? DbTime.ToDb(lastUsed) : DBNull.Value;
+                parameters[9].Value = row.UsageCount;
+                result.Add(new Snippet(id, row.Text, row.Label, row.IsLabelCustom, row.FolderId, TagList.FromStorage(storedTags),
+                    DbTime.FromDb(DbTime.ToDb(row.CreatedAt)), DbTime.FromDb(DbTime.ToDb(row.UpdatedAt)),
+                    row.LastUsedAt is { } value ? DbTime.FromDb(DbTime.ToDb(value)) : null, row.UsageCount));
+            });
+        return result;
+    }
+
     /// <summary>Sets updated_at; never touches created_at, usage_count or last_used_at. False when not found.</summary>
     public bool Update(
         SqliteConnection connection,
@@ -144,3 +179,7 @@ public sealed class SnippetRepository
         reader.IsDBNull(8) ? null : DbTime.FromDb(reader.GetInt64(8)),
         (int)Math.Clamp(reader.GetInt64(9), 0, int.MaxValue));
 }
+
+public readonly record struct ImportedSnippetRow(
+    string Text, string Label, bool IsLabelCustom, long? FolderId, IReadOnlyList<string> Tags,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? LastUsedAt, int UsageCount);

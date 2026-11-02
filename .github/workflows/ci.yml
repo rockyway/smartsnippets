@@ -32,8 +32,6 @@ jobs:
         run: dotnet test tests/SmartSnippets.Core.Tests
       - name: Presentation tests
         run: dotnet test tests/SmartSnippets.Presentation.Tests
-      - name: Import budget (Release)
-        run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Budget"
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: src/SmartSnippets.Uno/global.json
@@ -59,3 +57,6 @@ jobs:
         with:
           name: SmartSnippets-win-x64-aot
           path: publish/
+      # Timing budgets run last so a slow hosted runner never hides the Uno tests or the AOT gate.
+      - name: Import budget (Release)
+        run: dotnet test tests/SmartSnippets.Presentation.Tests -c Release --filter "Category=Budget"

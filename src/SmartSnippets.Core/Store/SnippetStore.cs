@@ -62,22 +62,16 @@ public sealed class SnippetStore : ISnippetStore
         var (newFolders, newSnippets) = Write("import_snippets", (c, tx) =>
         {
             var ids = new Dictionary<string, long>(plan.ExistingFolderIds, StringComparer.Ordinal);
-            var folders = new List<Folder>();
-            foreach (var name in plan.NewFolderNames)
-            {
-                var key = FolderNameRules.Key(name);
-                var folder = _folderRepository.Insert(c, tx, name, key, now);
-                folders.Add(folder);
-                ids.Add(key, folder.Id);
-            }
-            var snippets = new List<Snippet>(plan.Snippets.Count);
-            foreach (var snippet in plan.Snippets)
+            var folders = _folderRepository.InsertMany(c, tx,
+                [.. plan.NewFolderNames.Select(name => (name, FolderNameRules.Key(name)))], now);
+            foreach (var folder in folders) ids.Add(FolderNameRules.Key(folder.Name), folder.Id);
+            var snippets = _snippetRepository.InsertImportedMany(c, tx, [.. plan.Snippets.Select(snippet =>
             {
                 var stats = snippet.Stats ?? new ImportStats(now, now, null, 0);
-                snippets.Add(_snippetRepository.InsertImported(c, tx, snippet.Text, snippet.Label, snippet.IsLabelCustom,
+                return new ImportedSnippetRow(snippet.Text, snippet.Label, snippet.IsLabelCustom,
                     snippet.FolderKey is { } key ? ids[key] : null, snippet.Tags,
-                    stats.CreatedAt, stats.UpdatedAt, stats.LastUsedAt, stats.UsageCount));
-            }
+                    stats.CreatedAt, stats.UpdatedAt, stats.LastUsedAt, stats.UsageCount);
+            })]);
             return (folders, snippets);
         });
         Publish([.. _folders, .. newFolders], [.. _snippets, .. newSnippets]);
