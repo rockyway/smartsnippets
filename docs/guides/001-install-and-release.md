@@ -9,6 +9,17 @@
 
 The official app now uses `src/SmartSnippets.Uno` and takes over the legacy identity/profile. Ordinary launch normalizes a recognized existing `SmartSnippets.exe` startup command to its current path, retains the legacy same-directory `SmartSnippets.App.exe` migration, and removes the old `SmartSnippets.UnoCandidate019` Run value. Unknown/malformed registrations are not replaced; check Settings after moving the app. An absent official registration remains disabled. Data, settings and logs are in `%LOCALAPPDATA%\SmartSnippets`, outside the installation. Overwriting can leave files removed by a later release; after exiting, deleting `%LOCALAPPDATA%\Programs\SmartSnippets` before extraction gives a clean installation without deleting data. After display scale changes, the tray may be rescaled until Explorer restarts or the state changes.
 
+## Password snippets
+
+Tick **Password** in the snippet editor to store a snippet's content encrypted with your Windows account (DPAPI). Labels, folders and tags stay unencrypted, and a password snippet needs a label you type yourself.
+
+- Lists, hover and keyboard previews show a fixed mask. Search matches the label, folder and tags, not the password.
+- JSON export leaves password snippets out and says how many it skipped.
+- Pasting and the explicit **Copy** action still use the real text, so the target app and the clipboard briefly see it.
+- The encrypted content can only be read by the same Windows account. A database copied to another account or PC opens with an error, and passwords are lost if that account's keys are lost.
+- Encryption does not remove plaintext from earlier exports, backups (including the automatic pre-upgrade backup) or old disk data.
+- Multiline passwords can't be edited while masked: untick **Password**, edit, then tick it again before saving. Pasting into the password box replaces the whole password, and multiline paste is refused.
+
 ## Uninstall
 
 Turn off Start at login in Settings, Exit from the tray, and delete `%LOCALAPPDATA%\Programs\SmartSnippets`. Optionally delete `%LOCALAPPDATA%\SmartSnippets` to remove all data and logs.
