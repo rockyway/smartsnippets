@@ -4,7 +4,11 @@
 param(
     [string]$Executable = (Join-Path (Split-Path -Parent $PSScriptRoot) 'publish-measure-baseline/SmartSnippets.exe'),
     [Parameter(Mandatory)][switch]$ScreenGranted,
-    [string]$CsvPath
+    [string]$CsvPath,
+    [string]$Display = '\\.\DISPLAY29',
+    [int]$X = -1920, [int]$Y = 1506,
+    [ValidateRange(1, 16384)][int]$Width = 1920,
+    [ValidateRange(1, 16384)][int]$Height = 1080
 )
 $ErrorActionPreference = 'Stop'
 if (!$ScreenGranted -or !$IsWindows) { throw 'Windows screen grant required' }
@@ -22,10 +26,13 @@ $variant = if (Test-Path -LiteralPath $variantFile) { (Get-Content -LiteralPath 
 Add-Type -AssemblyName System.Windows.Forms
 function Assert-Monitor {
     $screen = @([Windows.Forms.Screen]::AllScreens | Where-Object {
-        $_.DeviceName -eq '\\.\DISPLAY29' -and $_.Bounds.X -eq -1920 -and $_.Bounds.Y -eq 1506 -and
-        $_.Bounds.Width -eq 1920 -and $_.Bounds.Height -eq 1080 -and !$_.Primary
+        $_.DeviceName -eq $Display -and $_.Bounds.X -eq $X -and $_.Bounds.Y -eq $Y -and
+        $_.Bounds.Width -eq $Width -and $_.Bounds.Height -eq $Height -and !$_.Primary
     })
-    if ($screen.Count -ne 1) { throw 'Required DISPLAY29 bottom-left monitor absent' }
+    if ($screen.Count -ne 1) {
+        $observed = ([Windows.Forms.Screen]::AllScreens | ForEach-Object { "$($_.DeviceName):$($_.Bounds.X),$($_.Bounds.Y),$($_.Bounds.Width),$($_.Bounds.Height),primary=$($_.Primary)" }) -join ';'
+        throw "Granted non-primary display absent or physical bounds changed; expected=$Display,$X,$Y,$Width,$Height observed=$observed"
+    }
 }
 Add-Type -TypeDefinition @'
 using System;
@@ -39,7 +46,7 @@ public static class MemoryWindows {
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
-    public static int Check(uint owner) {
+    public static int Check(uint owner, int x, int y, int width, int height) {
         int count = 0;
         bool invalid = false;
         EnumWindows((h,d) => {
@@ -47,7 +54,7 @@ public static class MemoryWindows {
             if (pid != owner || !IsWindowVisible(h)) return true;
             if (!GetWindowRect(h, out Rect r)) { invalid = true; return false; }
             if (r.R > r.L && r.B > r.T) {
-                if (r.L < -1920 || r.T < 1506 || r.R > 0 || r.B > 2586)
+                if (r.L < x || r.T < y || r.R > x + width || r.B > y + height)
                     { invalid = true; return false; }
                 count++;
             }
@@ -66,7 +73,7 @@ $rows = [Collections.Generic.List[object]]::new()
 function Assert-Owned {
     if ($owned.HasExited) { throw 'Owned measurement process exited early' }
     Assert-Monitor
-    [MemoryWindows]::Check([uint32]$owned.Id)
+    [MemoryWindows]::Check([uint32]$owned.Id, $X, $Y, $Width, $Height)
 }
 function Wait-Receipt([string]$Name, [string]$Expected, [int]$Seconds = 45) {
     $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
@@ -118,6 +125,8 @@ try {
     $start.UseShellExecute = $false
     $start.ArgumentList.Add('--background')
     $start.Environment['SMARTSNIPPETS_MEASURE_ROOT'] = $root
+    $start.Environment['SMARTSNIPPETS_MEASURE_DISPLAY'] = $Display
+    $start.Environment['SMARTSNIPPETS_MEASURE_BOUNDS'] = "$X,$Y,$Width,$Height"
     # NativeAOT GC environment overrides take precedence over compiled runtime knobs. Isolate child only.
     foreach ($key in @('DOTNET_gcServer','COMPlus_gcServer','DOTNET_gcConcurrent','COMPlus_gcConcurrent',
         'DOTNET_GCConserveMemory','COMPlus_GCConserveMemory')) { $null = $start.Environment.Remove($key) }

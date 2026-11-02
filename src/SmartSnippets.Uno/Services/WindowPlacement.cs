@@ -21,7 +21,7 @@ internal static unsafe partial class WindowPlacement
     }
     internal static bool PlaceManagement(AppWindow window, int logicalWidth, int logicalHeight, bool qa) =>
 #if SMARTSNIPPETS_MEASURE
-        ParkBottomLeft(window, logicalWidth, logicalHeight);
+        Measurement.MeasurementDisplay.Place(window, logicalWidth, logicalHeight);
 #else
         UiPolicy.PlaceManagement(qa,
             () => ParkBottomLeft(window, logicalWidth, logicalHeight),
@@ -47,9 +47,6 @@ internal static unsafe partial class WindowPlacement
             || info.rcMonitor.right <= info.rcMonitor.left || info.rcMonitor.bottom <= info.rcMonitor.top)
         { selected->Failed = 1; return 0; }
         var bounds = info.rcMonitor;
-#if SMARTSNIPPETS_MEASURE
-        if (bounds.left != -1920 || bounds.top != 1506 || bounds.right != 0 || bounds.bottom != 2586) return 1;
-#endif
         var previous = selected->Bounds;
         if (selected->Found == 0 || UiPolicy.IsBetterBottomLeft(
                 new(bounds.left, bounds.top, bounds.right, bounds.bottom),
