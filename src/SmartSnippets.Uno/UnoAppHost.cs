@@ -15,6 +15,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private readonly HashSet<Task> _operations = [];
     private CandidateProfile? _profile;
     private IDisposable? _message;
+    private ICandidateDesktopServices? _desktop;
     private ICandidateMainWindow? _main;
     private ICandidatePopupWindow? _popup;
     private ICandidateTray? _tray;
@@ -50,15 +51,21 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             new Migrator(factory).MigrateToLatest();
             var store = new SnippetStore(factory, TimeProvider.System);
             store.Load(); Store = store;
-            Gate.Compose(Store);
             SettingsStore = new SettingsRepository(factory);
             Settings = AppSettings.Load(SettingsStore);
             TextSize = new TextSizeService();
             TextSize.Apply(Settings.TextSizePreset, Settings.CustomTextSize);
             _theme = boundary.CreateTheme(Settings);
             _message = boundary.CreateMessageWindow();
+            _desktop = boundary.CreateDesktopServices(this, Settings, () =>
+            {
+                // WM_HOTKEY is on the UI thread. Capture now, never after posting show/focus.
+                if (CanPresentPopup) ShowCapturedPopup();
+            });
+            if (_desktop is not null) Gate.ComposeDesktop(_desktop.Operations);
+            Gate.Compose(Store);
             Dialogs = boundary.CreateDialogs(false, TextSize);
-            var elevation = new CandidateElevation();
+            var elevation = _desktop?.Elevation ?? new CandidateElevation();
             var sort = new SortPreference(SettingsStore, Settings.PopupSort);
             _popupHost = new DeferredPopupHost(new Popup.RecoverablePopupHost(EnsurePopup, () => _popup?.Hide()));
             Popup = new PopupViewModel(Store, SettingsStore, Settings, Gate, Gate, elevation, _popupHost,
@@ -69,7 +76,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
                 canInsertRow: () => !_exiting && Gate.CanInsert && Popup.CanInsertFromMain, sortPreference: sort);
             Folders = new FoldersPageViewModel(Store, Dialogs);
             SettingsPage = new SettingsViewModel(Settings, SettingsStore, _theme, TextSize,
-                new CandidateStartupRegistration(), new CandidateHotkeyManager(Settings.Hotkey), elevation,
+                _desktop?.Startup ?? new CandidateStartupRegistration(), _desktop?.Hotkeys ?? new CandidateHotkeyManager(Settings.Hotkey), elevation,
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()), () => ShowPreview());
             if (_nativeCapability is { } capability) capability.AuthorizationChanged += OnAuthorizationChanged;
             Gate.AvailabilityChanged += RefreshClipboardAvailability;
@@ -78,9 +85,11 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             _main = boundary.CreateMain(this);
             _main.HiddenByClose += OnHiddenByClose;
             _tray = boundary.CreateTray(() => PostNavigation(PageKind.Snippets),
-                () => boundary.Dispatcher.Post(ShowPopupFromNativeRequest), () => PostNavigation(PageKind.Settings),
+                () => boundary.Dispatcher.Post(() => { if (_desktop is null) ShowPopupFromNativeRequest(); else ShowPreview(); }), () => PostNavigation(PageKind.Settings),
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()));
             EnsurePopup();
+            if (_desktop is not null && !_desktop.Hotkeys.Status.IsRegistered)
+                _tray.Notify("Shortcut not registered", _desktop.Hotkeys.Status.Message);
             await ApplyLaunchOptionsAsync(options, !background);
             if (ExitSuperseded) return;
             AppLog.Info("candidate_started");
@@ -122,7 +131,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private void OnHiddenByClose(object? sender, EventArgs e)
     {
         if (_disposed || SettingsStore.Get(SettingsKeys.ShellCloseHintShown) == "1") return;
-        _tray?.Notify("Smart Snippets — Uno candidate", "Still running in the candidate tray. Clipboard, shortcuts and startup registration are unavailable.");
+        _tray?.Notify("Smart Snippets — Uno candidate", "Still running in the candidate tray. Use your global shortcut to insert snippets, or choose Exit to quit.");
         SettingsStore.Set(SettingsKeys.ShellCloseHintShown, "1");
     }
     internal async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain = true)
@@ -137,7 +146,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         if (!CanPresentPopup || Popup.IsInserting || (Popup.IsEditorOpen && !Popup.IsPreview)) return;
         _previewActive = true; _previewHidden = false; _pendingCaptured = false;
         Gate.ClearCapturedTarget();
-        // No HWND enumeration/capture/title inspection exists on the closed candidate route.
+        // QA/settings preview remains target-free, including with D80 desktop services.
         EnsurePopup().ShowPreview(query, sortMenu);
         RefreshClipboardAvailability();
     }
@@ -394,6 +403,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         ReleaseResource("popup_window", () => _popup?.Dispose()); _popup = null;
         ReleaseResource("snippets", () => Snippets?.Dispose()); ReleaseResource("folders", () => Folders?.Dispose());
         ReleaseResource("settings", () => SettingsPage?.Dispose()); ReleaseResource("main_window", () => _main?.Dispose());
+        ReleaseResource("desktop_services", () => _desktop?.Dispose());
         ReleaseResource("theme", () => (_theme as IDisposable)?.Dispose()); ReleaseResource("message_window", () => _message?.Dispose());
         if (_ownsLog) { AppLog.Info("candidate_shutdown_complete"); AppLog.Shutdown(); _ownsLog = false; }
         _profile?.Dispose();

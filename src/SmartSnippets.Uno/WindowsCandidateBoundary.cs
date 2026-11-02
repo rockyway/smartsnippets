@@ -27,6 +27,8 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         _theme!.ObserveSystemMessages(_message);
         return _message;
     }
+    internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) =>
+        Program.InitialOptions.HasRequest ? null : new WindowsDesktopServices(_message!, settings, () => _popup is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_popup), hotkey);
     internal override IDialogService CreateDialogs(bool popup, ITextSizeService textSize) => new DialogService(
         () => popup ? _popup?.ContentXamlRoot : _main?.ContentXamlRoot,
         () => { if (!popup) _main?.BringToFront(); }, textSize, _theme,

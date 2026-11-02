@@ -35,6 +35,7 @@ internal abstract class CandidateHostBoundary
     internal virtual Platforms.Windows.CandidateNativeCapability? NativeCapability => null;
     internal abstract IThemeService CreateTheme(AppSettings settings);
     internal abstract IDisposable CreateMessageWindow();
+    internal virtual Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => null;
     internal abstract IDialogService CreateDialogs(bool popup, ITextSizeService textSize);
     internal abstract ISnippetFileService CreateFiles();
     internal abstract ICandidateMainWindow CreateMain(UnoAppHost host);

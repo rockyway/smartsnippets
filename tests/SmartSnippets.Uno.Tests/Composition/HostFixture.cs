@@ -22,6 +22,8 @@ internal sealed class HostFixture : IDisposable
 }
 internal sealed class TestBoundary : CandidateHostBoundary
 {
+    internal Func<AppSettings, Action, Platforms.Windows.ICandidateDesktopServices>? DesktopFactory;
+    internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => DesktopFactory?.Invoke(settings, hotkey);
     internal Platforms.Windows.CandidateNativeCapability? Capability;
     internal override Platforms.Windows.CandidateNativeCapability? NativeCapability => Capability;
     internal TestDialogs Dialogs { get; } = new();

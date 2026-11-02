@@ -15,13 +15,10 @@ internal enum CandidateNativeOperation
 /// before inspection or mutation. Capture may inspect only that validated exact window.
 /// Recovery must retain independent owned backups until settled, including after authorization expires.
 /// </summary>
-internal interface ICandidateNativeOperations : ITargetProbe, IPasteDispatcher, IClipboardService
+internal interface ICandidateNativeOperations : ICandidateClipboardOperations
 {
     bool Validate(CandidateNativeOperation operation, Guid sessionId, nint window, uint processId);
     InsertionTarget? CaptureOwnedTarget(nint window, uint processId);
-    Task<bool> DrainOwnedRecoveryAsync();
-    Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => Task.FromResult(false);
-    bool TryFocusOwnedPopup() => false;
 }
 
 /// <summary>One revocable, operation-scoped, monotonic bounded lease for one harness-owned target.</summary>

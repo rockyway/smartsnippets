@@ -74,7 +74,7 @@ public sealed class CandidateWiringAuditTests
         var legacy = Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.App");
         var ports = PortedSources.Replace("\r", "").Split('\n');
         Assert.Equal(ports, Sources(Candidate).Intersect(Sources(legacy), StringComparer.Ordinal).Order(StringComparer.Ordinal));
-        Assert.Equal("f2f433bde7e9ac1d0ee4713b3c48abbb0c9f78e6b38323c70603bd6c66db132a",
+        Assert.Equal("16ead3614f62f558482820d05f5d7f2ada8b3df23f7026c1bad6e985f65884a5",
             SourceDigest(Candidate, ports.Append("UnoAppHost.cs")));
         Assert.Equal("236480e57647f200648b36bc9bb14b59ef46154ab03e9ea86b1b36aa306c7966",
             SourceDigest(legacy, ports.Append("AppHost.cs")));
@@ -127,11 +127,20 @@ public sealed class CandidateWiringAuditTests
         var source = string.Join(Environment.NewLine, Directory.GetFiles(Candidate, "*.cs", SearchOption.AllDirectories)
             .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) && !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
             .Select(File.ReadAllText));
+        // D80: ordinary Windows hotkey/capture/paste is now real. Keep all other unlocks absent.
         foreach (var forbidden in new[] { "StartupMigrationCoordinator", "Registry.CurrentUser", "new ClipboardService(",
-            "PInvoke.RegisterHotKey(", "PInvoke.OpenClipboard(", "PInvoke.SetClipboardData(", "PInvoke.SendInput(", "PInvoke.OpenProcess(",
-            "PInvoke.GetWindowText(", "TargetCapture.", "PreviousAppWindow(", "PInvoke.SetForegroundWindow(", "AttachThreadInput(", "GetEnvironmentVariable(", "--after-pid", "--profile" })
+            "PreviousAppWindow(", "GetEnvironmentVariable(", "--after-pid", "--profile" })
             Assert.DoesNotContain(forbidden, source);
         Assert.DoesNotContain("SmartSnippets.App", source);
+        var windows = File.ReadAllText(Path.Combine(Candidate, "WindowsCandidateBoundary.cs"));
+        Assert.Contains("Program.InitialOptions.HasRequest ? null : new WindowsDesktopServices", windows);
+        var desktop = File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/DailyNative/WindowsDesktopServices.cs"));
+        Assert.Contains("new HotkeyService(message)", desktop);
+        Assert.Contains("manager.Initialize(settings.Hotkey)", desktop);
+        Assert.Contains("TargetCapture.CaptureForeground()", desktop);
+        Assert.Contains("new CandidateStartupRegistration()", desktop);
+        Assert.Contains("new CandidateElevation()", desktop);
+        Assert.Contains("SourceReviewed = false", File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/AcceptanceNative/NativeAcceptanceFactory.cs")));
         var gatePath = Path.Combine(Candidate, "Platforms", "Windows", "CandidateNativeGate.cs");
         Assert.Contains("new InsertionService(store, this, this)", File.ReadAllText(gatePath));
         foreach (var path in Directory.GetFiles(Candidate, "*.cs", SearchOption.AllDirectories)

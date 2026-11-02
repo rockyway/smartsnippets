@@ -39,6 +39,7 @@ Pages/SettingsPage.xaml|17|Cleared|OnRecorderCleared
 Pages/SettingsPage.xaml|17|GestureCaptured|OnGestureCaptured
 Pages/SettingsPage.xaml|17|LostFocus|OnRecorderLostFocus
 Pages/SettingsPage.xaml|18|Click|OnChangeClick
+Pages/SettingsPage.xaml|19|Command|{x:Bind ViewModel.RestoreDefaultHotkeyCommand}
 Pages/SettingsPage.xaml|23|SelectionChanged|OnTextSizeSelectionChanged
 Pages/SettingsPage.xaml|28|ValueChanged|OnCustomSizeChanged
 Pages/SettingsPage.xaml|28|GotFocus|OnCustomSizeGotFocus

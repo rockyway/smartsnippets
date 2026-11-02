@@ -11,7 +11,7 @@
             HorizontalAlignment="Left"
             Spacing="12">
             <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Settings — Uno candidate" />
-            <TextBlock Text="Clipboard, global shortcuts, start at login and administrator restart are unavailable in this candidate." TextWrapping="Wrap" />
+            <TextBlock Text="The global shortcut opens the insertion popup. Copy, start at login and administrator restart remain unavailable." TextWrapping="Wrap" />
 
             <InfoBar
                 x:Name="StatusBar"
@@ -64,22 +64,22 @@
                     Visibility="Collapsed" />
                 <Button
                     automation:AutomationProperties.Name="Change shortcut"
-                    IsEnabled="False" Click="OnChangeClick"
+                    Click="OnChangeClick"
                     Content="Change" />
                 <Button
                     automation:AutomationProperties.Name="Restore default shortcut"
-                    IsEnabled="False"
+                    Command="{x:Bind ViewModel.RestoreDefaultHotkeyCommand}"
                     Content="Restore default" />
             </StackPanel>
             <TextBlock
                 Opacity="0.7"
-                Text="Shortcut registration is unavailable in this candidate."
+                Text="{x:Bind ViewModel.HotkeyFeedback, Mode=OneWay}"
                 TextWrapping="Wrap"
                 Visibility="{x:Bind IsNotError(ViewModel.HotkeyFeedbackSeverity), Mode=OneWay}"
                 automation:AutomationProperties.LiveSetting="Polite" />
             <TextBlock
                 Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                Text="Shortcut registration is unavailable in this candidate."
+                Text="{x:Bind ViewModel.HotkeyFeedback, Mode=OneWay}"
                 TextWrapping="Wrap"
                 Visibility="{x:Bind IsError(ViewModel.HotkeyFeedbackSeverity), Mode=OneWay}"
                 automation:AutomationProperties.LiveSetting="Assertive" />
