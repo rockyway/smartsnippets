@@ -345,10 +345,12 @@ nd-06 adds `class_token` and boolean `visible`, `toolwindow`, `noactivate`,
 `tooltip`, `dialog_32770`, `menu_32768`, `target018_class`, `other`; raw class
 names never leave the adapters. Message-only lookup is read-only and capped at
 256 children. The independent monitor retains these in required `windowFacts`
-plus `sampled` (false if unavailable/no foreground-failure sample). Facts are
-latched with the first foreground refusal, not reread at teardown; B's monitor
-relation is now `owned_b` (previously `owned_target_b`). These fields are diagnostic,
-not new authority, and multi-API reads are not atomic.
+plus `sampled` (true only when the complete sample was collected and both A and B
+handles were known; false means collection failed or either handle was unavailable,
+not that any boolean fact is negative). Facts are latched with the first foreground
+refusal, not reread at teardown. Relation labels use `owned_a`/`owned_b` consistently
+with NativeControlDiagnostics. These fields are diagnostic, not new authority, and
+multi-API reads are not atomic.
 
 The picker helper writes at most eight fixed `picker-invoke-<phase>-<open|commit>.json`
 records per four-phase run, with uint32 `before`/`after` epochs and boolean

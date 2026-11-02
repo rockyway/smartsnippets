@@ -24,8 +24,8 @@ internal static class NativeControlDiagnostics
     {
         if (foreground == 0) return "none";
         if (pid == 0) return "foreign";
-        if (foreground == windowA) return "owned_target_a";
-        if (foreground == windowB) return "owned_target_b";
+        if (foreground == windowA) return "owned_a";
+        if (foreground == windowB) return "owned_b";
         if (guardianPid != 0 && pid == guardianPid) return "guardian";
         if (candidatePid != 0 && pid == candidatePid) return "candidate";
         return ownedPid != 0 && pid == ownedPid ? "same_pid_other" : "foreign";

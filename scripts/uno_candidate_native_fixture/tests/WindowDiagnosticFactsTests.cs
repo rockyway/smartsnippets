@@ -29,6 +29,30 @@ public sealed class WindowDiagnosticFactsTests
     }
 
     [Theory]
+    [InlineData(0x80, true, false)]
+    [InlineData(0x08000000, false, true)]
+    public void ExtendedStyleFlagsAreIndependentBits(long style, bool toolwindow, bool noactivate)
+    {
+        var facts = WindowDiagnosticFacts.Capture(3, 1, 2, _ => "IME", _ => true,
+            _ => style, _ => 0, _ => false, _ => 0, _ => 0);
+        Assert.Equal(toolwindow, facts.Toolwindow);
+        Assert.Equal(noactivate, facts.Noactivate);
+    }
+
+    [Fact]
+    public void KnownZeroCloakIsDifferentFromUnavailableCloak()
+    {
+        var knownZero = WindowDiagnosticFacts.Capture(3, 1, 2, _ => "IME", _ => true,
+            _ => 0, _ => 0, _ => false, _ => 0, _ => 0);
+        var unavailable = WindowDiagnosticFacts.Capture(3, 1, 2, _ => "IME", _ => true,
+            _ => 0, _ => 0, _ => false, _ => 0, _ => null);
+        Assert.False(knownZero.Cloaked);
+        Assert.True(knownZero.CloakedKnown);
+        Assert.False(unavailable.Cloaked);
+        Assert.False(unavailable.CloakedKnown);
+    }
+
+    [Theory]
     [InlineData(0, 0, false, false)]
     [InlineData(1, 5, true, true)]
     [InlineData(2, 6, false, false)]

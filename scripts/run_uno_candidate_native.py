@@ -220,7 +220,7 @@ def verify_positive_boundary(private, scene, before_epoch, after_epoch):
 
 MONITOR_PREDICATES = {'foreground_foreign', 'foreground_unexpected_candidate', 'output_oversized',
                       'observation_exception', 'process_exit'}
-MONITOR_RELATIONS = {'none', 'owned_target_a', 'owned_b', 'guardian', 'candidate', 'same_pid_other', 'foreign'}
+MONITOR_RELATIONS = {'none', 'owned_a', 'owned_b', 'guardian', 'candidate', 'same_pid_other', 'foreign'}
 
 
 def validate_monitor_failure(private):
@@ -297,7 +297,7 @@ def window_facts(desktop, window, a=0, b=0):
                 if child == window:
                     message_only = True
                     break
-        result = dict(class_token=token, sampled=True, visible=bool(window and user.IsWindowVisible(window)),
+        result = dict(class_token=token, sampled=bool(a and b), visible=bool(window and user.IsWindowVisible(window)),
                       toolwindow=bool(style & 0x80), noactivate=bool(style & 0x08000000),
                       has_owner=bool(owner), owner_is_a=bool(a and owner == a), owner_is_b=bool(b and owner == b),
                       is_message_only=message_only,
@@ -349,7 +349,7 @@ class PostedForegroundMonitor:
         target, candidate, guardian = self.identities
         pid = foreground_pid(desktop, window)
         relation = ('none' if not window else 'foreign' if not pid else
-                    'owned_target_a' if window == a and pid == target else
+                    'owned_a' if window == a and pid == target else
                     'owned_b' if window == b and pid == target else
                     'candidate' if pid == candidate else 'guardian' if pid == guardian else
                     'same_pid_other' if pid == target else 'foreign')
@@ -369,7 +369,7 @@ class PostedForegroundMonitor:
         if self.closed and self.seen_a and window in (self.initial, 0) and window not in self.surfaces:
             self.ended = True
             return None, relation
-        if not self.ended and relation == 'owned_target_a':
+        if not self.ended and relation == 'owned_a':
             self.seen_a = True
             self.returned |= self.seen_popup
             return None, relation

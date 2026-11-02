@@ -92,8 +92,8 @@ class MonitorTests(unittest.TestCase):
                     ((20, True, False, 100), 'foreground_foreign', 'owned_b')]:
                 with self.subTest(scene=scene, last=last):
                     self.run_monitor(scene, [A, last], token, (2, relation, False))
-            self.run_monitor(scene, [A], 'output_oversized', (1, 'owned_target_a', False), oversized=True)
-            self.run_monitor(scene, [A], 'process_exit', (2, 'owned_target_a', False), exit_code=7)
+            self.run_monitor(scene, [A], 'output_oversized', (1, 'owned_a', False), oversized=True)
+            self.run_monitor(scene, [A], 'process_exit', (2, 'owned_a', False), exit_code=7)
             self.run_monitor(scene, [A], 'observation_exception', (1, 'none', False), observation_error=True)
 
     def test_closed_end_state_has_no_foreign_or_owned_surface_exception(self):
@@ -106,7 +106,7 @@ class MonitorTests(unittest.TestCase):
                                  token, (len(prefix) + 1, relation, True))
         # A is allowed to drain before end-state entry, but cannot re-enter afterwards.
         self.run_monitor('posted-row', [A, CLOSED_A, INITIAL, CLOSED_A],
-                         'foreground_foreign', (4, 'owned_target_a', True))
+                         'foreground_foreign', (4, 'owned_a', True))
         # Closed metadata alone never admits zero before observed A.
         self.run_monitor('posted-row', [ZERO_END], 'foreground_foreign', (1, 'none', True))
         # Preserve the first failure's phase, even if closure arrives later.

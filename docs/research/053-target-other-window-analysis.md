@@ -89,11 +89,12 @@ has its own `owned_b` trace relation. The existing coarse `kind` remains for
 continuity; it is not permission.
 
 The independent Python monitor uses the same fixed mapping/flags, in required
-`windowFacts` on its failure record. Its B relation is `owned_b` (formerly
-`owned_target_b`); all existing exact identity/order/popup-grant rules are unchanged.
-It captures facts at the first foreground refusal, not teardown. `sampled=false`
-means no foreground-failure sample or diagnostic collection unavailable; defaults
-are not negative runtime evidence. Validator rejects extra fields, arbitrary
+`windowFacts` on its failure record. Its `owned_a`/`owned_b` relation labels match
+NativeControlDiagnostics; all existing exact identity/order/popup-grant rules are
+unchanged. It captures facts at the first foreground refusal, not teardown.
+`sampled=true` means the complete fact sample was collected with both A and B handles
+known. `sampled=false` means collection was unavailable or either handle was unknown;
+any false fact defaults are not negative runtime evidence. Validator rejects extra fields, arbitrary
 tokens, duplicate JSON keys and non-boolean flags. Read failures do not erase the
 original monitor refusal or cause a retry.
 

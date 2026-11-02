@@ -442,13 +442,15 @@ public static class Owned019 {
             $pattern.Invoke() # Exactly one call; measurement grants no input exception.
             $completed = $true
         } finally {
-            $after = [Owned019]::Epoch()
-            $record = '{"before":' + [uint32]$before + ',"after":' + [uint32]$after + ',"completed":' + $(if ($completed) { 'true' } else { 'false' }) + '}'
-            $file = [IO.File]::Open((Join-Path $root ('picker-invoke-' + $script:pickerPhase + '-' + $action + '.json')), [IO.FileMode]::CreateNew)
             try {
-                $bytes = [Text.Encoding]::ASCII.GetBytes($record)
-                $file.Write($bytes, 0, $bytes.Length)
-            } finally { $file.Dispose() }
+                $after = [Owned019]::Epoch()
+                $record = '{"before":' + [uint32]$before + ',"after":' + [uint32]$after + ',"completed":' + $(if ($completed) { 'true' } else { 'false' }) + '}'
+                $file = [IO.File]::Open((Join-Path $root ('picker-invoke-' + $script:pickerPhase + '-' + $action + '.json')), [IO.FileMode]::CreateNew)
+                try {
+                    $bytes = [Text.Encoding]::ASCII.GetBytes($record)
+                    $file.Write($bytes, 0, $bytes.Length)
+                } finally { $file.Dispose() }
+            } catch { }
         }
     }
     function RunPicker([string]$phase, [bool]$cancel) {

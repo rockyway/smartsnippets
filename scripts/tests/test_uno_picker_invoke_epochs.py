@@ -43,6 +43,33 @@ if(-not $failed -or $script:calls -ne 2){throw 'token'}
             self.assertEqual({'before': 200, 'after': 300, 'completed': False},
                 json.loads((Path(directory) / 'picker-invoke-import-cancel-commit.json').read_text()))
 
+    def test_record_write_failure_never_replaces_invoke_outcome(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = r'''
+$ErrorActionPreference='Stop'
+Add-Type 'public static class Owned019 { public static uint Epoch(){return 100;} }'
+$t=$null; $e=$null
+$a=[Management.Automation.Language.Parser]::ParseFile('HELPER',[ref]$t,[ref]$e)
+if($e.Count){throw 'parse'}
+$f=$a.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Invoke-PickerMeasured'},$true)
+Invoke-Expression $f[0].Extent.Text
+$root='ROOT'; $script:pickerPhase='import-cancel'; $script:calls=0
+[IO.File]::WriteAllText((Join-Path $root 'picker-invoke-import-cancel-open.json'),'occupied')
+$pattern=New-Object PSObject
+$pattern | Add-Member ScriptMethod Invoke { $script:calls++ }
+try { Invoke-PickerMeasured $pattern 'open' } catch { throw 'record_failure_replaced_success' }
+if($script:calls -ne 1){throw 'invoke_not_completed'}
+[IO.File]::WriteAllText((Join-Path $root 'picker-invoke-import-cancel-commit.json'),'occupied')
+$pattern=New-Object PSObject
+$pattern | Add-Member ScriptMethod Invoke { $script:calls++; throw 'provider' }
+$caught=$null
+try { Invoke-PickerMeasured $pattern 'commit' } catch { $caught=$_.Exception.Message }
+if($script:calls -ne 2 -or $caught -notmatch 'provider'){throw 'original_invoke_masked'}
+'''.replace('HELPER', str(s.HELPER).replace("'", "''")).replace('ROOT', directory.replace("'", "''"))
+            result = subprocess.run([str(s.system_powershell()), '-NoProfile', '-NonInteractive', '-Command', script],
+                                    capture_output=True, timeout=25, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual((0, b'', b''), (result.returncode, result.stdout, result.stderr))
+
     def test_measurement_is_wired_to_open_and_commit_sites_source_supplement(self):
         helper = s.HELPER.read_text()
         self.assertIn("Invoke-PickerMeasured $invoke 'commit'", helper)
