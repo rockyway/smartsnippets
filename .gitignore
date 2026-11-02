@@ -7,6 +7,7 @@ obj/
 *.rsuser
 TestResults/
 publish/
+publish-measure/
 publish.log
 *.log
 .idea/

@@ -10,7 +10,7 @@ using SmartSnippets.Uno.Platforms.Windows;
 namespace SmartSnippets.Uno;
 
 /// <summary>Single UI-thread composition root, used unchanged by the native head and headless flow tests.</summary>
-internal sealed class UnoAppHost(HostBoundary boundary, Func<AppProfile> openProfile) : IDisposable
+internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile> openProfile) : IDisposable
 {
     private readonly HashSet<Task> _operations = [];
     private AppProfile? _profile;
@@ -65,6 +65,9 @@ internal sealed class UnoAppHost(HostBoundary boundary, Func<AppProfile> openPro
             store.Load(); Store = store;
             SettingsStore = new SettingsRepository(factory);
             Settings = AppSettings.Load(SettingsStore);
+#if SMARTSNIPPETS_MEASURE
+            SeedMeasurementProfile();
+#endif
             TextSize = new TextSizeService();
             TextSize.Apply(Settings.TextSizePreset, Settings.CustomTextSize);
             _theme = boundary.CreateTheme(Settings);

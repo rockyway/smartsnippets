@@ -1,7 +1,7 @@
 #Requires -Version 7.2
 # Build/inspect only: no app launch, UI, clipboard, input, registry or profile access.
 [CmdletBinding()]
-param([string]$Version, [Nullable[int]]$BuildNumber, [ValidateRange(1, 64)][int]$MaxCpuCount = 4)
+param([string]$Version, [Nullable[int]]$BuildNumber, [ValidateRange(1, 64)][int]$MaxCpuCount = 4, [switch]$Measure)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repository = Split-Path -Parent $PSScriptRoot
@@ -9,7 +9,7 @@ $app = Join-Path $repository 'src/SmartSnippets.Uno'
 $token = [Guid]::NewGuid().ToString('N')
 $private = Join-Path ([IO.Path]::GetTempPath()) "ss-uno019-build-$token"
 $output = Join-Path $app "bin/publish-native/$token"
-$destination = Join-Path $repository "publish"
+$destination = Join-Path $repository $(if ($Measure) { "publish-measure" } else { "publish" })
 $previous = Get-Location
 $stage = 'host'
 try {
@@ -37,6 +37,7 @@ try {
         '-p:PublishTrimmed=true', '-p:PublishSingleFile=false',
         '-p:SuppressTrimAnalysisWarnings=false', '-p:TrimmerSingleWarn=false',
         '-p:EnableTrimAnalyzer=true', '-p:EnableAotAnalyzer=true', '-p:TreatWarningsAsErrors=true')
+    if ($Measure) { $common += '-p:SmartSnippetsMeasure=true' }
     if ($Version) {
         if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$') { throw 'invalid_version' }
         if ($null -eq $BuildNumber -or $BuildNumber -lt 0 -or $BuildNumber -gt 65535) { throw 'invalid_build_number' }
@@ -50,6 +51,7 @@ try {
     $stage = 'effective_properties'
     # Inspect authored settings without global AOT/trim/NoWarn/RID overrides masking defects.
     $evaluation = @('-p:Configuration=Release', '-p:ContinuousIntegrationBuild=true', '-p:_IsPublishing=true')
+    if ($Measure) { $evaluation += '-p:SmartSnippetsMeasure=true' }
     & dotnet msbuild SmartSnippets.Uno.csproj @evaluation "-getProperty:$names" 2>&1 | Set-Content -LiteralPath $properties -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'effective_properties_failed' }
     $references = @{}
@@ -81,11 +83,15 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'artifact_gate_rejected' }
     $receipt | Set-Content -LiteralPath (Join-Path $output 'build-checks.json') -Encoding utf8
     if (!(Test-Path -LiteralPath (Join-Path $output "Assets/TitleIcon.png") -PathType Leaf)) { throw 'title_icon_missing' }
+    if ($Measure) {
+        (Get-FileHash -LiteralPath (Join-Path $output 'SmartSnippets.exe') -Algorithm SHA256).Hash |
+            Set-Content -LiteralPath (Join-Path $output 'measurement-build.txt')
+    }
     if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
     Copy-Item -LiteralPath $output -Destination $destination -Recurse
     Write-Output $receipt
     Write-Output "build_token=$token"
-    Write-Output "Published publish/SmartSnippets.exe"
+    Write-Output "Published $(Split-Path -Leaf $destination)/SmartSnippets.exe"
     # Log paths and compiler diagnostics can contain user roots; do not print/upload them.
 } catch {
     Write-Error "Official build rejected stage=$stage; private evidence token=$token. No native artifact launched." -ErrorAction Continue
