@@ -110,7 +110,7 @@ public sealed partial class MainWindow : Window
 
     internal void SetInteractionEnabled(bool enabled) => Navigation.IsEnabled = enabled;
     internal void SetHotkeyStatus(HotkeyStatus status) => NativeStatusText.Text = status.IsRegistered
-        ? status.Message + " Focus a target app, press the shortcut, then Enter to insert. Copy and start at login are available."
+        ? status.Message + " Focus a target app, press the shortcut, then Enter to insert."
         : status.Message;
 
     public bool IsHidden => !AppWindow.IsVisible;
