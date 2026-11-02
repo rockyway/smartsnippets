@@ -85,6 +85,45 @@ public sealed class PopupCacheStabilityTests(Xunit.Abstractions.ITestOutputHelpe
         Assert.Equal(before + 1, vm.CacheRebuildCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PasswordTransitionInvalidatesSynchronouslyAndReplacesEqualMaskRows(bool grouped)
+    {
+        var snippet = _store.SeedSnippet("••••••••", "Label", "Folder");
+        using var vm = Create();
+        if (grouped) vm.ToggleLayoutCommand.Execute(null);
+        vm.OpenPreview();
+        var before = vm.Items;
+        var invalidations = 0;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(PopupViewModel.IsCacheDirty)) return;
+            Assert.True(vm.IsCacheDirty);
+            Assert.Same(before, vm.Items); // Preview cancellation precedes projection replacement.
+            invalidations++;
+        };
+        _store.UpdateSnippet(snippet.Id, new(snippet.Text, snippet.Label, true, snippet.FolderId, "", IsPassword: true));
+        Assert.Equal(1, invalidations);
+        Assert.Same(before, vm.Items);
+        vm.EnsureCurrent();
+        Assert.False(vm.IsCacheDirty);
+        Assert.NotSame(before, vm.Items);
+        Assert.True(Assert.Single(vm.Items, i => i.Kind == PopupItemKind.Snippet).IsPassword);
+        Drain();
+        before = vm.Items;
+        _store.RecordUsage(snippet.Id);
+        vm.EnsureCurrent();
+        Assert.Same(before, vm.Items);
+        before = vm.Items;
+        _store.UpdateSnippet(snippet.Id, new("ordinaryAgain", snippet.Label, true, snippet.FolderId, ""));
+        vm.EnsureCurrent();
+        var row = Assert.Single(vm.Items, i => i.Kind == PopupItemKind.Snippet);
+        Assert.False(row.IsPassword);
+        Assert.Equal("ordinaryAgain", row.ContentText);
+        Drain();
+    }
+
     private static void AssertMatches(PopupViewModel vm, string query, params long[] expected)
     {
         vm.Query = query;

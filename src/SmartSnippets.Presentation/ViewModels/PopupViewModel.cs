@@ -23,6 +23,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private readonly ITextSizeService? _textSize;
     private readonly Action<Action> _schedule;
     private bool _cacheDirty;
+    public bool IsCacheDirty => _cacheDirty;
     private bool _rebuildQueued;
     public int CacheRebuildCount { get; private set; }
     public int CachedRowCount => _cache.Count;
@@ -186,7 +187,7 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
             v.Snippet.Id, v.Snippet.Label, string.Empty,
             IsFolderLayout ? string.Empty : v.FolderName ?? string.Empty,
             v.Snippet.Tags.ElementAtOrDefault(0) ?? string.Empty, v.Snippet.Tags.ElementAtOrDefault(1) ?? string.Empty, string.Empty)
-            { TextSize = _textSize, ContentText = v.Snippet.Text, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
+            { TextSize = _textSize, ContentText = SnippetDisplayPolicy.Content(v.Snippet), IsPassword = v.Snippet.IsPassword, TagsDisplay = string.Join(" ", v.Snippet.Tags.Select(tag => "#" + tag)) });
     }
     private void Refresh(long? keep)
     {
@@ -218,6 +219,8 @@ public sealed partial class PopupViewModel : ObservableObject, IDisposable
     private void OnStoreChanged(object? sender, StoreChangedEventArgs e)
     {
         _cacheDirty = true;
+        // Synchronous invalidation closes even pending previews before deferred rebuilding.
+        OnPropertyChanged(nameof(IsCacheDirty));
         if (_rebuildQueued) return;
         _rebuildQueued = true;
         _schedule(() =>

@@ -14,6 +14,7 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
     public ITextSizeService? TextSize { get; init; }
     public string FolderName { get; init; } = string.Empty;
     public string TagsDisplay { get; init; } = string.Empty;
+    public bool IsPassword { get; init; }
     public string ContentText { get; init; } = string.Empty;
     public bool HasFolder => FolderName.Length != 0;
     public string Details => string.Join(" ", new[] { FolderName, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
@@ -23,10 +24,10 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
     /// inserting without changing content does not rebuild the list.
     /// </summary>
     public bool Equals(SnippetRowViewModel? other) => other is not null
-        && Id == other.Id && Label == other.Label && FolderName == other.FolderName && TagsDisplay == other.TagsDisplay
+        && IsPassword == other.IsPassword && Id == other.Id && Label == other.Label && FolderName == other.FolderName && TagsDisplay == other.TagsDisplay
         && string.Equals(ContentText, other.ContentText, StringComparison.Ordinal);
 
-    public override int GetHashCode() => HashCode.Combine(Id, Label, FolderName, TagsDisplay, ContentText);
+    public override int GetHashCode() => HashCode.Combine(Id, Label, FolderName, TagsDisplay, ContentText, IsPassword);
 
     // Narrator gets the same label and metadata as the visible row, not snippet text.
     public override string ToString() => string.Join(", ", new[] { Label, FolderName, TagsDisplay }.Where(s => !string.IsNullOrEmpty(s)));
@@ -34,11 +35,12 @@ public sealed partial record SnippetRowViewModel(long Id, string Label, string P
     public static SnippetRowViewModel From(SnippetView view, ITextSizeService? textSize = null) => new(
         view.Snippet.Id,
         view.Snippet.Label,
-        PreviewOf(view.Snippet.Text),
+        PreviewOf(SnippetDisplayPolicy.Content(view.Snippet)),
         UiText.RowMeta(view.FolderName ?? UiText.Unfiled, view.Snippet.UsageCount))
         {
             TextSize = textSize,
-            ContentText = view.Snippet.Text,
+            ContentText = SnippetDisplayPolicy.Content(view.Snippet),
+            IsPassword = view.Snippet.IsPassword,
             FolderName = view.FolderName ?? string.Empty,
             TagsDisplay = string.Join(" ", view.Snippet.Tags.Select(tag => "#" + tag)),
         };
