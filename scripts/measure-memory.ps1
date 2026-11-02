@@ -2,7 +2,7 @@
 # Launch ONLY after the operator grants the bottom-left screen slot (mem-01 Phase B).
 [CmdletBinding()]
 param(
-    [string]$Executable = (Join-Path (Split-Path -Parent $PSScriptRoot) 'publish-measure/SmartSnippets.exe'),
+    [string]$Executable = (Join-Path (Split-Path -Parent $PSScriptRoot) 'publish-measure-baseline/SmartSnippets.exe'),
     [Parameter(Mandatory)][switch]$ScreenGranted,
     [string]$CsvPath
 )
@@ -17,6 +17,8 @@ if ($expectedHash -notmatch '^[0-9A-Fa-f]{64}$' -or
     (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash -ne $expectedHash) {
     throw 'Measurement executable receipt mismatch'
 }
+$variantFile = Join-Path (Split-Path $Executable) 'measurement-variant.json'
+$variant = if (Test-Path -LiteralPath $variantFile) { (Get-Content -LiteralPath $variantFile -Raw | ConvertFrom-Json).Variant } else { 'baseline' }
 Add-Type -AssemblyName System.Windows.Forms
 function Assert-Monitor {
     $screen = @([Windows.Forms.Screen]::AllScreens | Where-Object {
@@ -98,7 +100,11 @@ function Sample([string]$State, [bool]$Visible) {
     $dedicated = ($gpu | Where-Object Path -like '*\dedicated usage' | Measure-Object CookedValue -Sum).Sum
     $shared = ($gpu | Where-Object Path -like '*\shared usage' | Measure-Object CookedValue -Sum).Sum
     $owned.Refresh()
-    $rows.Add([pscustomobject]@{ State=$State; WorkingSetMiB=[math]::Round($owned.WorkingSet64/1MB,2)
+    if (!$Visible -and $variant -in @('trim','gc-trim','trim-release','combined')) {
+        if (!(Test-Path -LiteralPath (Join-Path $root 'trim-result')) -or
+            (Get-Content -LiteralPath (Join-Path $root 'trim-result') -Raw).Trim() -ne 'ok') { throw 'Idle working-set trim did not succeed' }
+    }
+    $rows.Add([pscustomobject]@{ Variant=$variant; State=$State; WorkingSetMiB=[math]::Round($owned.WorkingSet64/1MB,2)
         PrivateMiB=[math]::Round($owned.PrivateMemorySize64/1MB,2)
         DedicatedGpuMiB=[math]::Round($dedicated/1MB,2); SharedGpuMiB=[math]::Round($shared/1MB,2) })
 }
@@ -112,6 +118,9 @@ try {
     $start.UseShellExecute = $false
     $start.ArgumentList.Add('--background')
     $start.Environment['SMARTSNIPPETS_MEASURE_ROOT'] = $root
+    # NativeAOT GC environment overrides take precedence over compiled runtime knobs. Isolate child only.
+    foreach ($key in @('DOTNET_gcServer','COMPlus_gcServer','DOTNET_gcConcurrent','COMPlus_gcConcurrent',
+        'DOTNET_GCConserveMemory','COMPlus_GCConserveMemory')) { $null = $start.Environment.Remove($key) }
     $owned = [Diagnostics.Process]::Start($start)
     Wait-Receipt 'ready' ([string]$owned.Id)
     # The measurement-only UI-thread startup seeds exactly 200 synthetic snippets before readiness.
@@ -122,6 +131,10 @@ try {
     Command 'hide-popup'; Idle 20; Sample 'S5 tray 20s' $false
     # Same hidden main/popup state as S3; 60 additional idle seconds after S5.
     Idle 60; Sample 'S6 tray +60s' $false
+    # Exercise page reconstruction after the final sample, without contaminating S1-S6.
+    Command 'main'; Idle 1
+    if ((Assert-Owned) -eq 0) { throw 'Main reconstruction failed' }
+    Command 'hide-main'
     Command 'exit'
     if (!$owned.WaitForExit(15000)) { throw 'Measurement shutdown timed out' }
     if ($CsvPath) { $rows | Export-Csv -LiteralPath $CsvPath -NoTypeInformation }

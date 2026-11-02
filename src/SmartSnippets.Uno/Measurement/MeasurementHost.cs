@@ -29,6 +29,7 @@ internal sealed partial class UnoAppHost
         _measurementTimer.Interval = TimeSpan.FromMilliseconds(100);
         _measurementTimer.Tick += async (_, _) =>
         {
+            ObserveMeasurementIdle();
             var request = Path.Combine(root, "command");
             if (_measurementBusy || !File.Exists(request)) return;
             _measurementBusy = true;
@@ -39,7 +40,10 @@ internal sealed partial class UnoAppHost
                 switch (command)
                 {
                     case "main": await _main!.NavigateAsync(PageKind.Snippets, true); break;
-                    case "hide-main": PInvoke.ShowWindow(new HWND(_main!.NativeHandle), SHOW_WINDOW_CMD.SW_HIDE); break;
+                    case "hide-main":
+                        PInvoke.ShowWindow(new HWND(_main!.NativeHandle), SHOW_WINDOW_CMD.SW_HIDE);
+                        ObserveMeasurementIdle();
+                        break;
                     case "popup": ShowPreview(); break; // Existing readiness-gated, target-free, nonactivating preview.
                     case "hide-popup": _popup?.Hide(); break;
                     case "exit": _measurementTimer.Stop(); await ExitAsync(); break;

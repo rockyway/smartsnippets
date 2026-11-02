@@ -8,6 +8,7 @@ obj/
 TestResults/
 publish/
 publish-measure/
+publish-measure-*/
 publish.log
 *.log
 .idea/

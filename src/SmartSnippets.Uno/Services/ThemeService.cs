@@ -114,6 +114,9 @@ internal sealed class ThemeService : IThemeService, IDisposable
 
     public void Register(Window window)
     {
+#if SMARTSNIPPETS_MEASURE
+        if (Measurement.MeasurementOptions.BackdropOff) window.SystemBackdrop = null;
+#endif
         if (_windows.Contains(window))
         {
             return;

@@ -15,7 +15,8 @@ public sealed class MeasurementIsolationTests
         var exclude = project.Descendants("Compile").Single(e => (string?)e.Attribute("Remove") == "Measurement/**/*.cs");
         Assert.Equal("'$(SmartSnippetsMeasure)' != 'true'", (string?)exclude.Parent!.Attribute("Condition"));
         foreach (var path in new[] { "AppProfile.cs", "Program.cs", "App.xaml.cs", "UnoAppHost.cs",
-            "Services/WindowPlacement.cs", "Services/MessageWindowLifetime.cs", "Platforms/Windows/DailyNative/WindowsDesktopServices.cs" })
+            "Services/WindowPlacement.cs", "Services/MessageWindowLifetime.cs", "Platforms/Windows/DailyNative/WindowsDesktopServices.cs",
+            "MainWindow.xaml.cs", "Services/ThemeService.cs", "Services/PaletteResources.cs" })
         {
             var normal = WithoutMeasurement(Read("src/SmartSnippets.Uno/" + path));
             Assert.DoesNotContain("Measurement", normal);
@@ -52,6 +53,28 @@ public sealed class MeasurementIsolationTests
         Assert.DoesNotContain("Get-Clipboard", script);
         Assert.DoesNotContain("Set-Clipboard", script);
         Assert.Contains("$owned.Kill()", script);
+    }
+
+    [Fact]
+    public void CandidatePropertiesAreStrictlyMeasurementOnly()
+    {
+        var project = XDocument.Parse(Read("src/SmartSnippets.Uno/SmartSnippets.Uno.csproj"));
+        foreach (var name in new[] { "ServerGarbageCollection", "ConcurrentGarbageCollection" })
+        {
+            var element = project.Descendants(name).Single();
+            Assert.Equal("false", element.Value);
+            Assert.Contains("'$(SmartSnippetsMeasure)' == 'true'", (string?)element.Parent!.Attribute("Condition"));
+            Assert.Contains("'$(SmartSnippetsMeasureGc)' == 'true'", (string?)element.Parent!.Attribute("Condition"));
+        }
+        var conserve = project.Descendants("RuntimeHostConfigurationOption").Single();
+        Assert.Equal("System.GC.ConserveMemory", (string?)conserve.Attribute("Include"));
+        Assert.Equal("9", (string?)conserve.Attribute("Value"));
+        Assert.Contains("'$(SmartSnippetsMeasure)' == 'true'", (string?)conserve.Parent!.Attribute("Condition"));
+        foreach (var constant in new[] { "MEASURE_TRIM", "MEASURE_RELEASE", "MEASURE_BACKDROP_OFF" })
+        {
+            var element = project.Descendants("DefineConstants").Single(e => e.Value.Contains(constant));
+            Assert.Contains("'$(SmartSnippetsMeasure)' == 'true'", (string?)element.Parent!.Attribute("Condition"));
+        }
     }
 
     private static string WithoutMeasurement(string source) => SelectMeasurement(source, false);

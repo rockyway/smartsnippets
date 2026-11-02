@@ -39,6 +39,22 @@
   <PropertyGroup Condition="'$(SmartSnippetsMeasure)' == 'true'">
     <DefineConstants>$(DefineConstants);SMARTSNIPPETS_MEASURE</DefineConstants>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(SmartSnippetsMeasure)' == 'true' And '$(SmartSnippetsMeasureGc)' == 'true'">
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(SmartSnippetsMeasure)' == 'true' And '$(SmartSnippetsMeasureGc)' == 'true'">
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="9" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(SmartSnippetsMeasure)' == 'true' And '$(SmartSnippetsMeasureTrim)' == 'true'">
+    <DefineConstants>$(DefineConstants);MEASURE_TRIM</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(SmartSnippetsMeasure)' == 'true' And '$(SmartSnippetsMeasureRelease)' == 'true'">
+    <DefineConstants>$(DefineConstants);MEASURE_RELEASE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(SmartSnippetsMeasure)' == 'true' And '$(SmartSnippetsMeasureBackdropOff)' == 'true'">
+    <DefineConstants>$(DefineConstants);MEASURE_BACKDROP_OFF</DefineConstants>
+  </PropertyGroup>
   <ItemGroup Condition="'$(SmartSnippetsMeasure)' != 'true'">
     <Compile Remove="Measurement/**/*.cs" />
   </ItemGroup>
