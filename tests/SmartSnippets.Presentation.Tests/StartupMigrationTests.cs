@@ -14,9 +14,9 @@ public class StartupMigrationTests
         public RegistryValueKind? Kind;
         public bool FailRead;
         public bool FailWrite;
-        public int Writes, CandidateRemovals;
+        public int Writes, ObsoleteRemovals;
         public bool FailCleanup;
-        public void RemoveCandidate() { if (FailCleanup) throw new IOException("private token"); CandidateRemovals++; }
+        public void RemoveObsoleteRegistration() { if (FailCleanup) throw new IOException("private token"); ObsoleteRemovals++; }
         public (object? Value, RegistryValueKind? Kind) Read() => FailRead ? throw new IOException("private token") : (Value, Kind);
         public void Write(string command)
         {
@@ -79,23 +79,23 @@ public class StartupMigrationTests
     }
 
     [Fact]
-    public void NormalizesOfficialPathAndRemovesCandidateWithoutEnablingAbsentOfficialStartup()
+    public void NormalizesOfficialPathAndRemovesObsoleteRegistrationWithoutEnablingAbsentOfficialStartup()
     {
         var exe = Path.Combine(Path.GetTempPath(), "new folder", "SmartSnippets.exe");
         var registry = new FakeRegistry { Value = $"\"{Path.Combine(Path.GetTempPath(), "old folder", "SmartSnippets.exe")}\" --background", Kind = RegistryValueKind.String };
         Assert.Equal(StartupMigrationResult.Migrated, StartupMigration.Run(registry, exe));
         Assert.Equal($"\"{exe}\" --background", registry.Value);
-        Assert.Equal(1, registry.CandidateRemovals);
+        Assert.Equal(1, registry.ObsoleteRemovals);
         Assert.Equal(StartupMigrationResult.Unchanged, StartupMigration.Run(registry, exe));
         Assert.Equal(1, registry.Writes);
         var absent = new FakeRegistry();
         Assert.Equal(StartupMigrationResult.Unchanged, StartupMigration.Run(absent, exe));
-        Assert.Equal(1, absent.CandidateRemovals);
+        Assert.Equal(1, absent.ObsoleteRemovals);
         Assert.Equal(0, absent.Writes);
     }
 
     [Fact]
-    public void CandidateRemovalFailureIsNonfatalAndLeavesOfficialValueUntouched()
+    public void ObsoleteRegistrationRemovalFailureIsNonfatalAndLeavesOfficialValueUntouched()
     {
         var registry = new FakeRegistry { FailCleanup = true, Value = "sentinel", Kind = RegistryValueKind.String };
         Assert.Equal(StartupMigrationResult.Failed, StartupMigration.Run(registry, "SmartSnippets.exe"));

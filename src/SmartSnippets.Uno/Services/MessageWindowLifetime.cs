@@ -1,6 +1,6 @@
 namespace SmartSnippets.Uno.Services;
 
-internal interface ICandidateMessageWindowNative
+internal interface IMessageWindowNative
 {
     bool RegisterClass();
     nint CreateWindow();
@@ -9,21 +9,21 @@ internal interface ICandidateMessageWindowNative
 }
 
 /// <summary>Owns exactly one registration. Never adopts a pre-existing native class.</summary>
-internal sealed class CandidateMessageWindowLifetime : IDisposable
+internal sealed class MessageWindowLifetime : IDisposable
 {
     internal const string ClassName = "SmartSnippets.MessageWindow";
-    private readonly ICandidateMessageWindowNative _native;
+    private readonly IMessageWindowNative _native;
     private bool _registered;
     internal nint Handle { get; private set; }
-    internal CandidateMessageWindowLifetime(ICandidateMessageWindowNative native)
+    internal MessageWindowLifetime(IMessageWindowNative native)
     {
         _native = native;
-        if (!native.RegisterClass()) throw new InvalidOperationException("Candidate message class registration failed.");
+        if (!native.RegisterClass()) throw new InvalidOperationException("App message class registration failed.");
         _registered = true;
         try
         {
             Handle = native.CreateWindow();
-            if (Handle == 0) throw new InvalidOperationException("Candidate message window creation failed.");
+            if (Handle == 0) throw new InvalidOperationException("App message window creation failed.");
         }
         catch { Dispose(); throw; }
     }
@@ -37,6 +37,6 @@ internal sealed class CandidateMessageWindowLifetime : IDisposable
         catch { failed = true; }
         try { if (registered && !_native.UnregisterClass()) failed = true; }
         catch { failed = true; }
-        if (failed) throw new InvalidOperationException("Candidate message cleanup failed; native cleanup is not verified.");
+        if (failed) throw new InvalidOperationException("App message cleanup failed; native cleanup is not verified.");
     }
 }

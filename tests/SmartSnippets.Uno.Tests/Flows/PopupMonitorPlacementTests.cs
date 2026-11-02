@@ -61,7 +61,7 @@ public sealed class PopupMonitorPlacementTests
     [Fact]
     public void CapturedAndReshowUseSameCursorPlacement()
     {
-        string Read(string head, string file) => File.ReadAllText(Path.Combine(CandidateBuildGraphTests.RepoRoot, "src", head, file)).Replace("\r\n", "\n");
+        string Read(string head, string file) => File.ReadAllText(Path.Combine(BuildGraphTests.RepoRoot, "src", head, file)).Replace("\r\n", "\n");
         var placement = Read("SmartSnippets.Uno", "Services/WindowPlacement.cs");
         Assert.Contains("PInvoke.GetCursorPos(&cursor)", placement);
         Assert.Contains("PInvoke.MonitorFromPoint(cursor, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST)", placement);

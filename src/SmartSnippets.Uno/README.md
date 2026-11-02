@@ -1,6 +1,6 @@
 # Official Smart Snippets Windows head
 
-This is the official Windows application, not a separately identified candidate. Uno SDK 6.7.30 selects native WinAppSDK rendering; implicit Uno packages are disabled. The local `global.json` pins .NET SDK 10.0.403. No Skia, managed-runtime fallback, macOS or mobile release is included.
+This is the Smart Snippets Windows application. Uno SDK 6.7.30 selects native WinAppSDK rendering; implicit Uno packages are disabled. The local `global.json` pins .NET SDK 10.0.403. No Skia, managed-runtime fallback, macOS or mobile release is included.
 
 ## Identity and data
 
@@ -8,7 +8,7 @@ This is the official Windows application, not a separately identified candidate.
 |---|---|
 | Executable/assembly | `SmartSnippets.exe` / `SmartSnippets` |
 | Application ID/title | `SmartSnippets` / `Smart Snippets` |
-| Win32 manifest identity | `SmartSnippets.App.app` (legacy value) |
+| Win32 manifest identity | `SmartSnippets.App.app` (compatibility identity) |
 | AppLifecycle instance key | `SmartSnippets.Main` |
 | Profile | `%LOCALAPPDATA%\SmartSnippets` |
 | Database | `smartsnippets.db`, existing schema v2 |
@@ -16,9 +16,9 @@ This is the official Windows application, not a separately identified candidate.
 | Tray identity | message HWND + icon ID `1` |
 | HKCU Run value | `SmartSnippets`, quoted current executable + ` --background` |
 
-The default profile is opened only after the process claims the legacy single-instance key. There is no candidate-owner lease, production-overlap refusal or profile override option. Core handles existing migrations/backup unchanged. Tests inject throwaway roots; they never open the default profile.
+The default profile is opened only after the process claims the single-instance key. There is no profile override option. Core handles existing migrations/backup unchanged. Tests inject throwaway roots; they never open the default profile.
 
-Ordinary startup normalizes an existing canonical official startup command (including a moved `SmartSnippets.exe`) or the legacy same-directory `SmartSnippets.App.exe` command. Unknown/malformed/non-string entries are left alone. The old candidate Run value is removed idempotently. Failures are nonfatal and get a tray notification with an information-dialog fallback.
+Ordinary startup normalizes an existing recognized startup command (including a moved `SmartSnippets.exe` or a same-directory `SmartSnippets.App.exe`). Unknown/malformed/non-string entries are left alone. Obsolete Run registration is removed idempotently. Failures are nonfatal and get a tray notification with an information-dialog fallback.
 
 ## Lifecycle and safety
 
@@ -47,6 +47,6 @@ For headless tests, run from **this directory**:
 dotnet test ../../tests/SmartSnippets.Uno.Tests -c Release -p:ContinuousIntegrationBuild=true
 ```
 
-Run Core/Presentation tests sequentially from root; see the [root README](../../README.md). The headless suite links real handlers/composition with substituted rendering and OS boundaries. It is not a live UAC/clipboard/hotkey validation. Current cutover verification intentionally does not launch the app; first-run real-data checks belong to the user.
+Run Core/Presentation tests sequentially from root; see the [root README](../../README.md). The headless suite links real handlers/composition with substituted rendering and OS boundaries. It is not a live UAC/clipboard/hotkey validation. Use a disposable profile for desktop QA, never the user's real data.
 
-Legacy sources, prototypes and native-acceptance harness were removed. Tag `legacy-winui-final` (`793c90b`) preserves them. Historical plans/research are retained without retroactive acceptance claims; oldest-Windows runtime and macOS/mobile support are not established by this cutover.
+**History:** Previous sources are preserved at tag `legacy-winui-final`; see [progress 008](../../docs/progress/008-uno-official-cutover.md).

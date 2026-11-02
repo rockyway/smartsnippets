@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace SmartSnippets.Uno.Tests.Composition;
 
 /// <summary>Preserves the real store's UI-thread ownership across suspended native-boundary calls.</summary>
-internal sealed class CandidateHostThread(BlockingCollection<(SendOrPostCallback Callback, object? State)> queue) : SynchronizationContext
+internal sealed class HostThread(BlockingCollection<(SendOrPostCallback Callback, object? State)> queue) : SynchronizationContext
 {
     public override void Post(SendOrPostCallback callback, object? state) => queue.Add((callback, state));
     internal static async Task RunAsync(Func<Task> action)
@@ -14,7 +14,7 @@ internal sealed class CandidateHostThread(BlockingCollection<(SendOrPostCallback
             try
             {
                 using var work = new BlockingCollection<(SendOrPostCallback, object?)>();
-                SetSynchronizationContext(new CandidateHostThread(work));
+                SetSynchronizationContext(new HostThread(work));
                 var task = action();
                 _ = task.ContinueWith(_ => work.CompleteAdding(), TaskScheduler.Default);
                 foreach (var (callback, state) in work.GetConsumingEnumerable()) callback(state);

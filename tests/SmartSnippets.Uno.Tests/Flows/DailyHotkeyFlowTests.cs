@@ -10,7 +10,7 @@ using Windows.System;
 namespace SmartSnippets.Uno.Tests.Flows
 {
     // D80 supersedes ordinary-path default denial. OS boundaries alone are substituted.
-    [Collection("Candidate XAML actions")]
+    [Collection("App XAML actions")]
     public sealed class DailyHotkeyFlowTests
     {
         [Fact]
@@ -32,11 +32,11 @@ namespace SmartSnippets.Uno.Tests.Flows
         }
 
         [Fact]
-        public Task SavedHotkeyCallback_CapturesBeforeShow_RealEnterHandlerPastesAndRestoresOnce() => CandidateHostThread.RunAsync(async () =>
+        public Task SavedHotkeyCallback_CapturesBeforeShow_RealEnterHandlerPastesAndRestoresOnce() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture();
             var saved = new HotkeyGesture(HotkeyGesture.ModControl | HotkeyGesture.ModAlt, 0x78);
-            using (var profile = CandidateProfile.OpenOwnedRoot(f.Root))
+            using (var profile = AppProfile.OpenOwnedRoot(f.Root))
             {
                 var factory = new SqliteConnectionFactory(profile.Paths.DatabasePath);
                 new Migrator(factory).MigrateToLatest();
@@ -80,7 +80,7 @@ namespace SmartSnippets.Uno.Tests.Flows
         [InlineData(TargetCheck.Ok, true, DispatchState.Uncertain, 1, 1)]
         [InlineData(TargetCheck.Ok, true, DispatchState.NotDispatched, 1, 1)]
         public Task RefusedOrUncertainInsert_RestoresWhenSwapped_AndNeverCreditsUsage(
-            TargetCheck check, bool foreground, DispatchState dispatch, int sends, int restores) => CandidateHostThread.RunAsync(async () =>
+            TargetCheck check, bool foreground, DispatchState dispatch, int sends, int restores) => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture(); Desktop? desktop = null;
             f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
@@ -94,7 +94,7 @@ namespace SmartSnippets.Uno.Tests.Flows
         });
 
         [Fact]
-        public Task PreviewAndShutdown_DoNotAdmitHotkeyInsertion() => CandidateHostThread.RunAsync(async () =>
+        public Task PreviewAndShutdown_DoNotAdmitHotkeyInsertion() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture(); Desktop? desktop = null;
             f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
@@ -107,14 +107,14 @@ namespace SmartSnippets.Uno.Tests.Flows
         });
 
         [Fact]
-        public Task HotkeyUi_UsesRegisteredGestureAndTracksPopupAndSettingsChanges() => CandidateHostThread.RunAsync(async () =>
+        public Task HotkeyUi_UsesRegisteredGestureAndTracksPopupAndSettingsChanges() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture(); Desktop? desktop = null;
             f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
             await f.Start();
             Assert.True(f.Boundary.Main.HotkeyStatus!.IsRegistered);
             Assert.Equal(TrayState.Ready, f.Boundary.TrayState);
-            var views = new WindowsCandidateBoundary(); views.CreateTheme(f.Host.Settings);
+            var views = new WindowsHostBoundary(); views.CreateTheme(f.Host.Settings);
             using var main = views.CreateMain(f.Host);
             Assert.Equal("Smart Snippets", views.MainWindow!.Title);
             main.SetHotkeyStatus(desktop!.Hotkeys.Status);
@@ -130,7 +130,7 @@ namespace SmartSnippets.Uno.Tests.Flows
         });
 
         [Fact]
-        public Task DailyCopy_AllVmConsumersNeverPasteOrCredit_AndPreviewDenies() => CandidateHostThread.RunAsync(async () =>
+        public Task DailyCopy_AllVmConsumersNeverPasteOrCredit_AndPreviewDenies() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture(); Desktop? desktop = null;
             f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
@@ -162,7 +162,7 @@ namespace SmartSnippets.Uno.Tests.Flows
         });
 
         [Fact]
-        public Task Tray_CapturesSuppliedWindowBeforeShow_WithoutRecapturingForeground() => CandidateHostThread.RunAsync(async () =>
+        public Task Tray_CapturesSuppliedWindowBeforeShow_WithoutRecapturingForeground() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture(); Desktop? desktop = null;
             f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
@@ -183,11 +183,11 @@ namespace SmartSnippets.Uno.Tests.Flows
         });
 
         [Fact]
-        public Task DailyStartup_SettingsReflectsRegistryAndToggleChangesOnlyCandidateValue() => CandidateHostThread.RunAsync(async () =>
+        public Task DailyStartup_SettingsReflectsRegistryAndToggleChangesOnlyAppValue() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture();
             var values = new Dictionary<string, object?> { ["UnrelatedApp"] = "sentinel" };
-            var startup = new Services.StartupRegistration(() => @"C:\synthetic\candidate.exe",
+            var startup = new Services.StartupRegistration(() => @"C:\synthetic\app.exe",
                 name => values.GetValueOrDefault(name), (name, command) => values[name] = command,
                 name => values.Remove(name));
             Assert.True(startup.Enable().Success);
@@ -202,7 +202,7 @@ namespace SmartSnippets.Uno.Tests.Flows
         });
 
         [Fact]
-        public Task CopyFailure_CanRetryWithoutPasteUsageOrStuckAdmission() => CandidateHostThread.RunAsync(async () =>
+        public Task CopyFailure_CanRetryWithoutPasteUsageOrStuckAdmission() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture(); Desktop? desktop = null;
             f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
@@ -222,7 +222,7 @@ namespace SmartSnippets.Uno.Tests.Flows
             Assert.Equal(1, desktop.Native.Copies);
         });
 
-        private sealed class Registration : ICandidateHotkeyRegistration
+        private sealed class Registration : IHotkeyRegistration
         {
             internal bool Conflict;
             internal List<(int Id, uint Modifiers, uint Key)> Calls = [];
@@ -237,7 +237,7 @@ namespace SmartSnippets.Uno.Tests.Flows
             public void Unregister(int id) { Released.Add(id); Active.Remove(id); }
             public void UnregisterAll() => Active.Clear();
         }
-        private sealed class Desktop : ICandidateDesktopServices
+        private sealed class Desktop : IDesktopServices
         {
             internal readonly Registration Registration = new();
             internal readonly Native Native = new();
@@ -249,13 +249,13 @@ namespace SmartSnippets.Uno.Tests.Flows
                 var manager = new HotkeyManager(Registration); manager.Initialize(settings.Hotkey); Hotkeys = manager;
             }
             internal void Press() => _pressed();
-            public ICandidateDailyOperations Operations => Native;
+            public IDailyOperations Operations => Native;
             public IHotkeyManager Hotkeys { get; }
-            public IStartupRegistration Startup { get; init; } = new CandidateStartupRegistration();
-            public IElevation Elevation { get; } = new CandidateElevation();
+            public IStartupRegistration Startup { get; init; } = new UnavailableStartupRegistration();
+            public IElevation Elevation { get; } = new UnavailableElevation();
             public void Dispose() { Disposed = true; Registration.UnregisterAll(); }
         }
-        private sealed class Native : ICandidateDailyOperations
+        private sealed class Native : IDailyOperations
         {
             internal InsertionTarget Target = new(123, 456, 789, "synthetic");
             internal List<string> Trace = [];

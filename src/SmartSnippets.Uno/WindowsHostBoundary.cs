@@ -11,7 +11,7 @@ using Windows.Win32.Foundation;
 
 namespace SmartSnippets.Uno;
 
-internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
+internal sealed class WindowsHostBoundary : HostBoundary
 {
     private MainWindow? _main;
     private PopupWindow? _popup;
@@ -30,7 +30,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         _theme!.ObserveSystemMessages(_message);
         return _message;
     }
-    internal override Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey)
+    internal override Platforms.Windows.IDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey)
     {
         _host = host;
         if (Program.InitialOptions.HasRequest) return null;
@@ -44,7 +44,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         () => { if (!popup) _main?.BringToFront(); }, textSize, _theme,
         () => popup ? _popup?.ContentXamlRoot?.IsHostVisible == true : _main is { IsHidden: false });
     internal override ISnippetFileService CreateFiles() => new SnippetFileService(() => _main?.AppWindow.Id);
-    internal override ICandidateMainWindow CreateMain(UnoAppHost host)
+    internal override IMainWindow CreateMain(UnoAppHost host)
     {
         UIElement CreatePage(PageKind page) => page switch
         {
@@ -56,7 +56,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         _theme!.Register(_main);
         return new MainSurface(_main);
     }
-    internal override ICandidatePopupWindow CreatePopup(UnoAppHost host)
+    internal override IPopupWindow CreatePopup(UnoAppHost host)
     {
         var window = new PopupWindow(host.TextSize, () => { if (_main is { } main) _ = main.ShowPageWithoutActivationAsync(PageKind.Snippets, true); });
         _popup = window;
@@ -75,7 +75,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         surface.AttachClosed();
         return surface;
     }
-    internal override ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
+    internal override ITray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
     {
         // Tray supplies the pre-menu target HWND; the host captures it before showing.
         var tray = new TrayIcon(_message!, open, preview, settings, () => { if (_host is { } host) Dispatcher.Post(() => _ = host.RestartAsAdministratorAsync()); }, exit, _hotkeys is not null && _host?.IsElevated == false,
@@ -86,14 +86,14 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     }
     // Automated QA uses existing --page/preview options and must exit without
     // modal focus changes. Preserve actionable error UI for interactive launches.
-    internal override void ReportStartupFailure() => CandidateUiPolicy.ReportStartupFailure(
+    internal override void ReportStartupFailure() => UiPolicy.ReportStartupFailure(
         Program.StartInBackground, Program.InitialOptions.HasRequest,
         () => Windows.Win32.PInvoke.MessageBox(default,
             "Smart Snippets could not start.",
             "Smart Snippets", Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_OK),
-        () => Console.Error.WriteLine("candidate_startup_failed"));
+        () => Console.Error.WriteLine("app_startup_failed"));
     internal override void Exit() { Program.StopActivations(); Application.Current.Exit(); }
-    private sealed class MainSurface(MainWindow window) : ICandidateMainWindow
+    private sealed class MainSurface(MainWindow window) : IMainWindow
     {
         public nint NativeHandle => WinRT.Interop.WindowNative.GetWindowHandle(window);
         public event EventHandler? HiddenByClose { add => window.HiddenByClose += value; remove => window.HiddenByClose -= value; }
@@ -103,7 +103,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         public void SetHotkeyStatus(HotkeyStatus status) => window.SetHotkeyStatus(status);
         public void Dispose() => window.CloseForExit();
     }
-    private sealed class PopupSurface(PopupWindow window, Func<HWND> owner, Func<bool> canShowCaptured) : ICandidatePopupWindow
+    private sealed class PopupSurface(PopupWindow window, Func<HWND> owner, Func<bool> canShowCaptured) : IPopupWindow
     {
         public event EventHandler? Closed;
         public event EventHandler? Hidden;
@@ -135,7 +135,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
             window.Closed += (_, _) => { _disposed = true; Closed?.Invoke(this, EventArgs.Empty); };
         }
     }
-    private sealed class TraySurface(TrayIcon tray) : ICandidateTray
+    private sealed class TraySurface(TrayIcon tray) : ITray
     {
         public void Notify(string title, string message) => tray.ShowBalloon(title, message);
         public bool TryNotify(string title, string message) => tray.ShowBalloon(title, message);

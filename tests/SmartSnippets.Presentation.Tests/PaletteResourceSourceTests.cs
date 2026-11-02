@@ -59,13 +59,13 @@ public sealed class PaletteResourceSourceTests
     [Fact]
     public void StartupAndRecoveryUseTheCurrentPaletteBeforePopupPrewarm()
     {
-        var boundary = Source("WindowsCandidateBoundary.cs");
+        var boundary = Source("WindowsHostBoundary.cs");
         Assert.Contains("new ThemeService(settings.Theme, settings.ColorPalette)", boundary);
         Assert.Contains("_paletteResources.InstallRootResources(content)", Source("ThemeService.cs"));
-        var factory = boundary[boundary.IndexOf("internal override ICandidatePopupWindow CreatePopup(", StringComparison.Ordinal)..];
+        var factory = boundary[boundary.IndexOf("internal override IPopupWindow CreatePopup(", StringComparison.Ordinal)..];
         Assert.True(factory.IndexOf("_theme!.Register(window);", StringComparison.Ordinal) < factory.IndexOf("return surface;", StringComparison.Ordinal));
         var host = Source("UnoAppHost.cs");
-        var recovery = host[host.IndexOf("private ICandidatePopupWindow EnsurePopup()", StringComparison.Ordinal)..];
+        var recovery = host[host.IndexOf("private IPopupWindow EnsurePopup()", StringComparison.Ordinal)..];
         Assert.True(recovery.IndexOf("boundary.CreatePopup(this)", StringComparison.Ordinal) < recovery.IndexOf("popup.Prewarm();", StringComparison.Ordinal));
     }
 }

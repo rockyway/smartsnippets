@@ -7,9 +7,9 @@ using Windows.ApplicationModel.DataTransfer;
 namespace SmartSnippets.Presentation.Tests.ClipboardCompatibility;
 
 [Collection("AppLog")]
-public sealed class LegacyClipboardServiceTests : IDisposable
+public sealed class ClipboardServiceTests : IDisposable
 {
-    public LegacyClipboardServiceTests() { Clipboard.Calls.Clear(); Clipboard.FailAt = null; DispatcherQueue.HasCurrentThread = true; }
+    public ClipboardServiceTests() { Clipboard.Calls.Clear(); Clipboard.FailAt = null; DispatcherQueue.HasCurrentThread = true; }
     public void Dispose() { Clipboard.FailAt = null; DispatcherQueue.HasCurrentThread = true; }
 
     [Fact]
@@ -27,7 +27,7 @@ public sealed class LegacyClipboardServiceTests : IDisposable
     }
 
     [Fact]
-    public void LegacyClipboard_FlushSuccessTrue()
+    public void Clipboard_FlushSuccessTrue()
     {
         Assert.True(new ClipboardService().TrySetText("synthetic"));
         Assert.Equal(new[] { "SetContent", "Flush" }, Clipboard.Calls);
@@ -36,7 +36,7 @@ public sealed class LegacyClipboardServiceTests : IDisposable
     [Theory]
     [InlineData("SetContent")]
     [InlineData("Flush")]
-    public void LegacyClipboard_ComFailureFalse_DelegatingVoidDoesNotThrow(string failAt)
+    public void Clipboard_ComFailureFalse_DelegatingVoidDoesNotThrow(string failAt)
     {
         var directory = Path.Combine(Path.GetTempPath(), "ss-clipboard-log-" + Guid.NewGuid().ToString("N"));
         try
@@ -60,13 +60,13 @@ public sealed class LegacyClipboardServiceTests : IDisposable
         }
     }
     [Fact]
-    public void LegacyClipboard_VoidDelegatesThroughFlush()
+    public void Clipboard_VoidDelegatesThroughFlush()
     {
         new ClipboardService().SetText("synthetic");
         Assert.Equal(new[] { "SetContent", "Flush" }, Clipboard.Calls);
     }
     [Fact]
-    public void LegacyClipboard_UiThreadPreconditionRetained()
+    public void Clipboard_UiThreadPreconditionRetained()
     {
         DispatcherQueue.HasCurrentThread = false;
         var service = new ClipboardService();

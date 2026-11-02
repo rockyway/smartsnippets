@@ -112,17 +112,17 @@ public sealed class ManagementFlowTests
         f.Host.SettingsPage.CustomTextSize = 23;
         f.Host.SettingsPage.StartAtLogin = true;
         Assert.False(f.Host.SettingsPage.StartAtLogin);
-        Assert.False(new CandidateStartupRegistration().Enable().Success);
-        Assert.False(new CandidateStartupRegistration().Disable().Success);
-        Assert.False(new CandidateHotkeyManager(f.Host.Settings.Hotkey).TryChange(f.Host.Settings.Hotkey).Success);
-        Assert.Equal(ElevationOutcome.Failed, new CandidateElevation().RestartAsAdministrator().Outcome);
+        Assert.False(new UnavailableStartupRegistration().Enable().Success);
+        Assert.False(new UnavailableStartupRegistration().Disable().Success);
+        Assert.False(new UnavailableHotkeyManager(f.Host.Settings.Hotkey).TryChange(f.Host.Settings.Hotkey).Success);
+        Assert.Equal(ElevationOutcome.Failed, new UnavailableElevation().RestartAsAdministrator().Outcome);
         var reloaded = AppSettings.Load(f.Host.SettingsStore);
         Assert.Equal(ThemeMode.Dark, reloaded.Theme); Assert.Equal(ColorPalette.Ocean, reloaded.ColorPalette);
         Assert.Equal(23, reloaded.CustomTextSize);
         Assert.Equal(23, f.Host.TextSize.FontSize);
     }
     [Fact]
-    public Task ImportExport_RealJsonCancelAndFailedPublicationLeaveOriginal() => CandidateHostThread.RunAsync(async () =>
+    public Task ImportExport_RealJsonCancelAndFailedPublicationLeaveOriginal() => HostThread.RunAsync(async () =>
     {
         using var f = new HostFixture(); await f.Start();
         Assert.Null(await f.Host.Snippets.Porting.ImportAsync());

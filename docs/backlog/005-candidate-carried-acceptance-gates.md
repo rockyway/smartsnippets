@@ -1,5 +1,6 @@
 # 005 — Candidate carried acceptance gates
 
+**Status: Obsolete / closed** — the candidate/harness was removed at the Uno cutover; see [progress 008](../progress/008-uno-official-cutover.md).
 **Status:** Open — no native parity, plan completion or release authorization
 **Source:** Plan 019 AC1–AC7 / T7; final audit research 059
 

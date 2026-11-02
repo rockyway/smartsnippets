@@ -7,7 +7,7 @@ using Windows.Win32.UI.Input.KeyboardAndMouse;
 namespace SmartSnippets.Uno.Services;
 
 /// <summary>Thin RegisterHotKey wrapper that supports several ids at once so a change can register before it releases.</summary>
-internal sealed class HotkeyService : ICandidateHotkeyRegistration, IDisposable
+internal sealed class HotkeyService : IHotkeyRegistration, IDisposable
 {
     private readonly MessageWindow _window;
     private readonly HashSet<int> _registered = [];

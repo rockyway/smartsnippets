@@ -84,7 +84,7 @@ def validate_references(document):
             if str(props.get("TrimmerSingleWarn", "")).lower() == "true":
                 errors.append(prefix + "TrimmerSingleWarn")
             # Root libraries intentionally retain their existing build policy; the
-            # candidate's actual global build context enforces warnings-as-errors.
+            # app's actual global build context enforces warnings-as-errors.
             if phase == "BuildContext" and str(props.get("TreatWarningsAsErrors", "")).lower() != "true":
                 errors.append(prefix + "TreatWarningsAsErrors")
     return errors

@@ -5,16 +5,16 @@ using SmartSnippets.Presentation.ViewModels;
 
 namespace SmartSnippets.Uno;
 
-internal interface ICandidateMainWindow : IDisposable
+internal interface IMainWindow : IDisposable
 {
-    nint NativeHandle => 0; // Only the exact candidate-owned surface, never an external target.
+    nint NativeHandle => 0; // Only the exact app-owned surface, never an external target.
     event EventHandler? HiddenByClose;
     Task NavigateAsync(PageKind page, bool show);
     Task<bool> CanExitAsync();
     void SetInteractionEnabled(bool enabled);
     void SetHotkeyStatus(HotkeyStatus status) { }
 }
-internal interface ICandidatePopupWindow : IPopupHost, IDisposable
+internal interface IPopupWindow : IPopupHost, IDisposable
 {
     event EventHandler? Closed;
     event EventHandler? Hidden;
@@ -27,24 +27,24 @@ internal interface ICandidatePopupWindow : IPopupHost, IDisposable
     bool IsCaptureSurfaceReady => false; // Read-only warmup metadata, never native permission.
     void ShowCaptured(InsertionTarget target) => throw new NotSupportedException("Captured popup is unavailable.");
 }
-internal interface ICandidateTray : INotifier, IDisposable
+internal interface ITray : INotifier, IDisposable
 {
     bool TryNotify(string title, string message) { Notify(title, message); return true; }
     void SetHotkeyState(bool registered, bool popupVisible) { }
 }
 
 /// <summary>Only external UI/OS boundaries are substituted; UnoAppHost always composes the real store and VMs.</summary>
-internal abstract class CandidateHostBoundary
+internal abstract class HostBoundary
 {
     internal abstract IUiDispatcher Dispatcher { get; }
     internal abstract IThemeService CreateTheme(AppSettings settings);
     internal abstract IDisposable CreateMessageWindow();
-    internal virtual Platforms.Windows.ICandidateDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => null;
+    internal virtual Platforms.Windows.IDesktopServices? CreateDesktopServices(UnoAppHost host, AppSettings settings, Action hotkey) => null;
     internal abstract IDialogService CreateDialogs(bool popup, ITextSizeService textSize);
     internal abstract ISnippetFileService CreateFiles();
-    internal abstract ICandidateMainWindow CreateMain(UnoAppHost host);
-    internal abstract ICandidatePopupWindow CreatePopup(UnoAppHost host);
-    internal abstract ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit);
+    internal abstract IMainWindow CreateMain(UnoAppHost host);
+    internal abstract IPopupWindow CreatePopup(UnoAppHost host);
+    internal abstract ITray CreateTray(Action open, Action<nint> preview, Action settings, Action exit);
     internal abstract void ReportStartupFailure();
     internal abstract void Exit();
 }

@@ -7,10 +7,10 @@ namespace SmartSnippets.Uno.Tests.Flows;
 public sealed class ActivationFlowTests
 {
     [Fact]
-    public async Task RedirectsBeforeComposition_UseOneCandidateOwnerAndDropStaleShutdownCallbacks()
+    public async Task RedirectsBeforeComposition_UseOneAppOwnerAndDropStaleShutdownCallbacks()
     {
         using var f = new HostFixture();
-        var queue = new CandidateActivationQueue();
+        var queue = new ActivationQueue();
         queue.Enqueue(new(PageKind.Folders, false, null));
         queue.Enqueue(new(PageKind.Settings, false, null));
         await f.Start();
@@ -29,7 +29,7 @@ public sealed class ActivationFlowTests
     [Fact]
     public async Task Redirects_AwaitUnsavedGuardBeforeStartingNextNavigation()
     {
-        var queue = new CandidateActivationQueue(); var dispatcher = new Dispatcher();
+        var queue = new ActivationQueue(); var dispatcher = new Dispatcher();
         var guard = new TaskCompletionSource(); var done = new TaskCompletionSource(); var applied = new List<PageKind?>();
         queue.Attach(dispatcher, async options => { applied.Add(options.Page); if (options.Page == PageKind.Folders) await guard.Task; else done.SetResult(); });
         queue.Enqueue(new(PageKind.Folders, false, null)); queue.Enqueue(new(PageKind.Settings, false, null));
@@ -50,7 +50,7 @@ public sealed class ActivationFlowTests
         else
         {
             await f.Start(background: true);
-            var queue = new CandidateActivationQueue();
+            var queue = new ActivationQueue();
             queue.Enqueue(options);
             queue.Attach(f.Boundary.Dispatcher, o => f.Host.ApplyLaunchOptionsAsync(o));
             f.Boundary.Drain();

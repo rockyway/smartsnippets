@@ -20,7 +20,7 @@ public sealed class PopupLifecycleFlowTests
         // Cancel a cold generation and prove its completion cannot reveal a newer request.
         surface.Lifecycle.Shows.Close();
         var reveals = 0;
-        var lifecycle = new CandidatePopupLifecycle(a => a(), _ => { }, () => { }, () => { });
+        var lifecycle = new PopupLifecycle(a => a(), _ => { }, () => { }, () => { });
         lifecycle.Preview(f.Host.Popup, "first", () => { reveals++; return new(true, null); });
         var stale = lifecycle.Shows.WarmupGeneration;
         lifecycle.Shows.Hide();
@@ -80,12 +80,12 @@ public sealed class PopupLifecycleFlowTests
         object? root = new();
         var visible = false;
         var shows = 0;
-        Assert.Same(root, CandidateUiPolicy.DialogRoot(() => root, () => visible, () => { visible = true; shows++; }));
+        Assert.Same(root, UiPolicy.DialogRoot(() => root, () => visible, () => { visible = true; shows++; }));
         Assert.Equal(1, shows);
-        CandidateUiPolicy.DialogRoot(() => root, () => visible, () => shows++);
+        UiPolicy.DialogRoot(() => root, () => visible, () => shows++);
         Assert.Equal(1, shows);
         root = null;
-        CandidateUiPolicy.DialogRoot(() => root, () => visible, () => { root = new(); shows++; });
+        UiPolicy.DialogRoot(() => root, () => visible, () => { root = new(); shows++; });
         Assert.Equal(2, shows);
     }
 }

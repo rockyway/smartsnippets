@@ -1,14 +1,14 @@
 #Requires -Version 7.2
-# Build/inspect only: no candidate launch, UI, clipboard, input, registry or profile access.
+# Build/inspect only: no app launch, UI, clipboard, input, registry or profile access.
 [CmdletBinding()]
 param([string]$Version, [Nullable[int]]$BuildNumber, [ValidateRange(1, 64)][int]$MaxCpuCount = 4)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repository = Split-Path -Parent $PSScriptRoot
-$candidate = Join-Path $repository 'src/SmartSnippets.Uno'
+$app = Join-Path $repository 'src/SmartSnippets.Uno'
 $token = [Guid]::NewGuid().ToString('N')
 $private = Join-Path ([IO.Path]::GetTempPath()) "ss-uno019-build-$token"
-$output = Join-Path $candidate "bin/publish-native/$token"
+$output = Join-Path $app "bin/publish-native/$token"
 $destination = Join-Path $repository "publish"
 $previous = Get-Location
 $stage = 'host'
@@ -26,7 +26,7 @@ try {
         $sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
     Set-Acl -LiteralPath $private -AclObject $acl
     if (Test-Path -LiteralPath $output) { throw 'output_must_be_fresh' }
-    Set-Location -LiteralPath $candidate
+    Set-Location -LiteralPath $app
     $sdk = (& dotnet --version 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $sdk -ne '10.0.403') { throw 'pinned_sdk_required' }
     $log = Join-Path $private 'build.log'

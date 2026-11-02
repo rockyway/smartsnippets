@@ -16,11 +16,11 @@ namespace SmartSnippets.Uno.Tests.Wiring
     public sealed class PopupActivationOrderingTests
     {
         [Fact]
-        public Task AcceptanceBoundaryForwardsOnlyLiveCoordinatorReadiness() => CandidateHostThread.RunAsync(async () =>
+        public Task AcceptanceBoundaryForwardsOnlyLiveCoordinatorReadiness() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture();
             await f.Start();
-            var views = new WindowsCandidateBoundary();
+            var views = new WindowsHostBoundary();
             views.CreateTheme(f.Host.Settings);
             using var surface = views.CreatePopup(f.Host);
             Assert.False(surface.IsCaptureSurfaceReady);
@@ -32,7 +32,7 @@ namespace SmartSnippets.Uno.Tests.Wiring
         });
 
         [Fact]
-        public Task SupersedingPreviewDuringRevealNeverFocusesCapturedGeneration() => CandidateHostThread.RunAsync(async () =>
+        public Task SupersedingPreviewDuringRevealNeverFocusesCapturedGeneration() => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture();
             await f.Start();
@@ -54,7 +54,7 @@ namespace SmartSnippets.Uno.Tests.Wiring
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public Task CapturedFocusWaitsForRevealAndHideCancelsDeferredFocus(bool hide) => CandidateHostThread.RunAsync(async () =>
+        public Task CapturedFocusWaitsForRevealAndHideCancelsDeferredFocus(bool hide) => HostThread.RunAsync(async () =>
         {
             using var f = new HostFixture();
             await f.Start();

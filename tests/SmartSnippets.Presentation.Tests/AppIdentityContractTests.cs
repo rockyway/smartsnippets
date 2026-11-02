@@ -14,7 +14,7 @@ public sealed class AppIdentityContractTests
         Assert.Contains("Assets/TitleIcon.png", project);
         Assert.Contains("CopyToPublishDirectory=\"PreserveNewest\"", project);
         Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, "UiContracts", "TitleIcon.png")));
-        var text = Read("CandidateTrayText.cs");
+        var text = Read("TrayText.cs");
         Assert.Contains("Smart Snippets", text);
         Assert.Contains("Smart Snippets — hotkey unavailable", text);
         Assert.Contains("<AssemblyName>SmartSnippets</AssemblyName>", project);

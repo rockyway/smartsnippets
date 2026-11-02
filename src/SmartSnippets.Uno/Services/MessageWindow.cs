@@ -10,12 +10,12 @@ internal delegate void WindowMessageHandler(uint message, nuint wParam, nint lPa
 internal sealed unsafe class MessageWindow : IDisposable
 {
     private static MessageWindow? s_instance;
-    private readonly CandidateMessageWindowLifetime _lifetime;
+    private readonly MessageWindowLifetime _lifetime;
     internal MessageWindow()
     {
-        if (s_instance is not null) throw new InvalidOperationException("Candidate message window already exists.");
+        if (s_instance is not null) throw new InvalidOperationException("App message window already exists.");
         s_instance = this;
-        try { _lifetime = new CandidateMessageWindowLifetime(new Native()); }
+        try { _lifetime = new MessageWindowLifetime(new Native()); }
         catch { s_instance = null; throw; }
     }
     internal HWND Handle => new(_lifetime.Handle);
@@ -25,12 +25,12 @@ internal sealed unsafe class MessageWindow : IDisposable
         try { _lifetime.Dispose(); }
         finally { if (ReferenceEquals(s_instance, this)) s_instance = null; }
     }
-    private sealed class Native : ICandidateMessageWindowNative
+    private sealed class Native : IMessageWindowNative
     {
         private readonly HINSTANCE _module = new(PInvoke.GetModuleHandle(default(PCWSTR)).Value);
         public bool RegisterClass()
         {
-            fixed (char* name = CandidateMessageWindowLifetime.ClassName)
+            fixed (char* name = MessageWindowLifetime.ClassName)
             {
                 var wc = new WNDCLASSEXW { cbSize = (uint)sizeof(WNDCLASSEXW), lpfnWndProc = &WndProc,
                     hInstance = _module, lpszClassName = name };
@@ -39,14 +39,14 @@ internal sealed unsafe class MessageWindow : IDisposable
         }
         public nint CreateWindow()
         {
-            fixed (char* name = CandidateMessageWindowLifetime.ClassName)
+            fixed (char* name = MessageWindowLifetime.ClassName)
                 return (nint)PInvoke.CreateWindowEx(0, name, default(PCWSTR), 0, 0, 0, 0, 0,
                     HWND.Null, default, _module, null).Value;
         }
         public bool DestroyWindow(nint handle) => PInvoke.DestroyWindow(new HWND(handle));
         public bool UnregisterClass()
         {
-            fixed (char* name = CandidateMessageWindowLifetime.ClassName) return PInvoke.UnregisterClass(name, _module);
+            fixed (char* name = MessageWindowLifetime.ClassName) return PInvoke.UnregisterClass(name, _module);
         }
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

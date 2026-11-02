@@ -4,11 +4,11 @@ using SmartSnippets.Presentation.ViewModels;
 namespace SmartSnippets.Uno;
 
 // Shared by compiled window handlers and portable lifecycle drivers; never bypass readiness.
-internal sealed class CandidatePopupLifecycle
+internal sealed class PopupLifecycle
 {
     internal event EventHandler<bool>? PresentationChanged;
     internal PopupShowCoordinator Shows { get; }
-    internal CandidatePopupLifecycle(Action<Action> schedule, Action<PopupFocusTarget> focus,
+    internal PopupLifecycle(Action<Action> schedule, Action<PopupFocusTarget> focus,
         Action startWarmup, Action stopWarmup, Action? warmupFailed = null)
     {
         Shows = new(schedule, focus, startWarmup, stopWarmup, () => OnWarmupFailed(warmupFailed));
@@ -55,19 +55,19 @@ internal sealed class CandidatePopupLifecycle
         }));
 }
 
-internal static class CandidateUiPolicy
+internal static class UiPolicy
 {
     internal static bool PlaceManagement(bool qa, Func<bool> parkBottomLeft, Func<bool> centerPrimary)
         => (qa && parkBottomLeft()) || centerPrimary();
 
     internal static int BottomLeftMonitorIndex(IReadOnlyList<SmartSnippets.Core.Layout.PixelRect> monitors)
     {
-        if (monitors.Count == 0) throw new InvalidOperationException("No candidate display is available.");
+        if (monitors.Count == 0) throw new InvalidOperationException("No display is available.");
         var selected = 0;
         for (var i = 0; i < monitors.Count; i++)
         {
             if (monitors[i].Width <= 0 || monitors[i].Height <= 0)
-                throw new InvalidOperationException("Invalid candidate display geometry.");
+                throw new InvalidOperationException("Invalid display geometry.");
             if (IsBetterBottomLeft(monitors[i], monitors[selected])) selected = i;
         }
         return selected;

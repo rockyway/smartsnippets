@@ -3,9 +3,9 @@ using SmartSnippets.Uno.Tests.Build;
 
 namespace SmartSnippets.Uno.Tests.Wiring;
 
-public sealed class CandidateUiBindingAuditTests
+public sealed class UiBindingAuditTests
 {
-    private static string Read(string file) => File.ReadAllText(Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.Uno", file));
+    private static string Read(string file) => File.ReadAllText(Path.Combine(BuildGraphTests.RepoRoot, "src/SmartSnippets.Uno", file));
 
     [Fact]
     public void AdministratorRestartAndExplicitConsentAreWiredToGuardedCommands()
@@ -35,22 +35,22 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Contains("WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, UseQaPlacement)", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("_previewMonitor", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("MONITOR_DEFAULTTOPRIMARY", Read("Popup/PopupWindow.xaml.cs"));
-        Assert.Contains("CandidateUiPolicy.DialogRoot", Read("Services/DialogService.cs"));
-        Assert.Contains("textSize, _theme", Read("WindowsCandidateBoundary.cs"));
-        Assert.Contains("_main?.BringToFront()", Read("WindowsCandidateBoundary.cs"));
+        Assert.Contains("UiPolicy.DialogRoot", Read("Services/DialogService.cs"));
+        Assert.Contains("textSize, _theme", Read("WindowsHostBoundary.cs"));
+        Assert.Contains("_main?.BringToFront()", Read("WindowsHostBoundary.cs"));
         Assert.Contains("if (await NavigateGuardedAsync(kind) && show)", Read("MainWindow.xaml.cs"));
         Assert.Contains("Services.WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, qaPlacement)", Read("MainWindow.xaml.cs"));
-        Assert.Contains("Program.InitialOptions.HasRequest", Read("WindowsCandidateBoundary.cs"));
+        Assert.Contains("Program.InitialOptions.HasRequest", Read("WindowsHostBoundary.cs"));
         Assert.Contains("if (selected.Handle == (nint)primary.Value) return false;", Read("Services/WindowPlacement.cs"));
-        Assert.Contains("CandidateUiPolicy.IsBetterBottomLeft(", Read("Services/WindowPlacement.cs"));
+        Assert.Contains("UiPolicy.IsBetterBottomLeft(", Read("Services/WindowPlacement.cs"));
         Assert.Contains("EnumDisplayMonitors", Read("Services/WindowPlacement.cs"));
         Assert.DoesNotContain("DisplayArea.FindAll", Read("Services/WindowPlacement.cs"));
-        var failure = Read("WindowsCandidateBoundary.cs");
-        Assert.Contains("CandidateUiPolicy.ReportStartupFailure(", failure);
+        var failure = Read("WindowsHostBoundary.cs");
+        Assert.Contains("UiPolicy.ReportStartupFailure(", failure);
         Assert.Contains("Program.StartInBackground, Program.InitialOptions.HasRequest", failure);
-        Assert.Equal(CandidateUiPolicy.PreviewHint, CandidateUiPolicy.HintLine("active hint", "", true));
-        Assert.Equal("active hint", CandidateUiPolicy.HintLine("active hint", "", false));
-        Assert.Equal("saved", CandidateUiPolicy.HintLine("saved", "saved", true));
+        Assert.Equal(UiPolicy.PreviewHint, UiPolicy.HintLine("active hint", "", true));
+        Assert.Equal("active hint", UiPolicy.HintLine("active hint", "", false));
+        Assert.Equal("saved", UiPolicy.HintLine("saved", "saved", true));
         Assert.Contains("IsEnabled = CanInsert()", Read("Popup/PopupWindow.xaml.cs"));
         // Source supplement only; PositiveCopySceneTests drives this shared callback behaviorally.
         Assert.Contains("await PopupContextInsert.InvokeAsync", Read("Popup/PopupWindow.xaml.cs"));

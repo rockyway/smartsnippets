@@ -2,7 +2,7 @@ using Microsoft.UI.Xaml;
 namespace SmartSnippets.Uno;
 public partial class App : Application
 {
-    private readonly UnoAppHost _host = new(new WindowsCandidateBoundary(), CandidateProfile.OpenDefault);
+    private readonly UnoAppHost _host = new(new WindowsHostBoundary(), AppProfile.OpenDefault);
     public App() { InitializeComponent(); DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown; }
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

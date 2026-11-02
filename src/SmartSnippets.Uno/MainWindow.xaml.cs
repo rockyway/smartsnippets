@@ -109,9 +109,9 @@ public sealed partial class MainWindow : Window
     /// <summary>Shows and activates the window on the page it already displays.</summary>
     public void BringToFront(bool flashOnFocusDenied = true)
     {
-        // Candidate shell navigation never transfers foreground to or from another process.
+        // App shell navigation never transfers foreground to or from another process.
         AppWindow.Show(false);
-        AppLog.Info("main_window_activation", "focus=candidate_no_activation");
+        AppLog.Info("main_window_activation", "focus=app_no_activation");
     }
 
     /// <summary>For tray Exit: true when the current page allows leaving; otherwise the window is brought forward.</summary>
@@ -191,7 +191,7 @@ public sealed partial class MainWindow : Window
         _guardInProgress = true;
         try
         {
-            return await CandidateUiPolicy.NavigateAsync(
+            return await UiPolicy.NavigateAsync(
                 () => _current != kind && CurrentGuard() is { } guard ? guard.CanLeaveAsync() : Task.FromResult(true),
                 () => Navigate(kind), false, () => AppWindow.Show(false));
         }

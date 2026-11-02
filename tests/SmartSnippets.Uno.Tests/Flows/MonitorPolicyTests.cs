@@ -2,7 +2,7 @@ using SmartSnippets.Core.Layout;
 
 namespace SmartSnippets.Uno.Tests.Flows;
 
-public sealed class CandidateMonitorPolicyTests
+public sealed class MonitorPolicyTests
 {
     [Theory]
     [InlineData(false, false, 0, 1)]
@@ -12,14 +12,14 @@ public sealed class CandidateMonitorPolicyTests
     public void Management_OrdinaryAlwaysCentersPrimary_QaParksOnlyWhenAvailable(bool qa, bool monitorPresent, int parks, int centers)
     {
         int parked = 0, centered = 0;
-        Assert.True(CandidateUiPolicy.PlaceManagement(qa, () => { parked++; return monitorPresent; },
+        Assert.True(UiPolicy.PlaceManagement(qa, () => { parked++; return monitorPresent; },
             () => { centered++; return true; }));
         Assert.Equal(parks, parked); Assert.Equal(centers, centered);
     }
 
     [Fact]
     public void Management_NoPlacementSuccessIsNotReportedAsSuccess()
-        => Assert.False(CandidateUiPolicy.PlaceManagement(true, () => false, () => false));
+        => Assert.False(UiPolicy.PlaceManagement(true, () => false, () => false));
 
     [Theory]
     [InlineData(false, false, true)]
@@ -29,7 +29,7 @@ public sealed class CandidateMonitorPolicyTests
     public void StartupFailure_OnlyExplicitInteractiveLaunchShowsModal(bool background, bool qa, bool interactive)
     {
         int dialogs = 0, quiet = 0;
-        CandidateUiPolicy.ReportStartupFailure(background, qa, () => dialogs++, () => quiet++);
+        UiPolicy.ReportStartupFailure(background, qa, () => dialogs++, () => quiet++);
         Assert.Equal(interactive ? 1 : 0, dialogs);
         Assert.Equal(interactive ? 0 : 1, quiet);
     }
@@ -39,20 +39,20 @@ public sealed class CandidateMonitorPolicyTests
     {
         PixelRect[] monitors = [new(0, 0, 1920, 1080), new(-1920, 0, 0, 1080),
             new(-1920, 1080, 0, 2160), new(0, 2160, 1920, 3240)];
-        Assert.Equal(2, CandidateUiPolicy.BottomLeftMonitorIndex(monitors));
+        Assert.Equal(2, UiPolicy.BottomLeftMonitorIndex(monitors));
         Array.Reverse(monitors);
-        Assert.Equal(1, CandidateUiPolicy.BottomLeftMonitorIndex(monitors));
+        Assert.Equal(1, UiPolicy.BottomLeftMonitorIndex(monitors));
     }
     [Fact]
     public void BottomLeft_SingleAndNegativeOriginAreSupported()
     {
-        Assert.Equal(0, CandidateUiPolicy.BottomLeftMonitorIndex([new(-1200, -900, 0, 0)]));
-        Assert.Equal(1, CandidateUiPolicy.BottomLeftMonitorIndex([new(-1200, -1800, 0, -900), new(-1200, -900, 0, 0)]));
+        Assert.Equal(0, UiPolicy.BottomLeftMonitorIndex([new(-1200, -900, 0, 0)]));
+        Assert.Equal(1, UiPolicy.BottomLeftMonitorIndex([new(-1200, -1800, 0, -900), new(-1200, -900, 0, 0)]));
     }
     [Fact]
     public void BottomLeft_RefusesMissingOrInvalidMonitorGeometry()
     {
-        Assert.Throws<InvalidOperationException>(() => CandidateUiPolicy.BottomLeftMonitorIndex([]));
-        Assert.Throws<InvalidOperationException>(() => CandidateUiPolicy.BottomLeftMonitorIndex([new(0, 0, 0, 1080)]));
+        Assert.Throws<InvalidOperationException>(() => UiPolicy.BottomLeftMonitorIndex([]));
+        Assert.Throws<InvalidOperationException>(() => UiPolicy.BottomLeftMonitorIndex([new(0, 0, 0, 1080)]));
     }
 }
