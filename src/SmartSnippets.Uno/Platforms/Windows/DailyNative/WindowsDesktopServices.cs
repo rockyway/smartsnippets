@@ -13,7 +13,7 @@ internal sealed class WindowsDesktopServices : ICandidateDesktopServices
     private readonly Action<long> _pressed;
     public ICandidateDailyOperations Operations { get; }
     public IHotkeyManager Hotkeys { get; }
-    public IStartupRegistration Startup { get; } = new CandidateStartupRegistration();
+    public IStartupRegistration Startup { get; } = new StartupRegistration();
     public IElevation Elevation { get; } = new CandidateElevation();
 
     internal WindowsDesktopServices(MessageWindow message, AppSettings settings, Func<nint> popup, Action hotkey)
@@ -38,10 +38,13 @@ internal sealed class WindowsDesktopServices : ICandidateDesktopServices
         private readonly ClipboardPasteDispatcher _paste = new(owner);
         private bool _keysPending;
         public bool HasPendingRecovery => _keysPending;
-        public bool IsAvailable => false; // Explicit Copy remains outside the hotkey-only slice.
-        public void SetText(string text) { }
-        public bool TrySetText(string text) => false;
+        private readonly ClipboardService _copy = new();
+        public bool IsAvailable => !HasPendingRecovery;
+        public void SetText(string text) => _copy.SetText(text);
+        public bool TrySetText(string text) => IsAvailable && _copy.TrySetText(text);
+        public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => Task.FromResult(!ct.IsCancellationRequested && IsAvailable);
         public InsertionTarget? CaptureForeground() => TargetCapture.CaptureForeground();
+        public InsertionTarget? CaptureFrom(nint window) => TargetCapture.CaptureFrom(new HWND(window));
         public TargetCheck Check(InsertionTarget target) => _probe.Check(target);
         public bool IsTargetForeground(InsertionTarget target) => _probe.IsTargetForeground(target);
         public bool TryFocusOwnedPopup()

@@ -27,24 +27,23 @@ public sealed partial class MainWindow : Window
     private bool _closed;
     private bool _guardInProgress;
 
-    public MainWindow(Func<PageKind, UIElement> pageFactory)
+    public MainWindow(Func<PageKind, UIElement> pageFactory, bool qaPlacement = false)
     {
         _pageFactory = pageFactory;
         InitializeComponent();
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "SmartSnippets.ico");
         if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         else AppLog.Info("window_icon_missing", "name=SmartSnippets.ico");
-        Title = "Smart Snippets — Uno candidate";
+        Title = "Smart Snippets";
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
         var hwnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        // Park without primary-monitor minimums: otherwise the presenter may
-        // clamp a lower-DPI monitor's requested bounds before WM_DPICHANGED.
+        // Place before minimums, so mixed-DPI QA bounds are not clamped by the primary DPI.
         var presenter = OverlappedPresenter.Create();
         AppWindow.SetPresenter(presenter);
-        if (!Services.WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
-            throw new InvalidOperationException("Candidate bottom-left placement could not be verified.");
+        bool Place() => Services.WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, qaPlacement);
+        if (!Place()) throw new InvalidOperationException("Window placement could not be verified.");
         var dpi = PInvoke.GetDpiForWindow(hwnd);
         var scale = dpi == 0 ? 1.0 : dpi / 96.0;
         presenter.PreferredMinimumWidth = Math.Min(AppWindow.Size.Width, (int)(MinimumLogicalWidth * scale));
@@ -66,8 +65,7 @@ public sealed partial class MainWindow : Window
                 if (presenter.PreferredMinimumHeight != height) presenter.PreferredMinimumHeight = height;
             });
         };
-        if (!Services.WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
-            throw new InvalidOperationException("Candidate bottom-left placement could not be verified.");
+        if (!Place()) throw new InvalidOperationException("Window placement could not be verified.");
         AppWindow.Closing += OnClosing;
         Activated += (_, args) =>
         {
@@ -88,7 +86,7 @@ public sealed partial class MainWindow : Window
 
     internal void SetInteractionEnabled(bool enabled) => Navigation.IsEnabled = enabled;
     internal void SetHotkeyStatus(HotkeyStatus status) => NativeStatusText.Text = status.IsRegistered
-        ? status.Message + " Focus a target app, press the shortcut, then Enter to insert. Copy and start at login remain unavailable."
+        ? status.Message + " Focus a target app, press the shortcut, then Enter to insert. Copy and start at login are available."
         : status.Message;
 
     public bool IsHidden => !AppWindow.IsVisible;

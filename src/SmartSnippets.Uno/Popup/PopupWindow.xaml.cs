@@ -363,12 +363,13 @@ public sealed partial class PopupWindow : Window, IPopupHost
 
         return new(true, activate ? PopupFocusTarget.Search : null);
     }
+    internal bool UseQaPlacement { get; set; }
     private void Center()
     {
         if (ViewModel.IsPreview)
         {
-            if (!WindowPlacement.ParkBottomLeft(AppWindow, LogicalWidth, LogicalHeight))
-                throw new InvalidOperationException("Candidate preview bottom-left placement could not be verified.");
+            if (!WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, UseQaPlacement))
+                throw new InvalidOperationException("Preview placement could not be verified.");
             return;
         }
         if (!WindowPlacement.CenterAtCursor(AppWindow, ViewModel.Target?.MonitorHandle ?? 0, LogicalWidth, LogicalHeight))

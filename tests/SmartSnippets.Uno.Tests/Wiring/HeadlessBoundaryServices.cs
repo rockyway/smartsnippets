@@ -29,10 +29,10 @@ namespace SmartSnippets.Uno.Services
         public IElevation Elevation => throw new NotSupportedException();
         public void Dispose() { }
     }
-    internal sealed class TrayIcon(MessageWindow window, Action open, Action preview, Action settings, Action restart, Action exit, bool elevated, Func<object?> target) : IDisposable
+    internal sealed class TrayIcon(MessageWindow window, Action open, Action<nint> preview, Action settings, Action restart, Action exit, bool elevated, Func<object?> target, bool captureTargets) : IDisposable
     {
         internal TrayState State { get; set; }
-        internal void Add() { _ = window; _ = open; _ = preview; _ = settings; _ = restart; _ = exit; _ = elevated; _ = target; }
+        internal void Add() { _ = window; _ = open; _ = preview; _ = settings; _ = restart; _ = exit; _ = elevated; _ = target; _ = captureTargets; }
         internal void ShowBalloon(string title, string message) { }
         public void Dispose() { }
     }

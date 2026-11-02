@@ -10,8 +10,8 @@
             Padding="24"
             HorizontalAlignment="Left"
             Spacing="12">
-            <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Settings — Uno candidate" />
-            <TextBlock Text="The global shortcut opens the insertion popup. Copy, start at login and administrator restart remain unavailable." TextWrapping="Wrap" />
+            <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Settings" />
+            <TextBlock Text="Use the global shortcut or tray to insert snippets. Copy and start at login are supported; administrator restart is unavailable." TextWrapping="Wrap" />
 
             <InfoBar
                 x:Name="StatusBar"
@@ -146,13 +146,13 @@
             <!-- Start at login -->
             <TextBlock Margin="0,12,0,0" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Start at login" />
             <ToggleSwitch
-                x:Name="StartupToggle" IsEnabled="False"
+                x:Name="StartupToggle"
                 automation:AutomationProperties.Name="Start at login"
                 IsOn="{x:Bind ViewModel.StartAtLogin, Mode=OneWay}"
                 Toggled="OnStartupToggled" />
             <TextBlock
                 Opacity="0.7"
-                Text="Start at login is unavailable in this candidate; no registration is changed."
+                Text="Start this app in the background when you sign in. The legacy app’s startup setting is separate."
                 TextWrapping="Wrap" />
 
             <!-- Advanced -->
@@ -169,7 +169,7 @@
                 IsEnabled="False" />
             <TextBlock
                 Opacity="0.7"
-                Text="Administrator restart is unavailable in the Uno candidate."
+                Text="Administrator restart is unavailable in this app."
                 TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>

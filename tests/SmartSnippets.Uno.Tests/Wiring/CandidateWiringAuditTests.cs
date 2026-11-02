@@ -74,7 +74,7 @@ public sealed class CandidateWiringAuditTests
         var legacy = Path.Combine(CandidateBuildGraphTests.RepoRoot, "src/SmartSnippets.App");
         var ports = PortedSources.Replace("\r", "").Split('\n');
         Assert.Equal(ports, Sources(Candidate).Intersect(Sources(legacy), StringComparer.Ordinal).Order(StringComparer.Ordinal));
-        Assert.Equal("d14a7657a8c843d6c57928557a8efc7c1048a8724edf7076c0793f04107f6ef0",
+        Assert.Equal("68766b458691d74a5675855bdc2e6decaf2eccb72cfe6d9c40b911ca383f39a9",
             SourceDigest(Candidate, ports.Append("UnoAppHost.cs")));
         Assert.Equal("236480e57647f200648b36bc9bb14b59ef46154ab03e9ea86b1b36aa306c7966",
             SourceDigest(legacy, ports.Append("AppHost.cs")));
@@ -128,8 +128,7 @@ public sealed class CandidateWiringAuditTests
             .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) && !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
             .Select(File.ReadAllText));
         // D80: ordinary Windows hotkey/capture/paste is now real. Keep all other unlocks absent.
-        foreach (var forbidden in new[] { "StartupMigrationCoordinator", "Registry.CurrentUser", "new ClipboardService(",
-            "PreviousAppWindow(", "GetEnvironmentVariable(", "--after-pid", "--profile" })
+        foreach (var forbidden in new[] { "StartupMigrationCoordinator", "GetEnvironmentVariable(", "--after-pid", "--profile" })
             Assert.DoesNotContain(forbidden, source);
         Assert.DoesNotContain("SmartSnippets.App", source);
         var windows = File.ReadAllText(Path.Combine(Candidate, "WindowsCandidateBoundary.cs"));
@@ -139,7 +138,15 @@ public sealed class CandidateWiringAuditTests
         Assert.Contains("new HotkeyService(message)", desktop);
         Assert.Contains("manager.Initialize(settings.Hotkey)", desktop);
         Assert.Contains("TargetCapture.CaptureForeground()", desktop);
-        Assert.Contains("new CandidateStartupRegistration()", desktop);
+        Assert.Contains("new StartupRegistration()", desktop);
+        Assert.Contains("ClipboardService _copy = new()", desktop);
+        var startup = File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/DailyNative/StartupRegistration.cs"));
+        Assert.Contains("ValueName = \"SmartSnippets.UnoCandidate019\"", startup);
+        Assert.DoesNotContain("ValueName = \"SmartSnippets\"", startup);
+        Assert.Contains("_write(ValueName, Command(exe))", startup);
+        Assert.Contains("_delete(ValueName)", startup);
+        Assert.Contains("key.SetValue(name, command, RegistryValueKind.String)", startup);
+        Assert.Contains("string.Equals(stored, Command(exe)", startup);
         Assert.Contains("new CandidateElevation()", desktop);
         Assert.Contains("SourceReviewed = false", File.ReadAllText(Path.Combine(Candidate, "Platforms/Windows/AcceptanceNative/NativeAcceptanceFactory.cs")));
         var gatePath = Path.Combine(Candidate, "Platforms", "Windows", "CandidateNativeGate.cs");
@@ -184,18 +191,18 @@ public sealed class CandidateWiringAuditTests
     public void CandidateTray_BothStatesBrandedAndDistinctOwnedIcon()
     {
         var tray = File.ReadAllText(Path.Combine(Candidate, "Services", "TrayIcon.cs"));
-        Assert.Equal("Smart Snippets — Uno candidate", Services.CandidateTrayText.Tooltip(false));
-        Assert.Equal("Smart Snippets — Uno candidate — hotkey unavailable", Services.CandidateTrayText.Tooltip(true));
+        Assert.Equal("Smart Snippets", Services.CandidateTrayText.Tooltip(false));
+        Assert.Equal("Smart Snippets — hotkey unavailable", Services.CandidateTrayText.Tooltip(true));
         Assert.Contains("private const uint IconId = 2019;", tray);
         Assert.Contains("data.hWnd = _window.Handle;", tray);
         Assert.DoesNotContain("NIF_GUID", tray);
         Assert.DoesNotContain("guidItem", tray);
-        Assert.DoesNotContain("PreviousAppWindow", tray);
-        Assert.DoesNotContain("GetTopWindow", tray);
-        Assert.Contains("_onShowPopup();", tray);
+        Assert.Contains("_captureTargets ? (nint)PreviousAppWindow(previousForeground).Value : 0", tray);
+        Assert.Contains("var previousForeground = _captureTargets ? PInvoke.GetForegroundWindow() : default;", tray);
+        Assert.Contains("if (_captureTargets) PInvoke.SetForegroundWindow", tray);
     }
     [Fact]
-    public void CandidateViews_KeepCompiledBindingsAndUnavailableNativeActions()
+    public void CandidateViews_KeepCompiledBindingsAndTruthfulNativeActions()
     {
         var ns = XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
         foreach (var path in Directory.GetFiles(Candidate, "*.xaml", SearchOption.AllDirectories)
@@ -216,6 +223,7 @@ public sealed class CandidateWiringAuditTests
         Assert.Contains("FlyoutShowMode.Transient", popup);
         Assert.Contains("FlyoutPlacementMode.Bottom", popup);
         var settings = XDocument.Load(Path.Combine(Candidate, "Pages", "SettingsPage.xaml"));
-        Assert.Equal("False", settings.Descendants().Single(e => (string?)e.Attribute(ns + "Name") == "StartupToggle").Attribute("IsEnabled")!.Value);
+        Assert.Null(settings.Descendants().Single(e => (string?)e.Attribute(ns + "Name") == "StartupToggle").Attribute("IsEnabled")); // Actual registration controls the toggle state.
+        Assert.Contains("Administrator restart is unavailable", settings.ToString());
     }
 }

@@ -31,14 +31,16 @@ public sealed class CandidateUiBindingAuditTests
         Assert.Contains("PopupPlacement.CenterIn(work, width, height)", Read("Services/WindowPlacement.cs"));
         Assert.Contains("PInvoke.GetCursorPos(&cursor)", Read("Services/WindowPlacement.cs"));
         Assert.Contains("PInvoke.MonitorFromPoint(cursor, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST)", Read("Services/WindowPlacement.cs"));
-        Assert.Contains("WindowPlacement.ParkBottomLeft(AppWindow", Read("Popup/PopupWindow.xaml.cs"));
+        Assert.Contains("WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, UseQaPlacement)", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("_previewMonitor", Read("Popup/PopupWindow.xaml.cs"));
         Assert.DoesNotContain("MONITOR_DEFAULTTOPRIMARY", Read("Popup/PopupWindow.xaml.cs"));
         Assert.Contains("CandidateUiPolicy.DialogRoot", Read("Services/DialogService.cs"));
         Assert.Contains("textSize, _theme", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("_main?.BringToFront()", Read("WindowsCandidateBoundary.cs"));
         Assert.Contains("if (await NavigateGuardedAsync(kind) && show)", Read("MainWindow.xaml.cs"));
-        Assert.Contains("Services.WindowPlacement.ParkBottomLeft(AppWindow", Read("MainWindow.xaml.cs"));
+        Assert.Contains("Services.WindowPlacement.PlaceManagement(AppWindow, LogicalWidth, LogicalHeight, qaPlacement)", Read("MainWindow.xaml.cs"));
+        Assert.Contains("Program.InitialOptions.HasRequest || NativeCapability is not null", Read("WindowsCandidateBoundary.cs"));
+        Assert.Contains("if (selected.Handle == (nint)primary.Value) return false;", Read("Services/WindowPlacement.cs"));
         Assert.Contains("CandidateUiPolicy.IsBetterBottomLeft(", Read("Services/WindowPlacement.cs"));
         Assert.Contains("EnumDisplayMonitors", Read("Services/WindowPlacement.cs"));
         Assert.DoesNotContain("DisplayArea.FindAll", Read("Services/WindowPlacement.cs"));

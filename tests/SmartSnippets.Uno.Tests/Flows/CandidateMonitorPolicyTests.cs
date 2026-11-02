@@ -5,6 +5,23 @@ namespace SmartSnippets.Uno.Tests.Flows;
 public sealed class CandidateMonitorPolicyTests
 {
     [Theory]
+    [InlineData(false, false, 0, 1)]
+    [InlineData(false, true, 0, 1)]
+    [InlineData(true, false, 1, 1)]
+    [InlineData(true, true, 1, 0)]
+    public void Management_OrdinaryAlwaysCentersPrimary_QaParksOnlyWhenAvailable(bool qa, bool monitorPresent, int parks, int centers)
+    {
+        int parked = 0, centered = 0;
+        Assert.True(CandidateUiPolicy.PlaceManagement(qa, () => { parked++; return monitorPresent; },
+            () => { centered++; return true; }));
+        Assert.Equal(parks, parked); Assert.Equal(centers, centered);
+    }
+
+    [Fact]
+    public void Management_NoPlacementSuccessIsNotReportedAsSuccess()
+        => Assert.False(CandidateUiPolicy.PlaceManagement(true, () => false, () => false));
+
+    [Theory]
     [InlineData(false, false, true)]
     [InlineData(false, true, false)]
     [InlineData(true, false, false)]

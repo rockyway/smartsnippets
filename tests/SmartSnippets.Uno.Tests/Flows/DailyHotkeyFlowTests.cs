@@ -58,7 +58,7 @@ namespace SmartSnippets.Uno.Tests.Flows
             desktop.Press(); // Same direct callback as WM_HOTKEY; no queued recapture.
             Assert.Equal(new[] { "capture", "show" }, native.Trace);
             Assert.False(f.Host.Popup.IsPreview);
-            Assert.False(f.Host.Gate.IsAvailable); // Copy is deliberately out of this slice.
+            Assert.True(f.Host.Gate.IsAvailable); // Ordinary Copy is now available without acceptance authorization.
             var window = new Popup.PopupWindow(f.Host.TextSize, () => { });
             window.ViewModel = f.Host.Popup;
             await window.PressEnterForDailyHotkeyTestAsync();
@@ -116,6 +116,7 @@ namespace SmartSnippets.Uno.Tests.Flows
             Assert.Equal(TrayState.Ready, f.Boundary.TrayState);
             var views = new WindowsCandidateBoundary(); views.CreateTheme(f.Host.Settings);
             using var main = views.CreateMain(f.Host);
+            Assert.Equal("Smart Snippets", views.MainWindow!.Title);
             main.SetHotkeyStatus(desktop!.Hotkeys.Status);
             Assert.Contains(desktop.Hotkeys.Status.Message, views.MainWindow!.NativeStatusText.Text);
             Assert.DoesNotContain("insertion unavailable", views.MainWindow.NativeStatusText.Text);
@@ -126,6 +127,99 @@ namespace SmartSnippets.Uno.Tests.Flows
             f.Boundary.Popups[0].Hide(); Assert.Equal(TrayState.Ready, f.Boundary.TrayState);
             main.SetHotkeyStatus(new(false, changed, "Synthetic registration conflict"));
             Assert.Equal("Synthetic registration conflict", views.MainWindow.NativeStatusText.Text);
+        });
+
+        [Fact]
+        public Task DailyCopy_AllVmConsumersNeverPasteOrCredit_AndPreviewDenies() => CandidateHostThread.RunAsync(async () =>
+        {
+            using var f = new HostFixture(); Desktop? desktop = null;
+            f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
+            await f.Start();
+            var id = f.Host.Store.CreateSnippet(new("synthetic copy", "synthetic", true, null, "")).Value!.Id;
+            var native = desktop!.Native;
+            await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+            Assert.Equal(1, native.Copies);
+            desktop.Press();
+            await f.Host.RunCopyOperationAsync(() => f.Host.Popup.CopyRow(f.Host.Popup.Items[0]));
+            Assert.Equal(2, native.Copies);
+            f.Host.Popup.EditRow(f.Host.Popup.Items[0]);
+            await f.Host.RunCopyOperationAsync(() => f.Host.Popup.Editor!.CopyTextCommand.Execute(null));
+            Assert.Equal(3, native.Copies);
+            await f.Host.Popup.CancelEditorAsync(false);
+            native.CheckResult = TargetCheck.Closed;
+            await f.Host.Popup.InsertSelectedAsync();
+            Assert.True(f.Host.Popup.CanCopyFailedText);
+            await f.Host.RunCopyOperationAsync(() => f.Host.Popup.CopyFailedTextCommand.Execute(null));
+            Assert.Equal(4, native.Copies);
+            Assert.Equal("synthetic copy", native.Text);
+            Assert.Equal(0, native.Sends);
+            Assert.Equal(0, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
+            f.Host.ShowPreview();
+            Assert.False(f.Host.Gate.IsAvailable);
+            await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+            f.Host.Popup.CopyRow(f.Host.Popup.Items[0]);
+            Assert.Equal(4, native.Copies);
+        });
+
+        [Fact]
+        public Task Tray_CapturesSuppliedWindowBeforeShow_WithoutRecapturingForeground() => CandidateHostThread.RunAsync(async () =>
+        {
+            using var f = new HostFixture(); Desktop? desktop = null;
+            f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
+            await f.Start();
+            f.Host.Store.CreateSnippet(new("synthetic", "synthetic", true, null, ""));
+            f.Boundary.Popups[0].CapturedShown = target =>
+            {
+                Assert.Equal((nint)123, desktop!.Native.TrayWindow);
+                Assert.Equal(0, desktop.Native.Captures);
+                Assert.Same(desktop.Native.Target, target);
+            };
+            f.Boundary.TrayCaptured!(123);
+            Assert.False(f.Host.Popup.IsPreview);
+            Assert.Equal((nint)123, desktop!.Native.TrayWindow); // Already captured before any queued work.
+            await f.Host.Popup.InsertSelectedAsync();
+            Assert.Equal(1, desktop!.Native.Sends);
+            Assert.Equal(1, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
+        });
+
+        [Fact]
+        public Task DailyStartup_SettingsReflectsRegistryAndToggleChangesOnlyCandidateValue() => CandidateHostThread.RunAsync(async () =>
+        {
+            using var f = new HostFixture();
+            var values = new Dictionary<string, object?> { ["SmartSnippets"] = "legacy" };
+            var startup = new Services.StartupRegistration(() => @"C:\synthetic\candidate.exe",
+                name => values.GetValueOrDefault(name), (name, command) => values[name] = command,
+                name => values.Remove(name));
+            Assert.True(startup.Enable().Success);
+            f.Boundary.DesktopFactory = (settings, pressed) => new Desktop(settings, pressed) { Startup = startup };
+            await f.Start();
+            Assert.True(f.Host.SettingsPage.StartAtLogin);
+            f.Host.SettingsPage.StartAtLogin = false;
+            Assert.False(startup.IsEnabled());
+            f.Host.SettingsPage.StartAtLogin = true;
+            Assert.True(startup.IsEnabled());
+            Assert.Equal("legacy", values["SmartSnippets"]);
+        });
+
+        [Fact]
+        public Task CopyFailure_CanRetryWithoutPasteUsageOrStuckAdmission() => CandidateHostThread.RunAsync(async () =>
+        {
+            using var f = new HostFixture(); Desktop? desktop = null;
+            f.Boundary.DesktopFactory = (settings, pressed) => desktop = new(settings, pressed);
+            await f.Start();
+            var id = f.Host.Store.CreateSnippet(new("synthetic", "synthetic", true, null, "")).Value!.Id;
+            desktop!.Native.CopySucceeds = false;
+            await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+            Assert.True(f.Host.Gate.IsAvailable);
+            Assert.Equal(0, desktop.Native.Copies);
+            desktop.Native.CopySucceeds = true;
+            await f.Host.RunCopyOperationAsync(() => f.Host.Snippets.CopyRow(id));
+            Assert.Equal(1, desktop.Native.Copies);
+            Assert.Equal(0, desktop.Native.Sends);
+            Assert.Equal(0, Assert.Single(f.Host.Store.Snippets).Snippet.UsageCount);
+            await f.Host.ExitAsync();
+            Assert.False(f.Host.Gate.TrySetText("synthetic"));
+            Assert.Equal(1, desktop.Native.Copies);
         });
 
         private sealed class Registration : ICandidateHotkeyRegistration
@@ -157,7 +251,7 @@ namespace SmartSnippets.Uno.Tests.Flows
             internal void Press() => _pressed();
             public ICandidateDailyOperations Operations => Native;
             public IHotkeyManager Hotkeys { get; }
-            public IStartupRegistration Startup { get; } = new CandidateStartupRegistration();
+            public IStartupRegistration Startup { get; init; } = new CandidateStartupRegistration();
             public IElevation Elevation { get; } = new CandidateElevation();
             public void Dispose() { Disposed = true; Registration.UnregisterAll(); }
         }
@@ -166,12 +260,14 @@ namespace SmartSnippets.Uno.Tests.Flows
             internal InsertionTarget Target = new(123, 456, 789, "synthetic");
             internal List<string> Trace = [];
             internal List<InsertionTarget> Checked = [];
-            internal int Captures, Sends, Restores;
+            internal int Captures, Sends, Restores, Copies;
+            internal nint TrayWindow;
             internal string? Text;
             internal TargetCheck CheckResult = TargetCheck.Ok;
-            internal bool Foreground = true;
+            internal bool Foreground = true, CopySucceeds = true;
             internal DispatchState Dispatch = DispatchState.Dispatched;
             public InsertionTarget? CaptureForeground() { Captures++; Trace.Add("capture"); return Target; }
+            public InsertionTarget? CaptureFrom(nint window) { TrayWindow = window; return Target; }
             public TargetCheck Check(InsertionTarget target) { Checked.Add(target); Trace.Add("check"); return CheckResult; }
             public bool IsTargetForeground(InsertionTarget target) { Checked.Add(target); return Foreground; }
             public Task<FocusPath?> RestoreFocusAsync(InsertionTarget target, CancellationToken ct) { Checked.Add(target); return Task.FromResult<FocusPath?>(FocusPath.Direct); }
@@ -182,7 +278,10 @@ namespace SmartSnippets.Uno.Tests.Flows
             public bool ReleasePasteKeys() => true;
             public RestoreStatus TryRestoreClipboard(IClipboardSnapshot snapshot) { Restores++; Trace.Add("restore"); return RestoreStatus.Restored; }
             public void DiscardClipboardSnapshot(IClipboardSnapshot snapshot) => throw new InvalidOperationException("Unexpected discard");
-            public void SetText(string text) => throw new InvalidOperationException("Copy is out of scope");
+            public bool IsAvailable => true;
+            public void SetText(string text) { Copies++; Text = text; }
+            public bool TrySetText(string text) { if (!CopySucceeds) return false; SetText(text); return true; }
+            public Task<bool> WaitForCopyAdmissionAsync(CancellationToken ct) => Task.FromResult(true);
             public Task<bool> DrainOwnedRecoveryAsync() => Task.FromResult(true);
         }
         private sealed class Snapshot : IClipboardSnapshot

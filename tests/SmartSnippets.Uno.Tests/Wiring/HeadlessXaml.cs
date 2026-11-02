@@ -358,6 +358,7 @@ namespace SmartSnippets.Uno.Services
     internal static class WindowPlacement
     {
         internal static bool ParkBottomLeft(Microsoft.UI.Windowing.AppWindow window,int width,int height) => true;
+        internal static bool PlaceManagement(Microsoft.UI.Windowing.AppWindow window,int width,int height,bool qa) => true;
         internal static bool CenterAtCursor(Microsoft.UI.Windowing.AppWindow window,nint capturedMonitor,int width,int height) => true;
         internal static bool CenterOn(Microsoft.UI.Windowing.AppWindow window,Windows.Win32.Graphics.Gdi.HMONITOR monitor,int width,int height) => true;
         internal static (Rect Window, Rect WorkArea)? HoverBounds(Windows.Win32.Foundation.HWND window,double scale) => (new(0,0,640,480),new(0,0,1920,1080));

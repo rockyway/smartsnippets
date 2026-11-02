@@ -44,7 +44,7 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
         AppLog.Info("candidate_native_admission", _daily is not null ? "state=desktop" : _capability is null ? "state=denied" : "state=scoped");
     }
     private bool Allows(CandidateNativeOperation operation) => !_closed && !_suspended && !_preview()
-        && (_daily is not null ? (operation & CandidateNativeOperation.Copy) == 0 : _capability?.Allows(operation) == true);
+        && (_daily is not null || _capability?.Allows(operation) == true);
     private bool AllowsInsert(CandidateNativeOperation operation) => _activeTarget is { } target
         && (_daily is not null || _capability?.Owns(target) == true) && Allows(CandidateNativeOperation.Insert | operation);
     internal bool CanInsert => IsIdle && _captured is not null && Allows(CandidateNativeOperation.Insert);
@@ -59,7 +59,8 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
         try
         {
             var copied = Operations.TrySetText(text);
-            if (copied) _untrackedRecovery = false;
+            // Ordinary Copy owns no restore snapshot; a failed write leaves text in the editor.
+            if (copied || _daily is not null) _untrackedRecovery = false;
             return copied;
         }
         catch { return false; }
@@ -86,14 +87,14 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
         catch { AppLog.Info("candidate_popup_focus", "reason=failed"); return false; }
     }
 
-    internal InsertionTarget? Capture()
+    internal InsertionTarget? Capture(nint window = 0)
     {
         if (_active is not null) return null;
         ClearCapturedTarget();
         if (HasRecovery || !Allows(CandidateNativeOperation.Capture)) return null;
         try
         {
-            var target = _daily is not null ? _daily.CaptureForeground()
+            var target = _daily is not null ? (window == 0 ? _daily.CaptureForeground() : _daily.CaptureFrom(window))
                 : _capability!.Operations.CaptureOwnedTarget(_capability.Window, _capability.ProcessId);
             if (target is null || (_daily is null && !_capability!.Owns(target)) || !Allows(CandidateNativeOperation.Capture)) return null;
             _captured = target;
@@ -110,7 +111,7 @@ internal sealed class CandidateNativeGate : IClipboardService, IInsertionService
             return new(InsertionOutcome.Busy, "An insertion is already in progress.");
         if (!CanInsert || target != _captured || _insertion is null
             || (options.AllowClipboardLoss && !Allows(CandidateNativeOperation.ClipboardLoss)))
-            return new(InsertionOutcome.PasteFailed, _closed ? "The candidate is shutting down." : Unavailable);
+            return new(InsertionOutcome.PasteFailed, _closed ? "Smart Snippets is shutting down." : Unavailable);
         var active = new TaskCompletionSource();
         _active = active; _activeTarget = target; _pasteAttempted = false;
         NotifyAvailabilityChanged();

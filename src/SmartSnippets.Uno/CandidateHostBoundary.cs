@@ -44,7 +44,7 @@ internal abstract class CandidateHostBoundary
     internal abstract ISnippetFileService CreateFiles();
     internal abstract ICandidateMainWindow CreateMain(UnoAppHost host);
     internal abstract ICandidatePopupWindow CreatePopup(UnoAppHost host);
-    internal abstract ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit);
+    internal abstract ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit);
     internal abstract void ReportStartupFailure();
     internal abstract void Exit();
 }

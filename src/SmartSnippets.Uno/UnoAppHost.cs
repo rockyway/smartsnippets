@@ -86,7 +86,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             _main.HiddenByClose += OnHiddenByClose;
             if (_desktop is not null) _desktop.Hotkeys.StatusChanged += OnHotkeyStatusChanged;
             _tray = boundary.CreateTray(() => PostNavigation(PageKind.Snippets),
-                () => boundary.Dispatcher.Post(() => { if (_desktop is null) ShowPopupFromNativeRequest(); else ShowPreview(); }), () => PostNavigation(PageKind.Settings),
+                window => { if (_desktop is null) boundary.Dispatcher.Post(ShowPopupFromNativeRequest); else if (window != 0) ShowCapturedPopup(window); }, () => PostNavigation(PageKind.Settings),
                 () => boundary.Dispatcher.Post(() => _ = ExitAsync()));
             RefreshHotkeyUi();
             EnsurePopup();
@@ -142,7 +142,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private void OnHiddenByClose(object? sender, EventArgs e)
     {
         if (_disposed || SettingsStore.Get(SettingsKeys.ShellCloseHintShown) == "1") return;
-        _tray?.Notify("Smart Snippets — Uno candidate", "Still running in the candidate tray. Use your global shortcut to insert snippets, or choose Exit to quit.");
+        _tray?.Notify("Smart Snippets", "Still running in the tray. Use your global shortcut to insert snippets, or choose Exit to quit.");
         SettingsStore.Set(SettingsKeys.ShellCloseHintShown, "1");
     }
     internal async Task ApplyLaunchOptionsAsync(LaunchOptions options, bool showMain = true)
@@ -166,12 +166,12 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
         if (_exiting || _disposed) return;
         if (!ShowCapturedPopup()) ShowPreview();
     }
-    internal bool ShowCapturedPopup()
+    internal bool ShowCapturedPopup(nint window = 0)
     {
         if (!CanPresentPopup || !Gate.IsIdle || Popup.IsEditorOpen || _previewActive) return false;
         var surface = EnsurePopup();
         if (!surface.SupportsCapturedPopup) { Gate.ClearCapturedTarget(); return false; }
-        var target = Gate.Capture();
+        var target = Gate.Capture(window);
         if (target is null || !Gate.CanInsert) { Gate.ClearCapturedTarget(); return false; }
         // Capture and its exact identity validation precede all popup show/focus work.
         _pendingCaptured = true;
@@ -253,7 +253,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
             {
                 CancelExit();
                 AppLog.Info("candidate_shutdown_blocked", "reason=recovery");
-                _tray?.Notify("Clipboard recovery pending", "Owned clipboard recovery must settle before the candidate can exit.");
+                _tray?.Notify("Clipboard recovery pending", "Owned clipboard recovery must settle before the app can exit.");
                 return;
             }
             await DrainManagementAsync();
@@ -292,7 +292,7 @@ internal sealed class UnoAppHost(CandidateHostBoundary boundary, Func<CandidateP
     private async Task<bool> CanExitPopupAsync()
     {
         if (Popup?.Editor is not { IsDirty: true, IsDeleted: false } editor) return true;
-        var choice = await Dialogs.AskSaveDiscardCancelAsync("Unsaved popup changes", "Save the popup editor before exiting the Uno candidate?");
+        var choice = await Dialogs.AskSaveDiscardCancelAsync("Unsaved popup changes", "Save the popup editor before exiting Smart Snippets?");
         if (ExitSuperseded) return false;
         if (choice == SaveChoice.Save)
         {

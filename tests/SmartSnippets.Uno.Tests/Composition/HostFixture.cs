@@ -35,6 +35,7 @@ internal sealed class TestBoundary : CandidateHostBoundary
     internal bool FailWindow;
     internal bool PopupAutoReady = true;
     internal Action? TrayPreview, TrayOpen, TraySettings, TrayExit;
+    internal Action<nint>? TrayCaptured;
     internal Queue<Action> Posted { get; } = new();
     internal void Drain() { while (Posted.TryDequeue(out var action)) action(); }
     internal override IUiDispatcher Dispatcher => new TestDispatcher(Posted);
@@ -51,9 +52,9 @@ internal sealed class TestBoundary : CandidateHostBoundary
     {
         var surface = new PopupSurface(host) { AutoReady = PopupAutoReady }; Popups.Add(surface); return surface;
     }
-    internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
+    internal override ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
     {
-        TrayOpen = open; TrayPreview = preview; TraySettings = settings; TrayExit = exit;
+        TrayOpen = open; TrayPreview = () => preview(0); TrayCaptured = preview; TraySettings = settings; TrayExit = exit;
         return new TestTray(() => TrayDisposals++, (registered, visible) => TrayState = TrayStatePolicy.Compute(registered, visible));
     }
     internal override void ReportStartupFailure() => Reports++;

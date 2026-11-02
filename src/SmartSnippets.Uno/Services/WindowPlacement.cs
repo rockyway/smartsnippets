@@ -19,11 +19,19 @@ internal static unsafe partial class WindowPlacement
         internal Windows.Win32.Foundation.RECT Bounds;
         internal int Found, Failed;
     }
+    internal static bool PlaceManagement(AppWindow window, int logicalWidth, int logicalHeight, bool qa) =>
+        CandidateUiPolicy.PlaceManagement(qa,
+            () => ParkBottomLeft(window, logicalWidth, logicalHeight),
+            () => CenterOn(window, PInvoke.MonitorFromWindow(default, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY), logicalWidth, logicalHeight));
+
     internal static bool ParkBottomLeft(AppWindow window, int logicalWidth, int logicalHeight)
     {
         var selected = new Selection();
         if (EnumDisplays(0, 0, &VisitMonitor, (nint)(&selected)) == 0 || selected.Failed != 0 || selected.Found == 0)
             return false;
+        // No dedicated bottom-left display (for example, a laptop on its own): center on primary instead.
+        var primary = PInvoke.MonitorFromWindow(default, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTOPRIMARY);
+        if (selected.Handle == (nint)primary.Value) return false;
         return ParkOn(window, new HMONITOR(selected.Handle), logicalWidth, logicalHeight);
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

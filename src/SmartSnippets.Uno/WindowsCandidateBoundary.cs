@@ -50,7 +50,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
             PageKind.Folders => new FoldersPage { RunOperation = host.RunOperationAsync, TextSize = host.TextSize, ViewModel = host.Folders },
             _ => new SettingsPage { ViewModel = host.SettingsPage },
         };
-        _main = new MainWindow(CreatePage);
+        _main = new MainWindow(CreatePage, Program.InitialOptions.HasRequest || NativeCapability is not null);
         _theme!.Register(_main);
         return new MainSurface(_main);
     }
@@ -64,6 +64,7 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         window.ViewModel = host.Popup;
         window.RunOperation = host.RunOperationAsync;
         window.RunCopy = host.RunCopyOperationAsync;
+        window.UseQaPlacement = Program.InitialOptions.HasRequest || NativeCapability is not null;
         _theme!.Register(window);
         window.Closed += (_, _) => { if (ReferenceEquals(_popup, window)) _popup = null; };
         var surface = new PopupSurface(window,
@@ -72,11 +73,11 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
         surface.AttachClosed();
         return surface;
     }
-    internal override ICandidateTray CreateTray(Action open, Action preview, Action settings, Action exit)
+    internal override ICandidateTray CreateTray(Action open, Action<nint> preview, Action settings, Action exit)
     {
-        // Tray popup remains a non-inserting preview, but its shortcut display/state is real.
+        // Tray supplies the pre-menu target HWND; the host captures it before showing.
         var tray = new TrayIcon(_message!, open, preview, settings, () => { }, exit, false,
-            () => _hotkeys?.Status is { IsRegistered: true } status ? status.Gesture.ToDisplayString() : null)
+            () => _hotkeys?.Status is { IsRegistered: true } status ? status.Gesture.ToDisplayString() : null, _hotkeys is not null)
             { State = TrayStatePolicy.Compute(_hotkeys?.Status.IsRegistered == true, false) };
         tray.Add();
         return new TraySurface(tray);
@@ -86,8 +87,8 @@ internal sealed class WindowsCandidateBoundary : CandidateHostBoundary
     internal override void ReportStartupFailure() => CandidateUiPolicy.ReportStartupFailure(
         Program.StartInBackground, Program.InitialOptions.HasRequest,
         () => Windows.Win32.PInvoke.MessageBox(default,
-            "The Uno candidate could not start. No production profile or registration was changed.",
-            "Smart Snippets — Uno candidate", Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_OK),
+            "Smart Snippets could not start.",
+            "Smart Snippets", Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_OK),
         () => Console.Error.WriteLine("candidate_startup_failed"));
     internal override void Exit() { Program.StopActivations(); Application.Current.Exit(); }
     private sealed class MainSurface(MainWindow window) : ICandidateMainWindow

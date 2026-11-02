@@ -57,6 +57,9 @@ internal sealed class CandidatePopupLifecycle
 
 internal static class CandidateUiPolicy
 {
+    internal static bool PlaceManagement(bool qa, Func<bool> parkBottomLeft, Func<bool> centerPrimary)
+        => (qa && parkBottomLeft()) || centerPrimary();
+
     internal static int BottomLeftMonitorIndex(IReadOnlyList<SmartSnippets.Core.Layout.PixelRect> monitors)
     {
         if (monitors.Count == 0) throw new InvalidOperationException("No candidate display is available.");

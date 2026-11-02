@@ -22,4 +22,5 @@ internal interface ICandidateDailyOperations : ICandidateClipboardOperations
 {
     bool HasPendingRecovery => false;
     InsertionTarget? CaptureForeground();
+    InsertionTarget? CaptureFrom(nint window) => null;
 }
