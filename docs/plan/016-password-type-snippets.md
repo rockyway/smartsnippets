@@ -1,7 +1,7 @@
 # 016 — Password-type snippets
 
 **Date:** 2026-10-30
-**Status:** Approved — in implementation (2026-11-02)
+**Status:** Implemented — PR to `develop` (2026-11-02)
 **Size:** L
 **Area:** Core domain/persistence/query/export; Presentation editor/projections; App encryption/editor/composition
 **Requirement brief confirmed:** 2026-10-30 (G1, in chat)
@@ -281,3 +281,5 @@ No unresolved requirement questions. Plan approval must explicitly accept the na
 | 2026-10-30 | Draft/self-review | ACs mapped to tasks; parallel editor/preview/export/copy paths enumerated; native-control limitation and historical-plaintext limits explicit. No implementation changes or runtime verification performed. |
 | 2026-11-02 | Approved and kicked off | User: "kick off the plan". Taken as approval including the §4.3 native multiline fallback. App paths remapped to the Uno head. Branch `feature/016-password-snippets`. |
 | 2026-11-02 | Plan review folded | Review 014 (gemini-4-argon:medium) PLAN READY: no — 3 blockers, 5 major, 2 minor; all folded as §4.8 A1–A9. T1 already merged (98d8788). |
+| 2026-11-02 | Implemented | T1–T8 merged on `feature/016-password-snippets`. Code review round 1 (`docs/review/015`, argon:high): 1 blocker, 7 others, fixed in `54a41c8`. Round 2 (`docs/review/016`): F1–F8 verified; 2 new defects from the round-1 fixes (ordinary save rewrote the text box; mutating barrier inside a popup predicate), fixed in `71ad2d4` with red-then-green tests. |
+| 2026-11-02 | Verification | Sequential suites on merge `58c56d8`: Core 471, Presentation 650, Uno 178, all pass, zero warnings. Strict AOT publish passed from worktree `016-fx2` on `71ad2d4` (same source; build token `a1341405d5da4bdcad2b99cef09503ea`). Desktop live check NOT run: posted input does not reach WinUI 3 content and pc-manager declined UI Automation patterns on the shared screen, so live rows (editor, mask, search, DB envelope, UIA tree, cleanup) are covered by automated tests only (`PasswordProtectionTests` real DPAPI, `PasswordSnippetFlowTests`, `PasswordEditorTests`, `PasswordProjectionTests`, `AppLogPrivacyTests`). |
