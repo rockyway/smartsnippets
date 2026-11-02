@@ -65,7 +65,7 @@ internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile>
             _ownsLog = true;
             var factory = new SqliteConnectionFactory(_profile.Paths.DatabasePath);
             new Migrator(factory).MigrateToLatest();
-            var store = new SnippetStore(factory, TimeProvider.System);
+            var store = new SnippetStore(factory, TimeProvider.System, boundary.CreateSecretProtector());
             store.Load(); Store = store;
             SettingsStore = new SettingsRepository(factory);
             Settings = AppSettings.Load(SettingsStore);
@@ -124,7 +124,7 @@ internal sealed partial class UnoAppHost(HostBoundary boundary, Func<AppProfile>
             if (ExitSuperseded) return;
             if (_ownsLog) AppLog.Error("app_startup_failed", ex);
             Dispose();
-            boundary.ReportStartupFailure();
+            boundary.ReportStartupFailure(ex is StoreException or MigrationException ? ex.Message : "Smart Snippets could not start.");
             boundary.Exit();
         }
     }

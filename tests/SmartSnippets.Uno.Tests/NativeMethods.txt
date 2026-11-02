@@ -1,0 +1,4 @@
+CryptProtectData
+CryptUnprotectData
+LocalFree
+CRYPTPROTECT_UI_FORBIDDEN

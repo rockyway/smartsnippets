@@ -4,6 +4,7 @@ using SmartSnippets.Core.Domain;
 using SmartSnippets.Core.Logging;
 using SmartSnippets.Core.Query;
 using SmartSnippets.Core.Porting;
+using SmartSnippets.Core.Security;
 
 namespace SmartSnippets.Core.Store;
 
@@ -25,11 +26,14 @@ public sealed class SnippetStore : ISnippetStore
     private IReadOnlyList<SnippetView> _views = [];
 
     public SnippetStore(SqliteConnectionFactory factory, TimeProvider time)
+        : this(factory, time, UnavailableSecretProtector.Instance) { }
+
+    public SnippetStore(SqliteConnectionFactory factory, TimeProvider time, ISecretProtector protector)
     {
         _factory = factory;
         _time = time;
         _folderRepository = new FolderRepository(factory);
-        _snippetRepository = new SnippetRepository(factory);
+        _snippetRepository = new SnippetRepository(factory, protector);
     }
 
     public event EventHandler<StoreChangedEventArgs>? Changed;
@@ -291,6 +295,10 @@ public sealed class SnippetStore : ISnippetStore
 
     private static StoreException ToStoreException(Exception ex)
     {
+        if (ex is SecretProtectionException)
+            return new StoreException(StoreFailure.SecretProtection,
+                "Password data could not be protected or read. Restore the original Windows profile/key or a compatible backup.");
+
         if (ex is SqliteException sqlite)
         {
             return sqlite.SqliteErrorCode switch
@@ -316,7 +324,7 @@ public sealed class SnippetStore : ISnippetStore
         {
             return action();
         }
-        catch (Exception ex) when (ex is SqliteException or IOException)
+        catch (Exception ex) when (ex is SqliteException or IOException or SecretProtectionException)
         {
             // Never pass the exception: SQLite trigger and I/O messages can contain private data.
             AppLog.Error("store_write_failed", null,

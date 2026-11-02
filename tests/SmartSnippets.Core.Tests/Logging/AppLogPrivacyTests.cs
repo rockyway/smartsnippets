@@ -10,6 +10,27 @@ public sealed class AppLogPrivacyTests : IDisposable
     public void Dispose() { AppLog.Shutdown(); Directory.Delete(_directory, true); }
 
     [Fact]
+    public void PasswordFailuresNeverLogSecretOrCiphertext()
+    {
+        using var db = new SmartSnippets.Core.Tests.Data.TempDatabase();
+        new SmartSnippets.Core.Data.Migrator(db.Factory).MigrateToLatest();
+        var protector = new TestSecretProtector();
+        var store = new SmartSnippets.Core.Store.SnippetStore(db.Factory, TimeProvider.System, protector);
+        store.Load();
+        var row = store.CreateSnippet(new("PRIVATE-PASSWORD", "manual", true, null, "", true)).Value!;
+        var cipher = Assert.IsType<string>(db.Scalar("SELECT text FROM snippets"));
+        protector.Fail = true;
+        Assert.Throws<SmartSnippets.Core.Store.StoreException>(() => store.UpdateSnippet(row.Id, new("PRIVATE-NEW-PASSWORD", "manual", true, null, "", true)));
+        Assert.Throws<SmartSnippets.Core.Store.StoreException>(store.Load);
+        var log = File.ReadAllText(Path.Combine(_directory, "app.log"));
+        Assert.Contains("store_write_failed", log);
+        Assert.DoesNotContain("PRIVATE-PASSWORD", log);
+        Assert.DoesNotContain("PRIVATE-NEW-PASSWORD", log);
+        Assert.DoesNotContain(cipher, log);
+        Assert.DoesNotContain("dpapi:v1:", log);
+    }
+
+    [Fact]
     public void Error_PreservesExistingLoadAndPortingDiagnosticFields()
     {
         AppLog.Error("store_write_failed", null, "op=load error=InvalidDataException sqlite=5 hresult=0x80004005");

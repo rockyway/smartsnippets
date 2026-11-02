@@ -47,6 +47,9 @@ public sealed class UiBindingAuditTests
         Assert.DoesNotContain("DisplayArea.FindAll", Read("Services/WindowPlacement.cs"));
         var failure = Read("WindowsHostBoundary.cs");
         Assert.Contains("UiPolicy.ReportStartupFailure(", failure);
+        Assert.Contains("ReportStartupFailure(string message)", failure);
+        Assert.Contains("message,", failure);
+        Assert.Contains("ex is StoreException or MigrationException ? ex.Message", Read("UnoAppHost.cs"));
         Assert.Contains("Program.StartInBackground, Program.InitialOptions.HasRequest", failure);
         Assert.Equal(UiPolicy.PreviewHint, UiPolicy.HintLine("active hint", "", true));
         Assert.Equal("active hint", UiPolicy.HintLine("active hint", "", false));

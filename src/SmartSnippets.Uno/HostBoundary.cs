@@ -1,4 +1,5 @@
 using SmartSnippets.Core.Settings;
+using SmartSnippets.Core.Security;
 using SmartSnippets.Presentation.Navigation;
 using SmartSnippets.Presentation.Services;
 using SmartSnippets.Presentation.ViewModels;
@@ -46,6 +47,7 @@ internal abstract class HostBoundary
     internal abstract IMainWindow CreateMain(UnoAppHost host);
     internal abstract IPopupWindow CreatePopup(UnoAppHost host);
     internal abstract ITray CreateTray(Action open, Action<nint> preview, Action settings, Action exit);
-    internal abstract void ReportStartupFailure();
+    internal abstract ISecretProtector CreateSecretProtector();
+    internal abstract void ReportStartupFailure(string message);
     internal abstract void Exit();
 }

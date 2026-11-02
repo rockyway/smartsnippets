@@ -129,10 +129,11 @@ internal sealed class WindowsHostBoundary : HostBoundary
     }
     // Automated QA uses existing --page/preview options and must exit without
     // modal focus changes. Preserve actionable error UI for interactive launches.
-    internal override void ReportStartupFailure() => UiPolicy.ReportStartupFailure(
+    internal override SmartSnippets.Core.Security.ISecretProtector CreateSecretProtector() => new WindowsSecretProtector();
+    internal override void ReportStartupFailure(string message) => UiPolicy.ReportStartupFailure(
         Program.StartInBackground, Program.InitialOptions.HasRequest,
         () => Windows.Win32.PInvoke.MessageBox(default,
-            "Smart Snippets could not start.",
+            message,
             "Smart Snippets", Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE.MB_OK),
         () => Console.Error.WriteLine("app_startup_failed"));
     internal override void Exit() { Program.StopActivations(); Application.Current.Exit(); }
