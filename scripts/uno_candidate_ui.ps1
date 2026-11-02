@@ -336,7 +336,9 @@ public static class Owned019 {
     function Invoke([string]$key) {
         $e = Find $key
         Guard
-        ([Windows.Automation.InvokePattern]$e.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        $pattern = [Windows.Automation.InvokePattern]$e.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
+        if ($key -cin @('picker-import','picker-export')) { Invoke-PickerMeasured $pattern 'open' }
+        else { $pattern.Invoke() }
         $script:invokes++
     }
     function RequestSnippetNew {
@@ -432,6 +434,23 @@ public static class Owned019 {
         [void][Owned019]::GetClassName([IntPtr]$e.Current.NativeWindowHandle, $cls, 256)
         if ($cls.ToString() -cne $expected) { throw 'picker_control_class' }
     }
+    function Invoke-PickerMeasured($pattern, [string]$action) {
+        if ($action -cnotin @('open','commit') -or $script:pickerPhase -cnotin @('import-cancel','import','export-cancel','export')) { throw 'picker_phase' }
+        $before = [Owned019]::Epoch()
+        $completed = $false
+        try {
+            $pattern.Invoke() # Exactly one call; measurement grants no input exception.
+            $completed = $true
+        } finally {
+            $after = [Owned019]::Epoch()
+            $record = '{"before":' + [uint32]$before + ',"after":' + [uint32]$after + ',"completed":' + $(if ($completed) { 'true' } else { 'false' }) + '}'
+            $file = [IO.File]::Open((Join-Path $root ('picker-invoke-' + $script:pickerPhase + '-' + $action + '.json')), [IO.FileMode]::CreateNew)
+            try {
+                $bytes = [Text.Encoding]::ASCII.GetBytes($record)
+                $file.Write($bytes, 0, $bytes.Length)
+            } finally { $file.Dispose() }
+        }
+    }
     function RunPicker([string]$phase, [bool]$cancel) {
         $script:pickerStep = 'start'
         if ($phase -cnotin @('import-cancel','import','export-cancel','export') -or $null -ne $script:pickerPhase) { throw 'picker_phase' }
@@ -507,7 +526,7 @@ public static class Owned019 {
         $invoke = [Windows.Automation.InvokePattern]$commit.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
         Guard
         if ((OwnedPicker) -ne $dialog) { throw 'picker_changed' }
-        $invoke.Invoke() # One mutation only, never retry.
+        Invoke-PickerMeasured $invoke 'commit' # One mutation only, never retry.
         $script:pickerActions++
         $script:pickerStep = if ($cancel) { 'cancel_invoke' } else { 'picker_invoke' }
         $until = [DateTime]::UtcNow.AddSeconds(6)

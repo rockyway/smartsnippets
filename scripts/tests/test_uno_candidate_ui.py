@@ -215,7 +215,7 @@ class UiManagementTests(unittest.TestCase):
                         picker.index("$script:pickerStep = 'commit_ready'"))
         self.assertLess(picker.index("$script:pickerStep = 'commit_ready'"),
                         picker.index('$invoke = [Windows.Automation.InvokePattern]'))
-        self.assertLess(picker.index('$invoke.Invoke()'),
+        self.assertLess(picker.index("Invoke-PickerMeasured $invoke 'commit'"),
                         picker.index("$script:pickerStep = if ($cancel)"))
         self.assertIn("$script:pickerStep = if ($cancel) { 'cancel_invoke' } else { 'picker_invoke' }", picker)
         self.assertGreater(picker.rindex("$script:pickerStep = 'not_applicable'"), picker.rindex('Guard'))
@@ -348,7 +348,7 @@ class UiManagementTests(unittest.TestCase):
         for fragment in ('ComboBox', 'Edit', 'Button', 'picker_existing_export', 'picker_alias'):
             self.assertIn(fragment, picker)
         self.assertEqual(1, picker.count('$value.SetValue($path)'))
-        self.assertEqual(1, picker.count('$invoke.Invoke()'))
+        self.assertEqual(1, picker.count("Invoke-PickerMeasured $invoke 'commit'"))
         for forbidden in ('RootElement', 'SendKeys', 'GetWindowText', 'SetFocus', 'SetForegroundWindow'):
             self.assertNotIn(forbidden, picker)
         self.assertIn('IsChild($dialog, $native)', helper)

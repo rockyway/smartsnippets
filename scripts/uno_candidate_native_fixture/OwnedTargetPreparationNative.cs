@@ -17,7 +17,9 @@ internal sealed partial class OwnedPreparationWindows(AcceptanceFixture fixture,
             fixture.Lease.Readiness.WindowA, fixture.Lease.ExpectedPid, (uint)Environment.ProcessId,
             session.DiagnosticGuardianPid, coordinator, RetainedIdentity.Parent(Program.CoordinatorHandle), initial,
             window => WindowKind(window, fixture.Lease.Readiness.WindowA),
-            () => (long)Stopwatch.GetElapsedTime(0).TotalMilliseconds, () => Task.Delay(5));
+            () => (long)Stopwatch.GetElapsedTime(0).TotalMilliseconds, () => Task.Delay(5),
+            fixture.Lease.Readiness.WindowB,
+            window => WindowDiagnosticNative.Sample(window, fixture.Lease.Readiness.WindowA, fixture.Lease.Readiness.WindowB));
         // RecordAsync takes its first sample synchronously, then resumes off the UI context.
         return trace.RecordAsync();
     }

@@ -27,7 +27,8 @@ public partial class App : Application
             () => RetainedIdentity.Parent(Program.CoordinatorHandle), startupSamples.Add);
         var diagnostics = new NativeStartupDiagnostics(NativeFixtureOs.Foreground,
             window => { NativeFixtureOs.GetWindowThreadProcessId(window, out var pid); return pid; },
-            launcherPid, () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0);
+            launcherPid, () => fixture?.Lease.Readiness.WindowA ?? 0, () => fixture?.Lease.Readiness.WindowB ?? 0,
+            window => WindowDiagnosticNative.Sample(window, fixture?.Lease.Readiness.WindowA ?? 0, fixture?.Lease.Readiness.WindowB ?? 0));
         void FlushSamples()
         {
             foreach (var sample in startupSamples) AppLog.Info("native_startup_foreground", sample);

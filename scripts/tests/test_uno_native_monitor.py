@@ -64,7 +64,7 @@ class MonitorTests(unittest.TestCase):
                     self.assertIsNotNone(expected, 'every refusal must pin order, relation and phase')
                     order, relation, closed = expected
                     self.assertEqual(dict(predicate=token, exitCode=exit_code, sampleOrder=order,
-                                          relation=relation, closed=closed), native.validate_monitor_failure(private))
+                                          relation=relation, closed=closed, windowFacts=native.empty_window_facts()), native.validate_monitor_failure(private))
                 else:
                     call()
                     self.assertFalse((private / 'native-monitor-failure.json').exists())
@@ -89,7 +89,7 @@ class MonitorTests(unittest.TestCase):
                     ((10, True, False, 200), 'foreground_unexpected_candidate', 'candidate'),
                     ((10, True, False, 300), 'foreground_foreign', 'guardian'),
                     ((40, True, False, 200), 'foreground_unexpected_candidate', 'candidate'),
-                    ((20, True, False, 100), 'foreground_foreign', 'owned_target_b')]:
+                    ((20, True, False, 100), 'foreground_foreign', 'owned_b')]:
                 with self.subTest(scene=scene, last=last):
                     self.run_monitor(scene, [A, last], token, (2, relation, False))
             self.run_monitor(scene, [A], 'output_oversized', (1, 'owned_target_a', False), oversized=True)
@@ -98,7 +98,7 @@ class MonitorTests(unittest.TestCase):
 
     def test_closed_end_state_has_no_foreign_or_owned_surface_exception(self):
         for window, pid, token, relation in [(99, 999, 'foreground_foreign', 'foreign'),
-                (20, 100, 'foreground_foreign', 'owned_target_b'),
+                (20, 100, 'foreground_foreign', 'owned_b'),
                 (40, 200, 'foreground_unexpected_candidate', 'candidate'),
                 (30, 200, 'foreground_unexpected_candidate', 'candidate')]:
             for prefix in ([A, POPUP, BACK, CLOSED_A], [A, POPUP, BACK, CLOSED_A, INITIAL, ZERO_END]):
@@ -209,7 +209,7 @@ class MonitorTests(unittest.TestCase):
                     verify.assert_not_called()
                     boundary.assert_not_called()
                     self.assertEqual(dict(predicate='foreground_unexpected_candidate', exitCode=0,
-                                          sampleOrder=2, relation='candidate', closed=False),
+                                          sampleOrder=2, relation='candidate', closed=False, windowFacts=native.empty_window_facts()),
                                      native.validate_monitor_failure(state.private))
 
     def test_real_main_granted_success_reaches_real_receipt_and_boundary_verifiers_per_scene(self):
@@ -230,7 +230,8 @@ class MonitorTests(unittest.TestCase):
                 native.monitor(None, None, 1, [], scene=scene)
 
     def test_failure_record_rejects_schema_types_duplicates_and_payloads(self):
-        good = dict(predicate='foreground_foreign', exitCode=0, sampleOrder=1, relation='foreign', closed=False)
+        good = dict(predicate='foreground_foreign', exitCode=0, sampleOrder=1, relation='foreign', closed=False,
+                    windowFacts=native.empty_window_facts())
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = root / 'native-monitor-failure.json'

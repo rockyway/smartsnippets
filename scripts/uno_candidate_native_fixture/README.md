@@ -325,7 +325,7 @@ nd-05 adds `owned_foreground_trace` after the single SetFocus returns: up to 51
 read-only samples over 250ms, requesting 5ms delays on non-UI continuations. Records
 are buffered in RAM and emitted before COM disposal/scene teardown, including on
 refusal. Scheduling can miss transitions; actual `elapsed_ms` is recorded, not a
-promise of 5ms resolution. Fixed relations: `owned_a`, `a_other_window`, `worker`,
+promise of 5ms resolution. Fixed relations: `owned_a`, `owned_b`, `a_other_window`, `worker`,
 `guardian`, `coordinator`, `launcher`, `foreign`, `none`. For `a_other_window`, the
 fixed kind is `ime`, `tooltip`, `owned_by_a` (direct GW_OWNER), or `toplevel_other`;
 other relations use `not_applicable`. `initial_foreground` identifies a return to
@@ -337,6 +337,26 @@ The UI worker's epoch refusal additionally retains unsigned `inputEpochDelta`,
 verification, shutdown or unspecified). Delta is a timestamp difference, not an
 event count or evidence of a human/system source. No epoch rebaseline is added.
 See [research 051](../../docs/research/051-owned-foreground-loss-analysis.md).
+
+nd-06 adds `class_token` and boolean `visible`, `toolwindow`, `noactivate`,
+`has_owner`, `owner_is_a`, `owner_is_b`, `is_message_only`, `same_thread_as_a`,
+`cloaked`, `cloaked_known` to startup and high-rate samples. Class tokens are
+`ime_default`, `msctfime_ui`, `ole_main_thread`, `cicmarshal`, `user_adapter`,
+`tooltip`, `dialog_32770`, `menu_32768`, `target018_class`, `other`; raw class
+names never leave the adapters. Message-only lookup is read-only and capped at
+256 children. The independent monitor retains these in required `windowFacts`
+plus `sampled` (false if unavailable/no foreground-failure sample). Facts are
+latched with the first foreground refusal, not reread at teardown; B's monitor
+relation is now `owned_b` (previously `owned_target_b`). These fields are diagnostic,
+not new authority, and multi-API reads are not atomic.
+
+The picker helper writes at most eight fixed `picker-invoke-<phase>-<open|commit>.json`
+records per four-phase run, with uint32 `before`/`after` epochs and boolean
+`completed`, including a throwing Invoke. Open and commit are measured separately;
+missing commit data can mean the observer refused first. No epoch rebaseline or
+system-input exception exists. An update within the bracket establishes temporal
+coincidence, not who generated input; async updates after return can fall outside.
+See [research 053](../../docs/research/053-target-other-window-analysis.md).
 
 The global ERROR-log gate remains closed: only `editor-copy` requires and permits
 exactly one timestamped fixed line, `ERROR store_write_failed op=update_snippet

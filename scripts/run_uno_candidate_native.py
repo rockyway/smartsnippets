@@ -220,7 +220,7 @@ def verify_positive_boundary(private, scene, before_epoch, after_epoch):
 
 MONITOR_PREDICATES = {'foreground_foreign', 'foreground_unexpected_candidate', 'output_oversized',
                       'observation_exception', 'process_exit'}
-MONITOR_RELATIONS = {'none', 'owned_target_a', 'owned_target_b', 'guardian', 'candidate', 'same_pid_other', 'foreign'}
+MONITOR_RELATIONS = {'none', 'owned_target_a', 'owned_b', 'guardian', 'candidate', 'same_pid_other', 'foreign'}
 
 
 def validate_monitor_failure(private):
@@ -231,7 +231,7 @@ def validate_monitor_failure(private):
         return result
     record = json.loads(helpers.owned_bytes(private / 'native-monitor-failure.json', private, 4096).decode('ascii'),
                         object_pairs_hook=unique)
-    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed'}
+    if (type(record) is not dict or set(record) != {'predicate', 'exitCode', 'sampleOrder', 'relation', 'closed', 'windowFacts'}
             or type(record['predicate']) is not str or record['predicate'] not in MONITOR_PREDICATES
             or type(record['relation']) is not str or record['relation'] not in MONITOR_RELATIONS
             or type(record['exitCode']) is not int or not -2**31 <= record['exitCode'] <= 2**32-1
@@ -239,7 +239,73 @@ def validate_monitor_failure(private):
             or type(record['closed']) is not bool
             or (record['predicate'] == 'process_exit' and record['exitCode'] == 0)):
         raise ValueError('native_monitor_record')
+    facts = record['windowFacts']
+    if (type(facts) is not dict or set(facts) != {'class_token', *WINDOW_BOOLS}
+            or type(facts['class_token']) is not str
+            or facts['class_token'] not in {*WINDOW_CLASSES.values(), 'target018_class', 'other'}
+            or any(type(facts[key]) is not bool for key in WINDOW_BOOLS)):
+        raise ValueError('native_monitor_record')
     return record
+
+
+WINDOW_CLASSES = {'IME': 'ime_default', 'MSCTFIME UI': 'msctfime_ui',
+                  'OleMainThreadWndClass': 'ole_main_thread', 'CicMarshalWndClass': 'cicmarshal',
+                  'UserAdapterWindowClass': 'user_adapter', 'tooltips_class32': 'tooltip',
+                  '#32770': 'dialog_32770', '#32768': 'menu_32768'}
+WINDOW_BOOLS = ('sampled', 'visible', 'toolwindow', 'noactivate', 'has_owner', 'owner_is_a',
+                'owner_is_b', 'is_message_only', 'same_thread_as_a', 'cloaked', 'cloaked_known')
+
+
+def empty_window_facts():
+    return dict(class_token='other', **dict.fromkeys(WINDOW_BOOLS, False))
+
+
+def window_facts(desktop, window, a=0, b=0):
+    """Read-only, best effort; never replace the original latched refusal."""
+    import ctypes as C
+    from ctypes import wintypes as W
+    result = empty_window_facts()
+    try:
+        user = desktop.user
+        for name, args, restype in (
+                ('GetClassNameW', [W.HWND, W.LPWSTR, C.c_int], C.c_int),
+                ('GetWindowLongPtrW', [W.HWND, C.c_int], C.c_ssize_t),
+                ('GetWindow', [W.HWND, W.UINT], W.HWND),
+                ('GetAncestor', [W.HWND, W.UINT], W.HWND),
+                ('FindWindowExW', [W.HWND, W.HWND, W.LPCWSTR, W.LPCWSTR], W.HWND)):
+            fn = getattr(user, name)
+            fn.argtypes, fn.restype = args, restype
+        name = C.create_unicode_buffer(256)
+        user.GetClassNameW(window, name, len(name))
+        token = WINDOW_CLASSES.get(name.value, 'other')
+        if re.fullmatch(r'SS_Target018_[0-9a-fA-F]{32}', name.value):
+            token = 'target018_class'
+        style = user.GetWindowLongPtrW(window, -20)
+        owner = user.GetWindow(window, 4)
+        pid = W.DWORD()
+        tid = user.GetWindowThreadProcessId(window, C.byref(pid)) if window else 0
+        a_tid = user.GetWindowThreadProcessId(a, C.byref(pid)) if a else 0
+        cloak = W.DWORD()
+        known = desktop.dwm.DwmGetWindowAttribute(window, 14, C.byref(cloak), C.sizeof(cloak)) >= 0
+        message_only = False
+        if window and user.GetAncestor(window, 1):
+            child = 0
+            for _ in range(256):
+                child = user.FindWindowExW(-3, child, None, None)
+                if not child:
+                    break
+                if child == window:
+                    message_only = True
+                    break
+        result = dict(class_token=token, sampled=True, visible=bool(window and user.IsWindowVisible(window)),
+                      toolwindow=bool(style & 0x80), noactivate=bool(style & 0x08000000),
+                      has_owner=bool(owner), owner_is_a=bool(a and owner == a), owner_is_b=bool(b and owner == b),
+                      is_message_only=message_only,
+                      same_thread_as_a=bool(tid and a_tid == tid), cloaked=bool(known and cloak.value),
+                      cloaked_known=known)
+    except Exception:
+        pass  # Explicit unavailability, never raw exception/class output.
+    return result
 
 
 def foreground_pid(desktop, window):
@@ -284,7 +350,7 @@ class PostedForegroundMonitor:
         pid = foreground_pid(desktop, window)
         relation = ('none' if not window else 'foreign' if not pid else
                     'owned_target_a' if window == a and pid == target else
-                    'owned_target_b' if window == b and pid == target else
+                    'owned_b' if window == b and pid == target else
                     'candidate' if pid == candidate else 'guardian' if pid == guardian else
                     'same_pid_other' if pid == target else 'foreign')
         grant = self.private / 'positive-foreground-granted'
@@ -325,6 +391,7 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
     if scene not in ('restore', 'abort', 'owner-refusal', *POSITIVE_SCENES):
         raise ValueError('native_monitor_scene')
     failure = None
+    failure_facts = empty_window_facts()
     order = 0
     relation = 'none'
     policy = PostedForegroundMonitor(positive_private, foreground, clock, scene != 'copy') if scene in (*POSTED_SCENES, 'copy') else None
@@ -347,6 +414,8 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
                                    (None if window in allowed else 'foreground_foreign', 'none' if not window else 'foreign'))
             if predicate and failure is None:
                 failure = (predicate, order, relation, bool(policy and policy.closed))
+                surfaces = policy.surfaces if policy is not None else None
+                failure_facts = window_facts(desktop, window, *(surfaces[:2] if surfaces else (0, 0)))
             if any(p.stat().st_size > 65536 for p in output) and failure is None:
                 failure = ('output_oversized', order, relation, bool(policy and policy.closed))
         except Exception:
@@ -369,7 +438,8 @@ def monitor(process, desktop, foreground, output, clock=time.monotonic, sleep=ti
         predicate, sample, relation, closed = failure
         private = evidence_private or positive_private
         if private is not None:
-            record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation, closed=closed)
+            record = dict(predicate=predicate, exitCode=process.returncode, sampleOrder=sample, relation=relation, closed=closed,
+                          windowFacts=failure_facts)
             with (private / 'native-monitor-failure.json').open('x', encoding='ascii') as stream:
                 json.dump(record, stream)
             validate_monitor_failure(private)

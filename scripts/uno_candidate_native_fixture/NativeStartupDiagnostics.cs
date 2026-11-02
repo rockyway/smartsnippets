@@ -2,7 +2,8 @@ namespace SmartSnippets.Uno;
 
 /// <summary>Read-only samples, not foreground authority. No identities leave this recorder.</summary>
 internal sealed class NativeStartupDiagnostics(Func<nint> foreground, Func<nint, uint> processId,
-    uint launcherPid, Func<nint> windowA, Func<nint> windowB)
+    uint launcherPid, Func<nint> windowA, Func<nint> windowB,
+    Func<nint, WindowDiagnosticFacts>? windowFacts = null)
 {
     private int order;
 
@@ -26,27 +27,30 @@ internal sealed class NativeStartupDiagnostics(Func<nint> foreground, Func<nint,
         var launcher = pid != 0 && pid == launcherPid;
         var relation = window == 0 ? "none" : window == windowA() ? "owned_a" :
             window == windowB() ? "owned_b" : launcher ? "launcher" : "foreign";
-        return $"phase={phase} relation={relation} launcher_foreground={launcher} sample_order={++order}";
+        return $"phase={phase} relation={relation} launcher_foreground={launcher} sample_order={++order}" +
+            (windowFacts is null ? "" : " " + windowFacts(window).Fields());
     }
 }
 
 /// <summary>Bounded read-only trace. PID/HWND/class strings never leave the sampler.</summary>
 internal sealed class OwnedForegroundTrace(Func<nint> foreground, Func<nint, uint> processId,
     nint windowA, uint targetPid, uint workerPid, uint guardianPid, uint coordinatorPid, uint launcherPid,
-    nint initial, Func<nint, string> windowKind, Func<long> milliseconds, Func<Task> delay)
+    nint initial, Func<nint, string> windowKind, Func<long> milliseconds, Func<Task> delay,
+    nint windowB = 0, Func<nint, WindowDiagnosticFacts>? windowFacts = null)
 {
     internal string Sample(int order, long elapsed)
     {
         var window = foreground();
         var pid = window == 0 ? 0 : processId(window);
         var relation = window == 0 ? "none" : pid == 0 ? "foreign" :
-            pid == targetPid ? window == windowA ? "owned_a" : "a_other_window" :
+            pid == targetPid ? window == windowA ? "owned_a" : window == windowB ? "owned_b" : "a_other_window" :
             pid == workerPid ? "worker" : pid == guardianPid ? "guardian" :
             pid == coordinatorPid ? "coordinator" : pid == launcherPid ? "launcher" : "foreign";
         var kind = relation == "a_other_window" ? windowKind(window) : "not_applicable";
         if (kind is not ("owned_by_a" or "ime" or "tooltip" or "toplevel_other" or "not_applicable"))
             kind = "toplevel_other";
-        return $"relation={relation} kind={kind} initial_foreground={window != 0 && window == initial} sample_order={order} elapsed_ms={elapsed}";
+        return $"relation={relation} kind={kind} initial_foreground={window != 0 && window == initial} sample_order={order} elapsed_ms={elapsed}" +
+            (windowFacts is null ? "" : " " + windowFacts(window).Fields());
     }
     internal async Task<List<string>> RecordAsync()
     {
